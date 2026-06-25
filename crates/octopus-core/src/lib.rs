@@ -1143,13 +1143,13 @@ impl HarnessState {
             .map(|path| format!(" --state {}", shell_arg(&path.to_string_lossy())))
             .unwrap_or_default();
         let next_action = if self.installed_tentacles.is_empty() {
-            format!("cargo run -q -p octopus-core --{state_args} adapt")
+            format!("octopus{state_args} adapt")
         } else if self.goal.is_none() {
-            format!("cargo run -q -p octopus-core --{state_args} chat \"describe your goal\"")
+            format!("octopus{state_args} chat \"describe your goal\"")
         } else if self.routes.scores.is_empty() {
-            format!("cargo run -q -p octopus-core --{state_args} need observe .")
+            format!("octopus{state_args} need observe .")
         } else {
-            format!("cargo run -q -p octopus-core --{state_args} beat 200")
+            format!("octopus{state_args} beat 200")
         };
         StatusReport {
             hearts: vec![
@@ -2360,8 +2360,8 @@ pub fn scaffold_tentacle(
 
     let mut next_steps = vec![
         format!("review {}", manifest_path.display()),
-        format!("octopus-core manifests {}", tentacles_root.display()),
-        format!("octopus-core --state /tmp/octopus.json install {tentacle_id}"),
+        format!("octopus manifests {}", tentacles_root.display()),
+        format!("octopus --state /tmp/octopus.json install {tentacle_id}"),
     ];
     if tool_path.is_none() && runtime != "http" {
         next_steps.insert(
@@ -3511,10 +3511,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["heartbeat", "memory", "harness"]
         );
-        assert_eq!(
-            empty.next_action,
-            "cargo run -q -p octopus-core -- adapt".to_string()
-        );
+        assert_eq!(empty.next_action, "octopus adapt".to_string());
         assert!(empty
             .warnings
             .contains(&"no installed tentacle manifests".to_string()));
@@ -3547,16 +3544,12 @@ mod tests {
             report.active_grants,
             vec!["github:dangoZhang/Octopus".to_string()]
         );
-        assert_eq!(
-            report.next_action,
-            "cargo run -q -p octopus-core -- beat 200".to_string()
-        );
+        assert_eq!(report.next_action, "octopus beat 200".to_string());
         let state_path = Path::new("/tmp/octopus state.json");
         let with_state = harness.state.status_report_with_state(Some(state_path));
         assert_eq!(
             with_state.next_action,
-            "cargo run -q -p octopus-core -- --state '/tmp/octopus state.json' beat 200"
-                .to_string()
+            "octopus --state '/tmp/octopus state.json' beat 200".to_string()
         );
     }
 

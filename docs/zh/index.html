@@ -205,17 +205,16 @@
       <section>
         <div class="shell">
           <h2>快速安装与使用</h2>
-          <pre><code>cargo test
+          <pre><code>cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus
 tmp=$(mktemp -d)
-repo=$PWD
-cargo run -q -p octopus-core -- demo dangoZhang/Octopus
-cargo run -q -p octopus-core -- --state "$tmp/state.json" adapt
-cargo run -q -p octopus-core -- --state "$tmp/state.json" install swe-agent
-cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe .
-cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh doctor
-cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh beat 200
-(cd "$tmp" &amp;&amp; cargo run -q --manifest-path "$repo/Cargo.toml" -p octopus-core -- scaffold my-feed python)
-(cd "$tmp" &amp;&amp; cargo run -q --manifest-path "$repo/Cargo.toml" -p octopus-core -- probe my-feed observe README.md)</code></pre>
+octopus demo dangoZhang/Octopus
+octopus --state "$tmp/state.json" adapt
+octopus --state "$tmp/state.json" install swe-agent
+octopus --state "$tmp/state.json" need observe .
+octopus --state "$tmp/state.json" --lang zh doctor
+octopus --state "$tmp/state.json" --lang zh beat 200
+(cd "$tmp" &amp;&amp; octopus scaffold my-feed python)
+(cd "$tmp" &amp;&amp; octopus probe my-feed observe README.md)</code></pre>
           <p><a href="../quickstart.html">完整流程</a>。内核保持小，SDK 和触手围绕它进化。</p>
         </div>
       </section>

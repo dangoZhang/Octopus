@@ -296,17 +296,16 @@
       <section id="quickstart">
         <div class="shell">
           <h2>Quick Install & Use</h2>
-          <pre><code>cargo test
+          <pre><code>cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus
 tmp=$(mktemp -d)
-repo=$PWD
-cargo run -q -p octopus-core -- demo dangoZhang/Octopus
-cargo run -q -p octopus-core -- --state "$tmp/state.json" adapt
-cargo run -q -p octopus-core -- --state "$tmp/state.json" install swe-agent
-cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe .
-cargo run -q -p octopus-core -- --state "$tmp/state.json" doctor
-cargo run -q -p octopus-core -- --state "$tmp/state.json" beat 200
-(cd "$tmp" &amp;&amp; cargo run -q --manifest-path "$repo/Cargo.toml" -p octopus-core -- scaffold my-feed python)
-(cd "$tmp" &amp;&amp; cargo run -q --manifest-path "$repo/Cargo.toml" -p octopus-core -- probe my-feed observe README.md)</code></pre>
+octopus demo dangoZhang/Octopus
+octopus --state "$tmp/state.json" adapt
+octopus --state "$tmp/state.json" install swe-agent
+octopus --state "$tmp/state.json" need observe .
+octopus --state "$tmp/state.json" doctor
+octopus --state "$tmp/state.json" beat 200
+(cd "$tmp" &amp;&amp; octopus scaffold my-feed python)
+(cd "$tmp" &amp;&amp; octopus probe my-feed observe README.md)</code></pre>
           <p class="copy"><a href="./quickstart.html">Full walkthrough</a>. The kernel stays small. SDKs and tentacles can evolve around it.</p>
         </div>
       </section>

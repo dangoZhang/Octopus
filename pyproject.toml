@@ -23,7 +23,7 @@ Documentation = "https://dangozhang.github.io/Octopus/"
 Repository = "https://github.com/dangoZhang/Octopus"
 
 [project.scripts]
-octopus = "octopus.cli:main"
+octopus-py = "octopus.cli:main"
 
 [build-system]
 requires = ["hatchling"]

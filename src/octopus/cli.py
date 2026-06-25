@@ -12,7 +12,7 @@ DEFAULT_STATE = Path.home() / ".octopus" / "state.json"
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="octopus", description="Independent-thinking tools, clean brain")
+    parser = argparse.ArgumentParser(prog="octopus-py", description="Independent-thinking tools, clean brain")
     parser.add_argument("--state", default=str(DEFAULT_STATE), help="persistent harness state file")
     sub = parser.add_subparsers(dest="command", required=True)
 

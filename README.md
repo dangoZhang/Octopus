@@ -19,17 +19,16 @@ The mechanism is `Need -> Feed -> Feedback`. The outcome is less tool burden and
 ## Quick Install & Use
 
 ```bash
-cargo test
+cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus
 tmp=$(mktemp -d)
-repo=$PWD
-cargo run -q -p octopus-core -- demo dangoZhang/Octopus
-cargo run -q -p octopus-core -- --state "$tmp/state.json" adapt
-cargo run -q -p octopus-core -- --state "$tmp/state.json" install swe-agent
-cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe .
-cargo run -q -p octopus-core -- --state "$tmp/state.json" doctor
-cargo run -q -p octopus-core -- --state "$tmp/state.json" beat 200
-(cd "$tmp" && cargo run -q --manifest-path "$repo/Cargo.toml" -p octopus-core -- scaffold my-feed python)
-(cd "$tmp" && cargo run -q --manifest-path "$repo/Cargo.toml" -p octopus-core -- probe my-feed observe README.md)
+octopus demo dangoZhang/Octopus
+octopus --state "$tmp/state.json" adapt
+octopus --state "$tmp/state.json" install swe-agent
+octopus --state "$tmp/state.json" need observe .
+octopus --state "$tmp/state.json" doctor
+octopus --state "$tmp/state.json" beat 200
+(cd "$tmp" && octopus scaffold my-feed python)
+(cd "$tmp" && octopus probe my-feed observe README.md)
 ```
 
 Output includes:

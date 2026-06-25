@@ -15,6 +15,11 @@ jobs:
       - run: cargo run -q -p octopus-core --example thinking_tentacle
       - run: cargo run -q -p octopus-core -- demo dangoZhang/Octopus | grep -q "Octopus demo"
       - run: cargo run -q -p octopus-core -- --json demo dangoZhang/Octopus | grep -q '"probe_summary"'
+      - run: |
+          tmp=$(mktemp -d)
+          cargo install --path crates/octopus-core --bin octopus --root "$tmp/root"
+          "$tmp/root/bin/octopus" demo dangoZhang/Octopus | grep -q "Octopus demo"
+          "$tmp/root/bin/octopus" --state "$tmp/state.json" doctor | grep -q "Octopus doctor"
       - run: cargo run -q -p octopus-core -- catalog
       - run: cargo run -q -p octopus-core -- manifests
       - run: cargo run -q -p octopus-core -- --lang zh env

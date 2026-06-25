@@ -26,9 +26,9 @@ LLM OAuth is a capability grant, not a hidden background permission. Without it,
 
 ```bash
 tmp=$(mktemp -d)
-cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
-cargo run -q -p octopus-core -- --state "$tmp/state.json" oauth github dangoZhang/Octopus
-cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
+octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus
+octopus --state "$tmp/state.json" oauth github dangoZhang/Octopus
+octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 ```
 
 The first plan is `report-only`. After the grant, the repo-maintainer plan becomes `pr-ready` while keeping guardrails such as never pushing to `main`.
@@ -48,7 +48,7 @@ GitHub status, patch queue, and draft data land under `.octopus/self-iteration/`
 Harness evolution drafts stay local and auditable:
 
 ```bash
-cargo run -q -p octopus-core -- evolve swe-agent "improve repository observation feed quality"
+octopus evolve swe-agent "improve repository observation feed quality"
 ```
 
 The draft lands under `.octopus/evolution/<tentacle>/` with the editable prompt, metadata, code targets, checks, and constraints.

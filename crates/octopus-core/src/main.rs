@@ -830,7 +830,7 @@ fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorRepo
     if !llm.configured {
         next.push("set OCTOPUS_LLM_MODEL and OCTOPUS_LLM_API_KEY".to_string());
     }
-    next.push("cargo run -q -p octopus-core -- demo dangoZhang/Octopus".to_string());
+    next.push("octopus demo dangoZhang/Octopus".to_string());
     next.push(format!("open {}", pet.path));
     next.sort();
     next.dedup();
@@ -1279,7 +1279,7 @@ fn manifest_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]

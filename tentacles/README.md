@@ -7,12 +7,11 @@ The core treats runtime as metadata plus an entrypoint contract. `.sh` files are
 Inspect installable manifests:
 
 ```bash
-cargo run -q -p octopus-core -- manifests
+octopus manifests
 tmp=$(mktemp -d)
-repo=$PWD
-(cd "$tmp" && cargo run -q --manifest-path "$repo/Cargo.toml" -p octopus-core -- scaffold my-feed python)
-(cd "$tmp" && cargo run -q --manifest-path "$repo/Cargo.toml" -p octopus-core -- probe my-feed observe README.md)
-(cd "$tmp" && cargo run -q --manifest-path "$repo/Cargo.toml" -p octopus-core -- scaffold native-feed rust)
+(cd "$tmp" && octopus scaffold my-feed python)
+(cd "$tmp" && octopus probe my-feed observe README.md)
+(cd "$tmp" && octopus scaffold native-feed rust)
 ```
 
 - `swe-agent`: repo work through `read`, `edit`, inspection, patch, and test tools.
