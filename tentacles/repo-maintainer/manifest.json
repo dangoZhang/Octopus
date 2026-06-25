@@ -1,0 +1,47 @@
+{
+  "$schema": "../tentacle.schema.json",
+  "schema_version": "0.1.0",
+  "id": "repo-maintainer",
+  "name": "Repo Maintainer Tentacle",
+  "description": "LLM-guided repository self-iteration through explicit OAuth grants and PR-ready draft data.",
+  "brain": {
+    "kind": "llm",
+    "model": null,
+    "prompt": "Inspect repository health, compare docs/code/tests, prepare the smallest useful branch plan, and return PR-ready evidence only inside an explicit grant boundary.",
+    "feedback_contract": "Return mode, branch plan, draft PR data, checks, guardrails, and whether OAuth is required."
+  },
+  "skills": [
+    {
+      "id": "self-iteration",
+      "description": "Prepare safe repository improvement work without pushing directly to main.",
+      "needs": ["observe", "verify", "execute"]
+    }
+  ],
+  "tools": [
+    {
+      "id": "inspect_repo",
+      "description": "Inspect local repo health and relevant manifests.",
+      "input": "workspace root",
+      "output": "git status, current branch, detected manifests",
+      "implementation": { "kind": "shell", "entrypoint": "tools/inspect_repo.sh" }
+    },
+    {
+      "id": "draft_pr",
+      "description": "Write branch plan and pull request draft data under .octopus/self-iteration.",
+      "input": "workspace root, repository, objective",
+      "output": "branch plan path and PR draft path",
+      "implementation": { "kind": "shell", "entrypoint": "tools/draft_pr.sh" }
+    }
+  ],
+  "evolution": {
+    "editable": ["manifest.json", "brain.prompt", "tools/*.sh", "future GitHub/OAuth adapters"],
+    "checks": [
+      "tools/inspect_repo.sh .",
+      "tools/draft_pr.sh $(mktemp -d) dangoZhang/Octopus improve-usability"
+    ],
+    "constraints": [
+      "Never push to main directly.",
+      "Prepare PR draft data only after an explicit grant."
+    ]
+  }
+}

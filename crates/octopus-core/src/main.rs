@@ -168,8 +168,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let repository = rest
                 .get(1)
                 .ok_or_else(|| "self-iterate requires a repository".to_string())?;
+            let objective = rest
+                .get(2..)
+                .filter(|values| !values.is_empty())
+                .map(|values| values.join(" "));
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            let plan = loaded.self_iteration_plan(repository.as_str());
+            let plan = loaded.self_iteration_plan(repository.as_str(), objective.as_deref());
             if json {
                 println!(
                     "{}",
@@ -361,12 +365,20 @@ fn print_self_iteration_plan(plan: &SelfIterationPlan, language: Language) {
             println!("mode: {}", plan.mode);
             println!("authorized: {}", plan.authorized);
             println!("next: {}", plan.steps.join(" -> "));
+            if let Some(draft) = &plan.draft {
+                println!("draft branch: {}", draft.branch);
+                println!("draft title: {}", draft.title);
+            }
         }
         Language::Zh => {
             println!("仓库: {}", plan.repository);
             println!("模式: {}", plan.mode);
             println!("已授权: {}", plan.authorized);
             println!("下一步: {}", plan.steps.join(" -> "));
+            if let Some(draft) = &plan.draft {
+                println!("草稿分支: {}", draft.branch);
+                println!("草稿标题: {}", draft.title);
+            }
         }
     }
 }

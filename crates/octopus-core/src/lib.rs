@@ -113,6 +113,16 @@ pub struct SelfIterationPlan {
     pub steps: Vec<String>,
     pub checks: Vec<String>,
     pub guardrails: Vec<String>,
+    pub draft: Option<PullRequestDraft>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct PullRequestDraft {
+    pub branch: String,
+    pub title: String,
+    pub change_summary: String,
+    pub body: String,
+    pub check_results: Vec<String>,
 }
 
 impl Need {
@@ -832,10 +842,21 @@ impl HarnessState {
         })
     }
 
-    pub fn self_iteration_plan(&self, repository: impl Into<String>) -> SelfIterationPlan {
+    pub fn self_iteration_plan(
+        &self,
+        repository: impl Into<String>,
+        objective: Option<&str>,
+    ) -> SelfIterationPlan {
         let repository = repository.into();
+        let objective = objective
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_string)
+            .or_else(|| self.goal.as_ref().map(|goal| goal.objective.clone()))
+            .unwrap_or_else(|| "improve Octopus usability".to_string());
         let grant = self.active_grant("github", &repository);
         let authorized = grant.is_some();
+        let checks = self_iteration_checks();
+        let guardrails = self_iteration_guardrails();
         let mut steps = vec![
             "inspect repository health".to_string(),
             "compare docs, manifests, and tests".to_string(),
@@ -850,6 +871,16 @@ impl HarnessState {
         } else {
             steps.push("report only until an OAuth grant exists".to_string());
         }
+        let draft = authorized.then(|| PullRequestDraft {
+            branch: format!("octopus/{}", slug(&objective)),
+            title: draft_title(&objective),
+            change_summary: objective.clone(),
+            body: pull_request_body(&repository, &objective, &checks, &guardrails),
+            check_results: checks
+                .iter()
+                .map(|check| format!("pending: {check}"))
+                .collect(),
+        });
         SelfIterationPlan {
             repository,
             authorized,
@@ -860,16 +891,9 @@ impl HarnessState {
             },
             grant_id: grant.map(|grant| grant.id.clone()),
             steps,
-            checks: vec![
-                "cargo test".to_string(),
-                "cargo clippy --all-targets -- -D warnings".to_string(),
-                "PYTHONPATH=src python -m unittest discover -s tests -q".to_string(),
-            ],
-            guardrails: vec![
-                "never push to main directly".to_string(),
-                "prefer small pull requests".to_string(),
-                "keep the kernel small enough to audit".to_string(),
-            ],
+            checks,
+            guardrails,
+            draft,
         }
     }
 }
@@ -1192,14 +1216,32 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "Inspect project health and prepare small pull requests after OAuth grant."
                         .to_string(),
                 needs: vec![NeedKind::Observe, NeedKind::Verify, NeedKind::Execute],
-                tools: vec!["git".to_string(), "github".to_string(), "ci".to_string()],
+                tools: vec![
+                    "tentacles/repo-maintainer/tools/inspect_repo.sh".to_string(),
+                    "tentacles/repo-maintainer/tools/draft_pr.sh".to_string(),
+                ],
             }],
             tools: vec![
-                tool_meta("git", "Inspect local changes.", "adapter", "git"),
-                tool_meta("github", "Inspect and update GitHub state.", "adapter", "github"),
-                tool_meta("ci", "Read check status and logs.", "adapter", "ci"),
+                tool_meta(
+                    "inspect_repo",
+                    "Inspect local repo health.",
+                    "shell",
+                    "tentacles/repo-maintainer/tools/inspect_repo.sh",
+                ),
+                tool_meta(
+                    "draft_pr",
+                    "Write branch plan and pull request draft data.",
+                    "shell",
+                    "tentacles/repo-maintainer/tools/draft_pr.sh",
+                ),
             ],
-            evolution: evolution_policy(&["cargo test"], &["Wait for explicit OAuth/user grant before pushing changes."]),
+            evolution: evolution_policy(
+                &[
+                    "tentacles/repo-maintainer/tools/inspect_repo.sh .",
+                    "tentacles/repo-maintainer/tools/draft_pr.sh $(mktemp -d) dangoZhang/Octopus improve-usability",
+                ],
+                &["Wait for explicit OAuth/user grant before preparing branch or PR work."],
+            ),
             llm_ready: true,
         },
         TentacleProfile {
@@ -1364,6 +1406,85 @@ fn normalize_permissions(permissions: Vec<String>) -> Vec<String> {
     permissions.sort();
     permissions.dedup();
     permissions
+}
+
+fn self_iteration_checks() -> Vec<String> {
+    vec![
+        "cargo test".to_string(),
+        "cargo clippy --all-targets -- -D warnings".to_string(),
+        "PYTHONPATH=src python -m unittest discover -s tests -q".to_string(),
+    ]
+}
+
+fn self_iteration_guardrails() -> Vec<String> {
+    vec![
+        "never push to main directly".to_string(),
+        "prefer small pull requests".to_string(),
+        "keep the kernel small enough to audit".to_string(),
+    ]
+}
+
+fn pull_request_body(
+    repository: &str,
+    objective: &str,
+    checks: &[String],
+    guardrails: &[String],
+) -> String {
+    format!(
+        "Repository: {repository}\nObjective: {objective}\n\nChecks:\n{}\n\nGuardrails:\n{}",
+        checks
+            .iter()
+            .map(|check| format!("- [ ] {check}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        guardrails
+            .iter()
+            .map(|guardrail| format!("- {guardrail}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    )
+}
+
+fn draft_title(objective: &str) -> String {
+    let objective = objective.trim();
+    capitalize_ascii(objective)
+}
+
+fn capitalize_ascii(value: &str) -> String {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    format!(
+        "{}{}",
+        first.to_ascii_uppercase(),
+        chars.collect::<String>()
+    )
+}
+
+fn slug(value: &str) -> String {
+    let mut slug = String::new();
+    let mut last_dash = false;
+    for character in value.chars().flat_map(char::to_lowercase) {
+        if character.is_ascii_alphanumeric() {
+            slug.push(character);
+            last_dash = false;
+        } else if !last_dash && !slug.is_empty() {
+            slug.push('-');
+            last_dash = true;
+        }
+        if slug.len() >= 48 {
+            break;
+        }
+    }
+    while slug.ends_with('-') {
+        slug.pop();
+    }
+    if slug.is_empty() {
+        "update".to_string()
+    } else {
+        slug
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -1552,9 +1673,11 @@ mod tests {
     fn self_iteration_requires_oauth_grant_for_pr_mode() {
         let mut state = HarnessState::default();
 
-        let report_only = state.self_iteration_plan("dangoZhang/Octopus");
+        let report_only =
+            state.self_iteration_plan("dangoZhang/Octopus", Some("improve usability"));
         assert!(!report_only.authorized);
         assert_eq!(report_only.mode, "report-only");
+        assert!(report_only.draft.is_none());
         assert!(report_only
             .steps
             .contains(&"report only until an OAuth grant exists".to_string()));
@@ -1564,11 +1687,15 @@ mod tests {
             "dangoZhang/Octopus",
             default_permissions("github"),
         );
-        let pr_ready = state.self_iteration_plan("dangoZhang/Octopus");
+        let pr_ready = state.self_iteration_plan("dangoZhang/Octopus", Some("improve usability"));
 
         assert!(pr_ready.authorized);
         assert_eq!(pr_ready.mode, "pr-ready");
         assert_eq!(pr_ready.grant_id, Some(grant.id));
+        let draft = pr_ready.draft.as_ref().unwrap();
+        assert_eq!(draft.branch, "octopus/improve-usability");
+        assert_eq!(draft.title, "Improve usability");
+        assert!(draft.body.contains("cargo test"));
         assert!(pr_ready
             .guardrails
             .contains(&"never push to main directly".to_string()));
@@ -1671,6 +1798,14 @@ mod tests {
             .tools
             .iter()
             .any(|tool| tool.implementation.entrypoint == "docs/pet.html"));
+        assert!(profiles
+            .iter()
+            .find(|profile| profile.id == "repo-maintainer")
+            .unwrap()
+            .tools
+            .iter()
+            .any(|tool| tool.implementation.entrypoint
+                == "tentacles/repo-maintainer/tools/draft_pr.sh"));
     }
 
     #[test]

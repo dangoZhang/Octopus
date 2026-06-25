@@ -33,6 +33,16 @@ cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhan
 
 The first plan is `report-only`. After the grant, the repo-maintainer plan becomes `pr-ready` while keeping guardrails such as never pushing to `main`.
 
+The repo-maintainer tentacle can also write local draft artifacts:
+
+```bash
+tentacles/repo-maintainer/tools/inspect_repo.sh .
+tmp=$(mktemp -d)
+tentacles/repo-maintainer/tools/draft_pr.sh "$tmp" dangoZhang/Octopus "improve usability"
+```
+
+Draft data lands under `.octopus/self-iteration/` in the selected workspace.
+
 ## Guardrails
 
 - never push to `main` directly

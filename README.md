@@ -47,6 +47,7 @@ refinements: 1
 mode: report-only
 oauth grant active: github:dangoZhang/Octopus
 mode: pr-ready
+draft branch: octopus/build-a-clean-brain-agent
 已记住 m3
 工具不进大脑
 verified: the brain does not name tools
