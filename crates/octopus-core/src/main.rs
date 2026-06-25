@@ -45,6 +45,9 @@ struct DoctorReport {
 #[derive(serde::Serialize)]
 struct DoctorLlmReport {
     configured: bool,
+    config_prefix: String,
+    chat_prefix: String,
+    manifest_prefix: String,
     model: Option<String>,
     base_url: Option<String>,
     api_key_present: bool,
@@ -169,7 +172,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             let mut harness = Harness::with_state(loaded);
             let chat = if chat_llm_enabled() {
-                let mut client = OpenAiCompatibleChatClient::from_env()?;
+                let mut client = chat_llm_client()?;
                 harness.chat_with_client(message, &mut client)?
             } else {
                 harness.chat(message)
@@ -842,6 +845,9 @@ export OCTOPUS_LLM_BASE_URL=https://api.openai.com/v1
 export OCTOPUS_LLM_API_KEY=
 export OCTOPUS_CHAT_LLM=1
 export OCTOPUS_LLM_MANIFEST=1
+# Optional: point chat or tentacle planning at another OpenAI-compatible env prefix.
+# export OCTOPUS_CHAT_LLM_PREFIX=OCTOPUS_LLM
+# export OCTOPUS_MANIFEST_LLM_PREFIX=OCTOPUS_LLM
 "#;
 
 fn write_init_file(path: &Path, content: &str) -> Result<InitFileReport, String> {
@@ -1054,9 +1060,15 @@ fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorRepo
 }
 
 fn doctor_llm_report() -> DoctorLlmReport {
-    match OpenAiCompatibleConfig::from_env() {
+    let config_prefix = doctor_llm_prefix();
+    let chat_prefix = chat_llm_prefix();
+    let manifest_prefix = manifest_llm_prefix();
+    match OpenAiCompatibleConfig::from_env_prefix(&config_prefix) {
         Ok(config) => DoctorLlmReport {
             configured: true,
+            config_prefix,
+            chat_prefix,
+            manifest_prefix,
             model: Some(config.model),
             base_url: Some(config.base_url),
             api_key_present: config.api_key.is_some(),
@@ -1067,9 +1079,13 @@ fn doctor_llm_report() -> DoctorLlmReport {
             message: "provider env configured; run llm for live check".to_string(),
         },
         Err(error) => {
-            let curl_command = env::var("OCTOPUS_LLM_CURL").unwrap_or_else(|_| "curl".to_string());
+            let curl_command =
+                env::var(format!("{config_prefix}_CURL")).unwrap_or_else(|_| "curl".to_string());
             DoctorLlmReport {
                 configured: false,
+                config_prefix,
+                chat_prefix,
+                manifest_prefix,
                 model: None,
                 base_url: None,
                 api_key_present: false,
@@ -1161,7 +1177,8 @@ fn print_doctor_report(report: &DoctorReport, language: Language) {
 fn doctor_llm_line(report: &DoctorLlmReport) -> String {
     if report.configured {
         format!(
-            "configured model={} base_url={} api_key={} curl={}({}) chat_refinement={} manifest_planning={}",
+            "configured prefix={} model={} base_url={} api_key={} curl={}({}) chat_refinement={}({}) manifest_planning={}({})",
+            report.config_prefix,
             report.model.as_deref().unwrap_or("none"),
             report.base_url.as_deref().unwrap_or("none"),
             if report.api_key_present {
@@ -1176,11 +1193,14 @@ fn doctor_llm_line(report: &DoctorLlmReport) -> String {
                 "missing"
             },
             report.chat_goal_refinement_enabled,
-            report.manifest_planning_enabled
+            report.chat_prefix,
+            report.manifest_planning_enabled,
+            report.manifest_prefix
         )
     } else {
         format!(
-            "not configured ({}) curl={}({}) chat_refinement={} manifest_planning={}",
+            "not configured prefix={} ({}) curl={}({}) chat_refinement={}({}) manifest_planning={}({})",
+            report.config_prefix,
             report.message,
             report.curl_command,
             if report.curl_available {
@@ -1189,7 +1209,9 @@ fn doctor_llm_line(report: &DoctorLlmReport) -> String {
                 "missing"
             },
             report.chat_goal_refinement_enabled,
-            report.manifest_planning_enabled
+            report.chat_prefix,
+            report.manifest_planning_enabled,
+            report.manifest_prefix
         )
     }
 }
@@ -1473,10 +1495,38 @@ fn harness_for_need(state: HarnessState, kind: &NeedKind) -> Result<Harness, Str
     if manifest_llm_enabled() {
         return Ok(Harness::with_state_and_manifest_llm(
             state,
-            OpenAiCompatibleConfig::from_env()?,
+            manifest_llm_config()?,
         ));
     }
     Ok(Harness::with_state(state))
+}
+
+fn chat_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
+    Ok(OpenAiCompatibleChatClient::new(
+        OpenAiCompatibleConfig::from_env_prefix(&chat_llm_prefix())?,
+    ))
+}
+
+fn manifest_llm_config() -> Result<OpenAiCompatibleConfig, String> {
+    OpenAiCompatibleConfig::from_env_prefix(&manifest_llm_prefix())
+}
+
+fn doctor_llm_prefix() -> String {
+    if chat_llm_enabled() {
+        chat_llm_prefix()
+    } else if manifest_llm_enabled() {
+        manifest_llm_prefix()
+    } else {
+        "OCTOPUS_LLM".to_string()
+    }
+}
+
+fn chat_llm_prefix() -> String {
+    env::var("OCTOPUS_CHAT_LLM_PREFIX").unwrap_or_else(|_| "OCTOPUS_LLM".to_string())
+}
+
+fn manifest_llm_prefix() -> String {
+    env::var("OCTOPUS_MANIFEST_LLM_PREFIX").unwrap_or_else(|_| "OCTOPUS_LLM".to_string())
 }
 
 fn manifest_llm_enabled() -> bool {
@@ -1839,15 +1889,17 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
         fs::set_permissions(&curl, permissions).unwrap();
 
         let old_chat = std::env::var("OCTOPUS_CHAT_LLM").ok();
-        let old_model = std::env::var("OCTOPUS_LLM_MODEL").ok();
-        let old_base_url = std::env::var("OCTOPUS_LLM_BASE_URL").ok();
-        let old_api_key = std::env::var("OCTOPUS_LLM_API_KEY").ok();
-        let old_curl = std::env::var("OCTOPUS_LLM_CURL").ok();
+        let old_prefix = std::env::var("OCTOPUS_CHAT_LLM_PREFIX").ok();
+        let old_model = std::env::var("OCTOPUS_CHAT_TEST_MODEL").ok();
+        let old_base_url = std::env::var("OCTOPUS_CHAT_TEST_BASE_URL").ok();
+        let old_api_key = std::env::var("OCTOPUS_CHAT_TEST_API_KEY").ok();
+        let old_curl = std::env::var("OCTOPUS_CHAT_TEST_CURL").ok();
         std::env::set_var("OCTOPUS_CHAT_LLM", "1");
-        std::env::set_var("OCTOPUS_LLM_MODEL", "test-model");
-        std::env::set_var("OCTOPUS_LLM_BASE_URL", "https://llm.example/v1");
-        std::env::remove_var("OCTOPUS_LLM_API_KEY");
-        std::env::set_var("OCTOPUS_LLM_CURL", curl.to_string_lossy().to_string());
+        std::env::set_var("OCTOPUS_CHAT_LLM_PREFIX", "OCTOPUS_CHAT_TEST");
+        std::env::set_var("OCTOPUS_CHAT_TEST_MODEL", "test-model");
+        std::env::set_var("OCTOPUS_CHAT_TEST_BASE_URL", "https://llm.example/v1");
+        std::env::remove_var("OCTOPUS_CHAT_TEST_API_KEY");
+        std::env::set_var("OCTOPUS_CHAT_TEST_CURL", curl.to_string_lossy().to_string());
 
         run(vec![
             "--state".to_string(),
@@ -1860,10 +1912,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
         .unwrap();
 
         restore_env("OCTOPUS_CHAT_LLM", old_chat);
-        restore_env("OCTOPUS_LLM_MODEL", old_model);
-        restore_env("OCTOPUS_LLM_BASE_URL", old_base_url);
-        restore_env("OCTOPUS_LLM_API_KEY", old_api_key);
-        restore_env("OCTOPUS_LLM_CURL", old_curl);
+        restore_env("OCTOPUS_CHAT_LLM_PREFIX", old_prefix);
+        restore_env("OCTOPUS_CHAT_TEST_MODEL", old_model);
+        restore_env("OCTOPUS_CHAT_TEST_BASE_URL", old_base_url);
+        restore_env("OCTOPUS_CHAT_TEST_API_KEY", old_api_key);
+        restore_env("OCTOPUS_CHAT_TEST_CURL", old_curl);
         let content = fs::read_to_string(&state_path).unwrap();
         assert!(content.contains("chat llm refined"));
         assert!(content.contains("observe: inspect docs"));
@@ -1900,13 +1953,18 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
         ])
         .unwrap();
         let old_manifest = std::env::var("OCTOPUS_LLM_MANIFEST").ok();
-        let old_model = std::env::var("OCTOPUS_LLM_MODEL").ok();
-        let old_base_url = std::env::var("OCTOPUS_LLM_BASE_URL").ok();
-        let old_curl = std::env::var("OCTOPUS_LLM_CURL").ok();
+        let old_prefix = std::env::var("OCTOPUS_MANIFEST_LLM_PREFIX").ok();
+        let old_model = std::env::var("OCTOPUS_MANIFEST_TEST_MODEL").ok();
+        let old_base_url = std::env::var("OCTOPUS_MANIFEST_TEST_BASE_URL").ok();
+        let old_curl = std::env::var("OCTOPUS_MANIFEST_TEST_CURL").ok();
         std::env::set_var("OCTOPUS_LLM_MANIFEST", "1");
-        std::env::set_var("OCTOPUS_LLM_MODEL", "test-model");
-        std::env::set_var("OCTOPUS_LLM_BASE_URL", "https://llm.example/v1");
-        std::env::set_var("OCTOPUS_LLM_CURL", curl.to_string_lossy().to_string());
+        std::env::set_var("OCTOPUS_MANIFEST_LLM_PREFIX", "OCTOPUS_MANIFEST_TEST");
+        std::env::set_var("OCTOPUS_MANIFEST_TEST_MODEL", "test-model");
+        std::env::set_var("OCTOPUS_MANIFEST_TEST_BASE_URL", "https://llm.example/v1");
+        std::env::set_var(
+            "OCTOPUS_MANIFEST_TEST_CURL",
+            curl.to_string_lossy().to_string(),
+        );
 
         run(vec![
             "--state".to_string(),
@@ -1921,9 +1979,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
         .unwrap();
 
         restore_env("OCTOPUS_LLM_MANIFEST", old_manifest);
-        restore_env("OCTOPUS_LLM_MODEL", old_model);
-        restore_env("OCTOPUS_LLM_BASE_URL", old_base_url);
-        restore_env("OCTOPUS_LLM_CURL", old_curl);
+        restore_env("OCTOPUS_MANIFEST_LLM_PREFIX", old_prefix);
+        restore_env("OCTOPUS_MANIFEST_TEST_MODEL", old_model);
+        restore_env("OCTOPUS_MANIFEST_TEST_BASE_URL", old_base_url);
+        restore_env("OCTOPUS_MANIFEST_TEST_CURL", old_curl);
         let content = fs::read_to_string(&state_path).unwrap();
         assert!(content.contains("observe:swe-agent"));
         let _ = fs::remove_dir_all(dir);

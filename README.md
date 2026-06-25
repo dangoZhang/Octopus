@@ -12,7 +12,7 @@ Initial tentacles are editable code-as-harness: SWE (`read/edit`), computer-use 
 
 Shell is only a seed runtime. A tentacle can declare `contract: octopus-json-v1` and run Python, Node, MCP, HTTP, native code, or any custom adapter.
 
-Set `OCTOPUS_CHAT_LLM=1` for LLM goal refinement; set `OCTOPUS_LLM_MANIFEST=1` for LLM tool planning inside tentacles.
+Set `OCTOPUS_CHAT_LLM=1` for LLM goal refinement; set `OCTOPUS_LLM_MANIFEST=1` for LLM tool planning inside tentacles. Use `OCTOPUS_CHAT_LLM_PREFIX` or `OCTOPUS_MANIFEST_LLM_PREFIX` when each layer should use a different provider env.
 
 Three hearts keep it alive: heartbeat, memory evolution, and harness route evolution. Color change is a visual pet/status layer outside the kernel.
 
