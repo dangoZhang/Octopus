@@ -51,7 +51,7 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 Color change is a visual pet/status layer. It can show heartbeat, memory beat, harness beat, blocked state, or success without changing `Need`, `Feed`, or `Feedback`.
 
-`pet [state]` returns the local color pet entrypoint for `heartbeat`, `memory`, `harness`, `blocked`, or `success`; `--json pet` makes the state usable by other UI shells.
+`pet [state]` returns the local color pet file URL for `heartbeat`, `memory`, `harness`, `blocked`, or `success`; `--json pet` makes the state usable by other UI shells.
 
 ## Boundary
 

@@ -782,7 +782,7 @@ fn print_pet_report(report: &PetReport, language: Language) {
             println!("Octopus pet");
             println!("state: {}", report.state);
             println!("summary: {}", report.summary);
-            println!("target: {}", report.target);
+            println!("url: {}", report.target);
             println!("exists: {}", report.exists);
         }
         Language::Zh => {
@@ -1049,15 +1049,33 @@ fn pet_report(state: &str) -> Result<PetReport, String> {
     let (state, title, summary, color) = pet_state_info(state)?;
     let path = repo_root().join("docs/pet.html");
     let path_text = path.to_string_lossy().to_string();
+    let target = format!("{}?state={state}", file_url(&path));
     Ok(PetReport {
         state: state.to_string(),
         title: title.to_string(),
         summary: summary.to_string(),
         color: color.to_string(),
-        target: format!("{path_text}?state={state}"),
+        target,
         exists: path.exists(),
         path: path_text,
     })
+}
+
+fn file_url(path: &Path) -> String {
+    format!("file://{}", percent_encode_path(&path.to_string_lossy()))
+}
+
+fn percent_encode_path(path: &str) -> String {
+    let mut encoded = String::new();
+    for byte in path.as_bytes() {
+        match *byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'.' | b'-' | b'_' | b'~' => {
+                encoded.push(*byte as char)
+            }
+            value => encoded.push_str(&format!("%{value:02X}")),
+        }
+    }
+    encoded
 }
 
 fn pet_state_info(
@@ -1833,7 +1851,7 @@ fn usage() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{localize_summary, pet_report, run, skill_reports, Language};
+    use super::{localize_summary, percent_encode_path, pet_report, run, skill_reports, Language};
     use octopus_core::HarnessState;
     use std::fs;
     use std::path::Path;
@@ -2077,8 +2095,13 @@ mod tests {
         let report = pet_report("route").unwrap();
 
         assert_eq!(report.state, "harness");
+        assert!(report.target.starts_with("file://"));
         assert!(report.target.contains("docs/pet.html?state=harness"));
         assert!(report.exists);
+        assert_eq!(
+            percent_encode_path("/tmp/Octopus Pet.html"),
+            "/tmp/Octopus%20Pet.html"
+        );
         assert!(pet_report("unknown")
             .unwrap_err()
             .contains("unknown pet state"));
