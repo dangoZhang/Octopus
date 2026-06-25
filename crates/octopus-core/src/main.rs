@@ -2,6 +2,12 @@ use octopus_core::{Harness, HarnessState, Need, NeedKind};
 use std::env;
 use std::path::PathBuf;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Language {
+    En,
+    Zh,
+}
+
 fn main() {
     if let Err(error) = run(env::args().skip(1).collect()) {
         eprintln!("{error}");
@@ -16,6 +22,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
 
     let mut state = PathBuf::from(".octopus/state.json");
     let mut json = false;
+    let mut language = Language::En;
     let mut rest = Vec::new();
     let mut index = 0;
     while index < args.len() {
@@ -26,6 +33,13 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     return Err("--state requires a path".to_string());
                 };
                 state = PathBuf::from(path);
+            }
+            "--lang" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err("--lang requires en or zh".to_string());
+                };
+                language = parse_language(value)?;
             }
             "--json" => json = true,
             value => rest.push(value.to_string()),
@@ -57,7 +71,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     serde_json::to_string_pretty(&feedback).map_err(|error| error.to_string())?
                 );
             } else {
-                println!("{}", feedback.summary);
+                println!("{}", localize_summary(&feedback.summary, language));
             }
             Ok(())
         }
@@ -71,6 +85,14 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         _ => Err(usage()),
+    }
+}
+
+fn parse_language(value: &str) -> Result<Language, String> {
+    match value {
+        "en" => Ok(Language::En),
+        "zh" | "zh-CN" | "zh_Hans" => Ok(Language::Zh),
+        _ => Err(format!("unknown language: {value}")),
     }
 }
 
@@ -88,13 +110,34 @@ fn parse_kind(value: &str) -> Result<NeedKind, String> {
     }
 }
 
+fn localize_summary(summary: &str, language: Language) -> String {
+    if language == Language::En {
+        return summary.to_string();
+    }
+    if let Some(id) = summary.strip_prefix("remembered ") {
+        return format!("已记住 {id}");
+    }
+    if let Some(count) = summary
+        .strip_prefix("forgot ")
+        .and_then(|value| value.strip_suffix(" memories"))
+    {
+        return format!("已遗忘 {count} 条记忆");
+    }
+    match summary {
+        "nothing recalled" => "没有召回内容".to_string(),
+        "no tentacle supports this need" => "没有触手支持这个需求".to_string(),
+        _ => summary.to_string(),
+    }
+}
+
 fn usage() -> String {
-    "usage: octopus-core [--state path] [--json] need <kind> <query> | routes".to_string()
+    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | routes"
+        .to_string()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::run;
+    use super::{localize_summary, run, Language};
     use std::fs;
 
     #[test]
@@ -138,5 +181,18 @@ mod tests {
         .unwrap_err();
 
         assert!(error.contains("unknown need kind"));
+    }
+
+    #[test]
+    fn cli_localizes_builtin_feedback() {
+        assert_eq!(localize_summary("remembered m1", Language::Zh), "已记住 m1");
+        assert_eq!(
+            localize_summary("forgot 2 memories", Language::Zh),
+            "已遗忘 2 条记忆"
+        );
+        assert_eq!(
+            localize_summary("nothing recalled", Language::Zh),
+            "没有召回内容"
+        );
     }
 }

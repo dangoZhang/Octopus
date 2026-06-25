@@ -16,16 +16,17 @@ The mechanism is `Need -> Feed -> Feedback`; the product promise is less tool bu
 
 ```bash
 cargo test
-cargo run -p octopus-core -- need remember "tools stay outside the brain"
-cargo run -p octopus-core -- need recall tools
+tmp=$(mktemp -d)
+cargo run -p octopus-core -- --state "$tmp/state.json" --lang zh need remember "工具不进大脑"
+cargo run -p octopus-core -- --state "$tmp/state.json" need recall 工具
 cargo run -q -p octopus-core --example thinking_tentacle
 ```
 
 Output:
 
 ```text
-remembered m1
-tools stay outside the brain
+已记住 m1
+工具不进大脑
 verified: the brain does not name tools
 plan: selected first matching tool
 ```
