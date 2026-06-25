@@ -1106,9 +1106,7 @@ impl Harness {
 
     fn add_installed_tentacles(&mut self) {
         for tentacle in self.state.installed_tentacles.clone() {
-            if tentacle.runtime_kinds.iter().any(|kind| kind == "shell") {
-                self.add_tentacle(Box::new(ManifestShellTentacle::new(tentacle)));
-            }
+            self.add_tentacle(Box::new(ManifestTentacle::new(tentacle)));
         }
     }
 
@@ -1269,13 +1267,13 @@ struct ManifestToolPlan {
     candidates: Vec<String>,
 }
 
-pub struct ManifestShellTentacle {
+pub struct ManifestTentacle {
     route_id: String,
     installed: InstalledTentacle,
     tools: Vec<InstalledToolRef>,
 }
 
-impl ManifestShellTentacle {
+impl ManifestTentacle {
     pub fn new(installed: InstalledTentacle) -> Self {
         let route_id = installed.id.clone();
         let tools = if installed.tool_meta.is_empty() {
@@ -1283,14 +1281,12 @@ impl ManifestShellTentacle {
                 .tools
                 .iter()
                 .filter_map(|tool| InstalledToolRef::parse(tool))
-                .filter(|tool| tool.kind == "shell")
                 .collect()
         } else {
             installed
                 .tool_meta
                 .iter()
                 .map(InstalledToolRef::from_installed)
-                .filter(|tool| tool.kind == "shell")
                 .collect()
         };
         Self {
@@ -1307,23 +1303,50 @@ impl ManifestShellTentacle {
         {
             return None;
         }
+        if self.route_id == "visual"
+            && need.kind == NeedKind::Observe
+            && !is_visual_observe(&need.query)
+        {
+            return None;
+        }
         let preferred = match need.kind {
-            NeedKind::Observe => ["inspect_repo", "describe_screen", "read"].as_slice(),
-            NeedKind::Verify | NeedKind::Reproduce => {
-                ["run_tests", "github_status", "inspect_repo", "read"].as_slice()
-            }
+            NeedKind::Observe => [
+                "inspect_repo",
+                "describe_screen",
+                "status_pet",
+                "screenshot",
+                "read",
+                "mcp",
+            ]
+            .as_slice(),
+            NeedKind::Verify | NeedKind::Reproduce => [
+                "run_tests",
+                "github_status",
+                "inspect_repo",
+                "read",
+                "write_and_run",
+                "bash",
+                "mcp",
+            ]
+            .as_slice(),
             NeedKind::Compare => ["inspect_repo", "read"].as_slice(),
-            NeedKind::Execute => ["write_and_run"].as_slice(),
+            NeedKind::Execute => ["write_and_run", "bash", "mcp", "open_url"].as_slice(),
             _ => [].as_slice(),
         };
         let candidates = self
             .tools
             .iter()
+            .filter(|tool| self.can_feed_tool(tool))
             .map(|tool| tool.id.clone())
             .collect::<Vec<_>>();
         let tool = preferred
             .iter()
-            .find_map(|id| self.tools.iter().find(|tool| tool.id == *id))
+            .find_map(|id| {
+                self.tools
+                    .iter()
+                    .find(|tool| tool.id == *id && self.can_feed_tool(tool))
+            })
+            .or_else(|| self.tools.iter().find(|tool| self.can_feed_tool(tool)))
             .cloned()?;
         let reason = manifest_plan_reason(need, &tool);
         Some(ManifestToolPlan {
@@ -1344,10 +1367,31 @@ impl ManifestShellTentacle {
             .unwrap_or_else(|| entrypoint.to_path_buf())
     }
 
+    fn can_feed_tool(&self, tool: &InstalledToolRef) -> bool {
+        tool.kind == "static-html" || self.tool_path(tool).exists()
+    }
+
     fn run_tool(&self, tool: &InstalledToolRef, need: &Need) -> ToolResult {
         let path = self.tool_path(tool);
+        if tool.kind == "static-html" {
+            let target = if path.exists() {
+                path.to_string_lossy().to_string()
+            } else {
+                tool.entrypoint.clone()
+            };
+            let mut result = ToolResult::satisfied(&tool.id, format!("static artifact: {target}"));
+            result.metadata.insert("entrypoint".to_string(), target);
+            result
+                .metadata
+                .insert("runtime".to_string(), tool.kind.clone());
+            return result;
+        }
         if !path.exists() {
-            return ToolResult::failed(format!("missing tool entrypoint: {}", path.display()));
+            return ToolResult::failed(format!(
+                "missing {} tool entrypoint: {}",
+                tool.kind,
+                path.display()
+            ));
         }
 
         let mut command = Command::new(&path);
@@ -1364,6 +1408,15 @@ impl ManifestShellTentacle {
                 command.arg(".");
                 command.stdin(Stdio::piped());
             }
+            "bash" => {
+                command.arg(".");
+                command.stdin(Stdio::piped());
+            }
+            "mcp" => {
+                for arg in mcp_args(&need.query) {
+                    command.arg(arg);
+                }
+            }
             _ => {
                 command.arg(default_tool_query(&need.query));
             }
@@ -1375,7 +1428,7 @@ impl ManifestShellTentacle {
                 return ToolResult::failed(format!("{} failed to start: {error}", tool.id))
             }
         };
-        if tool.id == "write_and_run" {
+        if tool.id == "write_and_run" || tool.id == "bash" {
             if let Some(mut stdin) = child.stdin.take() {
                 if let Err(error) = stdin.write_all(need.query.as_bytes()) {
                     return ToolResult::failed(format!("{} stdin failed: {error}", tool.id));
@@ -1400,6 +1453,9 @@ impl ManifestShellTentacle {
         result
             .metadata
             .insert("entrypoint".to_string(), path.to_string_lossy().to_string());
+        result
+            .metadata
+            .insert("runtime".to_string(), tool.kind.clone());
         result.metadata.insert(
             "returncode".to_string(),
             exit_code(&output.status).to_string(),
@@ -1408,7 +1464,7 @@ impl ManifestShellTentacle {
     }
 }
 
-impl Tentacle for ManifestShellTentacle {
+impl Tentacle for ManifestTentacle {
     fn name(&self) -> &str {
         &self.route_id
     }
@@ -1433,7 +1489,7 @@ impl Tentacle for ManifestShellTentacle {
         metadata.insert("tool_description".to_string(), tool.description.clone());
         metadata.insert("plan".to_string(), plan.reason);
         metadata.insert("available_tools".to_string(), plan.candidates.join(","));
-        metadata.insert("runtime".to_string(), "shell".to_string());
+        metadata.insert("runtime".to_string(), tool.kind.clone());
         metadata.insert("tentacle_brain".to_string(), self.route_id.clone());
         metadata.insert(
             "brain_prompt".to_string(),
@@ -1813,7 +1869,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
             skills: vec![SkillManifest {
                 id: "swe-workflow".to_string(),
                 name: "SWE Workflow".to_string(),
-                description: "Read/edit files, inspect a repository, prepare patches, and run tests through editable shell tools.".to_string(),
+                description: "Read/edit files, inspect a repository, prepare patches, and run tests through editable tool adapters.".to_string(),
                 needs: vec![NeedKind::Observe, NeedKind::Execute, NeedKind::Verify],
                 tools: vec![
                     "tentacles/swe-agent/tools/read.sh".to_string(),
@@ -1876,7 +1932,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
         TentacleProfile {
             id: "bash-only".to_string(),
             name: "Bash Only Tentacle".to_string(),
-            description: "Writes every tool call into a .sh file and executes it with bash.".to_string(),
+            description: "Transparent seed runtime that stores generated actions as auditable scripts.".to_string(),
             brain: llm_brain(
                 "Shell-only planner",
                 "Represent each action as a transparent script before execution.",
@@ -1884,13 +1940,13 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
             skills: vec![SkillManifest {
                 id: "write-and-run".to_string(),
                 name: "Write And Run".to_string(),
-                description: "Represent execution as editable shell scripts under .octopus/harness.".to_string(),
+                description: "Represent execution as editable scripts under .octopus/harness.".to_string(),
                 needs: vec![NeedKind::Execute, NeedKind::Reproduce, NeedKind::Verify],
                 tools: vec!["tentacles/bash-only/tools/write_and_run.sh".to_string()],
             }],
             tools: vec![tool_meta(
                 "write_and_run",
-                "Write stdin to a .sh file and execute it.",
+                "Write stdin to an auditable script and execute it.",
                 "shell",
                 "tentacles/bash-only/tools/write_and_run.sh",
             )],
@@ -2296,6 +2352,39 @@ fn is_desktop_observe(query: &str) -> bool {
     ["screen", "desktop", "window", "browser", "url", "ui"]
         .iter()
         .any(|word| query.contains(word))
+}
+
+fn is_visual_observe(query: &str) -> bool {
+    let query = query.to_lowercase();
+    [
+        "pet",
+        "status",
+        "color",
+        "visual",
+        "heartbeat",
+        "memory",
+        "harness",
+        "blocked",
+        "success",
+    ]
+    .iter()
+    .any(|word| query.contains(word))
+}
+
+fn mcp_args(query: &str) -> Vec<String> {
+    let mut parts = query
+        .split_whitespace()
+        .take(3)
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    while parts.len() < 3 {
+        parts.push(match parts.len() {
+            0 => "default".to_string(),
+            1 => "call".to_string(),
+            _ => "{}".to_string(),
+        });
+    }
+    parts
 }
 
 fn trim_output(output: &str) -> String {
@@ -2770,9 +2859,10 @@ mod tests {
             .join("tentacles");
         let mut state = HarnessState::default();
         let installed = state.install_manifest(&root, "computer-use-agent").unwrap();
-        let tentacle = ManifestShellTentacle::new(installed);
+        let tentacle = ManifestTentacle::new(installed);
 
         assert!(!tentacle.supports(&Need::new(NeedKind::Observe, ".")));
         assert!(tentacle.supports(&Need::new(NeedKind::Observe, "describe screen")));
+        assert!(tentacle.supports(&Need::new(NeedKind::Execute, "echo ok")));
     }
 }

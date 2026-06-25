@@ -13,7 +13,7 @@ Octopus keeps the non-evolvable base small.
 - `RouteBook`: data-driven routing that learns from feed quality.
 - `HarnessState`: persistent memory and routes.
 - `HeartbeatReport`: three-heart pulse for liveness, memory compaction, and route evolution.
-- `ManifestShellTentacle`: installed manifest tools become feed providers and return plan metadata for supported needs.
+- `ManifestTentacle`: installed manifests become feed providers through runtime adapters and return plan metadata for supported needs.
 - `PlanningTentacle`: tool-side planner that selects tools before execution.
 - `ChatPlanner`: provider-neutral chat adapter for LLM-backed tentacle brains.
 - `SkillManifest` and `TentacleProfile`: installable behavior bundles with brain, tool metadata, implementation pointers, and evolution policy.
@@ -30,7 +30,7 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 ## Code-As-Harness
 
-`tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Initial profiles include SWE-style `read/edit`, computer-use `mcp/bash`, and bash-only `write .sh, run .sh` as one transparent seed runtime.
+`tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Initial profiles include SWE-style `read/edit`, computer-use `mcp/bash`, and bash-only as one transparent seed runtime.
 
 ## Color Pet
 

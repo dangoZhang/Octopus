@@ -8,7 +8,7 @@ Most agents make the brain carry tools, memory, skills, and execution flow. Octo
 
 Tentacles think during execution. A tentacle is an LLM brain prompt, tool metadata, code implementation, and evolution policy. The harness learns which feed works from data.
 
-Initial tentacles are editable code-as-harness: SWE (`read/edit`), computer-use (`mcp/bash`), and bash-only (`write .sh, run .sh`) as one transparent seed implementation.
+Initial tentacles are editable code-as-harness: SWE (`read/edit`), computer-use (`mcp/bash`), and bash-only as one transparent seed runtime.
 
 Three hearts keep it alive: heartbeat, memory evolution, and harness route evolution. Color change is a visual pet/status layer outside the kernel.
 
@@ -50,7 +50,7 @@ Tentacle manifests:
 推荐触手: memory, visual, repo-maintainer, swe-agent, code, research, bash-only, computer-use-agent
 adapted tentacles:
 installed research
-installed swe-agent (manifest: shell)
+installed swe-agent (runtimes: shell)
 profiles:
 tentacles:
 == project ==

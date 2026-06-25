@@ -11,6 +11,7 @@
     "name": { "type": "string" },
     "description": { "type": "string" },
     "brain": {
+      "description": "Tool-side intelligence. The clean brain emits Need; this brain plans how the tentacle feeds it.",
       "type": "object",
       "required": ["kind", "prompt"],
       "properties": {
@@ -35,6 +36,7 @@
       }
     },
     "tools": {
+      "description": "Tool metadata plus code implementation pointers. These are harness-owned and evolvable.",
       "type": "array",
       "items": {
         "type": "object",
@@ -45,11 +47,13 @@
           "input": { "type": "string" },
           "output": { "type": "string" },
           "implementation": {
+            "description": "Runtime adapter and current code entrypoint. kind can be shell, mcp, python, rust, node, wasm, http, native, static-html, or a custom adapter.",
             "type": "object",
             "required": ["kind", "entrypoint"],
             "properties": {
               "kind": { "type": "string" },
-              "entrypoint": { "type": "string" }
+              "entrypoint": { "type": "string" },
+              "contract": { "type": "string" }
             },
             "additionalProperties": false
           }

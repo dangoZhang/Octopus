@@ -11,7 +11,7 @@ cargo run -q -p octopus-core -- manifests
 - `swe-agent`: repo work through `read`, `edit`, inspection, patch, and test tools.
 - `repo-maintainer`: OAuth-bounded self-iteration with repo inspection and PR draft data.
 - `computer-use-agent`: local UI work through `mcp`, `bash`, screenshots, URLs, and desktop probes.
-- `bash-only`: every action becomes a readable `.sh` script before it runs.
+- `bash-only`: every action becomes a readable script before it runs.
 - `visual`: color-changing status pet for heartbeat, memory, harness, blocked, and success states.
 
-Shell is only the seed implementation. A tentacle can evolve into Python, TypeScript, Rust, MCP, HTTP, native tools, or mixed runtimes while the kernel contract stays stable.
+Shell is only one seed runtime. A tentacle can evolve into Python, TypeScript, Rust, MCP, HTTP, native tools, or mixed runtimes while the kernel contract stays stable.

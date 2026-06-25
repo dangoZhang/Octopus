@@ -284,14 +284,14 @@ fn run(args: Vec<String>) -> Result<(), String> {
             match (language, manifest_installed) {
                 (Language::En, Some(tentacle)) => {
                     println!(
-                        "installed {} (manifest: {})",
+                        "installed {} (runtimes: {})",
                         profile,
                         tentacle.runtime_kinds.join(",")
                     )
                 }
                 (Language::Zh, Some(tentacle)) => {
                     println!(
-                        "已安装 {} (manifest: {})",
+                        "已安装 {} (runtimes: {})",
                         profile,
                         tentacle.runtime_kinds.join(",")
                     )
