@@ -9,6 +9,7 @@ use octopus_core::{
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(serde::Serialize)]
@@ -24,6 +25,39 @@ struct DemoReport {
     self_iteration_mode: String,
     pet: String,
     next: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+struct DoctorReport {
+    state_path: String,
+    state_exists: bool,
+    status: StatusReport,
+    environment: EnvironmentReport,
+    manifest_count: usize,
+    broken_manifests: Vec<String>,
+    llm: DoctorLlmReport,
+    pet: DoctorPetReport,
+    self_iteration_mode: String,
+    warnings: Vec<String>,
+    next: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+struct DoctorLlmReport {
+    configured: bool,
+    model: Option<String>,
+    base_url: Option<String>,
+    api_key_present: bool,
+    curl_command: String,
+    curl_available: bool,
+    manifest_planning_enabled: bool,
+    message: String,
+}
+
+#[derive(serde::Serialize)]
+struct DoctorPetReport {
+    path: String,
+    exists: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -183,7 +217,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
-        Some("status") | Some("doctor") => {
+        Some("status") => {
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             let report = loaded.status_report_with_state(Some(&state));
             if json {
@@ -193,6 +227,19 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_status_report(&report, language);
+            }
+            Ok(())
+        }
+        Some("doctor") => {
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let report = doctor_report(&loaded, state.clone())?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_doctor_report(&report, language);
             }
             Ok(())
         }
@@ -739,6 +786,207 @@ fn print_status_report(report: &StatusReport, language: Language) {
     }
 }
 
+fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorReport, String> {
+    let cwd = env::current_dir().map_err(|error| error.to_string())?;
+    let environment = EnvironmentReport::detect(&cwd);
+    let manifests =
+        inspect_tentacle_manifests(default_tentacles_root()).map_err(|error| error.to_string())?;
+    let broken_manifests = manifests
+        .iter()
+        .filter(|manifest| !manifest.missing_entrypoints.is_empty())
+        .map(|manifest| {
+            format!(
+                "{} missing {}",
+                manifest.id,
+                manifest.missing_entrypoints.join(",")
+            )
+        })
+        .collect::<Vec<_>>();
+    let status = state.status_report_with_state(Some(&state_path));
+    let llm = doctor_llm_report();
+    let pet_path = repo_root().join("docs/pet.html");
+    let pet = DoctorPetReport {
+        path: pet_path.to_string_lossy().to_string(),
+        exists: pet_path.exists(),
+    };
+    let self_iteration = state.self_iteration_plan("dangoZhang/Octopus", Some("doctor"));
+    let mut warnings = status.warnings.clone();
+    warnings.extend(broken_manifests.iter().cloned());
+    if !llm.configured {
+        warnings.push("llm provider not configured".to_string());
+    } else if !llm.curl_available {
+        warnings.push(format!(
+            "llm curl command unavailable: {}",
+            llm.curl_command
+        ));
+    }
+    if !pet.exists {
+        warnings.push("pet page missing".to_string());
+    }
+    warnings.sort();
+    warnings.dedup();
+
+    let mut next = vec![status.next_action.clone()];
+    if !llm.configured {
+        next.push("set OCTOPUS_LLM_MODEL and OCTOPUS_LLM_API_KEY".to_string());
+    }
+    next.push("cargo run -q -p octopus-core -- demo dangoZhang/Octopus".to_string());
+    next.push(format!("open {}", pet.path));
+    next.sort();
+    next.dedup();
+
+    Ok(DoctorReport {
+        state_path: state_path.to_string_lossy().to_string(),
+        state_exists: state_path.exists(),
+        status,
+        environment,
+        manifest_count: manifests.len(),
+        broken_manifests,
+        llm,
+        pet,
+        self_iteration_mode: self_iteration.mode,
+        warnings,
+        next,
+    })
+}
+
+fn doctor_llm_report() -> DoctorLlmReport {
+    match OpenAiCompatibleConfig::from_env() {
+        Ok(config) => DoctorLlmReport {
+            configured: true,
+            model: Some(config.model),
+            base_url: Some(config.base_url),
+            api_key_present: config.api_key.is_some(),
+            curl_available: command_ready(&config.curl_command),
+            curl_command: config.curl_command,
+            manifest_planning_enabled: manifest_llm_enabled(),
+            message: "provider env configured; run llm for live check".to_string(),
+        },
+        Err(error) => {
+            let curl_command = env::var("OCTOPUS_LLM_CURL").unwrap_or_else(|_| "curl".to_string());
+            DoctorLlmReport {
+                configured: false,
+                model: None,
+                base_url: None,
+                api_key_present: false,
+                curl_available: command_ready(&curl_command),
+                curl_command,
+                manifest_planning_enabled: manifest_llm_enabled(),
+                message: error,
+            }
+        }
+    }
+}
+
+fn print_doctor_report(report: &DoctorReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus doctor");
+            println!(
+                "state: {} ({})",
+                report.state_path,
+                if report.state_exists { "exists" } else { "new" }
+            );
+            println!(
+                "environment: manifests={}, commands={}, recommended={}",
+                join_or_none(&report.environment.manifests),
+                join_or_none(&report.environment.commands),
+                join_or_none(&report.environment.recommended_profiles)
+            );
+            println!(
+                "tentacles: installed={}, manifests={}, broken={}",
+                status_tentacles(&report.status),
+                report.manifest_count,
+                join_or_none(&report.broken_manifests)
+            );
+            println!("llm: {}", doctor_llm_line(&report.llm));
+            println!(
+                "pet: {} ({})",
+                report.pet.path,
+                if report.pet.exists {
+                    "exists"
+                } else {
+                    "missing"
+                }
+            );
+            println!("self-iteration: {}", report.self_iteration_mode);
+            println!("warnings: {}", join_or_none(&report.warnings));
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼体检");
+            println!(
+                "状态: {} ({})",
+                report.state_path,
+                if report.state_exists {
+                    "存在"
+                } else {
+                    "新建"
+                }
+            );
+            println!(
+                "环境: 项目={}, 命令={}, 推荐={}",
+                join_or_none(&report.environment.manifests),
+                join_or_none(&report.environment.commands),
+                join_or_none(&report.environment.recommended_profiles)
+            );
+            println!(
+                "触手: 已安装={}, manifests={}, 异常={}",
+                status_tentacles(&report.status),
+                report.manifest_count,
+                join_or_none(&report.broken_manifests)
+            );
+            println!("LLM: {}", doctor_llm_line(&report.llm));
+            println!(
+                "桌宠: {} ({})",
+                report.pet.path,
+                if report.pet.exists {
+                    "存在"
+                } else {
+                    "缺失"
+                }
+            );
+            println!("自迭代: {}", report.self_iteration_mode);
+            println!("警告: {}", join_or_none(&report.warnings));
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn doctor_llm_line(report: &DoctorLlmReport) -> String {
+    if report.configured {
+        format!(
+            "configured model={} base_url={} api_key={} curl={}({}) manifest_planning={}",
+            report.model.as_deref().unwrap_or("none"),
+            report.base_url.as_deref().unwrap_or("none"),
+            if report.api_key_present {
+                "present"
+            } else {
+                "empty"
+            },
+            report.curl_command,
+            if report.curl_available {
+                "ok"
+            } else {
+                "missing"
+            },
+            report.manifest_planning_enabled
+        )
+    } else {
+        format!(
+            "not configured ({}) curl={}({}) manifest_planning={}",
+            report.message,
+            report.curl_command,
+            if report.curl_available {
+                "ok"
+            } else {
+                "missing"
+            },
+            report.manifest_planning_enabled
+        )
+    }
+}
+
 fn status_tentacles(report: &StatusReport) -> String {
     let items = report
         .tentacles
@@ -992,6 +1240,10 @@ fn unique_suffix() -> String {
     format!("{}-{nanos}", std::process::id())
 }
 
+fn command_ready(command: &str) -> bool {
+    Command::new(command).arg("--version").output().is_ok()
+}
+
 fn probe_tentacle(
     root: PathBuf,
     tentacle_id: &str,
@@ -1211,6 +1463,13 @@ mod tests {
             state.clone(),
             "--lang".to_string(),
             "zh".to_string(),
+            "doctor".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
             "doctor".to_string(),
         ])
         .unwrap();

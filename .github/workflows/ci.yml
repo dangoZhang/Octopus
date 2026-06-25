@@ -55,6 +55,8 @@ jobs:
           grep -q installed_tentacles "$tmp/state.json"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe . | grep -q "== project =="
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json need observe . | grep -q '"plan"'
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" doctor | grep -q "Octopus doctor"
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" --json doctor | grep -q '"llm"'
           cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build octopus"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" beat 200

@@ -33,6 +33,7 @@ cargo run -q -p octopus-core -- --state "$tmp/state.json" installed
 cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build a clean-brain agent"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe .
 cargo run -q -p octopus-core -- --state "$tmp/state.json" status
+cargo run -q -p octopus-core -- --state "$tmp/state.json" doctor
 cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think through tentacles"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" beat 200
 cargo run -q -p octopus-core -- --state "$tmp/state.json" goal
@@ -67,6 +68,7 @@ tentacles: visual(static-html), repo-maintainer(shell), swe-agent(shell), bash-o
 goal: build a clean-brain agent
 == project ==
 Octopus status
+Octopus doctor
 hearts: heartbeat=ready, memory=1 memories, harness=2 routes
 warnings: no active OAuth grants
 next: cargo run -q -p octopus-core -- --state /tmp/octopus/state.json beat 200
