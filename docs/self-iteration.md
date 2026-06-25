@@ -45,6 +45,14 @@ tentacles/repo-maintainer/tools/draft_pr.sh "$tmp" dangoZhang/Octopus "improve u
 
 GitHub status, patch queue, and draft data land under `.octopus/self-iteration/` in the selected workspace.
 
+Harness evolution drafts stay local and auditable:
+
+```bash
+cargo run -q -p octopus-core -- evolve swe-agent "improve repository observation feed quality"
+```
+
+The draft lands under `.octopus/evolution/<tentacle>/` with the editable prompt, metadata, code targets, checks, and constraints.
+
 ## Guardrails
 
 - never push to `main` directly

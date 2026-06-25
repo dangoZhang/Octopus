@@ -10,6 +10,8 @@ Tentacles think during execution. A tentacle is an LLM brain prompt, tool metada
 
 Initial tentacles are editable code-as-harness: SWE (`read/edit`), computer-use (`mcp/bash`), and bash-only as one transparent seed runtime.
 
+Shell is only a seed runtime. A tentacle can declare `contract: octopus-json-v1` and run Python, Node, MCP, HTTP, native code, or any custom adapter.
+
 Three hearts keep it alive: heartbeat, memory evolution, and harness route evolution. Color change is a visual pet/status layer outside the kernel.
 
 The mechanism is `Need -> Feed -> Feedback`. The outcome is less tool burden and stronger tools.
@@ -37,6 +39,7 @@ cargo run -q -p octopus-core -- --state "$tmp/state.json" oauth github dangoZhan
 cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" cargo run -q -p octopus-core -- llm "provider check"
 OCTOPUS_LLM_MANIFEST=1 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" cargo run -q -p octopus-core -- --state "$tmp/state.json" --json need observe README.md 1 1
+cargo run -q -p octopus-core -- evolve swe-agent "improve repository observation feed quality"
 tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build a clean-brain agent"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh need remember "工具不进大脑"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" need recall 工具
@@ -73,6 +76,7 @@ mode: pr-ready
 draft branch: octopus/build-a-clean-brain-agent
 provider check
 "plan_source": "llm"
+proposal: .octopus/evolution/swe-agent/PROPOSAL.md
 queue=.octopus/self-iteration/PATCH_QUEUE.md
 已记住 m3
 工具不进大脑

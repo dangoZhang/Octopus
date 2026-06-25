@@ -47,13 +47,16 @@
           "input": { "type": "string" },
           "output": { "type": "string" },
           "implementation": {
-            "description": "Runtime adapter and current code entrypoint. kind can be shell, mcp, python, rust, node, wasm, http, native, static-html, or a custom adapter.",
+            "description": "Runtime adapter, current code entrypoint, and optional call contract. kind can be shell, mcp, python, rust, node, wasm, http, native, static-html, or a custom adapter.",
             "type": "object",
             "required": ["kind", "entrypoint"],
             "properties": {
               "kind": { "type": "string" },
               "entrypoint": { "type": "string" },
-              "contract": { "type": "string" }
+              "contract": {
+                "description": "Use octopus-json-v1 for stdin JSON tool calls; omit for legacy entrypoints.",
+                "type": "string"
+              }
             },
             "additionalProperties": false
           }

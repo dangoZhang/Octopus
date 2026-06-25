@@ -1,8 +1,10 @@
 use octopus_core::{
-    default_permissions, default_tentacle_profiles, inspect_tentacle_manifests, AdaptReport,
-    CapabilityGrant, ChatClient, ChatMessage, ChatRole, EnvironmentReport, GoalChat, Harness,
+    default_permissions, default_tentacle_profiles, inspect_tentacle_manifests,
+    propose_tentacle_evolution, write_tentacle_evolution_artifacts, AdaptReport, CapabilityGrant,
+    ChatClient, ChatMessage, ChatRole, EnvironmentReport, EvolutionArtifact, GoalChat, Harness,
     HarnessState, HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient,
-    OpenAiCompatibleConfig, SelfIterationPlan, StatusReport, TentacleManifestReport,
+    OpenAiCompatibleConfig, SelfIterationPlan, StatusReport, TentacleEvolutionProposal,
+    TentacleManifestReport,
 };
 use std::env;
 use std::path::PathBuf;
@@ -243,6 +245,33 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_self_iteration_plan(&plan, language);
+            }
+            Ok(())
+        }
+        Some("evolve") => {
+            let tentacle_id = rest
+                .get(1)
+                .ok_or_else(|| "evolve requires a tentacle id".to_string())?;
+            let objective = rest
+                .get(2..)
+                .filter(|values| !values.is_empty())
+                .map(|values| values.join(" "))
+                .unwrap_or_else(|| "improve feed quality".to_string());
+            let proposal =
+                propose_tentacle_evolution(default_tentacles_root(), tentacle_id, &objective)?;
+            let cwd = env::current_dir().map_err(|error| error.to_string())?;
+            let artifact = write_tentacle_evolution_artifacts(cwd, &proposal)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "proposal": proposal,
+                        "artifact": artifact,
+                    }))
+                    .map_err(|error| error.to_string())?
+                );
+            } else {
+                print_evolution_proposal(&proposal, &artifact, language);
             }
             Ok(())
         }
@@ -629,6 +658,31 @@ fn print_self_iteration_plan(plan: &SelfIterationPlan, language: Language) {
     }
 }
 
+fn print_evolution_proposal(
+    proposal: &TentacleEvolutionProposal,
+    artifact: &EvolutionArtifact,
+    language: Language,
+) {
+    match language {
+        Language::En => {
+            println!("tentacle: {}", proposal.tentacle_id);
+            println!("objective: {}", proposal.objective);
+            println!("proposal: {}", artifact.proposal_path);
+            println!("json: {}", artifact.json_path);
+            println!("editable: {}", join_or_none(&proposal.editable));
+            println!("checks: {}", join_or_none(&proposal.checks));
+        }
+        Language::Zh => {
+            println!("触手: {}", proposal.tentacle_id);
+            println!("目标: {}", proposal.objective);
+            println!("草案: {}", artifact.proposal_path);
+            println!("JSON: {}", artifact.json_path);
+            println!("可编辑: {}", join_or_none(&proposal.editable));
+            println!("检查: {}", join_or_none(&proposal.checks));
+        }
+    }
+}
+
 fn print_environment(report: &EnvironmentReport, language: Language) {
     match language {
         Language::En => {
@@ -716,7 +770,7 @@ fn manifest_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | llm <message> | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | llm <message> | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]
@@ -730,6 +784,24 @@ mod tests {
             std::env::set_var(key, value);
         } else {
             std::env::remove_var(key);
+        }
+    }
+
+    struct CwdGuard {
+        original: std::path::PathBuf,
+    }
+
+    impl CwdGuard {
+        fn new() -> Self {
+            Self {
+                original: std::env::current_dir().unwrap(),
+            }
+        }
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.original);
         }
     }
 
@@ -1004,6 +1076,42 @@ mod tests {
         restore_env("OCTOPUS_LLM_CURL", old_curl);
         let content = fs::read_to_string(&state_path).unwrap();
         assert!(content.contains("observe:swe-agent"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_evolve_writes_tentacle_evolution_draft() {
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!("octopus-cli-evolve-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+
+        run(vec![
+            "--json".to_string(),
+            "evolve".to_string(),
+            "swe-agent".to_string(),
+            "improve".to_string(),
+            "repo".to_string(),
+            "observation".to_string(),
+        ])
+        .unwrap();
+
+        let proposal = dir
+            .join(".octopus")
+            .join("evolution")
+            .join("swe-agent")
+            .join("PROPOSAL.md");
+        let json = dir
+            .join(".octopus")
+            .join("evolution")
+            .join("swe-agent")
+            .join("proposal.json");
+        assert!(proposal.exists());
+        assert!(json.exists());
+        assert!(fs::read_to_string(proposal)
+            .unwrap()
+            .contains("Tentacle Evolution: swe-agent"));
         let _ = fs::remove_dir_all(dir);
     }
 

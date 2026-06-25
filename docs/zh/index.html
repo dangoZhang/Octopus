@@ -181,11 +181,11 @@
 
       <section>
         <div class="shell">
-          <h2>核心故事</h2>
+          <h2>核心洞察</h2>
           <div class="grid">
             <article class="card"><h3>干净大脑</h3><p>主模型只说需要查证、复现、比较、记忆、遗忘或执行，不背工具细节。</p></article>
             <article class="card"><h3>触手大脑</h3><p>触手由 brain prompt、工具 meta、代码实现和进化策略组成。</p></article>
-            <article class="card"><h3>Code-as-harness</h3><p>SWE、computer-use、bash-only 是初始触手；后续实现可以换任意 runtime。</p></article>
+            <article class="card"><h3>Code-as-harness</h3><p>SWE、computer-use、bash-only 是初始触手；octopus-json-v1 让后续实现可换任意 runtime。</p></article>
           </div>
         </div>
       </section>
@@ -225,6 +225,7 @@ cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh oauth github
 cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh self-iterate dangoZhang/Octopus
 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" cargo run -q -p octopus-core -- llm "provider check"
 OCTOPUS_LLM_MANIFEST=1 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" cargo run -q -p octopus-core -- --state "$tmp/state.json" --json need observe README.md 1 1
+cargo run -q -p octopus-core -- evolve swe-agent "improve repository observation feed quality"
 tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build a clean-brain agent"
 tentacles/repo-maintainer/tools/draft_pr.sh "$tmp" dangoZhang/Octopus "improve usability"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh need remember "工具不进大脑"

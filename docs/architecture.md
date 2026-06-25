@@ -33,6 +33,10 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 `tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Initial profiles include SWE-style `read/edit`, computer-use `mcp/bash`, and bash-only as one transparent seed runtime.
 
+`contract: octopus-json-v1` lets any runtime receive the same Need/tool/tentacle JSON envelope through stdin and return compact text or structured JSON feedback. Legacy executable entrypoints still work.
+
+`evolve <tentacle> <objective>` writes an auditable draft under `.octopus/evolution/` listing the prompt, metadata, code files, checks, and constraints that can change safely.
+
 ## Color Pet
 
 Color change is a visual pet/status layer. It can show heartbeat, memory beat, harness beat, blocked state, or success without changing `Need`, `Feed`, or `Feedback`.

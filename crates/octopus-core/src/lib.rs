@@ -6,6 +6,9 @@ use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+const OCTOPUS_JSON_CONTRACT: &str = "octopus-json-v1";
+const OCTOPUS_TOOL_CALL_SCHEMA: &str = "octopus-tool-call-v1";
+
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NeedKind {
@@ -1494,6 +1497,7 @@ struct InstalledToolRef {
     output: String,
     kind: String,
     entrypoint: String,
+    contract: Option<String>,
 }
 
 impl InstalledToolRef {
@@ -1506,6 +1510,7 @@ impl InstalledToolRef {
             output: String::new(),
             kind: parts.next()?.to_string(),
             entrypoint: parts.next()?.to_string(),
+            contract: None,
         })
     }
 
@@ -1517,8 +1522,46 @@ impl InstalledToolRef {
             output: tool.output.clone(),
             kind: tool.kind.clone(),
             entrypoint: tool.entrypoint.clone(),
+            contract: tool.contract.clone(),
         }
     }
+}
+
+#[derive(Serialize)]
+struct ToolInvocation<'a> {
+    schema_version: &'static str,
+    need: &'a Need,
+    tool: ToolInvocationTool<'a>,
+    tentacle: ToolInvocationTentacle<'a>,
+}
+
+#[derive(Serialize)]
+struct ToolInvocationTool<'a> {
+    id: &'a str,
+    description: &'a str,
+    input: &'a str,
+    output: &'a str,
+    runtime: &'a str,
+    entrypoint: &'a str,
+    contract: Option<&'a str>,
+}
+
+#[derive(Serialize)]
+struct ToolInvocationTentacle<'a> {
+    id: &'a str,
+    brain_kind: &'a str,
+    brain_prompt: &'a str,
+    feedback_contract: Option<&'a str>,
+}
+
+#[derive(Deserialize)]
+struct ToolOutputEnvelope {
+    status: Option<Status>,
+    output: String,
+    #[serde(default)]
+    evidence: Vec<Evidence>,
+    #[serde(default)]
+    metadata: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1646,8 +1689,13 @@ impl ManifestTentacle {
             .iter()
             .map(|tool| {
                 format!(
-                    "- {}: {} | runtime={} | input={} | output={}",
-                    tool.id, tool.description, tool.kind, tool.input, tool.output
+                    "- {}: {} | runtime={} | contract={} | input={} | output={}",
+                    tool.id,
+                    tool.description,
+                    tool.kind,
+                    tool.contract.as_deref().unwrap_or("legacy"),
+                    tool.input,
+                    tool.output
                 )
             })
             .collect::<Vec<_>>()
@@ -1707,7 +1755,11 @@ impl ManifestTentacle {
     }
 
     fn can_feed_tool(&self, tool: &InstalledToolRef) -> bool {
-        tool.kind == "static-html" || self.tool_path(tool).exists()
+        tool.kind == "static-html"
+            || (tool.kind == "http"
+                && (tool.entrypoint.starts_with("https://")
+                    || tool.entrypoint.starts_with("http://")))
+            || self.tool_path(tool).exists()
     }
 
     fn run_tool(&self, tool: &InstalledToolRef, need: &Need) -> ToolResult {
@@ -1725,7 +1777,7 @@ impl ManifestTentacle {
                 .insert("runtime".to_string(), tool.kind.clone());
             return result;
         }
-        if !path.exists() {
+        if tool.kind != "http" && !path.exists() {
             return ToolResult::failed(format!(
                 "missing {} tool entrypoint: {}",
                 tool.kind,
@@ -1733,31 +1785,40 @@ impl ManifestTentacle {
             ));
         }
 
-        let mut command = Command::new(&path);
-        match tool.id.as_str() {
-            "inspect_repo" | "run_tests" | "github_status" => {
-                command.arg(default_tool_query(&need.query));
-            }
-            "read" => {
-                for arg in read_args(&need.query) {
-                    command.arg(arg);
+        let uses_json_contract =
+            tool.contract.as_deref() == Some(OCTOPUS_JSON_CONTRACT) || tool.kind == "http";
+        let mut command = match tool_command(tool, &path) {
+            Ok(command) => command,
+            Err(error) => return ToolResult::failed(error),
+        };
+        if uses_json_contract {
+            command.stdin(Stdio::piped());
+        } else {
+            match tool.id.as_str() {
+                "inspect_repo" | "run_tests" | "github_status" => {
+                    command.arg(default_tool_query(&need.query));
                 }
-            }
-            "write_and_run" => {
-                command.arg(".");
-                command.stdin(Stdio::piped());
-            }
-            "bash" => {
-                command.arg(".");
-                command.stdin(Stdio::piped());
-            }
-            "mcp" => {
-                for arg in mcp_args(&need.query) {
-                    command.arg(arg);
+                "read" => {
+                    for arg in read_args(&need.query) {
+                        command.arg(arg);
+                    }
                 }
-            }
-            _ => {
-                command.arg(default_tool_query(&need.query));
+                "write_and_run" => {
+                    command.arg(".");
+                    command.stdin(Stdio::piped());
+                }
+                "bash" => {
+                    command.arg(".");
+                    command.stdin(Stdio::piped());
+                }
+                "mcp" => {
+                    for arg in mcp_args(&need.query) {
+                        command.arg(arg);
+                    }
+                }
+                _ => {
+                    command.arg(default_tool_query(&need.query));
+                }
             }
         }
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -1767,7 +1828,17 @@ impl ManifestTentacle {
                 return ToolResult::failed(format!("{} failed to start: {error}", tool.id))
             }
         };
-        if tool.id == "write_and_run" || tool.id == "bash" {
+        if uses_json_contract {
+            let input = match self.tool_invocation_json(tool, need) {
+                Ok(input) => input,
+                Err(error) => return ToolResult::failed(error),
+            };
+            if let Some(mut stdin) = child.stdin.take() {
+                if let Err(error) = stdin.write_all(input.as_bytes()) {
+                    return ToolResult::failed(format!("{} stdin failed: {error}", tool.id));
+                }
+            }
+        } else if tool.id == "write_and_run" || tool.id == "bash" {
             if let Some(mut stdin) = child.stdin.take() {
                 if let Err(error) = stdin.write_all(need.query.as_bytes()) {
                     return ToolResult::failed(format!("{} stdin failed: {error}", tool.id));
@@ -1784,7 +1855,12 @@ impl ManifestTentacle {
             &output.stdout
         }));
         let mut result = if output.status.success() {
-            ToolResult::satisfied(&tool.id, text)
+            if uses_json_contract {
+                tool_result_from_json(&tool.id, &text)
+                    .unwrap_or_else(|| ToolResult::satisfied(&tool.id, text))
+            } else {
+                ToolResult::satisfied(&tool.id, text)
+            }
         } else {
             ToolResult::failed(text)
         };
@@ -1795,11 +1871,42 @@ impl ManifestTentacle {
         result
             .metadata
             .insert("runtime".to_string(), tool.kind.clone());
+        if uses_json_contract {
+            result.metadata.insert(
+                "contract".to_string(),
+                tool.contract
+                    .clone()
+                    .unwrap_or_else(|| OCTOPUS_JSON_CONTRACT.to_string()),
+            );
+        }
         result.metadata.insert(
             "returncode".to_string(),
             exit_code(&output.status).to_string(),
         );
         result
+    }
+
+    fn tool_invocation_json(&self, tool: &InstalledToolRef, need: &Need) -> Result<String, String> {
+        serde_json::to_string(&ToolInvocation {
+            schema_version: OCTOPUS_TOOL_CALL_SCHEMA,
+            need,
+            tool: ToolInvocationTool {
+                id: &tool.id,
+                description: &tool.description,
+                input: &tool.input,
+                output: &tool.output,
+                runtime: &tool.kind,
+                entrypoint: &tool.entrypoint,
+                contract: tool.contract.as_deref(),
+            },
+            tentacle: ToolInvocationTentacle {
+                id: &self.installed.id,
+                brain_kind: &self.installed.brain_kind,
+                brain_prompt: &self.installed.brain_prompt,
+                feedback_contract: self.installed.feedback_contract.as_deref(),
+            },
+        })
+        .map_err(|error| error.to_string())
     }
 }
 
@@ -1871,6 +1978,8 @@ pub struct TentacleBrain {
 pub struct ToolImplementation {
     pub kind: String,
     pub entrypoint: String,
+    #[serde(default)]
+    pub contract: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -1925,6 +2034,8 @@ pub struct InstalledTool {
     pub output: String,
     pub kind: String,
     pub entrypoint: String,
+    #[serde(default)]
+    pub contract: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -1985,6 +2096,35 @@ pub struct TentacleManifestReport {
     pub missing_entrypoints: Vec<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TentacleEvolutionProposal {
+    pub tentacle_id: String,
+    pub tentacle_name: String,
+    pub objective: String,
+    pub manifest_path: String,
+    pub brain_kind: String,
+    pub current_brain_prompt: String,
+    pub editable: Vec<String>,
+    pub checks: Vec<String>,
+    pub constraints: Vec<String>,
+    pub files: Vec<EvolutionFileTarget>,
+    pub next_steps: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EvolutionFileTarget {
+    pub path: String,
+    pub action: String,
+    pub rationale: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EvolutionArtifact {
+    pub directory: String,
+    pub proposal_path: String,
+    pub json_path: String,
+}
+
 pub fn load_tentacle_manifests(
     root: impl AsRef<Path>,
 ) -> Result<Vec<LoadedTentacleManifest>, Error> {
@@ -2024,6 +2164,130 @@ pub fn inspect_tentacle_manifests(
         .into_iter()
         .map(|loaded| manifest_report(root, loaded))
         .collect())
+}
+
+pub fn propose_tentacle_evolution(
+    root: impl AsRef<Path>,
+    tentacle_id: &str,
+    objective: &str,
+) -> Result<TentacleEvolutionProposal, String> {
+    let root = root.as_ref();
+    let loaded = load_tentacle_manifests(root)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find(|loaded| loaded.manifest.id == tentacle_id)
+        .ok_or_else(|| format!("unknown manifest: {tentacle_id}"))?;
+    let objective = if objective.trim().is_empty() {
+        "improve feed quality while keeping the clean brain tool-free"
+    } else {
+        objective.trim()
+    };
+    let manifest_dir = Path::new(&loaded.path)
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| root.join(tentacle_id));
+    let files = loaded
+        .manifest
+        .evolution
+        .editable
+        .iter()
+        .map(|target| evolution_file_target(&manifest_dir, target, objective))
+        .collect::<Vec<_>>();
+    let mut next_steps = vec![
+        "review PROPOSAL.md".to_string(),
+        "edit only listed harness files".to_string(),
+    ];
+    next_steps.extend(
+        loaded
+            .manifest
+            .evolution
+            .checks
+            .iter()
+            .map(|check| format!("run: {check}")),
+    );
+    if !loaded
+        .manifest
+        .evolution
+        .checks
+        .iter()
+        .any(|check| check.contains("cargo test"))
+    {
+        next_steps.push("run: cargo test".to_string());
+    }
+    Ok(TentacleEvolutionProposal {
+        tentacle_id: loaded.manifest.id,
+        tentacle_name: loaded.manifest.name,
+        objective: objective.to_string(),
+        manifest_path: loaded.path,
+        brain_kind: loaded.manifest.brain.kind,
+        current_brain_prompt: loaded.manifest.brain.prompt,
+        editable: loaded.manifest.evolution.editable,
+        checks: loaded.manifest.evolution.checks,
+        constraints: loaded.manifest.evolution.constraints,
+        files,
+        next_steps,
+    })
+}
+
+pub fn write_tentacle_evolution_artifacts(
+    workspace_root: impl AsRef<Path>,
+    proposal: &TentacleEvolutionProposal,
+) -> Result<EvolutionArtifact, String> {
+    let directory = workspace_root
+        .as_ref()
+        .join(".octopus")
+        .join("evolution")
+        .join(&proposal.tentacle_id);
+    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    let proposal_path = directory.join("PROPOSAL.md");
+    let json_path = directory.join("proposal.json");
+    fs::write(&proposal_path, render_tentacle_evolution_proposal(proposal))
+        .map_err(|error| error.to_string())?;
+    fs::write(
+        &json_path,
+        serde_json::to_string_pretty(proposal).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(EvolutionArtifact {
+        directory: directory.to_string_lossy().to_string(),
+        proposal_path: proposal_path.to_string_lossy().to_string(),
+        json_path: json_path.to_string_lossy().to_string(),
+    })
+}
+
+pub fn render_tentacle_evolution_proposal(proposal: &TentacleEvolutionProposal) -> String {
+    let mut markdown = String::new();
+    markdown.push_str(&format!(
+        "# Tentacle Evolution: {}\n\n",
+        proposal.tentacle_id
+    ));
+    markdown.push_str(&format!("objective: {}\n", proposal.objective));
+    markdown.push_str(&format!("manifest: {}\n", proposal.manifest_path));
+    markdown.push_str(&format!("brain: {}\n\n", proposal.brain_kind));
+    markdown.push_str("## Current Brain Prompt\n\n");
+    markdown.push_str("```text\n");
+    markdown.push_str(&proposal.current_brain_prompt);
+    markdown.push_str("\n```\n\n");
+    markdown.push_str("## Editable Targets\n\n");
+    for file in &proposal.files {
+        markdown.push_str(&format!(
+            "- `{}`: {} ({})\n",
+            file.path, file.action, file.rationale
+        ));
+    }
+    markdown.push_str("\n## Constraints\n\n");
+    for constraint in &proposal.constraints {
+        markdown.push_str(&format!("- {constraint}\n"));
+    }
+    markdown.push_str("\n## Checks\n\n");
+    for check in &proposal.checks {
+        markdown.push_str(&format!("- `{check}`\n"));
+    }
+    markdown.push_str("\n## Next Steps\n\n");
+    for step in &proposal.next_steps {
+        markdown.push_str(&format!("- {step}\n"));
+    }
+    markdown
 }
 
 pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
@@ -2326,6 +2590,7 @@ fn tool_meta(id: &str, description: &str, kind: &str, entrypoint: &str) -> ToolM
         implementation: ToolImplementation {
             kind: kind.to_string(),
             entrypoint: entrypoint.to_string(),
+            contract: None,
         },
     }
 }
@@ -2367,9 +2632,7 @@ fn manifest_report(root: &Path, loaded: LoadedTentacleManifest) -> TentacleManif
         .manifest
         .tools
         .iter()
-        .filter(|tool| {
-            !entrypoint_exists(root, manifest_path, tool.implementation.entrypoint.as_str())
-        })
+        .filter(|tool| !entrypoint_exists(root, manifest_path, &tool.implementation))
         .map(|tool| tool.implementation.entrypoint.clone())
         .collect::<Vec<_>>();
 
@@ -2383,6 +2646,39 @@ fn manifest_report(root: &Path, loaded: LoadedTentacleManifest) -> TentacleManif
         tool_count: loaded.manifest.tools.len(),
         editable: loaded.manifest.evolution.editable,
         missing_entrypoints,
+    }
+}
+
+fn evolution_file_target(
+    manifest_dir: &Path,
+    target: &str,
+    objective: &str,
+) -> EvolutionFileTarget {
+    match target {
+        "brain.prompt" => EvolutionFileTarget {
+            path: "manifest.json#brain.prompt".to_string(),
+            action: "tighten the tentacle brain prompt".to_string(),
+            rationale: format!("align tool-side planning with {objective}"),
+        },
+        "manifest.json" => EvolutionFileTarget {
+            path: manifest_dir
+                .join("manifest.json")
+                .to_string_lossy()
+                .to_string(),
+            action: "review skills, tools, feedback contract, and evolution policy".to_string(),
+            rationale: "keep prompt, metadata, code, checks, and constraints consistent"
+                .to_string(),
+        },
+        value if value.contains('*') => EvolutionFileTarget {
+            path: manifest_dir.join(value).to_string_lossy().to_string(),
+            action: "inspect matching harness code before editing".to_string(),
+            rationale: "wildcards require a narrow patch target".to_string(),
+        },
+        value => EvolutionFileTarget {
+            path: manifest_dir.join(value).to_string_lossy().to_string(),
+            action: "prepare a scoped harness edit".to_string(),
+            rationale: format!("support {objective}"),
+        },
     }
 }
 
@@ -2419,6 +2715,7 @@ fn installed_tentacle_from_manifest(
             output: tool.output.clone(),
             kind: tool.implementation.kind.clone(),
             entrypoint: tool.implementation.entrypoint.clone(),
+            contract: tool.implementation.contract.clone(),
         })
         .collect::<Vec<_>>();
     Ok(InstalledTentacle {
@@ -2436,8 +2733,16 @@ fn installed_tentacle_from_manifest(
     })
 }
 
-fn entrypoint_exists(root: &Path, manifest_path: &Path, entrypoint: &str) -> bool {
-    let entrypoint = Path::new(entrypoint);
+fn entrypoint_exists(
+    root: &Path,
+    manifest_path: &Path,
+    implementation: &ToolImplementation,
+) -> bool {
+    if implementation.kind == "http" {
+        return implementation.entrypoint.starts_with("https://")
+            || implementation.entrypoint.starts_with("http://");
+    }
+    let entrypoint = Path::new(&implementation.entrypoint);
     if entrypoint.is_absolute() && entrypoint.exists() {
         return true;
     }
@@ -2664,6 +2969,61 @@ fn default_tool_query(query: &str) -> String {
     } else {
         query.to_string()
     }
+}
+
+fn tool_command(tool: &InstalledToolRef, path: &Path) -> Result<Command, String> {
+    match tool.kind.as_str() {
+        "http" => {
+            if !(tool.entrypoint.starts_with("https://") || tool.entrypoint.starts_with("http://"))
+            {
+                return Err(format!("http tool requires URL entrypoint: {}", tool.id));
+            }
+            let mut command = Command::new("curl");
+            command
+                .arg("-sS")
+                .arg("-X")
+                .arg("POST")
+                .arg("-H")
+                .arg("content-type: application/json")
+                .arg("--data-binary")
+                .arg("@-")
+                .arg(&tool.entrypoint);
+            Ok(command)
+        }
+        "python" => {
+            let mut command = Command::new("python3");
+            command.arg(path);
+            Ok(command)
+        }
+        "node" | "javascript" => {
+            let mut command = Command::new("node");
+            command.arg(path);
+            Ok(command)
+        }
+        _ => Ok(Command::new(path)),
+    }
+}
+
+fn tool_result_from_json(tool_id: &str, text: &str) -> Option<ToolResult> {
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    if let Ok(result) = serde_json::from_str::<ToolResult>(text) {
+        return Some(result);
+    }
+    let envelope = serde_json::from_str::<ToolOutputEnvelope>(text).ok()?;
+    let evidence = if envelope.evidence.is_empty() {
+        vec![Evidence::new(tool_id, envelope.output.clone())]
+    } else {
+        envelope.evidence
+    };
+    Some(ToolResult {
+        status: envelope.status.unwrap_or(Status::Satisfied),
+        output: envelope.output,
+        evidence,
+        metadata: envelope.metadata,
+    })
 }
 
 fn read_args(query: &str) -> Vec<String> {
@@ -3207,6 +3567,162 @@ mod tests {
         assert!(swe.manifest.brain.prompt.contains("cognitive Need"));
         assert!(swe.manifest.skills[0].needs.contains(&NeedKind::Verify));
         assert_eq!(swe.manifest.tools[0].implementation.kind, "shell");
+    }
+
+    #[test]
+    fn manifest_report_accepts_http_runtime_url() {
+        let root =
+            std::env::temp_dir().join(format!("octopus-http-manifest-{}", std::process::id()));
+        let manifest_dir = root.join("http-tentacle");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&manifest_dir).unwrap();
+        fs::write(
+            manifest_dir.join("manifest.json"),
+            r#"{
+  "schema_version": "0.1.0",
+  "id": "http-tentacle",
+  "name": "HTTP Tentacle",
+  "description": "Remote tool runtime.",
+  "brain": {
+    "kind": "llm",
+    "model": null,
+    "prompt": "Plan a remote feed.",
+    "feedback_contract": "Return compact evidence."
+  },
+  "skills": [
+    { "id": "remote-observe", "description": "Remote observe.", "needs": ["observe"] }
+  ],
+  "tools": [
+    {
+      "id": "remote",
+      "description": "Call a remote endpoint.",
+      "input": "octopus-json-v1 tool call",
+      "output": "structured feedback",
+      "implementation": {
+        "kind": "http",
+        "entrypoint": "https://example.com/octopus",
+        "contract": "octopus-json-v1"
+      }
+    }
+  ],
+  "evolution": {
+    "editable": ["manifest.json"],
+    "checks": ["cargo test"],
+    "constraints": ["Keep the JSON contract stable."]
+  }
+}
+"#,
+        )
+        .unwrap();
+
+        let reports = inspect_tentacle_manifests(&root).unwrap();
+
+        assert_eq!(reports[0].runtime_kinds, vec!["http".to_string()]);
+        assert!(reports[0].missing_entrypoints.is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn tentacle_evolution_proposal_writes_safe_artifacts() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let proposal = propose_tentacle_evolution(
+            &root,
+            "swe-agent",
+            "improve repository observation feed quality",
+        )
+        .unwrap();
+
+        assert_eq!(proposal.tentacle_id, "swe-agent");
+        assert!(proposal.current_brain_prompt.contains("cognitive Need"));
+        assert!(proposal.editable.contains(&"brain.prompt".to_string()));
+        assert!(proposal
+            .files
+            .iter()
+            .any(|file| file.path == "manifest.json#brain.prompt"));
+        assert!(proposal
+            .next_steps
+            .iter()
+            .any(|step| step.contains("cargo test")));
+
+        let workspace = std::env::temp_dir().join(format!("octopus-evolve-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&workspace);
+        let artifact = write_tentacle_evolution_artifacts(&workspace, &proposal).unwrap();
+        let markdown = fs::read_to_string(&artifact.proposal_path).unwrap();
+        let json = fs::read_to_string(&artifact.json_path).unwrap();
+
+        assert!(markdown.contains("# Tentacle Evolution: swe-agent"));
+        assert!(markdown.contains("improve repository observation feed quality"));
+        assert!(json.contains("\"tentacle_id\": \"swe-agent\""));
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn manifest_tentacle_runs_python_json_contract() {
+        if !command_available("python3") {
+            return;
+        }
+        let dir =
+            std::env::temp_dir().join(format!("octopus-python-contract-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("tool.py");
+        fs::write(
+            &script,
+            r#"import json, sys
+payload = json.load(sys.stdin)
+print(json.dumps({
+    "status": "satisfied",
+    "output": f"{payload['tool']['runtime']}:{payload['need']['kind']}:{payload['need']['query']}",
+    "metadata": {
+        "schema": payload["schema_version"],
+        "tentacle": payload["tentacle"]["id"]
+    }
+}))
+"#,
+        )
+        .unwrap();
+
+        let mut tentacle = ManifestTentacle::new(InstalledTentacle {
+            id: "python-json".to_string(),
+            name: "Python JSON".to_string(),
+            source: dir.join("manifest.json").to_string_lossy().to_string(),
+            brain_kind: "llm".to_string(),
+            brain_prompt: "Use the JSON call envelope to feed the clean brain.".to_string(),
+            feedback_contract: Some("Return compact structured feedback.".to_string()),
+            runtime_kinds: vec!["python".to_string()],
+            needs: vec!["observe".to_string()],
+            tools: vec![format!("json_probe:python:{}", script.to_string_lossy())],
+            tool_meta: vec![InstalledTool {
+                id: "json_probe".to_string(),
+                description: "Inspect a Need through a JSON runtime contract.".to_string(),
+                input: "octopus-json-v1 tool call".to_string(),
+                output: "structured feedback".to_string(),
+                kind: "python".to_string(),
+                entrypoint: script.to_string_lossy().to_string(),
+                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
+            }],
+            editable: vec!["tools/tool.py".to_string()],
+        });
+
+        let feed = tentacle.feed(&Need::new(NeedKind::Observe, "README.md"));
+
+        assert_eq!(feed.status, Status::Satisfied);
+        assert_eq!(feed.summary, "python:observe:README.md");
+        assert_eq!(
+            feed.metadata.get("contract").map(String::as_str),
+            Some(OCTOPUS_JSON_CONTRACT)
+        );
+        assert_eq!(
+            feed.metadata.get("schema").map(String::as_str),
+            Some(OCTOPUS_TOOL_CALL_SCHEMA)
+        );
+        assert_eq!(
+            feed.metadata.get("runtime").map(String::as_str),
+            Some("python")
+        );
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
