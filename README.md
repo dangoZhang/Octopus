@@ -18,6 +18,7 @@ The mechanism is `Need -> Feed -> Feedback`; the product promise is less tool bu
 cargo test
 cargo run -p octopus-core -- need remember "tools stay outside the brain"
 cargo run -p octopus-core -- need recall tools
+cargo run -q -p octopus-core --example thinking_tentacle
 ```
 
 Output:
@@ -25,4 +26,6 @@ Output:
 ```text
 remembered m1
 tools stay outside the brain
+verified: the brain does not name tools
+plan: selected first matching tool
 ```

@@ -94,6 +94,17 @@ impl Feed {
             metadata: BTreeMap::new(),
         }
     }
+
+    pub fn failed(need: &Need, summary: impl Into<String>, source: impl Into<String>) -> Self {
+        let summary = summary.into();
+        Self {
+            need: need.clone(),
+            status: Status::Failed,
+            evidence: vec![Evidence::new(source, summary.clone())],
+            summary,
+            metadata: BTreeMap::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -320,6 +331,244 @@ where
     }
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ToolResult {
+    pub status: Status,
+    pub output: String,
+    pub evidence: Vec<Evidence>,
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl ToolResult {
+    pub fn satisfied(tool: impl Into<String>, output: impl Into<String>) -> Self {
+        let tool = tool.into();
+        let output = output.into();
+        Self {
+            status: Status::Satisfied,
+            output: output.clone(),
+            evidence: vec![Evidence::new(tool, output.clone())],
+            metadata: BTreeMap::new(),
+        }
+    }
+
+    pub fn failed(output: impl Into<String>) -> Self {
+        Self {
+            status: Status::Failed,
+            output: output.into(),
+            evidence: Vec::new(),
+            metadata: BTreeMap::new(),
+        }
+    }
+}
+
+pub trait Tool {
+    fn name(&self) -> &str;
+    fn description(&self) -> &str;
+    fn supports(&self, need: &Need) -> bool;
+    fn run(&mut self, need: &Need) -> ToolResult;
+}
+
+pub struct FunctionTool<F>
+where
+    F: FnMut(&Need) -> ToolResult,
+{
+    name: String,
+    description: String,
+    kinds: Vec<NeedKind>,
+    handler: F,
+}
+
+impl<F> FunctionTool<F>
+where
+    F: FnMut(&Need) -> ToolResult,
+{
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        kinds: Vec<NeedKind>,
+        handler: F,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            kinds,
+            handler,
+        }
+    }
+}
+
+impl<F> Tool for FunctionTool<F>
+where
+    F: FnMut(&Need) -> ToolResult,
+{
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn description(&self) -> &str {
+        &self.description
+    }
+
+    fn supports(&self, need: &Need) -> bool {
+        self.kinds.contains(&need.kind)
+    }
+
+    fn run(&mut self, need: &Need) -> ToolResult {
+        (self.handler)(need)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ToolSpec {
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ToolCall {
+    pub tool: String,
+    pub reason: String,
+    pub payload: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct Plan {
+    pub calls: Vec<ToolCall>,
+    pub summary: String,
+}
+
+pub trait Planner {
+    fn plan(&mut self, need: &Need, tools: &[ToolSpec]) -> Plan;
+}
+
+#[derive(Default)]
+pub struct RulePlanner;
+
+impl Planner for RulePlanner {
+    fn plan(&mut self, need: &Need, tools: &[ToolSpec]) -> Plan {
+        let calls = tools
+            .first()
+            .map(|tool| {
+                vec![ToolCall {
+                    tool: tool.name.clone(),
+                    reason: format!("{} can feed {}", tool.name, kind_key(&need.kind)),
+                    payload: BTreeMap::from([("query".to_string(), need.query.clone())]),
+                }]
+            })
+            .unwrap_or_default();
+        let summary = if calls.is_empty() {
+            "no matching tool".to_string()
+        } else {
+            "selected first matching tool".to_string()
+        };
+        Plan { calls, summary }
+    }
+}
+
+pub struct PlanningTentacle<P>
+where
+    P: Planner,
+{
+    name: String,
+    kinds: Vec<NeedKind>,
+    planner: P,
+    tools: Vec<Box<dyn Tool>>,
+}
+
+impl<P> PlanningTentacle<P>
+where
+    P: Planner,
+{
+    pub fn new(
+        name: impl Into<String>,
+        kinds: Vec<NeedKind>,
+        planner: P,
+        tools: Vec<Box<dyn Tool>>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            kinds,
+            planner,
+            tools,
+        }
+    }
+}
+
+impl<P> Tentacle for PlanningTentacle<P>
+where
+    P: Planner,
+{
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn supports(&self, need: &Need) -> bool {
+        self.kinds.contains(&need.kind) && self.tools.iter().any(|tool| tool.supports(need))
+    }
+
+    fn feed(&mut self, need: &Need) -> Feed {
+        let specs = self
+            .tools
+            .iter()
+            .filter(|tool| tool.supports(need))
+            .map(|tool| ToolSpec {
+                name: tool.name().to_string(),
+                description: tool.description().to_string(),
+            })
+            .collect::<Vec<_>>();
+        let plan = self.planner.plan(need, &specs);
+        if plan.calls.is_empty() {
+            return Feed::unsupported(need, plan.summary);
+        }
+
+        let mut results = Vec::new();
+        for call in &plan.calls {
+            let Some(tool) = self.tools.iter_mut().find(|tool| tool.name() == call.tool) else {
+                results.push(ToolResult::failed(format!("unknown tool: {}", call.tool)));
+                continue;
+            };
+            if !tool.supports(need) {
+                results.push(ToolResult::failed(format!(
+                    "tool does not support need: {}",
+                    call.tool
+                )));
+                continue;
+            }
+            results.push(tool.run(need));
+        }
+
+        let status = tool_status(&results);
+        let summary = results
+            .iter()
+            .map(|result| result.output.as_str())
+            .filter(|output| !output.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut metadata = BTreeMap::from([
+            ("plan".to_string(), plan.summary),
+            (
+                "tools".to_string(),
+                plan.calls
+                    .iter()
+                    .map(|call| call.tool.as_str())
+                    .collect::<Vec<_>>()
+                    .join(","),
+            ),
+        ]);
+        metadata.insert("tentacle_brain".to_string(), self.name.clone());
+        Feed {
+            need: need.clone(),
+            status,
+            evidence: results
+                .into_iter()
+                .flat_map(|result| result.evidence)
+                .collect(),
+            summary,
+            metadata,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct HarnessState {
     pub memory: MemoryStore,
@@ -477,6 +726,22 @@ fn route_key(kind: &NeedKind, name: &str) -> String {
     format!("{}:{name}", kind_key(kind))
 }
 
+fn tool_status(results: &[ToolResult]) -> Status {
+    if results
+        .iter()
+        .all(|result| result.status == Status::Satisfied)
+    {
+        Status::Satisfied
+    } else if results
+        .iter()
+        .any(|result| result.status == Status::Satisfied)
+    {
+        Status::Partial
+    } else {
+        Status::Failed
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -530,5 +795,33 @@ mod tests {
 
         assert_eq!(error.kind(), ErrorKind::InvalidData);
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn planning_tentacle_selects_tool_before_execution() {
+        let tool = FunctionTool::new(
+            "verifier",
+            "verifies claims",
+            vec![NeedKind::Verify],
+            |need| ToolResult::satisfied("verifier", format!("verified {}", need.query)),
+        );
+        let mut harness = Harness::new();
+        harness.add_tentacle(Box::new(PlanningTentacle::new(
+            "research",
+            vec![NeedKind::Verify],
+            RulePlanner,
+            vec![Box::new(tool)],
+        )));
+
+        let feed = harness.feed_one(&Need::new(NeedKind::Verify, "clean brain"));
+
+        assert_eq!(feed.status, Status::Satisfied);
+        assert_eq!(feed.summary, "verified clean brain");
+        assert_eq!(feed.metadata.get("tools"), Some(&"verifier".to_string()));
+        assert_eq!(
+            feed.metadata.get("tentacle_brain"),
+            Some(&"research".to_string())
+        );
+        assert!(harness.state.routes.score(&NeedKind::Verify, "research") > 1.0);
     }
 }

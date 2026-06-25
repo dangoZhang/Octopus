@@ -11,6 +11,7 @@ Octopus keeps the non-evolvable base small.
 - `Feedback`: compact result for the brain.
 - `RouteBook`: data-driven routing that learns from feed quality.
 - `HarnessState`: persistent memory and routes.
+- `PlanningTentacle`: tool-side planner that selects tools before execution.
 
 Rust is the kernel language because this layer must be fast, typed, portable, and boring. It is the part we do not want an adaptive harness to rewrite casually.
 
@@ -20,6 +21,6 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 ## Boundary
 
-Brains emit needs. Tentacles may think, plan, and call tools. Harness evolves the feed path from data. The brain never carries tool burden.
+Brains emit needs. Tentacles may think, plan, and call tools through `Tool` and `Planner`. Harness evolves the feed path from data. The brain never carries tool burden.
 
 See [Research Map](./references.md) for the papers shaping this design and [Self-Iteration Loop](./self-iteration.md) for the future repo-improvement path.

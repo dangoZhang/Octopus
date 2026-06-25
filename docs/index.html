@@ -273,7 +273,7 @@
           <h2>Core</h2>
           <div class="grid">
             <article class="card"><h3>Rust kernel</h3><p>The stable base owns Need, Feed, Feedback, memory state, and route learning.</p></article>
-            <article class="card"><h3>Thinking tentacles</h3><p>Each tentacle can own a planner or LLM, choose tools, run them, and return evidence.</p></article>
+            <article class="card"><h3>Thinking tentacles</h3><p>Each tentacle can own a planner or LLM, choose tools through the Rust core, run them, and return evidence.</p></article>
             <article class="card"><h3>Three hearts</h3><p>Heartbeat keeps life, memory beat compacts memory, harness beat evolves routes.</p></article>
           </div>
         </div>
@@ -284,6 +284,7 @@
           <h2>Quick start</h2>
           <pre><code>cargo test
 cargo run -p octopus-core -- need remember "tools stay outside the brain"
+cargo run -q -p octopus-core --example thinking_tentacle
 pip install -e .
 python examples/smart_tentacle.py</code></pre>
           <p class="copy">The kernel stays small. SDKs and tentacles can evolve around it.</p>
