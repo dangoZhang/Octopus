@@ -88,6 +88,33 @@ pub struct GoalChat {
     pub feedback: Feedback,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GrantStatus {
+    Active,
+    Revoked,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CapabilityGrant {
+    pub id: String,
+    pub provider: String,
+    pub scope: String,
+    pub permissions: Vec<String>,
+    pub status: GrantStatus,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct SelfIterationPlan {
+    pub repository: String,
+    pub authorized: bool,
+    pub mode: String,
+    pub grant_id: Option<String>,
+    pub steps: Vec<String>,
+    pub checks: Vec<String>,
+    pub guardrails: Vec<String>,
+}
+
 impl Need {
     pub fn new(kind: NeedKind, query: impl Into<String>) -> Self {
         Self {
@@ -725,6 +752,8 @@ pub struct HarnessState {
     pub goal: Option<Goal>,
     #[serde(default)]
     pub goal_turns: Vec<GoalTurn>,
+    #[serde(default)]
+    pub grants: Vec<CapabilityGrant>,
 }
 
 impl HarnessState {
@@ -761,6 +790,87 @@ impl HarnessState {
             self.installed_profiles.push(profile_id.to_string());
         }
         Ok(())
+    }
+
+    pub fn grant_oauth(
+        &mut self,
+        provider: &str,
+        scope: &str,
+        permissions: Vec<String>,
+    ) -> CapabilityGrant {
+        let permissions = normalize_permissions(permissions);
+        let id = grant_id(provider, scope);
+        if let Some(grant) = self.grants.iter_mut().find(|grant| grant.id == id) {
+            grant.permissions = permissions;
+            grant.status = GrantStatus::Active;
+            return grant.clone();
+        }
+        let grant = CapabilityGrant {
+            id,
+            provider: provider.to_string(),
+            scope: scope.to_string(),
+            permissions,
+            status: GrantStatus::Active,
+        };
+        self.grants.push(grant.clone());
+        grant
+    }
+
+    pub fn revoke_grant(&mut self, grant_id: &str) -> bool {
+        let Some(grant) = self.grants.iter_mut().find(|grant| grant.id == grant_id) else {
+            return false;
+        };
+        grant.status = GrantStatus::Revoked;
+        true
+    }
+
+    pub fn active_grant(&self, provider: &str, scope: &str) -> Option<&CapabilityGrant> {
+        self.grants.iter().find(|grant| {
+            grant.provider == provider
+                && grant.scope == scope
+                && grant.status == GrantStatus::Active
+        })
+    }
+
+    pub fn self_iteration_plan(&self, repository: impl Into<String>) -> SelfIterationPlan {
+        let repository = repository.into();
+        let grant = self.active_grant("github", &repository);
+        let authorized = grant.is_some();
+        let mut steps = vec![
+            "inspect repository health".to_string(),
+            "compare docs, manifests, and tests".to_string(),
+            "propose the smallest useful patch".to_string(),
+        ];
+        if authorized {
+            steps.extend([
+                "create a branch inside the granted scope".to_string(),
+                "run checks before publishing".to_string(),
+                "open a pull request with compact evidence".to_string(),
+            ]);
+        } else {
+            steps.push("report only until an OAuth grant exists".to_string());
+        }
+        SelfIterationPlan {
+            repository,
+            authorized,
+            mode: if authorized {
+                "pr-ready".to_string()
+            } else {
+                "report-only".to_string()
+            },
+            grant_id: grant.map(|grant| grant.id.clone()),
+            steps,
+            checks: vec![
+                "cargo test".to_string(),
+                "cargo clippy --all-targets -- -D warnings".to_string(),
+                "PYTHONPATH=src python -m unittest discover -s tests -q".to_string(),
+            ],
+            guardrails: vec![
+                "never push to main directly".to_string(),
+                "prefer small pull requests".to_string(),
+                "keep the kernel small enough to audit".to_string(),
+            ],
+        }
     }
 }
 
@@ -1234,6 +1344,28 @@ fn evolution_policy(checks: &[&str], constraints: &[&str]) -> EvolutionPolicy {
     }
 }
 
+pub fn default_permissions(provider: &str) -> Vec<String> {
+    match provider {
+        "github" => vec![
+            "repo:read".to_string(),
+            "checks:read".to_string(),
+            "pull_request:write".to_string(),
+        ],
+        _ => vec!["read".to_string()],
+    }
+}
+
+fn grant_id(provider: &str, scope: &str) -> String {
+    format!("{provider}:{scope}")
+}
+
+fn normalize_permissions(permissions: Vec<String>) -> Vec<String> {
+    let mut permissions = permissions;
+    permissions.sort();
+    permissions.dedup();
+    permissions
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct EnvironmentReport {
     pub manifests: Vec<String>,
@@ -1414,6 +1546,32 @@ mod tests {
         assert!(harness.state.memory.recall("tentacles", 1)[0]
             .text
             .contains("goal update"));
+    }
+
+    #[test]
+    fn self_iteration_requires_oauth_grant_for_pr_mode() {
+        let mut state = HarnessState::default();
+
+        let report_only = state.self_iteration_plan("dangoZhang/Octopus");
+        assert!(!report_only.authorized);
+        assert_eq!(report_only.mode, "report-only");
+        assert!(report_only
+            .steps
+            .contains(&"report only until an OAuth grant exists".to_string()));
+
+        let grant = state.grant_oauth(
+            "github",
+            "dangoZhang/Octopus",
+            default_permissions("github"),
+        );
+        let pr_ready = state.self_iteration_plan("dangoZhang/Octopus");
+
+        assert!(pr_ready.authorized);
+        assert_eq!(pr_ready.mode, "pr-ready");
+        assert_eq!(pr_ready.grant_id, Some(grant.id));
+        assert!(pr_ready
+            .guardrails
+            .contains(&"never push to main directly".to_string()));
     }
 
     #[test]

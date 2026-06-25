@@ -24,6 +24,15 @@ The repo tentacle does implementation work:
 
 LLM OAuth is a capability grant, not a hidden background permission. Without it, Octopus can plan and report. With it, Octopus may create branches, commits, and PRs inside the allowed repository scope.
 
+```bash
+tmp=$(mktemp -d)
+cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
+cargo run -q -p octopus-core -- --state "$tmp/state.json" oauth github dangoZhang/Octopus
+cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
+```
+
+The first plan is `report-only`. After the grant, the repo-maintainer plan becomes `pr-ready` while keeping guardrails such as never pushing to `main`.
+
 ## Guardrails
 
 - never push to `main` directly
@@ -41,4 +50,3 @@ Feedback: patch, tests, PR link, route score
 ```
 
 This keeps self-improvement outside the clean brain while letting the harness learn which project improvements work.
-

@@ -26,6 +26,9 @@ cargo run -q -p octopus-core -- --state "$tmp/state.json" installed
 cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build a clean-brain agent"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think through tentacles"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" goal
+cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
+cargo run -q -p octopus-core -- --state "$tmp/state.json" oauth github dangoZhang/Octopus
+cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh need remember "工具不进大脑"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" need recall 工具
 cargo run -q -p octopus-core --example thinking_tentacle
@@ -41,6 +44,9 @@ research
 goal: build a clean-brain agent
 turn 2: remembered m2
 refinements: 1
+mode: report-only
+oauth grant active: github:dangoZhang/Octopus
+mode: pr-ready
 已记住 m3
 工具不进大脑
 verified: the brain does not name tools

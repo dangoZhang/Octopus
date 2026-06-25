@@ -142,6 +142,11 @@
       <section>
         <h2>OAuth</h2>
         <p>LLM OAuth is a capability grant. Without it, Octopus can plan and report. With it, Octopus may create branches, commits, and PRs within the allowed repository scope.</p>
+        <pre><code>tmp=$(mktemp -d)
+cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
+cargo run -q -p octopus-core -- --state "$tmp/state.json" oauth github dangoZhang/Octopus
+cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus</code></pre>
+        <p>The first plan is <code>report-only</code>. After the grant, the repo-maintainer plan becomes <code>pr-ready</code> while keeping guardrails.</p>
       </section>
 
       <section>
@@ -168,4 +173,3 @@ Feedback: patch, tests, PR link, route score</code></pre>
     </footer>
   </body>
 </html>
-

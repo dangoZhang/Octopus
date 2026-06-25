@@ -1,5 +1,6 @@
 use octopus_core::{
-    default_tentacle_profiles, EnvironmentReport, GoalChat, Harness, HarnessState, Need, NeedKind,
+    default_permissions, default_tentacle_profiles, CapabilityGrant, EnvironmentReport, GoalChat,
+    Harness, HarnessState, Need, NeedKind, SelfIterationPlan,
 };
 use std::env;
 use std::path::PathBuf;
@@ -118,6 +119,64 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_goal(&loaded, language);
+            }
+            Ok(())
+        }
+        Some("oauth") => {
+            let provider = rest
+                .get(1)
+                .ok_or_else(|| "oauth requires a provider".to_string())?;
+            if provider == "revoke" {
+                let grant = rest
+                    .get(2)
+                    .ok_or_else(|| "oauth revoke requires a grant id".to_string())?;
+                let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                if !loaded.revoke_grant(grant) {
+                    return Err(format!("unknown grant: {grant}"));
+                }
+                loaded.save(&state).map_err(|error| error.to_string())?;
+                match language {
+                    Language::En => println!("revoked {grant}"),
+                    Language::Zh => println!("已撤销 {grant}"),
+                }
+                return Ok(());
+            }
+            let scope = rest
+                .get(2)
+                .ok_or_else(|| "oauth requires a scope".to_string())?;
+            let permissions = rest
+                .get(3..)
+                .filter(|values| !values.is_empty())
+                .map_or_else(
+                    || default_permissions(provider),
+                    |values| values.iter().map(String::from).collect(),
+                );
+            let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let grant = loaded.grant_oauth(provider, scope, permissions);
+            loaded.save(&state).map_err(|error| error.to_string())?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&grant).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_grant(&grant, language);
+            }
+            Ok(())
+        }
+        Some("self-iterate") => {
+            let repository = rest
+                .get(1)
+                .ok_or_else(|| "self-iterate requires a repository".to_string())?;
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let plan = loaded.self_iteration_plan(repository.as_str());
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&plan).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_self_iteration_plan(&plan, language);
             }
             Ok(())
         }
@@ -282,6 +341,36 @@ fn print_goal(state: &HarnessState, language: Language) {
     }
 }
 
+fn print_grant(grant: &CapabilityGrant, language: Language) {
+    match language {
+        Language::En => {
+            println!("oauth grant active: {}", grant.id);
+            println!("permissions: {}", grant.permissions.join(", "));
+        }
+        Language::Zh => {
+            println!("OAuth 授权已启用: {}", grant.id);
+            println!("权限: {}", grant.permissions.join(", "));
+        }
+    }
+}
+
+fn print_self_iteration_plan(plan: &SelfIterationPlan, language: Language) {
+    match language {
+        Language::En => {
+            println!("repo: {}", plan.repository);
+            println!("mode: {}", plan.mode);
+            println!("authorized: {}", plan.authorized);
+            println!("next: {}", plan.steps.join(" -> "));
+        }
+        Language::Zh => {
+            println!("仓库: {}", plan.repository);
+            println!("模式: {}", plan.mode);
+            println!("已授权: {}", plan.authorized);
+            println!("下一步: {}", plan.steps.join(" -> "));
+        }
+    }
+}
+
 fn print_environment(report: &EnvironmentReport, language: Language) {
     match language {
         Language::En => {
@@ -300,7 +389,7 @@ fn print_environment(report: &EnvironmentReport, language: Language) {
 }
 
 fn usage() -> String {
-    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | goal | routes | catalog | env | install <profile> | installed".to_string()
+    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | goal | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | routes | catalog | env | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]
@@ -426,6 +515,42 @@ mod tests {
         assert!(content.contains("\"objective\": \"build octopus\""));
         assert!(content.contains("make tools think"));
         assert!(content.contains("goal_turns"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_oauth_unlocks_self_iteration_plan() {
+        let path =
+            std::env::temp_dir().join(format!("octopus-oauth-state-{}.json", std::process::id()));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "self-iterate".to_string(),
+            "dangoZhang/Octopus".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "oauth".to_string(),
+            "github".to_string(),
+            "dangoZhang/Octopus".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "self-iterate".to_string(),
+            "dangoZhang/Octopus".to_string(),
+        ])
+        .unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("github:dangoZhang/Octopus"));
+        assert!(content.contains("pull_request:write"));
         let _ = fs::remove_file(path);
     }
 }
