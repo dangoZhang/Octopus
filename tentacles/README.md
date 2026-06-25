@@ -6,6 +6,7 @@ Inspect installable manifests:
 
 ```bash
 cargo run -q -p octopus-core -- manifests
+cargo run -q -p octopus-core -- scaffold my-feed python
 ```
 
 - `swe-agent`: repo work through `read`, `edit`, inspection, patch, and test tools.

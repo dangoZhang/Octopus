@@ -298,6 +298,7 @@
           <h2>Quick Install & Use</h2>
           <pre><code>cargo test
 tmp=$(mktemp -d)
+repo=$PWD
 cargo run -q -p octopus-core -- catalog
 cargo run -q -p octopus-core -- manifests
 cargo run -q -p octopus-core -- --lang zh env
@@ -316,6 +317,7 @@ cargo run -q -p octopus-core -- --state "$tmp/state.json" oauth github dangoZhan
 cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" cargo run -q -p octopus-core -- llm "provider check"
 OCTOPUS_LLM_MANIFEST=1 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" cargo run -q -p octopus-core -- --state "$tmp/state.json" --json need observe README.md 1 1
+(cd "$tmp" &amp;&amp; cargo run -q --manifest-path "$repo/Cargo.toml" -p octopus-core -- scaffold my-feed python)
 cargo run -q -p octopus-core -- evolve swe-agent "improve repository observation feed quality"
 tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build a clean-brain agent"
 tentacles/repo-maintainer/tools/draft_pr.sh "$tmp" dangoZhang/Octopus "improve usability"

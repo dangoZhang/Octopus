@@ -1,10 +1,10 @@
 use octopus_core::{
     default_permissions, default_tentacle_profiles, inspect_tentacle_manifests,
-    propose_tentacle_evolution, write_tentacle_evolution_artifacts, AdaptReport, CapabilityGrant,
-    ChatClient, ChatMessage, ChatRole, EnvironmentReport, EvolutionArtifact, GoalChat, Harness,
-    HarnessState, HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient,
+    propose_tentacle_evolution, scaffold_tentacle, write_tentacle_evolution_artifacts, AdaptReport,
+    CapabilityGrant, ChatClient, ChatMessage, ChatRole, EnvironmentReport, EvolutionArtifact,
+    GoalChat, Harness, HarnessState, HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient,
     OpenAiCompatibleConfig, SelfIterationPlan, StatusReport, TentacleEvolutionProposal,
-    TentacleManifestReport,
+    TentacleManifestReport, TentacleScaffold,
 };
 use std::env;
 use std::path::PathBuf;
@@ -272,6 +272,23 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_evolution_proposal(&proposal, &artifact, language);
+            }
+            Ok(())
+        }
+        Some("scaffold") => {
+            let tentacle_id = rest
+                .get(1)
+                .ok_or_else(|| "scaffold requires a tentacle id".to_string())?;
+            let runtime = rest.get(2).map(String::as_str);
+            let cwd = env::current_dir().map_err(|error| error.to_string())?;
+            let scaffold = scaffold_tentacle(cwd, tentacle_id, runtime)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&scaffold).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_tentacle_scaffold(&scaffold, language);
             }
             Ok(())
         }
@@ -683,6 +700,29 @@ fn print_evolution_proposal(
     }
 }
 
+fn print_tentacle_scaffold(scaffold: &TentacleScaffold, language: Language) {
+    match language {
+        Language::En => {
+            println!("tentacle: {}", scaffold.tentacle_id);
+            println!("runtime: {}", scaffold.runtime);
+            println!("manifest: {}", scaffold.manifest_path);
+            if let Some(path) = &scaffold.tool_path {
+                println!("tool: {path}");
+            }
+            println!("next: {}", join_or_none(&scaffold.next_steps));
+        }
+        Language::Zh => {
+            println!("触手: {}", scaffold.tentacle_id);
+            println!("runtime: {}", scaffold.runtime);
+            println!("manifest: {}", scaffold.manifest_path);
+            if let Some(path) = &scaffold.tool_path {
+                println!("工具: {path}");
+            }
+            println!("下一步: {}", join_or_none(&scaffold.next_steps));
+        }
+    }
+}
+
 fn print_environment(report: &EnvironmentReport, language: Language) {
     match language {
         Language::En => {
@@ -770,7 +810,7 @@ fn manifest_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | llm <message> | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | llm <message> | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [python|node|shell|http] | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]
@@ -1112,6 +1152,38 @@ mod tests {
         assert!(fs::read_to_string(proposal)
             .unwrap()
             .contains("Tentacle Evolution: swe-agent"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_scaffold_installs_local_tentacle() {
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!("octopus-cli-scaffold-{}", std::process::id()));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+
+        run(vec![
+            "scaffold".to_string(),
+            "local_feed".to_string(),
+            "python".to_string(),
+        ])
+        .unwrap();
+        run(vec!["manifests".to_string()]).unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "install".to_string(),
+            "local_feed".to_string(),
+        ])
+        .unwrap();
+
+        let content = fs::read_to_string(state_path).unwrap();
+        assert!(content.contains("local_feed"));
+        assert!(dir.join("tentacles/local_feed/manifest.json").exists());
+        assert!(dir.join("tentacles/local_feed/tools/feed.py").exists());
         let _ = fs::remove_dir_all(dir);
     }
 

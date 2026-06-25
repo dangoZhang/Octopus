@@ -35,6 +35,8 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 `contract: octopus-json-v1` lets any runtime receive the same Need/tool/tentacle JSON envelope through stdin and return compact text or structured JSON feedback. Legacy executable entrypoints still work.
 
+`scaffold <tentacle> [runtime]` creates a user-owned manifest, schema, and starter tool code for Python, Node, shell, or HTTP.
+
 `evolve <tentacle> <objective>` writes an auditable draft under `.octopus/evolution/` listing the prompt, metadata, code files, checks, and constraints that can change safely.
 
 ## Color Pet
