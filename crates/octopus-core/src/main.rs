@@ -1,4 +1,6 @@
-use octopus_core::{Harness, HarnessState, Need, NeedKind};
+use octopus_core::{
+    default_tentacle_profiles, EnvironmentReport, Harness, HarnessState, Need, NeedKind,
+};
 use std::env;
 use std::path::PathBuf;
 
@@ -84,6 +86,62 @@ fn run(args: Vec<String>) -> Result<(), String> {
             );
             Ok(())
         }
+        Some("catalog") => {
+            let profiles = default_tentacle_profiles();
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&profiles).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_catalog(&profiles, language);
+            }
+            Ok(())
+        }
+        Some("env") => {
+            let cwd = env::current_dir().map_err(|error| error.to_string())?;
+            let report = EnvironmentReport::detect(cwd);
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_environment(&report, language);
+            }
+            Ok(())
+        }
+        Some("install") => {
+            let profile = rest
+                .get(1)
+                .ok_or_else(|| "install requires a profile id".to_string())?;
+            let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            loaded.install_profile(profile)?;
+            loaded.save(&state).map_err(|error| error.to_string())?;
+            match language {
+                Language::En => println!("installed {profile}"),
+                Language::Zh => println!("已安装 {profile}"),
+            }
+            Ok(())
+        }
+        Some("installed") => {
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&loaded.installed_profiles)
+                        .map_err(|error| error.to_string())?
+                );
+            } else if loaded.installed_profiles.is_empty() {
+                match language {
+                    Language::En => println!("no tentacles installed"),
+                    Language::Zh => println!("尚未安装触手"),
+                }
+            } else {
+                println!("{}", loaded.installed_profiles.join(", "));
+            }
+            Ok(())
+        }
         _ => Err(usage()),
     }
 }
@@ -130,9 +188,35 @@ fn localize_summary(summary: &str, language: Language) -> String {
     }
 }
 
+fn print_catalog(profiles: &[octopus_core::TentacleProfile], language: Language) {
+    match language {
+        Language::En => println!("Installable tentacles:"),
+        Language::Zh => println!("可安装触手:"),
+    }
+    for profile in profiles {
+        println!("- {}: {}", profile.id, profile.description);
+    }
+}
+
+fn print_environment(report: &EnvironmentReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Environment:");
+            println!("manifests: {}", report.manifests.join(", "));
+            println!("commands: {}", report.commands.join(", "));
+            println!("recommended: {}", report.recommended_profiles.join(", "));
+        }
+        Language::Zh => {
+            println!("环境:");
+            println!("项目特征: {}", report.manifests.join(", "));
+            println!("可用命令: {}", report.commands.join(", "));
+            println!("推荐触手: {}", report.recommended_profiles.join(", "));
+        }
+    }
+}
+
 fn usage() -> String {
-    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | routes"
-        .to_string()
+    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | routes | catalog | env | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]
@@ -194,5 +278,37 @@ mod tests {
             localize_summary("nothing recalled", Language::Zh),
             "没有召回内容"
         );
+    }
+
+    #[test]
+    fn cli_catalog_and_env_commands_run() {
+        run(vec!["catalog".to_string()]).unwrap();
+        run(vec![
+            "--lang".to_string(),
+            "zh".to_string(),
+            "env".to_string(),
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn cli_installs_profile_into_state() {
+        let path =
+            std::env::temp_dir().join(format!("octopus-install-state-{}.json", std::process::id()));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "install".to_string(),
+            "research".to_string(),
+        ])
+        .unwrap();
+        run(vec!["--state".to_string(), state, "installed".to_string()]).unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("research"));
+        let _ = fs::remove_file(path);
     }
 }

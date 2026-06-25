@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::{Error, ErrorKind};
 use std::path::Path;
+use std::process::Command;
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -32,6 +33,44 @@ pub struct Need {
     pub query: String,
     pub context: BTreeMap<String, String>,
     pub priority: f32,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GoalStatus {
+    Active,
+    Satisfied,
+    Blocked,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct Goal {
+    pub objective: String,
+    pub constraints: Vec<String>,
+    pub signals: BTreeMap<String, String>,
+    pub status: GoalStatus,
+}
+
+impl Goal {
+    pub fn new(objective: impl Into<String>) -> Self {
+        Self {
+            objective: objective.into(),
+            constraints: Vec::new(),
+            signals: BTreeMap::new(),
+            status: GoalStatus::Active,
+        }
+    }
+
+    pub fn refine(&mut self, note: impl Into<String>) {
+        self.constraints.push(note.into());
+    }
+
+    pub fn need(&self, kind: NeedKind, query: impl Into<String>) -> Need {
+        let mut need = Need::new(kind, query);
+        need.context
+            .insert("goal".to_string(), self.objective.clone());
+        need
+    }
 }
 
 impl Need {
@@ -465,6 +504,94 @@ impl Planner for RulePlanner {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatRole {
+    System,
+    User,
+    Assistant,
+    Tool,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ChatMessage {
+    pub role: ChatRole,
+    pub content: String,
+}
+
+impl ChatMessage {
+    pub fn new(role: ChatRole, content: impl Into<String>) -> Self {
+        Self {
+            role,
+            content: content.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ChatResponse {
+    pub content: String,
+    pub metadata: BTreeMap<String, String>,
+}
+
+pub trait ChatClient {
+    fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String>;
+}
+
+pub struct ChatPlanner<C>
+where
+    C: ChatClient,
+{
+    client: C,
+    fallback: RulePlanner,
+}
+
+impl<C> ChatPlanner<C>
+where
+    C: ChatClient,
+{
+    pub fn new(client: C) -> Self {
+        Self {
+            client,
+            fallback: RulePlanner,
+        }
+    }
+}
+
+impl<C> Planner for ChatPlanner<C>
+where
+    C: ChatClient,
+{
+    fn plan(&mut self, need: &Need, tools: &[ToolSpec]) -> Plan {
+        let tool_sheet = tools
+            .iter()
+            .map(|tool| format!("- {}: {}", tool.name, tool.description))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let messages = vec![
+            ChatMessage::new(
+                ChatRole::System,
+                "You are an Octopus tentacle brain. Return only JSON for Plan.",
+            ),
+            ChatMessage::new(
+                ChatRole::User,
+                format!(
+                    "Need: {}: {}\nTools:\n{}\nReturn JSON: {{\"calls\":[{{\"tool\":\"name\",\"reason\":\"short\",\"payload\":{{}}}}],\"summary\":\"short\"}}",
+                    kind_key(&need.kind),
+                    need.query,
+                    tool_sheet
+                ),
+            ),
+        ];
+        self.client
+            .chat(&messages)
+            .ok()
+            .and_then(|response| serde_json::from_str::<Plan>(&response.content).ok())
+            .filter(|plan| !plan.calls.is_empty())
+            .unwrap_or_else(|| self.fallback.plan(need, tools))
+    }
+}
+
 pub struct PlanningTentacle<P>
 where
     P: Planner,
@@ -573,6 +700,8 @@ where
 pub struct HarnessState {
     pub memory: MemoryStore,
     pub routes: RouteBook,
+    #[serde(default)]
+    pub installed_profiles: Vec<String>,
 }
 
 impl HarnessState {
@@ -594,6 +723,21 @@ impl HarnessState {
         }
         let content = serde_json::to_string_pretty(self).expect("harness state must serialize");
         fs::write(path, content)
+    }
+
+    pub fn install_profile(&mut self, profile_id: &str) -> Result<(), String> {
+        let profiles = default_tentacle_profiles();
+        if !profiles.iter().any(|profile| profile.id == profile_id) {
+            return Err(format!("unknown profile: {profile_id}"));
+        }
+        if !self
+            .installed_profiles
+            .iter()
+            .any(|installed| installed == profile_id)
+        {
+            self.installed_profiles.push(profile_id.to_string());
+        }
+        Ok(())
     }
 }
 
@@ -709,6 +853,157 @@ impl Default for Harness {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct SkillManifest {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub needs: Vec<NeedKind>,
+    pub tools: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TentacleProfile {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub skills: Vec<SkillManifest>,
+    pub llm_ready: bool,
+}
+
+pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
+    vec![
+        TentacleProfile {
+            id: "research".to_string(),
+            name: "Research Tentacle".to_string(),
+            description: "Verifies, compares, retrieves, and returns compact evidence.".to_string(),
+            skills: vec![SkillManifest {
+                id: "verify".to_string(),
+                name: "Verify".to_string(),
+                description: "Check claims against available sources.".to_string(),
+                needs: vec![NeedKind::Verify, NeedKind::Compare, NeedKind::Observe],
+                tools: vec![
+                    "search".to_string(),
+                    "browser".to_string(),
+                    "citation".to_string(),
+                ],
+            }],
+            llm_ready: true,
+        },
+        TentacleProfile {
+            id: "code".to_string(),
+            name: "Code Tentacle".to_string(),
+            description: "Inspects repositories, edits code, runs tests, and summarizes patches."
+                .to_string(),
+            skills: vec![SkillManifest {
+                id: "harness-work".to_string(),
+                name: "Harness Work".to_string(),
+                description:
+                    "Execute implementation work without loading the main brain with tools."
+                        .to_string(),
+                needs: vec![NeedKind::Execute, NeedKind::Reproduce, NeedKind::Verify],
+                tools: vec![
+                    "git".to_string(),
+                    "shell".to_string(),
+                    "test-runner".to_string(),
+                ],
+            }],
+            llm_ready: true,
+        },
+        TentacleProfile {
+            id: "memory".to_string(),
+            name: "Memory Tentacle".to_string(),
+            description: "Remembers, recalls, forgets, and compacts context.".to_string(),
+            skills: vec![SkillManifest {
+                id: "memory".to_string(),
+                name: "Memory".to_string(),
+                description: "Manage long-running context outside the brain.".to_string(),
+                needs: vec![NeedKind::Remember, NeedKind::Recall, NeedKind::Forget],
+                tools: vec!["memory-store".to_string()],
+            }],
+            llm_ready: false,
+        },
+        TentacleProfile {
+            id: "visual".to_string(),
+            name: "Color Tentacle".to_string(),
+            description: "Turns feedback into visual or image interaction outside the kernel."
+                .to_string(),
+            skills: vec![SkillManifest {
+                id: "color-change".to_string(),
+                name: "Color Change".to_string(),
+                description: "Render visual feedback without changing the core agent loop."
+                    .to_string(),
+                needs: vec![NeedKind::Observe],
+                tools: vec!["image".to_string(), "ui".to_string()],
+            }],
+            llm_ready: true,
+        },
+        TentacleProfile {
+            id: "repo-maintainer".to_string(),
+            name: "Repo Maintainer Tentacle".to_string(),
+            description: "Future self-iteration profile for branches, CI, and pull requests."
+                .to_string(),
+            skills: vec![SkillManifest {
+                id: "self-iteration".to_string(),
+                name: "Self Iteration".to_string(),
+                description:
+                    "Inspect project health and prepare small pull requests after OAuth grant."
+                        .to_string(),
+                needs: vec![NeedKind::Observe, NeedKind::Verify, NeedKind::Execute],
+                tools: vec!["git".to_string(), "github".to_string(), "ci".to_string()],
+            }],
+            llm_ready: true,
+        },
+    ]
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EnvironmentReport {
+    pub manifests: Vec<String>,
+    pub commands: Vec<String>,
+    pub recommended_profiles: Vec<String>,
+}
+
+impl EnvironmentReport {
+    pub fn detect(cwd: impl AsRef<Path>) -> Self {
+        let cwd = cwd.as_ref();
+        let manifests = [
+            (cwd.join(".git"), "git"),
+            (cwd.join("Cargo.toml"), "rust"),
+            (cwd.join("pyproject.toml"), "python"),
+            (cwd.join("package.json"), "javascript"),
+            (cwd.join("docs"), "docs"),
+        ]
+        .into_iter()
+        .filter(|(path, _)| path.exists())
+        .map(|(_, name)| name.to_string())
+        .collect::<Vec<_>>();
+        let commands = ["git", "cargo", "python3", "gh"]
+            .into_iter()
+            .filter(|command| command_available(command))
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let mut recommended_profiles = vec!["memory".to_string()];
+        if manifests.iter().any(|item| item == "git") {
+            recommended_profiles.push("repo-maintainer".to_string());
+        }
+        if manifests
+            .iter()
+            .any(|item| item == "rust" || item == "python")
+        {
+            recommended_profiles.push("code".to_string());
+        }
+        if manifests.iter().any(|item| item == "docs") {
+            recommended_profiles.push("research".to_string());
+        }
+        Self {
+            manifests,
+            commands,
+            recommended_profiles,
+        }
+    }
+}
+
 fn kind_key(kind: &NeedKind) -> &'static str {
     match kind {
         NeedKind::Verify => "verify",
@@ -740,6 +1035,10 @@ fn tool_status(results: &[ToolResult]) -> Status {
     } else {
         Status::Failed
     }
+}
+
+fn command_available(command: &str) -> bool {
+    Command::new(command).arg("--version").output().is_ok()
 }
 
 #[cfg(test)]
@@ -823,5 +1122,70 @@ mod tests {
             Some(&"research".to_string())
         );
         assert!(harness.state.routes.score(&NeedKind::Verify, "research") > 1.0);
+    }
+
+    #[test]
+    fn chat_planner_uses_chat_client_plan() {
+        struct FakeChat;
+
+        impl ChatClient for FakeChat {
+            fn chat(&mut self, _messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                Ok(ChatResponse {
+                    content: r#"{"calls":[{"tool":"verifier","reason":"best match","payload":{}}],"summary":"planned by chat"}"#.to_string(),
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
+        let mut planner = ChatPlanner::new(FakeChat);
+        let plan = planner.plan(
+            &Need::new(NeedKind::Verify, "claim"),
+            &[ToolSpec {
+                name: "verifier".to_string(),
+                description: "checks claims".to_string(),
+            }],
+        );
+
+        assert_eq!(plan.summary, "planned by chat");
+        assert_eq!(plan.calls[0].tool, "verifier");
+    }
+
+    #[test]
+    fn default_catalog_contains_installable_profiles() {
+        let profiles = default_tentacle_profiles();
+
+        assert!(profiles.iter().any(|profile| profile.id == "research"));
+        assert!(profiles
+            .iter()
+            .any(|profile| profile.id == "repo-maintainer"));
+        assert!(profiles
+            .iter()
+            .any(|profile| profile.skills.iter().any(|skill| skill.id == "memory")));
+    }
+
+    #[test]
+    fn environment_report_detects_manifests() {
+        let dir = std::env::temp_dir().join(format!("octopus-env-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("docs")).unwrap();
+        fs::write(dir.join("Cargo.toml"), "[workspace]\n").unwrap();
+
+        let report = EnvironmentReport::detect(&dir);
+
+        assert!(report.manifests.contains(&"rust".to_string()));
+        assert!(report.manifests.contains(&"docs".to_string()));
+        assert!(report.recommended_profiles.contains(&"code".to_string()));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn harness_state_installs_profiles_idempotently() {
+        let mut state = HarnessState::default();
+
+        state.install_profile("research").unwrap();
+        state.install_profile("research").unwrap();
+
+        assert_eq!(state.installed_profiles, vec!["research".to_string()]);
+        assert!(state.install_profile("missing").is_err());
     }
 }

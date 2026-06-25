@@ -275,7 +275,7 @@
           <div class="grid">
             <article class="card"><h3>Rust kernel</h3><p>The stable base owns Need, Feed, Feedback, memory state, and route learning.</p></article>
             <article class="card"><h3>Thinking tentacles</h3><p>Each tentacle can own a planner or LLM, choose tools through the Rust core, run them, and return evidence.</p></article>
-            <article class="card"><h3>Three hearts</h3><p>Heartbeat keeps life, memory beat compacts memory, harness beat evolves routes.</p></article>
+            <article class="card"><h3>Adaptive profiles</h3><p>Catalog, skills, chat adapters, and environment detection help users pick the right tentacles.</p></article>
           </div>
         </div>
       </section>
@@ -284,7 +284,11 @@
         <div class="shell">
           <h2>Quick start</h2>
           <pre><code>cargo test
-cargo run -p octopus-core -- need remember "tools stay outside the brain"
+tmp=$(mktemp -d)
+cargo run -q -p octopus-core -- catalog
+cargo run -q -p octopus-core -- --lang zh env
+cargo run -q -p octopus-core -- --state "$tmp/state.json" install research
+cargo run -p octopus-core -- --state "$tmp/state.json" need remember "tools stay outside the brain"
 cargo run -q -p octopus-core --example thinking_tentacle
 pip install -e .
 python examples/smart_tentacle.py</code></pre>

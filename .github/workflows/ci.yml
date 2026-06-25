@@ -13,8 +13,12 @@ jobs:
       - run: cargo test
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo run -q -p octopus-core --example thinking_tentacle
+      - run: cargo run -q -p octopus-core -- catalog
+      - run: cargo run -q -p octopus-core -- --lang zh env
       - run: |
           tmp=$(mktemp -d)
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" install research
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" installed
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh need remember "工具不进大脑"
 
   python:
