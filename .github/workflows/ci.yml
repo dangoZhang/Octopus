@@ -23,9 +23,11 @@ jobs:
           grep -q installed_tentacles "$tmp/state.json"
           grep -q OCTOPUS_LLM_MANIFEST "$tmp/llm.env.example"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" skills | grep -q "swe-workflow"
+          "$tmp/root/bin/octopus" --state "$tmp/state.json" pet harness | grep -q "Octopus pet"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" doctor | grep -q "Octopus doctor"
       - run: cargo run -q -p octopus-core -- catalog
       - run: cargo run -q -p octopus-core -- skills | grep -q "computer-use"
+      - run: cargo run -q -p octopus-core -- --json pet success | grep -q '"state": "success"'
       - run: cargo run -q -p octopus-core -- manifests
       - run: cargo run -q -p octopus-core -- --lang zh env
       - run: python -m json.tool tentacles/tentacle.schema.json > /dev/null

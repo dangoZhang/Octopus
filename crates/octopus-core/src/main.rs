@@ -65,6 +65,17 @@ struct DoctorPetReport {
     exists: bool,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct PetReport {
+    state: String,
+    title: String,
+    summary: String,
+    color: String,
+    path: String,
+    target: String,
+    exists: bool,
+}
+
 #[derive(serde::Serialize)]
 struct InitReport {
     state_path: String,
@@ -298,6 +309,19 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_doctor_report(&report, language);
+            }
+            Ok(())
+        }
+        Some("pet") => {
+            let state = rest.get(1).map(String::as_str).unwrap_or("heartbeat");
+            let report = pet_report(state)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_pet_report(&report, language);
             }
             Ok(())
         }
@@ -752,6 +776,25 @@ fn print_heartbeat_report(report: &HeartbeatReport, language: Language) {
     }
 }
 
+fn print_pet_report(report: &PetReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus pet");
+            println!("state: {}", report.state);
+            println!("summary: {}", report.summary);
+            println!("target: {}", report.target);
+            println!("exists: {}", report.exists);
+        }
+        Language::Zh => {
+            println!("章鱼桌宠");
+            println!("状态: {}", report.state);
+            println!("摘要: {}", report.summary);
+            println!("入口: {}", report.target);
+            println!("存在: {}", report.exists);
+        }
+    }
+}
+
 fn run_demo(repository: &str) -> Result<DemoReport, String> {
     let workspace = env::temp_dir().join(format!("octopus-demo-{}", unique_suffix()));
     let _ = fs::remove_dir_all(&workspace);
@@ -861,6 +904,7 @@ fn init_workspace(state_path: PathBuf, tentacles_root: PathBuf) -> Result<InitRe
     let mut next = vec![
         format!("octopus --state {state_arg} chat \"describe your goal\""),
         format!("octopus --state {state_arg} skills"),
+        format!("octopus --state {state_arg} pet harness"),
         format!("octopus --state {state_arg} need observe ."),
         format!("octopus --state {state_arg} doctor"),
     ];
@@ -999,6 +1043,61 @@ fn init_file_summary(files: &[InitFileReport]) -> String {
         })
         .collect::<Vec<_>>();
     join_or_none(&items)
+}
+
+fn pet_report(state: &str) -> Result<PetReport, String> {
+    let (state, title, summary, color) = pet_state_info(state)?;
+    let path = repo_root().join("docs/pet.html");
+    let path_text = path.to_string_lossy().to_string();
+    Ok(PetReport {
+        state: state.to_string(),
+        title: title.to_string(),
+        summary: summary.to_string(),
+        color: color.to_string(),
+        target: format!("{path_text}?state={state}"),
+        exists: path.exists(),
+        path: path_text,
+    })
+}
+
+fn pet_state_info(
+    state: &str,
+) -> Result<(&'static str, &'static str, &'static str, &'static str), String> {
+    match state {
+        "heartbeat" | "alive" => Ok((
+            "heartbeat",
+            "Heartbeat",
+            "Kernel and chat loop are alive.",
+            "#0f766e",
+        )),
+        "memory" => Ok((
+            "memory",
+            "Memory beat",
+            "Context was recalled, compacted, or forgotten.",
+            "#6d5bd0",
+        )),
+        "harness" | "route" => Ok((
+            "harness",
+            "Harness beat",
+            "Routes or tools are adapting from feedback.",
+            "#cf4d32",
+        )),
+        "blocked" => Ok((
+            "blocked",
+            "Blocked",
+            "The harness needs a grant or external change.",
+            "#a16207",
+        )),
+        "success" | "satisfied" => Ok((
+            "success",
+            "Success",
+            "Feedback returned useful evidence.",
+            "#16833a",
+        )),
+        value => Err(format!(
+            "unknown pet state: {value}; expected heartbeat, memory, harness, blocked, or success"
+        )),
+    }
 }
 
 fn skill_reports(state: &HarnessState, root: PathBuf) -> Result<Vec<SkillReport>, String> {
@@ -1729,12 +1828,12 @@ fn chat_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{localize_summary, run, skill_reports, Language};
+    use super::{localize_summary, pet_report, run, skill_reports, Language};
     use octopus_core::HarnessState;
     use std::fs;
     use std::path::Path;
@@ -1974,6 +2073,18 @@ mod tests {
     }
 
     #[test]
+    fn pet_report_maps_state_to_local_target() {
+        let report = pet_report("route").unwrap();
+
+        assert_eq!(report.state, "harness");
+        assert!(report.target.contains("docs/pet.html?state=harness"));
+        assert!(report.exists);
+        assert!(pet_report("unknown")
+            .unwrap_err()
+            .contains("unknown pet state"));
+    }
+
+    #[test]
     fn cli_status_and_doctor_commands_run() {
         let _env = env_guard();
         let path =
@@ -1981,6 +2092,21 @@ mod tests {
         let state = path.to_string_lossy().to_string();
         let _ = fs::remove_file(&path);
 
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "pet".to_string(),
+            "memory".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "pet".to_string(),
+            "success".to_string(),
+        ])
+        .unwrap();
         run(vec![
             "--state".to_string(),
             state.clone(),
