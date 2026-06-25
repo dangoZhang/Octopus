@@ -27,7 +27,7 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 `src/octopus` is the Python SDK/prototype layer. It is useful for quick integrations, demos, and LLM-tool experiments.
 
-`OpenAiCompatibleChatClient` in Rust and `OpenAICompatibleLLM` in Python adapt any chat-completions-compatible provider through `OCTOPUS_LLM_MODEL`, `OCTOPUS_LLM_BASE_URL`, and `OCTOPUS_LLM_API_KEY`. The Rust adapter keeps the kernel light by using a `curl` runtime adapter. Set `OCTOPUS_LLM_MANIFEST=1` to let installed manifest tentacles ask the provider to pick tools before execution; failures fall back to rule planning.
+`OpenAiCompatibleChatClient` in Rust and `OpenAICompatibleLLM` in Python adapt any chat-completions-compatible provider through `OCTOPUS_LLM_MODEL`, `OCTOPUS_LLM_BASE_URL`, and `OCTOPUS_LLM_API_KEY`. The Rust adapter keeps the kernel light by using a `curl` runtime adapter. Set `OCTOPUS_CHAT_LLM=1` to let chat refine the active goal and suggest cognitive needs without choosing tools. Set `OCTOPUS_LLM_MANIFEST=1` to let installed manifest tentacles ask the provider to pick tools before execution; failures fall back to rule planning.
 
 `demo [repo]` runs a source-local end-to-end loop: adapt, install, chat, feed, probe, heartbeat, self-iteration mode, and pet link.
 
@@ -35,7 +35,7 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 ## Code-As-Harness
 
-`tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Initial profiles include SWE-style `read/edit`, computer-use `mcp/bash`, and bash-only as one transparent seed runtime.
+`tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Initial profiles include SWE-style `read/edit`, computer-use `mcp/bash`, and one transparent bash-only seed.
 
 `contract: octopus-json-v1` lets any runtime receive the same Need/tool/tentacle JSON envelope through stdin and return compact text or structured JSON feedback. Legacy executable entrypoints still work.
 

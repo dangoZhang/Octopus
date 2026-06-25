@@ -92,6 +92,45 @@ pub struct GoalChat {
     pub feedback: Feedback,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct GoalRefinement {
+    pub objective: Option<String>,
+    #[serde(default)]
+    pub constraints: Vec<String>,
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub needs: Vec<GoalNeedSuggestion>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct GoalNeedSuggestion {
+    pub kind: NeedKind,
+    pub query: String,
+}
+
+impl GoalRefinement {
+    pub fn local() -> Self {
+        Self {
+            objective: None,
+            constraints: Vec::new(),
+            summary: None,
+            needs: Vec::new(),
+        }
+    }
+
+    fn source(&self) -> String {
+        if self.objective.is_some()
+            || self.summary.is_some()
+            || !self.constraints.is_empty()
+            || !self.needs.is_empty()
+        {
+            "llm".to_string()
+        } else {
+            "local".to_string()
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GrantStatus {
@@ -887,6 +926,31 @@ where
     }
 }
 
+fn goal_refinement_from_chat<C>(
+    goal: Option<&Goal>,
+    message: &str,
+    client: &mut C,
+) -> Result<GoalRefinement, String>
+where
+    C: ChatClient,
+{
+    let current_goal = goal
+        .map(|goal| serde_json::to_string(goal).unwrap_or_else(|_| "null".to_string()))
+        .unwrap_or_else(|| "null".to_string());
+    let response = client.chat(&[
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain chat layer. Refine the Goal and suggest cognitive Needs only. Do not choose tools or implementation. Return only JSON: {\"objective\":\"short goal\",\"constraints\":[\"short constraint\"],\"summary\":\"short update\",\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!("Current goal JSON: {current_goal}\nUser message: {message}"),
+        ),
+    ])?;
+    serde_json::from_str::<GoalRefinement>(&response.content)
+        .map_err(|error| format!("invalid goal refinement JSON: {error}"))
+}
+
 pub struct PlanningTentacle<P>
 where
     P: Planner,
@@ -1418,20 +1482,81 @@ impl Harness {
 
     pub fn chat(&mut self, message: impl Into<String>) -> GoalChat {
         let message = message.into();
-        let goal = match self.state.goal.take() {
+        self.chat_with_refinement(message, GoalRefinement::local())
+    }
+
+    pub fn chat_with_client<C>(
+        &mut self,
+        message: impl Into<String>,
+        client: &mut C,
+    ) -> Result<GoalChat, String>
+    where
+        C: ChatClient,
+    {
+        let message = message.into();
+        let refinement = goal_refinement_from_chat(self.state.goal.as_ref(), &message, client)?;
+        Ok(self.chat_with_refinement(message, refinement))
+    }
+
+    pub fn chat_with_refinement(
+        &mut self,
+        message: impl Into<String>,
+        refinement: GoalRefinement,
+    ) -> GoalChat {
+        let message = message.into();
+        let mut goal = match self.state.goal.take() {
             Some(mut goal) => {
-                goal.refine(message.clone());
+                let constraints = if refinement.constraints.is_empty() {
+                    vec![message.clone()]
+                } else {
+                    refinement.constraints.clone()
+                };
+                for constraint in constraints {
+                    if let Some(constraint) = clean_optional(Some(constraint.as_str())) {
+                        goal.refine(constraint.to_string());
+                    }
+                }
+                if let Some(objective) = clean_optional(refinement.objective.as_deref()) {
+                    goal.objective = objective.to_string();
+                }
                 goal
             }
-            None => Goal::new(message.clone()),
+            None => {
+                let mut goal = Goal::new(
+                    clean_optional(refinement.objective.as_deref())
+                        .unwrap_or(message.as_str())
+                        .to_string(),
+                );
+                for constraint in &refinement.constraints {
+                    if let Some(constraint) = clean_optional(Some(constraint.as_str())) {
+                        goal.refine(constraint.to_string());
+                    }
+                }
+                goal
+            }
         };
+        goal.signals
+            .insert("chat_source".to_string(), refinement.source());
+        if !refinement.needs.is_empty() {
+            let suggested = refinement
+                .needs
+                .iter()
+                .map(|need| format!("{}: {}", kind_key(&need.kind), need.query))
+                .collect::<Vec<_>>()
+                .join(" | ");
+            goal.signals
+                .insert("suggested_needs".to_string(), suggested);
+        }
         let need = goal.need(NeedKind::Remember, format!("goal update: {message}"));
         let feed = self.feed_one(&need);
         let feedback = Feedback::from_feeds(vec![feed.clone()]);
+        let summary = clean_optional(refinement.summary.as_deref())
+            .map(str::to_string)
+            .unwrap_or_else(|| feed.summary.clone());
         let turn = GoalTurn {
             index: self.state.goal_turns.len() as u64 + 1,
             message,
-            summary: feed.summary,
+            summary,
             status: feed.status,
         };
         self.state.goal = Some(goal.clone());
@@ -3236,6 +3361,10 @@ fn default_tool_query(query: &str) -> String {
     }
 }
 
+fn clean_optional(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
 fn tool_command(tool: &InstalledToolRef, path: &Path) -> Result<Command, String> {
     match tool.kind.as_str() {
         "http" => {
@@ -3583,6 +3712,43 @@ mod tests {
         assert!(harness.state.memory.recall("tentacles", 1)[0]
             .text
             .contains("goal update"));
+    }
+
+    #[test]
+    fn chat_can_refine_goal_with_llm_without_tools() {
+        struct FakeChat;
+
+        impl ChatClient for FakeChat {
+            fn chat(&mut self, _messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                Ok(ChatResponse {
+                    content: r#"{"objective":"build Octopus","constraints":["keep tools outside the brain"],"summary":"goal refined by llm","needs":[{"kind":"observe","query":"inspect README"}]}"#.to_string(),
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
+        let mut harness = Harness::new();
+        let mut client = FakeChat;
+
+        let chat = harness
+            .chat_with_client("make a clean-brain agent", &mut client)
+            .unwrap();
+
+        assert_eq!(chat.goal.objective, "build Octopus");
+        assert_eq!(
+            chat.goal.constraints,
+            vec!["keep tools outside the brain".to_string()]
+        );
+        assert_eq!(chat.turn.summary, "goal refined by llm");
+        assert_eq!(
+            chat.goal.signals.get("suggested_needs").map(String::as_str),
+            Some("observe: inspect README")
+        );
+        assert_eq!(
+            chat.goal.signals.get("chat_source").map(String::as_str),
+            Some("llm")
+        );
+        assert!(harness.state.routes.score(&NeedKind::Remember, "memory") > 1.0);
     }
 
     #[test]

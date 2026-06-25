@@ -8,9 +8,11 @@ Most agents make the brain carry tools, memory, skills, and execution flow. Octo
 
 Tentacles think during execution. A tentacle is an LLM brain prompt, tool metadata, code implementation, and evolution policy. The harness learns which feed works from data.
 
-Initial tentacles are editable code-as-harness: SWE (`read/edit`), computer-use (`mcp/bash`), and bash-only as one transparent seed runtime.
+Initial tentacles are editable code-as-harness: SWE (`read/edit`), computer-use (`mcp/bash`), and one transparent bash-only seed.
 
 Shell is only a seed runtime. A tentacle can declare `contract: octopus-json-v1` and run Python, Node, MCP, HTTP, native code, or any custom adapter.
+
+Set `OCTOPUS_CHAT_LLM=1` for LLM goal refinement; set `OCTOPUS_LLM_MANIFEST=1` for LLM tool planning inside tentacles.
 
 Three hearts keep it alive: heartbeat, memory evolution, and harness route evolution. Color change is a visual pet/status layer outside the kernel.
 

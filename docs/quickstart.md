@@ -31,13 +31,16 @@ octopus --state "$tmp/state.json" goal
 (cd "$tmp" && octopus manifests tentacles)
 ```
 
-Known runtimes get starter code. Any other runtime gets a manifest and `tools/feed` contract so the tentacle can add its own executable adapter.
+Known runtimes get starter code. Any other runtime gets a manifest and `tools/feed` contract so the tentacle can add its own adapter, MCP bridge, native binary, or remote executor.
 
 ## Optional LLM
 
 ```bash
 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" \
   octopus llm "provider check"
+
+OCTOPUS_CHAT_LLM=1 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" \
+  octopus --state "$tmp/state.json" chat "make the harness self-evolve"
 
 OCTOPUS_LLM_MANIFEST=1 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" \
   octopus --state "$tmp/state.json" --json need observe README.md 1 1

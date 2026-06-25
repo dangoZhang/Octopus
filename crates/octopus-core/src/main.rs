@@ -50,6 +50,7 @@ struct DoctorLlmReport {
     api_key_present: bool,
     curl_command: String,
     curl_available: bool,
+    chat_goal_refinement_enabled: bool,
     manifest_planning_enabled: bool,
     message: String,
 }
@@ -167,7 +168,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .ok_or_else(|| "chat requires a message".to_string())?;
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             let mut harness = Harness::with_state(loaded);
-            let chat = harness.chat(message);
+            let chat = if chat_llm_enabled() {
+                let mut client = OpenAiCompatibleChatClient::from_env()?;
+                harness.chat_with_client(message, &mut client)?
+            } else {
+                harness.chat(message)
+            };
             harness
                 .state
                 .save(&state)
@@ -649,6 +655,9 @@ fn print_chat(chat: &GoalChat, language: Language) {
             println!("goal: {}", chat.goal.objective);
             println!("turn {}: {}", chat.turn.index, chat.turn.summary);
             println!("refinements: {}", chat.goal.constraints.len());
+            if let Some(needs) = chat.goal.signals.get("suggested_needs") {
+                println!("suggested needs: {needs}");
+            }
         }
         Language::Zh => {
             println!("目标: {}", chat.goal.objective);
@@ -658,6 +667,9 @@ fn print_chat(chat: &GoalChat, language: Language) {
                 localize_summary(&chat.turn.summary, language)
             );
             println!("调整: {}", chat.goal.constraints.len());
+            if let Some(needs) = chat.goal.signals.get("suggested_needs") {
+                println!("建议需求: {needs}");
+            }
         }
     }
 }
@@ -828,6 +840,7 @@ const LLM_ENV_EXAMPLE: &str = r#"# Copy to llm.env, fill the key, then source th
 export OCTOPUS_LLM_MODEL=gpt-4.1-mini
 export OCTOPUS_LLM_BASE_URL=https://api.openai.com/v1
 export OCTOPUS_LLM_API_KEY=
+export OCTOPUS_CHAT_LLM=1
 export OCTOPUS_LLM_MANIFEST=1
 "#;
 
@@ -1049,6 +1062,7 @@ fn doctor_llm_report() -> DoctorLlmReport {
             api_key_present: config.api_key.is_some(),
             curl_available: command_ready(&config.curl_command),
             curl_command: config.curl_command,
+            chat_goal_refinement_enabled: chat_llm_enabled(),
             manifest_planning_enabled: manifest_llm_enabled(),
             message: "provider env configured; run llm for live check".to_string(),
         },
@@ -1061,6 +1075,7 @@ fn doctor_llm_report() -> DoctorLlmReport {
                 api_key_present: false,
                 curl_available: command_ready(&curl_command),
                 curl_command,
+                chat_goal_refinement_enabled: chat_llm_enabled(),
                 manifest_planning_enabled: manifest_llm_enabled(),
                 message: error,
             }
@@ -1146,7 +1161,7 @@ fn print_doctor_report(report: &DoctorReport, language: Language) {
 fn doctor_llm_line(report: &DoctorLlmReport) -> String {
     if report.configured {
         format!(
-            "configured model={} base_url={} api_key={} curl={}({}) manifest_planning={}",
+            "configured model={} base_url={} api_key={} curl={}({}) chat_refinement={} manifest_planning={}",
             report.model.as_deref().unwrap_or("none"),
             report.base_url.as_deref().unwrap_or("none"),
             if report.api_key_present {
@@ -1160,11 +1175,12 @@ fn doctor_llm_line(report: &DoctorLlmReport) -> String {
             } else {
                 "missing"
             },
+            report.chat_goal_refinement_enabled,
             report.manifest_planning_enabled
         )
     } else {
         format!(
-            "not configured ({}) curl={}({}) manifest_planning={}",
+            "not configured ({}) curl={}({}) chat_refinement={} manifest_planning={}",
             report.message,
             report.curl_command,
             if report.curl_available {
@@ -1172,6 +1188,7 @@ fn doctor_llm_line(report: &DoctorLlmReport) -> String {
             } else {
                 "missing"
             },
+            report.chat_goal_refinement_enabled,
             report.manifest_planning_enabled
         )
     }
@@ -1468,6 +1485,12 @@ fn manifest_llm_enabled() -> bool {
         .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "yes" | "on"))
 }
 
+fn chat_llm_enabled() -> bool {
+    env::var("OCTOPUS_CHAT_LLM")
+        .ok()
+        .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "yes" | "on"))
+}
+
 fn usage() -> String {
     "usage: octopus [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
@@ -1477,6 +1500,13 @@ mod tests {
     use super::{localize_summary, run, Language};
     use std::fs;
     use std::path::Path;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn env_guard() -> MutexGuard<'static, ()> {
+        ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+    }
 
     fn restore_env(key: &str, value: Option<String>) {
         if let Some(value) = value {
@@ -1506,6 +1536,7 @@ mod tests {
 
     #[test]
     fn cli_persists_memory_between_runs() {
+        let _env = env_guard();
         let path =
             std::env::temp_dir().join(format!("octopus-cli-state-{}.json", std::process::id()));
         let state = path.to_string_lossy().to_string();
@@ -1537,6 +1568,7 @@ mod tests {
 
     #[test]
     fn cli_beat_compacts_memory_and_saves_state() {
+        let _env = env_guard();
         let path =
             std::env::temp_dir().join(format!("octopus-beat-state-{}.json", std::process::id()));
         let state = path.to_string_lossy().to_string();
@@ -1574,6 +1606,7 @@ mod tests {
 
     #[test]
     fn cli_rejects_unknown_need_kind() {
+        let _env = env_guard();
         let error = run(vec![
             "need".to_string(),
             "unknown".to_string(),
@@ -1599,6 +1632,7 @@ mod tests {
 
     #[test]
     fn cli_catalog_and_env_commands_run() {
+        let _env = env_guard();
         run(vec!["catalog".to_string()]).unwrap();
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
@@ -1616,6 +1650,7 @@ mod tests {
 
     #[test]
     fn cli_adapts_environment_into_state() {
+        let _env = env_guard();
         let path =
             std::env::temp_dir().join(format!("octopus-adapt-state-{}.json", std::process::id()));
         let state = path.to_string_lossy().to_string();
@@ -1637,6 +1672,7 @@ mod tests {
 
     #[test]
     fn cli_init_creates_state_files_and_adapts_workspace() {
+        let _env = env_guard();
         let dir = std::env::temp_dir().join(format!("octopus-cli-init-{}", std::process::id()));
         let state_path = dir.join("state.json");
         let state = state_path.to_string_lossy().to_string();
@@ -1675,6 +1711,7 @@ mod tests {
 
     #[test]
     fn cli_status_and_doctor_commands_run() {
+        let _env = env_guard();
         let path =
             std::env::temp_dir().join(format!("octopus-status-state-{}.json", std::process::id()));
         let state = path.to_string_lossy().to_string();
@@ -1723,6 +1760,7 @@ mod tests {
 
     #[test]
     fn cli_demo_runs_end_to_end() {
+        let _env = env_guard();
         run(vec!["demo".to_string(), "dangoZhang/Octopus".to_string()]).unwrap();
         run(vec![
             "--json".to_string(),
@@ -1737,6 +1775,7 @@ mod tests {
     fn cli_llm_uses_openai_compatible_env() {
         use std::os::unix::fs::PermissionsExt;
 
+        let _env = env_guard();
         let dir = std::env::temp_dir().join(format!("octopus-cli-llm-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
@@ -1778,9 +1817,65 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn cli_chat_can_use_llm_goal_refiner() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _env = env_guard();
+        let dir = std::env::temp_dir().join(format!("octopus-cli-chat-llm-{}", std::process::id()));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = dir.join("fake-curl.sh");
+        fs::write(
+            &curl,
+            r#"#!/bin/sh
+printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\",\"constraints\":[\"keep tools outside brain\"],\"summary\":\"chat llm refined\",\"needs\":[{\"kind\":\"observe\",\"query\":\"inspect docs\"}]}"}}]}'
+"#,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+
+        let old_chat = std::env::var("OCTOPUS_CHAT_LLM").ok();
+        let old_model = std::env::var("OCTOPUS_LLM_MODEL").ok();
+        let old_base_url = std::env::var("OCTOPUS_LLM_BASE_URL").ok();
+        let old_api_key = std::env::var("OCTOPUS_LLM_API_KEY").ok();
+        let old_curl = std::env::var("OCTOPUS_LLM_CURL").ok();
+        std::env::set_var("OCTOPUS_CHAT_LLM", "1");
+        std::env::set_var("OCTOPUS_LLM_MODEL", "test-model");
+        std::env::set_var("OCTOPUS_LLM_BASE_URL", "https://llm.example/v1");
+        std::env::remove_var("OCTOPUS_LLM_API_KEY");
+        std::env::set_var("OCTOPUS_LLM_CURL", curl.to_string_lossy().to_string());
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "chat".to_string(),
+            "make".to_string(),
+            "tools".to_string(),
+            "think".to_string(),
+        ])
+        .unwrap();
+
+        restore_env("OCTOPUS_CHAT_LLM", old_chat);
+        restore_env("OCTOPUS_LLM_MODEL", old_model);
+        restore_env("OCTOPUS_LLM_BASE_URL", old_base_url);
+        restore_env("OCTOPUS_LLM_API_KEY", old_api_key);
+        restore_env("OCTOPUS_LLM_CURL", old_curl);
+        let content = fs::read_to_string(&state_path).unwrap();
+        assert!(content.contains("chat llm refined"));
+        assert!(content.contains("observe: inspect docs"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn cli_need_can_use_manifest_llm_planning() {
         use std::os::unix::fs::PermissionsExt;
 
+        let _env = env_guard();
         let dir =
             std::env::temp_dir().join(format!("octopus-cli-manifest-llm-{}", std::process::id()));
         let state_path = dir.join("state.json");
@@ -1836,6 +1931,7 @@ mod tests {
 
     #[test]
     fn cli_evolve_writes_tentacle_evolution_draft() {
+        let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!("octopus-cli-evolve-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
@@ -1872,6 +1968,7 @@ mod tests {
 
     #[test]
     fn cli_scaffold_installs_local_tentacle() {
+        let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!("octopus-cli-scaffold-{}", std::process::id()));
         let state_path = dir.join("state.json");
@@ -1912,6 +2009,7 @@ mod tests {
 
     #[test]
     fn cli_installs_profile_into_state() {
+        let _env = env_guard();
         let path =
             std::env::temp_dir().join(format!("octopus-install-state-{}.json", std::process::id()));
         let state = path.to_string_lossy().to_string();
@@ -1942,6 +2040,7 @@ mod tests {
 
     #[test]
     fn cli_installed_manifest_feeds_need() {
+        let _env = env_guard();
         let path =
             std::env::temp_dir().join(format!("octopus-feed-state-{}.json", std::process::id()));
         let state = path.to_string_lossy().to_string();
@@ -1974,6 +2073,9 @@ mod tests {
 
     #[test]
     fn cli_chat_refines_goal() {
+        let _env = env_guard();
+        let old_chat = std::env::var("OCTOPUS_CHAT_LLM").ok();
+        std::env::remove_var("OCTOPUS_CHAT_LLM");
         let path =
             std::env::temp_dir().join(format!("octopus-chat-state-{}.json", std::process::id()));
         let state = path.to_string_lossy().to_string();
@@ -2002,11 +2104,13 @@ mod tests {
         assert!(content.contains("\"objective\": \"build octopus\""));
         assert!(content.contains("make tools think"));
         assert!(content.contains("goal_turns"));
+        restore_env("OCTOPUS_CHAT_LLM", old_chat);
         let _ = fs::remove_file(path);
     }
 
     #[test]
     fn cli_oauth_unlocks_self_iteration_plan() {
+        let _env = env_guard();
         let path =
             std::env::temp_dir().join(format!("octopus-oauth-state-{}.json", std::process::id()));
         let state = path.to_string_lossy().to_string();
