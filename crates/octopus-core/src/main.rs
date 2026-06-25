@@ -91,3 +91,52 @@ fn parse_kind(value: &str) -> Result<NeedKind, String> {
 fn usage() -> String {
     "usage: octopus-core [--state path] [--json] need <kind> <query> | routes".to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::run;
+    use std::fs;
+
+    #[test]
+    fn cli_persists_memory_between_runs() {
+        let path =
+            std::env::temp_dir().join(format!("octopus-cli-state-{}.json", std::process::id()));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "need".to_string(),
+            "remember".to_string(),
+            "clean".to_string(),
+            "brain".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state,
+            "need".to_string(),
+            "recall".to_string(),
+            "clean".to_string(),
+        ])
+        .unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("clean brain"));
+        assert!(content.contains("recall:memory"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_rejects_unknown_need_kind() {
+        let error = run(vec![
+            "need".to_string(),
+            "unknown".to_string(),
+            "query".to_string(),
+        ])
+        .unwrap_err();
+
+        assert!(error.contains("unknown need kind"));
+    }
+}

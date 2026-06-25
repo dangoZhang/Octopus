@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::{Error, ErrorKind};
 use std::path::Path;
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -332,7 +333,8 @@ impl HarnessState {
             return Ok(Self::default());
         }
         let content = fs::read_to_string(path)?;
-        let state = serde_json::from_str(&content).unwrap_or_default();
+        let state = serde_json::from_str(&content)
+            .map_err(|error| Error::new(ErrorKind::InvalidData, error))?;
         Ok(state)
     }
 
@@ -516,5 +518,17 @@ mod tests {
 
         assert_eq!(restored.memory.records.len(), 1);
         assert!(restored.routes.score(&NeedKind::Remember, "memory") > 1.0);
+    }
+
+    #[test]
+    fn invalid_state_file_returns_error() {
+        let path =
+            std::env::temp_dir().join(format!("octopus-invalid-state-{}.json", std::process::id()));
+        fs::write(&path, "{bad json").unwrap();
+
+        let error = HarnessState::load(&path).unwrap_err();
+
+        assert_eq!(error.kind(), ErrorKind::InvalidData);
+        let _ = fs::remove_file(path);
     }
 }

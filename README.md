@@ -2,32 +2,27 @@
 
 > Independent-thinking tools, clean agent brain.
 
-## Why
+## Story
 
-Agents still carry tool burden in the brain. Octopus moves execution intelligence into tentacles and lets data decide the feed.
+Most agents make the brain carry tools, memory, skills, and execution flow. Octopus keeps the brain clean: it only says what cognition it needs.
 
-## What it does
+Tentacles think during execution. They can plan, call sub-LLMs, use tools, and return compact evidence. The harness learns which feed works from data.
 
-- Clean brain: emits cognitive needs only.
-- Tentacle brain: tools can plan, call sub-LLMs, execute, and return evidence.
-- Three hearts: heartbeat, memory evolution, harness route evolution.
-- Color change: image interaction stays outside the kernel.
-- Kernel: Rust. SDK/prototype: Python.
+Three hearts keep it alive: heartbeat, memory evolution, and harness route evolution. Color change can become an image UI layer, outside the kernel.
 
-## Quick start
+The mechanism is `Need -> Feed -> Feedback`; the product promise is less tool burden, stronger tools.
+
+## Quick Start
 
 ```bash
 cargo test
 cargo run -p octopus-core -- need remember "tools stay outside the brain"
-pip install -e .
+cargo run -p octopus-core -- need recall tools
 ```
 
-## Example output
+Output:
 
-`remembered m1`
-
-Mechanism: `Need -> Feed -> Feedback`. The model asks for cognition; the harness supplies evidence.
-
-## Proof
-
-Core: `crates/octopus-core`. SDK: `src/octopus`. Docs: `docs`. License: MIT.
+```text
+remembered m1
+tools stay outside the brain
+```
