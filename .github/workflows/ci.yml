@@ -33,6 +33,9 @@ jobs:
           grep -q runtime_code .octopus/evolution/swe-agent/PATCH_CANDIDATES.md
           grep -q "Patch Drafts" .octopus/evolution/swe-agent/PATCH_DRAFTS.md
           grep -q "authorization_required: true" .octopus/evolution/swe-agent/patches/03-runtime-code.patch.md
+          cargo run -q -p octopus-core -- --state .octopus/apply-state.json evolve apply swe-agent runtime_code | grep -q "needs_authorization"
+          cargo run -q -p octopus-core -- --state .octopus/apply-state.json oauth octopus evolve:swe-agent harness:write
+          cargo run -q -p octopus-core -- --state .octopus/apply-state.json evolve apply swe-agent runtime_code | grep -q "ready_for_authorized_patch"
       - run: |
           cargo run -q -p octopus-core -- --json pet success | grep -q '"state": "success"'
       - run: cargo run -q -p octopus-core -- manifests | grep -q "surfaces=brain_prompt"

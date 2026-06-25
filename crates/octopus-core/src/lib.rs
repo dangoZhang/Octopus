@@ -2290,6 +2290,29 @@ pub struct EvolutionArtifact {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EvolutionApplyPlan {
+    pub tentacle_id: String,
+    pub candidate_id: String,
+    pub objective: String,
+    pub authorized: bool,
+    pub status: String,
+    pub required_grant: String,
+    pub active_grant: Option<String>,
+    pub target: String,
+    pub draft_path: String,
+    pub checks: Vec<String>,
+    pub guardrails: Vec<String>,
+    pub next_steps: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EvolutionApplyArtifact {
+    pub directory: String,
+    pub plan_path: String,
+    pub json_path: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TentacleScaffold {
     pub tentacle_id: String,
     pub runtime: String,
@@ -2458,6 +2481,125 @@ pub fn write_tentacle_evolution_artifacts(
         patch_draft_paths,
         json_path: json_path.to_string_lossy().to_string(),
     })
+}
+
+pub fn plan_tentacle_evolution_apply(
+    proposal: &TentacleEvolutionProposal,
+    state: &HarnessState,
+    candidate_id: &str,
+) -> Result<EvolutionApplyPlan, String> {
+    let candidate = proposal
+        .patch_candidates
+        .iter()
+        .find(|candidate| candidate_matches(candidate, candidate_id))
+        .ok_or_else(|| format!("unknown evolution candidate: {candidate_id}"))?;
+    let required_grant = format!("octopus:evolve:{}", proposal.tentacle_id);
+    let grant = state.active_grant("octopus", &format!("evolve:{}", proposal.tentacle_id));
+    let authorized = grant.is_some_and(|grant| {
+        grant
+            .permissions
+            .iter()
+            .any(|permission| permission == "harness:write")
+    });
+    let active_grant = grant.map(|grant| grant.id.clone());
+    let status = if authorized {
+        "ready_for_authorized_patch"
+    } else {
+        "needs_authorization"
+    };
+    let mut next_steps = vec![format!("review {}", candidate.draft.path)];
+    if authorized {
+        next_steps.push("turn the draft into a narrow harness patch".to_string());
+        next_steps.extend(candidate.checks.iter().map(|check| format!("run: {check}")));
+    } else {
+        next_steps.push(format!(
+            "run: octopus oauth octopus evolve:{} harness:write",
+            proposal.tentacle_id
+        ));
+    }
+    Ok(EvolutionApplyPlan {
+        tentacle_id: proposal.tentacle_id.clone(),
+        candidate_id: candidate.id.clone(),
+        objective: proposal.objective.clone(),
+        authorized,
+        status: status.to_string(),
+        required_grant,
+        active_grant,
+        target: candidate.target.clone(),
+        draft_path: candidate.draft.path.clone(),
+        checks: candidate.checks.clone(),
+        guardrails: vec![
+            "do not modify kernel code from an evolution draft".to_string(),
+            "patch only declared harness targets".to_string(),
+            "run listed checks before commit".to_string(),
+        ],
+        next_steps,
+    })
+}
+
+pub fn write_tentacle_apply_artifacts(
+    workspace_root: impl AsRef<Path>,
+    plan: &EvolutionApplyPlan,
+) -> Result<EvolutionApplyArtifact, String> {
+    let directory = workspace_root
+        .as_ref()
+        .join(".octopus")
+        .join("evolution")
+        .join(&plan.tentacle_id)
+        .join("apply");
+    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    let stem = plan.candidate_id.replace('/', "-");
+    let plan_path = directory.join(format!("{stem}.md"));
+    let json_path = directory.join(format!("{stem}.json"));
+    fs::write(&plan_path, render_tentacle_apply_plan(plan)).map_err(|error| error.to_string())?;
+    fs::write(
+        &json_path,
+        serde_json::to_string_pretty(plan).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(EvolutionApplyArtifact {
+        directory: directory.to_string_lossy().to_string(),
+        plan_path: plan_path.to_string_lossy().to_string(),
+        json_path: json_path.to_string_lossy().to_string(),
+    })
+}
+
+pub fn render_tentacle_apply_plan(plan: &EvolutionApplyPlan) -> String {
+    let mut markdown = String::new();
+    markdown.push_str(&format!(
+        "# Evolution Apply Plan: {}\n\n",
+        plan.candidate_id
+    ));
+    markdown.push_str(&format!("tentacle: `{}`\n", plan.tentacle_id));
+    markdown.push_str(&format!("objective: {}\n", plan.objective));
+    markdown.push_str(&format!("status: `{}`\n", plan.status));
+    markdown.push_str(&format!("authorized: {}\n", plan.authorized));
+    markdown.push_str(&format!("required_grant: `{}`\n", plan.required_grant));
+    if let Some(grant) = &plan.active_grant {
+        markdown.push_str(&format!("active_grant: `{grant}`\n"));
+    }
+    markdown.push_str(&format!("target: `{}`\n", plan.target));
+    markdown.push_str(&format!("draft: `{}`\n\n", plan.draft_path));
+    markdown.push_str("guardrails:\n");
+    for guardrail in &plan.guardrails {
+        markdown.push_str(&format!("- {guardrail}\n"));
+    }
+    markdown.push_str("\nchecks:\n");
+    for check in &plan.checks {
+        markdown.push_str(&format!("- `{check}`\n"));
+    }
+    markdown.push_str("\nnext steps:\n");
+    for step in &plan.next_steps {
+        markdown.push_str(&format!("- {step}\n"));
+    }
+    markdown
+}
+
+fn candidate_matches(candidate: &EvolutionPatchCandidate, value: &str) -> bool {
+    candidate.id == value
+        || candidate.surface_id == value
+        || candidate.id.replace('-', "_") == value
+        || candidate.surface_id.replace('_', "-") == value
 }
 
 pub fn render_tentacle_evolution_proposal(proposal: &TentacleEvolutionProposal) -> String {
@@ -3475,6 +3617,7 @@ pub fn default_permissions(provider: &str) -> Vec<String> {
             "checks:read".to_string(),
             "pull_request:write".to_string(),
         ],
+        "octopus" => vec!["harness:read".to_string(), "harness:write".to_string()],
         _ => vec!["read".to_string()],
     }
 }
@@ -4456,6 +4599,43 @@ mod tests {
         assert!(runtime_draft.contains("diff intent:"));
         assert!(json.contains("\"tentacle_id\": \"swe-agent\""));
         assert!(json.contains("\"patch_candidates\""));
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn tentacle_evolution_apply_plan_respects_authorization() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let proposal = propose_tentacle_evolution(&root, "swe-agent", "improve repo feed").unwrap();
+        let mut state = HarnessState::default();
+
+        let blocked = plan_tentacle_evolution_apply(&proposal, &state, "runtime_code").unwrap();
+        assert!(!blocked.authorized);
+        assert_eq!(blocked.status, "needs_authorization");
+        assert_eq!(blocked.required_grant, "octopus:evolve:swe-agent");
+
+        state.grant_oauth(
+            "octopus",
+            "evolve:swe-agent",
+            default_permissions("octopus"),
+        );
+        let ready = plan_tentacle_evolution_apply(&proposal, &state, "03-runtime-code").unwrap();
+        assert!(ready.authorized);
+        assert_eq!(ready.status, "ready_for_authorized_patch");
+        assert_eq!(
+            ready.active_grant.as_deref(),
+            Some("octopus:evolve:swe-agent")
+        );
+
+        let workspace = std::env::temp_dir().join(format!("octopus-apply-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&workspace);
+        let artifact = write_tentacle_apply_artifacts(&workspace, &ready).unwrap();
+        let markdown = fs::read_to_string(&artifact.plan_path).unwrap();
+        let json = fs::read_to_string(&artifact.json_path).unwrap();
+        assert!(markdown.contains("Evolution Apply Plan"));
+        assert!(markdown.contains("authorized: true"));
+        assert!(json.contains("\"authorized\": true"));
         let _ = fs::remove_dir_all(workspace);
     }
 

@@ -57,10 +57,11 @@ octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 octopus --state "$tmp/state.json" oauth github dangoZhang/Octopus
 octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 octopus evolve swe-agent "improve repository observation feed quality"
+octopus evolve apply swe-agent runtime_code
 tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build a clean-brain agent"
 ```
 
-`evolve` writes `PROPOSAL.md`, `PATCH_CANDIDATES.md`, `PATCH_DRAFTS.md`, `patches/`, and `proposal.json` under `.octopus/evolution/<tentacle>/`.
+`evolve` writes `PROPOSAL.md`, `PATCH_CANDIDATES.md`, `PATCH_DRAFTS.md`, `patches/`, `apply/`, and `proposal.json` under `.octopus/evolution/<tentacle>/`.
 
 ## Expected Signals
 

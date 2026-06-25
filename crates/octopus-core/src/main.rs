@@ -1,11 +1,12 @@
 use octopus_core::{
     default_permissions, default_tentacle_profiles, inspect_tentacle_manifests,
-    load_tentacle_manifests, propose_tentacle_evolution, scaffold_tentacle,
-    write_tentacle_evolution_artifacts, AdaptReport, CapabilityGrant, ChatClient, ChatMessage,
-    ChatRole, EnvironmentReport, EvolutionArtifact, Feed, GoalChat, Harness, HarnessState,
-    HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient, OpenAiCompatibleConfig,
-    SelfIterationPlan, StatusReport, TentacleEvolutionProposal, TentacleManifestReport,
-    TentacleScaffold,
+    load_tentacle_manifests, plan_tentacle_evolution_apply, propose_tentacle_evolution,
+    scaffold_tentacle, write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts,
+    AdaptReport, CapabilityGrant, ChatClient, ChatMessage, ChatRole, EnvironmentReport,
+    EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, Feed, GoalChat, Harness,
+    HarnessState, HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient,
+    OpenAiCompatibleConfig, SelfIterationPlan, StatusReport, TentacleEvolutionProposal,
+    TentacleManifestReport, TentacleScaffold,
 };
 use std::env;
 use std::fs;
@@ -413,6 +414,40 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("evolve") => {
+            if rest.get(1).map(String::as_str) == Some("apply") {
+                let tentacle_id = rest
+                    .get(2)
+                    .ok_or_else(|| "evolve apply requires a tentacle id".to_string())?;
+                let candidate_id = rest
+                    .get(3)
+                    .ok_or_else(|| "evolve apply requires a candidate id".to_string())?;
+                let objective = rest
+                    .get(4..)
+                    .filter(|values| !values.is_empty())
+                    .map(|values| values.join(" "))
+                    .unwrap_or_else(|| "apply evolution candidate".to_string());
+                let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                let proposal =
+                    propose_tentacle_evolution(default_tentacles_root(), tentacle_id, &objective)?;
+                let cwd = env::current_dir().map_err(|error| error.to_string())?;
+                let artifact = write_tentacle_evolution_artifacts(&cwd, &proposal)?;
+                let plan = plan_tentacle_evolution_apply(&proposal, &loaded, candidate_id)?;
+                let apply_artifact = write_tentacle_apply_artifacts(cwd, &plan)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "apply": plan,
+                            "apply_artifact": apply_artifact,
+                            "evolution_artifact": artifact,
+                        }))
+                        .map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_evolution_apply_plan(&plan, &apply_artifact, language);
+                }
+                return Ok(());
+            }
             let tentacle_id = rest
                 .get(1)
                 .ok_or_else(|| "evolve requires a tentacle id".to_string())?;
@@ -1707,6 +1742,35 @@ fn print_evolution_proposal(
     }
 }
 
+fn print_evolution_apply_plan(
+    plan: &EvolutionApplyPlan,
+    artifact: &EvolutionApplyArtifact,
+    language: Language,
+) {
+    match language {
+        Language::En => {
+            println!("tentacle: {}", plan.tentacle_id);
+            println!("candidate: {}", plan.candidate_id);
+            println!("status: {}", plan.status);
+            println!("authorized: {}", plan.authorized);
+            println!("required grant: {}", plan.required_grant);
+            println!("plan: {}", artifact.plan_path);
+            println!("json: {}", artifact.json_path);
+            println!("next: {}", join_or_none(&plan.next_steps));
+        }
+        Language::Zh => {
+            println!("触手: {}", plan.tentacle_id);
+            println!("候选: {}", plan.candidate_id);
+            println!("状态: {}", plan.status);
+            println!("已授权: {}", plan.authorized);
+            println!("所需授权: {}", plan.required_grant);
+            println!("计划: {}", artifact.plan_path);
+            println!("JSON: {}", artifact.json_path);
+            println!("下一步: {}", join_or_none(&plan.next_steps));
+        }
+    }
+}
+
 fn print_tentacle_scaffold(scaffold: &TentacleScaffold, language: Language) {
     match language {
         Language::En => {
@@ -1917,7 +1981,7 @@ fn chat_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | evolve apply <tentacle> <candidate> [objective] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]
@@ -2495,6 +2559,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!("octopus-cli-evolve-{}", std::process::id()));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         std::env::set_current_dir(&dir).unwrap();
@@ -2552,6 +2618,46 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
         assert!(fs::read_to_string(runtime_draft)
             .unwrap()
             .contains("authorization_required: true"));
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "evolve".to_string(),
+            "apply".to_string(),
+            "swe-agent".to_string(),
+            "runtime_code".to_string(),
+        ])
+        .unwrap();
+        let apply_plan = dir
+            .join(".octopus")
+            .join("evolution")
+            .join("swe-agent")
+            .join("apply")
+            .join("03-runtime-code.md");
+        assert!(fs::read_to_string(&apply_plan)
+            .unwrap()
+            .contains("needs_authorization"));
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "oauth".to_string(),
+            "octopus".to_string(),
+            "evolve:swe-agent".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state,
+            "evolve".to_string(),
+            "apply".to_string(),
+            "swe-agent".to_string(),
+            "03-runtime-code".to_string(),
+        ])
+        .unwrap();
+        assert!(fs::read_to_string(apply_plan)
+            .unwrap()
+            .contains("authorized: true"));
         let _ = fs::remove_dir_all(dir);
     }
 
