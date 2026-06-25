@@ -17,7 +17,7 @@ octopus --state "$tmp/state.json" install swe-agent
 octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
 octopus --state "$tmp/state.json" need observe .
-octopus --state "$tmp/state.json" pet harness
+octopus --state "$tmp/state.json" pet
 octopus --state "$tmp/state.json" doctor
 octopus --state "$tmp/state.json" chat "make tools think"
 octopus --state "$tmp/state.json" beat 200

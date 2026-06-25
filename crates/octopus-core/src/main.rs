@@ -313,8 +313,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("pet") => {
-            let state = rest.get(1).map(String::as_str).unwrap_or("heartbeat");
-            let report = pet_report(state)?;
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let pet_state = rest.get(1).map(String::as_str).unwrap_or("auto");
+            let report = pet_report_for_state(&loaded, &state, pet_state)?;
             if json {
                 println!(
                     "{}",
@@ -904,7 +905,7 @@ fn init_workspace(state_path: PathBuf, tentacles_root: PathBuf) -> Result<InitRe
     let mut next = vec![
         format!("octopus --state {state_arg} chat \"describe your goal\""),
         format!("octopus --state {state_arg} skills"),
-        format!("octopus --state {state_arg} pet harness"),
+        format!("octopus --state {state_arg} pet"),
         format!("octopus --state {state_arg} need observe ."),
         format!("octopus --state {state_arg} doctor"),
     ];
@@ -1043,6 +1044,45 @@ fn init_file_summary(files: &[InitFileReport]) -> String {
         })
         .collect::<Vec<_>>();
     join_or_none(&items)
+}
+
+fn pet_report_for_state(
+    state: &HarnessState,
+    state_path: &Path,
+    requested: &str,
+) -> Result<PetReport, String> {
+    let pet_state = if requested == "auto" {
+        let status = state.status_report_with_state(Some(state_path));
+        auto_pet_state(&status)
+    } else {
+        requested
+    };
+    pet_report(pet_state)
+}
+
+fn auto_pet_state(report: &StatusReport) -> &'static str {
+    if report
+        .goal
+        .as_ref()
+        .is_some_and(|goal| goal.status == octopus_core::GoalStatus::Blocked)
+        || report.tentacles.is_empty()
+    {
+        return "blocked";
+    }
+    if report
+        .goal
+        .as_ref()
+        .is_some_and(|goal| goal.status == octopus_core::GoalStatus::Satisfied)
+    {
+        return "success";
+    }
+    if report.route_count > 0 {
+        return "harness";
+    }
+    if report.memory_count > 0 {
+        return "memory";
+    }
+    "heartbeat"
 }
 
 fn pet_report(state: &str) -> Result<PetReport, String> {
@@ -1851,8 +1891,11 @@ fn usage() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{localize_summary, percent_encode_path, pet_report, run, skill_reports, Language};
-    use octopus_core::HarnessState;
+    use super::{
+        localize_summary, percent_encode_path, pet_report, pet_report_for_state, run,
+        skill_reports, Language,
+    };
+    use octopus_core::{Feed, Goal, GoalStatus, HarnessState, Need, NeedKind};
     use std::fs;
     use std::path::Path;
     use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -2105,6 +2148,71 @@ mod tests {
         assert!(pet_report("unknown")
             .unwrap_err()
             .contains("unknown pet state"));
+    }
+
+    #[test]
+    fn pet_auto_state_tracks_harness_state() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let state_path = Path::new("state.json");
+        let mut state = HarnessState::default();
+
+        assert_eq!(
+            pet_report_for_state(&state, state_path, "auto")
+                .unwrap()
+                .state,
+            "blocked"
+        );
+
+        state.install_manifest(root, "swe-agent").unwrap();
+        assert_eq!(
+            pet_report_for_state(&state, state_path, "auto")
+                .unwrap()
+                .state,
+            "heartbeat"
+        );
+
+        state.memory.remember("use memory beat");
+        assert_eq!(
+            pet_report_for_state(&state, state_path, "auto")
+                .unwrap()
+                .state,
+            "memory"
+        );
+
+        let mut feed = Feed::satisfied(
+            &Need::new(NeedKind::Observe, "repo state"),
+            "observed repo",
+            "swe-agent",
+        );
+        feed.metadata
+            .insert("tentacle".to_string(), "swe-agent".to_string());
+        state.routes.learn(&feed);
+        assert_eq!(
+            pet_report_for_state(&state, state_path, "auto")
+                .unwrap()
+                .state,
+            "harness"
+        );
+
+        let mut goal = Goal::new("ship octopus");
+        goal.status = GoalStatus::Satisfied;
+        state.goal = Some(goal);
+        assert_eq!(
+            pet_report_for_state(&state, state_path, "auto")
+                .unwrap()
+                .state,
+            "success"
+        );
+
+        state.goal.as_mut().unwrap().status = GoalStatus::Blocked;
+        assert_eq!(
+            pet_report_for_state(&state, state_path, "auto")
+                .unwrap()
+                .state,
+            "blocked"
+        );
     }
 
     #[test]

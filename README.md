@@ -28,7 +28,7 @@ octopus skills
 octopus install swe-agent
 octopus chat "build a clean-brain agent"
 octopus need observe .
-octopus pet harness
+octopus pet
 octopus doctor
 octopus beat 200
 tmp=$(mktemp -d)
