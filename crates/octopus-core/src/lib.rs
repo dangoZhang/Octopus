@@ -973,6 +973,10 @@ impl HarnessState {
     }
 
     pub fn status_report(&self) -> StatusReport {
+        self.status_report_with_state(None)
+    }
+
+    pub fn status_report_with_state(&self, state_path: Option<&Path>) -> StatusReport {
         let tentacles = self
             .installed_tentacles
             .iter()
@@ -1007,14 +1011,17 @@ impl HarnessState {
         if active_grants.is_empty() {
             warnings.push("no active OAuth grants".to_string());
         }
+        let state_args = state_path
+            .map(|path| format!(" --state {}", shell_arg(&path.to_string_lossy())))
+            .unwrap_or_default();
         let next_action = if self.installed_tentacles.is_empty() {
-            "cargo run -q -p octopus-core -- adapt".to_string()
+            format!("cargo run -q -p octopus-core --{state_args} adapt")
         } else if self.goal.is_none() {
-            "cargo run -q -p octopus-core -- chat \"describe your goal\"".to_string()
+            format!("cargo run -q -p octopus-core --{state_args} chat \"describe your goal\"")
         } else if self.routes.scores.is_empty() {
-            "cargo run -q -p octopus-core -- need observe .".to_string()
+            format!("cargo run -q -p octopus-core --{state_args} need observe .")
         } else {
-            "cargo run -q -p octopus-core -- beat 200".to_string()
+            format!("cargo run -q -p octopus-core --{state_args} beat 200")
         };
         StatusReport {
             hearts: vec![
@@ -2497,6 +2504,17 @@ fn mcp_args(query: &str) -> Vec<String> {
     parts
 }
 
+fn shell_arg(value: &str) -> String {
+    if !value.is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || "/._-=".contains(ch))
+    {
+        return value.to_string();
+    }
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
 fn trim_output(output: &str) -> String {
     const MAX_BYTES: usize = 16_000;
     if output.len() <= MAX_BYTES {
@@ -2682,6 +2700,13 @@ mod tests {
         assert_eq!(
             report.next_action,
             "cargo run -q -p octopus-core -- beat 200".to_string()
+        );
+        let state_path = Path::new("/tmp/octopus state.json");
+        let with_state = harness.state.status_report_with_state(Some(state_path));
+        assert_eq!(
+            with_state.next_action,
+            "cargo run -q -p octopus-core -- --state '/tmp/octopus state.json' beat 200"
+                .to_string()
         );
     }
 

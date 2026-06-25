@@ -59,7 +59,7 @@ goal: build a clean-brain agent
 Octopus status
 hearts: heartbeat=ready, memory=1 memories, harness=2 routes
 warnings: no active OAuth grants
-next: cargo run -q -p octopus-core -- beat 200
+next: cargo run -q -p octopus-core -- --state /tmp/octopus/state.json beat 200
 turn 2: remembered m2
 refinements: 1
 heartbeat: alive

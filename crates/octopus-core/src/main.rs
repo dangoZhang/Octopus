@@ -125,7 +125,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         Some("status") | Some("doctor") => {
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            let report = loaded.status_report();
+            let report = loaded.status_report_with_state(Some(&state));
             if json {
                 println!(
                     "{}",
