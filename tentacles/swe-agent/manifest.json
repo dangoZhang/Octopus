@@ -56,6 +56,28 @@
   ],
   "evolution": {
     "editable": ["manifest.json", "brain.prompt", "tools/*.sh", "future tools in any runtime"],
+    "surfaces": [
+      {
+        "id": "brain_prompt",
+        "description": "Tool-side planning prompt and feedback contract.",
+        "targets": ["brain.prompt", "brain.feedback_contract"]
+      },
+      {
+        "id": "tool_meta",
+        "description": "Repo tool descriptions, inputs, outputs, and call contracts.",
+        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].implementation.contract"]
+      },
+      {
+        "id": "runtime_code",
+        "description": "Editable repository harness implementations.",
+        "targets": ["tools/*.sh", "future tools in any runtime"]
+      },
+      {
+        "id": "evolution_policy",
+        "description": "Checks and constraints that keep repo edits safe.",
+        "targets": ["evolution.checks", "evolution.constraints", "evolution.surfaces"]
+      }
+    ],
     "checks": ["tools/read.sh README.md 1 2", "cargo test"],
     "constraints": ["Keep path safety checks unless a stronger sandbox replaces them."]
   }

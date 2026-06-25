@@ -37,7 +37,7 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 ## Code-As-Harness
 
-`tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Initial profiles include SWE-style `read/edit`, computer-use `mcp/bash`, and one transparent bash-only seed.
+`tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Each manifest declares evolution surfaces: `brain_prompt`, `tool_meta`, `runtime_code`, and `evolution_policy`. Initial profiles include SWE-style `read/edit`, computer-use `mcp/bash`, and one transparent bash-only seed.
 
 `contract: octopus-json-v1` lets any runtime receive the same Need/tool/tentacle JSON envelope through stdin and return compact text or structured JSON feedback. Legacy executable entrypoints still work.
 
@@ -45,7 +45,7 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 `probe <tentacle> <kind> <query>` runs one tentacle without saving state, making runtime contracts debuggable.
 
-`evolve <tentacle> <objective>` writes an auditable draft under `.octopus/evolution/` listing the prompt, metadata, code files, checks, and constraints that can change safely.
+`evolve <tentacle> <objective>` writes an auditable draft under `.octopus/evolution/` listing the surfaces, prompt, metadata, code files, checks, and constraints that can change safely.
 
 ## Color Pet
 

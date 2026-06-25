@@ -66,9 +66,23 @@
     },
     "evolution": {
       "type": "object",
-      "required": ["editable", "checks", "constraints"],
+      "required": ["editable", "surfaces", "checks", "constraints"],
       "properties": {
         "editable": { "type": "array", "items": { "type": "string" } },
+        "surfaces": {
+          "description": "Named harness surfaces the tentacle may evolve: brain prompt, tool metadata, runtime code, and policy.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "description", "targets"],
+            "properties": {
+              "id": { "type": "string" },
+              "description": { "type": "string" },
+              "targets": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+          }
+        },
         "checks": { "type": "array", "items": { "type": "string" } },
         "constraints": { "type": "array", "items": { "type": "string" } }
       },

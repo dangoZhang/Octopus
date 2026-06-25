@@ -29,7 +29,7 @@ jobs:
       - run: cargo run -q -p octopus-core -- skills | grep -q "computer-use"
       - run: |
           cargo run -q -p octopus-core -- --json pet success | grep -q '"state": "success"'
-      - run: cargo run -q -p octopus-core -- manifests
+      - run: cargo run -q -p octopus-core -- manifests | grep -q "surfaces=brain_prompt"
       - run: cargo run -q -p octopus-core -- --lang zh env
       - run: python -m json.tool tentacles/tentacle.schema.json > /dev/null
       - run: python -m json.tool tentacles/swe-agent/manifest.json > /dev/null
@@ -37,6 +37,8 @@ jobs:
       - run: python -m json.tool tentacles/bash-only/manifest.json > /dev/null
       - run: python -m json.tool tentacles/visual/manifest.json > /dev/null
       - run: python -m json.tool tentacles/repo-maintainer/manifest.json > /dev/null
+      - run: grep -q '"surfaces"' tentacles/tentacle.schema.json
+      - run: grep -q '"runtime_code"' tentacles/swe-agent/manifest.json
       - run: grep -q data-state docs/pet.html
       - run: tentacles/swe-agent/tools/read.sh README.md 1 2
       - run: tentacles/repo-maintainer/tools/inspect_repo.sh .

@@ -104,6 +104,7 @@ struct SkillReport {
     needs: Vec<String>,
     tools: Vec<String>,
     runtimes: Vec<String>,
+    evolution_surfaces: Vec<String>,
     installed: bool,
     llm_ready: bool,
 }
@@ -687,7 +688,7 @@ fn print_skill_reports(reports: &[SkillReport], language: Language) {
             (Language::Zh, false) => "可用",
         };
         println!(
-            "- {} [{}:{}; {}] needs={} tools={} runtimes={} :: {}",
+            "- {} [{}:{}; {}] needs={} tools={} runtimes={} surfaces={} :: {}",
             report.id,
             report.source_kind,
             report.source,
@@ -695,6 +696,7 @@ fn print_skill_reports(reports: &[SkillReport], language: Language) {
             join_or_none(&report.needs),
             join_or_none(&report.tools),
             join_or_none(&report.runtimes),
+            join_or_none(&report.evolution_surfaces),
             report.description
         );
     }
@@ -712,11 +714,12 @@ fn print_manifest_reports(reports: &[TentacleManifestReport], language: Language
             format!("missing {}", report.missing_entrypoints.join(","))
         };
         println!(
-            "- {}: brain={}, runtime={}, tools={}, status={}",
+            "- {}: brain={}, runtime={}, tools={}, surfaces={}, status={}",
             report.id,
             report.brain_kind,
             report.runtime_kinds.join(","),
             report.tool_count,
+            join_or_none(&report.evolution_surfaces),
             status
         );
     }
@@ -1184,6 +1187,12 @@ fn skill_reports(state: &HarnessState, root: PathBuf) -> Result<Vec<SkillReport>
                 .installed_tentacles
                 .iter()
                 .any(|installed| installed.id == profile.id);
+        let evolution_surfaces = profile
+            .evolution
+            .surfaces
+            .iter()
+            .map(|surface| surface.id.clone())
+            .collect::<Vec<_>>();
         for skill in profile.skills {
             reports.push(SkillReport {
                 id: skill.id,
@@ -1195,6 +1204,7 @@ fn skill_reports(state: &HarnessState, root: PathBuf) -> Result<Vec<SkillReport>
                 needs: skill.needs.iter().map(need_label).collect(),
                 tools: skill.tools,
                 runtimes: runtimes.clone(),
+                evolution_surfaces: evolution_surfaces.clone(),
                 installed,
                 llm_ready: profile.llm_ready,
             });
@@ -1220,6 +1230,13 @@ fn skill_reports(state: &HarnessState, root: PathBuf) -> Result<Vec<SkillReport>
             .installed_tentacles
             .iter()
             .any(|installed| installed.id == loaded.manifest.id);
+        let evolution_surfaces = loaded
+            .manifest
+            .evolution
+            .surfaces
+            .iter()
+            .map(|surface| surface.id.clone())
+            .collect::<Vec<_>>();
         for skill in loaded.manifest.skills {
             reports.push(SkillReport {
                 id: skill.id.clone(),
@@ -1231,6 +1248,7 @@ fn skill_reports(state: &HarnessState, root: PathBuf) -> Result<Vec<SkillReport>
                 needs: skill.needs.iter().map(need_label).collect(),
                 tools: tools.clone(),
                 runtimes: runtimes.clone(),
+                evolution_surfaces: evolution_surfaces.clone(),
                 installed,
                 llm_ready: loaded.manifest.brain.kind == "llm",
             });
@@ -1656,6 +1674,11 @@ fn print_evolution_proposal(
     artifact: &EvolutionArtifact,
     language: Language,
 ) {
+    let surfaces = proposal
+        .surfaces
+        .iter()
+        .map(|surface| surface.id.clone())
+        .collect::<Vec<_>>();
     match language {
         Language::En => {
             println!("tentacle: {}", proposal.tentacle_id);
@@ -1663,6 +1686,7 @@ fn print_evolution_proposal(
             println!("proposal: {}", artifact.proposal_path);
             println!("json: {}", artifact.json_path);
             println!("editable: {}", join_or_none(&proposal.editable));
+            println!("surfaces: {}", join_or_none(&surfaces));
             println!("checks: {}", join_or_none(&proposal.checks));
         }
         Language::Zh => {
@@ -1671,6 +1695,7 @@ fn print_evolution_proposal(
             println!("草案: {}", artifact.proposal_path);
             println!("JSON: {}", artifact.json_path);
             println!("可编辑: {}", join_or_none(&proposal.editable));
+            println!("可进化面: {}", join_or_none(&surfaces));
             println!("检查: {}", join_or_none(&proposal.checks));
         }
     }
@@ -2490,9 +2515,9 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
             .join("proposal.json");
         assert!(proposal.exists());
         assert!(json.exists());
-        assert!(fs::read_to_string(proposal)
-            .unwrap()
-            .contains("Tentacle Evolution: swe-agent"));
+        let markdown = fs::read_to_string(proposal).unwrap();
+        assert!(markdown.contains("Tentacle Evolution: swe-agent"));
+        assert!(markdown.contains("Evolution Surfaces"));
         let _ = fs::remove_dir_all(dir);
     }
 

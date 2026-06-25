@@ -28,6 +28,28 @@
   ],
   "evolution": {
     "editable": ["manifest.json", "brain.prompt", "docs/pet.html"],
+    "surfaces": [
+      {
+        "id": "brain_prompt",
+        "description": "Prompt that maps harness status into visible pet state.",
+        "targets": ["brain.prompt", "brain.feedback_contract"]
+      },
+      {
+        "id": "tool_meta",
+        "description": "Pet renderer metadata and state contract.",
+        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].implementation.contract"]
+      },
+      {
+        "id": "runtime_code",
+        "description": "Browser-rendered status pet UI.",
+        "targets": ["docs/pet.html"]
+      },
+      {
+        "id": "evolution_policy",
+        "description": "Checks and constraints that keep visuals outside the kernel.",
+        "targets": ["evolution.checks", "evolution.constraints", "evolution.surfaces"]
+      }
+    ],
     "checks": ["grep -q data-state docs/pet.html"],
     "constraints": ["Keep visual state outside Need, Feed, and Feedback."]
   }

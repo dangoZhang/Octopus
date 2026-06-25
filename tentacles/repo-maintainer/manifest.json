@@ -49,6 +49,28 @@
   ],
   "evolution": {
     "editable": ["manifest.json", "brain.prompt", "tools/*.sh", "future GitHub/OAuth adapters"],
+    "surfaces": [
+      {
+        "id": "brain_prompt",
+        "description": "Prompt that turns repo health signals into PR-ready feed.",
+        "targets": ["brain.prompt", "brain.feedback_contract"]
+      },
+      {
+        "id": "tool_meta",
+        "description": "Repository and GitHub tool descriptions, inputs, outputs, and call contracts.",
+        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].implementation.contract"]
+      },
+      {
+        "id": "runtime_code",
+        "description": "Editable local repo, GitHub, OAuth, and PR draft adapters.",
+        "targets": ["tools/*.sh", "future GitHub/OAuth adapters"]
+      },
+      {
+        "id": "evolution_policy",
+        "description": "Checks and constraints that keep self-iteration grant-bound.",
+        "targets": ["evolution.checks", "evolution.constraints", "evolution.surfaces"]
+      }
+    ],
     "checks": [
       "tools/inspect_repo.sh .",
       "tools/github_status.sh dangoZhang/Octopus",

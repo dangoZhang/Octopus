@@ -28,6 +28,28 @@
   ],
   "evolution": {
     "editable": ["manifest.json", "brain.prompt", "tools/write_and_run.sh"],
+    "surfaces": [
+      {
+        "id": "brain_prompt",
+        "description": "Prompt that turns an execution Need into a readable script.",
+        "targets": ["brain.prompt", "brain.feedback_contract"]
+      },
+      {
+        "id": "tool_meta",
+        "description": "Script runner metadata and JSON contract shape.",
+        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].implementation.contract"]
+      },
+      {
+        "id": "runtime_code",
+        "description": "Auditable script-writing and execution adapter.",
+        "targets": ["tools/write_and_run.sh"]
+      },
+      {
+        "id": "evolution_policy",
+        "description": "Checks and constraints for replayable generated scripts.",
+        "targets": ["evolution.checks", "evolution.constraints", "evolution.surfaces"]
+      }
+    ],
     "checks": ["printf 'echo ok\\n' | tools/write_and_run.sh $(mktemp -d)"],
     "constraints": ["Generated scripts should stay readable and replayable."]
   }

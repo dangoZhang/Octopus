@@ -6,7 +6,7 @@
 
 Most agents make the brain carry tools, memory, skills, and execution flow. Octopus keeps the brain clean: it only says what cognition it needs.
 
-Tentacles think during execution. A tentacle is an LLM brain prompt, tool metadata, code implementation, and evolution policy. The harness learns which feed works from data.
+Tentacles think during execution. A tentacle is an LLM brain prompt, tool metadata, code implementation, and evolution policy. Its evolution surfaces are explicit: `brain_prompt`, `tool_meta`, `runtime_code`, and `evolution_policy`.
 
 Initial tentacles are editable code-as-harness: SWE (`read/edit`), computer-use (`mcp/bash`), and one transparent bash-only seed.
 

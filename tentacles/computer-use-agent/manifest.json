@@ -56,6 +56,28 @@
   ],
   "evolution": {
     "editable": ["manifest.json", "brain.prompt", "tools/*.sh", "future MCP/native/browser tools"],
+    "surfaces": [
+      {
+        "id": "brain_prompt",
+        "description": "Tool-side UI planning prompt and feedback contract.",
+        "targets": ["brain.prompt", "brain.feedback_contract"]
+      },
+      {
+        "id": "tool_meta",
+        "description": "Desktop tool descriptions, inputs, outputs, and call contracts.",
+        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].implementation.contract"]
+      },
+      {
+        "id": "runtime_code",
+        "description": "Editable UI, MCP, shell, native, or browser adapters.",
+        "targets": ["tools/*.sh", "future MCP/native/browser tools"]
+      },
+      {
+        "id": "evolution_policy",
+        "description": "Checks and constraints that keep user-visible actions controlled.",
+        "targets": ["evolution.checks", "evolution.constraints", "evolution.surfaces"]
+      }
+    ],
     "checks": ["tools/describe_screen.sh"],
     "constraints": ["Ask for user-visible actions only when the product flow grants it."]
   }

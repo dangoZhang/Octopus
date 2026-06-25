@@ -221,6 +221,7 @@ pub struct TentacleStatus {
     pub needs: Vec<String>,
     pub tool_count: usize,
     pub editable: Vec<String>,
+    pub evolution_surfaces: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -1180,6 +1181,7 @@ impl HarnessState {
                 needs: tentacle.needs.clone(),
                 tool_count: tentacle.tool_meta.len().max(tentacle.tools.len()),
                 editable: tentacle.editable.clone(),
+                evolution_surfaces: tentacle.evolution_surfaces.clone(),
             })
             .collect::<Vec<_>>();
         let active_grants = self
@@ -2119,6 +2121,15 @@ pub struct EvolutionPolicy {
     pub editable: Vec<String>,
     pub checks: Vec<String>,
     pub constraints: Vec<String>,
+    #[serde(default = "default_evolution_surfaces")]
+    pub surfaces: Vec<EvolutionSurface>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EvolutionSurface {
+    pub id: String,
+    pub description: String,
+    pub targets: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -2149,6 +2160,8 @@ pub struct InstalledTentacle {
     #[serde(default)]
     pub tool_meta: Vec<InstalledTool>,
     pub editable: Vec<String>,
+    #[serde(default)]
+    pub evolution_surfaces: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -2218,6 +2231,7 @@ pub struct TentacleManifestReport {
     pub needs: Vec<String>,
     pub tool_count: usize,
     pub editable: Vec<String>,
+    pub evolution_surfaces: Vec<String>,
     pub missing_entrypoints: Vec<String>,
 }
 
@@ -2230,6 +2244,7 @@ pub struct TentacleEvolutionProposal {
     pub brain_kind: String,
     pub current_brain_prompt: String,
     pub editable: Vec<String>,
+    pub surfaces: Vec<EvolutionSurface>,
     pub checks: Vec<String>,
     pub constraints: Vec<String>,
     pub files: Vec<EvolutionFileTarget>,
@@ -2357,6 +2372,7 @@ pub fn propose_tentacle_evolution(
         brain_kind: loaded.manifest.brain.kind,
         current_brain_prompt: loaded.manifest.brain.prompt,
         editable: loaded.manifest.evolution.editable,
+        surfaces: loaded.manifest.evolution.surfaces,
         checks: loaded.manifest.evolution.checks,
         constraints: loaded.manifest.evolution.constraints,
         files,
@@ -2408,6 +2424,15 @@ pub fn render_tentacle_evolution_proposal(proposal: &TentacleEvolutionProposal) 
         markdown.push_str(&format!(
             "- `{}`: {} ({})\n",
             file.path, file.action, file.rationale
+        ));
+    }
+    markdown.push_str("\n## Evolution Surfaces\n\n");
+    for surface in &proposal.surfaces {
+        markdown.push_str(&format!(
+            "- `{}`: {} [{}]\n",
+            surface.id,
+            surface.description,
+            surface.targets.join(", ")
         ));
     }
     markdown.push_str("\n## Constraints\n\n");
@@ -2578,6 +2603,28 @@ fn scaffold_manifest(tentacle_id: &str, runtime: &str, entrypoint: &str) -> serd
         ],
         "evolution": {
             "editable": ["manifest.json", "brain.prompt", "tools/*"],
+            "surfaces": [
+                {
+                    "id": "brain_prompt",
+                    "description": "Tool-side LLM prompt and feedback contract.",
+                    "targets": ["brain.prompt", "brain.feedback_contract"]
+                },
+                {
+                    "id": "tool_meta",
+                    "description": "Tool descriptions, inputs, outputs, and call contracts.",
+                    "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].implementation.contract"]
+                },
+                {
+                    "id": "runtime_code",
+                    "description": "Executable harness code owned by the tentacle.",
+                    "targets": ["tools/*"]
+                },
+                {
+                    "id": "evolution_policy",
+                    "description": "Checks, constraints, and the declared edit surface.",
+                    "targets": ["evolution.checks", "evolution.constraints", "evolution.surfaces"]
+                }
+            ],
             "checks": ["python3 -m json.tool manifest.json > /dev/null"],
             "constraints": ["Keep octopus-json-v1 input and compact feedback output stable."]
         }
@@ -2992,9 +3039,47 @@ fn evolution_policy(checks: &[&str], constraints: &[&str]) -> EvolutionPolicy {
             "brain.prompt".to_string(),
             "tools/*".to_string(),
         ],
+        surfaces: default_evolution_surfaces(),
         checks: checks.iter().map(|item| item.to_string()).collect(),
         constraints: constraints.iter().map(|item| item.to_string()).collect(),
     }
+}
+
+fn default_evolution_surfaces() -> Vec<EvolutionSurface> {
+    vec![
+        EvolutionSurface {
+            id: "brain_prompt".to_string(),
+            description: "Tool-side LLM prompt and feedback contract.".to_string(),
+            targets: vec![
+                "brain.prompt".to_string(),
+                "brain.feedback_contract".to_string(),
+            ],
+        },
+        EvolutionSurface {
+            id: "tool_meta".to_string(),
+            description: "Tool descriptions, inputs, outputs, and call contracts.".to_string(),
+            targets: vec![
+                "tools[].description".to_string(),
+                "tools[].input".to_string(),
+                "tools[].output".to_string(),
+                "tools[].implementation.contract".to_string(),
+            ],
+        },
+        EvolutionSurface {
+            id: "runtime_code".to_string(),
+            description: "Executable harness code owned by the tentacle.".to_string(),
+            targets: vec!["tools/*".to_string()],
+        },
+        EvolutionSurface {
+            id: "evolution_policy".to_string(),
+            description: "Checks, constraints, and the declared edit surface.".to_string(),
+            targets: vec![
+                "evolution.checks".to_string(),
+                "evolution.constraints".to_string(),
+                "evolution.surfaces".to_string(),
+            ],
+        },
+    ]
 }
 
 fn manifest_report(root: &Path, loaded: LoadedTentacleManifest) -> TentacleManifestReport {
@@ -3026,6 +3111,14 @@ fn manifest_report(root: &Path, loaded: LoadedTentacleManifest) -> TentacleManif
         .map(|tool| tool.implementation.entrypoint.clone())
         .collect::<Vec<_>>();
 
+    let evolution_surfaces = loaded
+        .manifest
+        .evolution
+        .surfaces
+        .iter()
+        .map(|surface| surface.id.clone())
+        .collect::<Vec<_>>();
+
     TentacleManifestReport {
         id: loaded.manifest.id,
         name: loaded.manifest.name,
@@ -3035,6 +3128,7 @@ fn manifest_report(root: &Path, loaded: LoadedTentacleManifest) -> TentacleManif
         needs,
         tool_count: loaded.manifest.tools.len(),
         editable: loaded.manifest.evolution.editable,
+        evolution_surfaces,
         missing_entrypoints,
     }
 }
@@ -3120,6 +3214,7 @@ fn installed_tentacle_from_manifest(
         tools,
         tool_meta,
         editable: report.editable,
+        evolution_surfaces: report.evolution_surfaces,
     })
 }
 
@@ -3975,6 +4070,15 @@ mod tests {
             .unwrap()
             .editable
             .contains(&"brain.prompt".to_string()));
+        assert!(reports.iter().all(|report| report
+            .evolution_surfaces
+            .contains(&"brain_prompt".to_string())));
+        assert!(reports
+            .iter()
+            .all(|report| report.evolution_surfaces.contains(&"tool_meta".to_string())));
+        assert!(reports.iter().all(|report| report
+            .evolution_surfaces
+            .contains(&"runtime_code".to_string())));
     }
 
     #[test]
@@ -4031,6 +4135,28 @@ mod tests {
   ],
   "evolution": {
     "editable": ["manifest.json"],
+    "surfaces": [
+      {
+        "id": "brain_prompt",
+        "description": "Remote planning prompt.",
+        "targets": ["brain.prompt", "brain.feedback_contract"]
+      },
+      {
+        "id": "tool_meta",
+        "description": "Remote tool call metadata.",
+        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].implementation.contract"]
+      },
+      {
+        "id": "runtime_code",
+        "description": "Remote HTTP endpoint adapter.",
+        "targets": ["tools[].implementation.entrypoint"]
+      },
+      {
+        "id": "evolution_policy",
+        "description": "Remote tool checks and constraints.",
+        "targets": ["evolution.checks", "evolution.constraints", "evolution.surfaces"]
+      }
+    ],
     "checks": ["cargo test"],
     "constraints": ["Keep the JSON contract stable."]
   }
@@ -4062,6 +4188,10 @@ mod tests {
         assert!(proposal.current_brain_prompt.contains("cognitive Need"));
         assert!(proposal.editable.contains(&"brain.prompt".to_string()));
         assert!(proposal
+            .surfaces
+            .iter()
+            .any(|surface| surface.id == "runtime_code"));
+        assert!(proposal
             .files
             .iter()
             .any(|file| file.path == "manifest.json#brain.prompt"));
@@ -4078,6 +4208,7 @@ mod tests {
 
         assert!(markdown.contains("# Tentacle Evolution: swe-agent"));
         assert!(markdown.contains("improve repository observation feed quality"));
+        assert!(markdown.contains("## Evolution Surfaces"));
         assert!(json.contains("\"tentacle_id\": \"swe-agent\""));
         let _ = fs::remove_dir_all(workspace);
     }
@@ -4128,6 +4259,7 @@ print(json.dumps({
                 contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
             }],
             editable: vec!["tools/tool.py".to_string()],
+            evolution_surfaces: vec!["runtime_code".to_string()],
         });
 
         let feed = tentacle.feed(&Need::new(NeedKind::Observe, "README.md"));
@@ -4169,6 +4301,9 @@ print(json.dumps({
         assert!(tentacles_root.join("tentacle.schema.json").exists());
         assert_eq!(reports[0].id, "custom_feed");
         assert!(reports[0].missing_entrypoints.is_empty());
+        assert!(reports[0]
+            .evolution_surfaces
+            .contains(&"runtime_code".to_string()));
 
         let mut state = HarnessState::default();
         state
@@ -4209,6 +4344,9 @@ print(json.dumps({
             .iter()
             .any(|step| step.contains("add executable")));
         assert_eq!(reports[0].runtime_kinds, vec!["rust".to_string()]);
+        assert!(reports[0]
+            .evolution_surfaces
+            .contains(&"tool_meta".to_string()));
         assert_eq!(
             reports[0].missing_entrypoints,
             vec!["tools/feed".to_string()]
@@ -4302,6 +4440,9 @@ print(json.dumps({
             .iter()
             .any(|tool| tool.id == "inspect_repo"
                 && tool.description.contains("Summarize repo state")));
+        assert!(installed
+            .evolution_surfaces
+            .contains(&"runtime_code".to_string()));
         assert!(state.install_manifest(&root, "missing").is_err());
     }
 
