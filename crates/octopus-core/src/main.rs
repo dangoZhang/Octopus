@@ -688,6 +688,38 @@ mod tests {
     }
 
     #[test]
+    fn cli_installed_manifest_feeds_need() {
+        let path =
+            std::env::temp_dir().join(format!("octopus-feed-state-{}.json", std::process::id()));
+        let state = path.to_string_lossy().to_string();
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .to_string_lossy()
+            .to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "install".to_string(),
+            "swe-agent".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "need".to_string(),
+            "observe".to_string(),
+            repo,
+        ])
+        .unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("observe:swe-agent"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn cli_chat_refines_goal() {
         let path =
             std::env::temp_dir().join(format!("octopus-chat-state-{}.json", std::process::id()));

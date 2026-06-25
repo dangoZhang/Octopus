@@ -41,6 +41,7 @@ jobs:
           cargo run -q -p octopus-core -- --state "$tmp/state.json" install swe-agent
           cargo run -q -p octopus-core -- --state "$tmp/state.json" installed
           grep -q installed_tentacles "$tmp/state.json"
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe . | grep -q "== project =="
           cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build octopus"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" beat 200

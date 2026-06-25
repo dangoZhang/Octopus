@@ -15,7 +15,12 @@ else
 fi
 
 echo "== project =="
-test -f Cargo.toml && echo "rust"
-test -f pyproject.toml && echo "python"
-test -f package.json && echo "javascript"
-
+if [ -f Cargo.toml ]; then
+  echo "rust"
+fi
+if [ -f pyproject.toml ]; then
+  echo "python"
+fi
+if [ -f package.json ]; then
+  echo "javascript"
+fi

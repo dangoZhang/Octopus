@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{Error, ErrorKind};
-use std::path::Path;
-use std::process::Command;
+use std::io::{Error, ErrorKind, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -1045,14 +1045,24 @@ impl Harness {
     }
 
     pub fn with_state(state: HarnessState) -> Self {
-        Self {
+        let mut harness = Self {
             state,
             tentacles: Vec::new(),
-        }
+        };
+        harness.add_installed_tentacles();
+        harness
     }
 
     pub fn add_tentacle(&mut self, tentacle: Box<dyn Tentacle>) {
         self.tentacles.push(tentacle);
+    }
+
+    fn add_installed_tentacles(&mut self) {
+        for tentacle in self.state.installed_tentacles.clone() {
+            if tentacle.runtime_kinds.iter().any(|kind| kind == "shell") {
+                self.add_tentacle(Box::new(ManifestShellTentacle::new(tentacle)));
+            }
+        }
     }
 
     pub fn feed_one(&mut self, need: &Need) -> Feed {
@@ -1167,6 +1177,169 @@ impl Harness {
 impl Default for Harness {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct InstalledToolRef {
+    id: String,
+    kind: String,
+    entrypoint: String,
+}
+
+impl InstalledToolRef {
+    fn parse(value: &str) -> Option<Self> {
+        let mut parts = value.splitn(3, ':');
+        Some(Self {
+            id: parts.next()?.to_string(),
+            kind: parts.next()?.to_string(),
+            entrypoint: parts.next()?.to_string(),
+        })
+    }
+}
+
+pub struct ManifestShellTentacle {
+    route_id: String,
+    installed: InstalledTentacle,
+    tools: Vec<InstalledToolRef>,
+}
+
+impl ManifestShellTentacle {
+    pub fn new(installed: InstalledTentacle) -> Self {
+        let route_id = installed.id.clone();
+        let tools = installed
+            .tools
+            .iter()
+            .filter_map(|tool| InstalledToolRef::parse(tool))
+            .filter(|tool| tool.kind == "shell")
+            .collect();
+        Self {
+            route_id,
+            installed,
+            tools,
+        }
+    }
+
+    fn select_tool(&self, need: &Need) -> Option<&InstalledToolRef> {
+        let preferred = match need.kind {
+            NeedKind::Observe => ["inspect_repo", "describe_screen", "read"].as_slice(),
+            NeedKind::Verify | NeedKind::Reproduce => {
+                ["run_tests", "github_status", "inspect_repo", "read"].as_slice()
+            }
+            NeedKind::Compare => ["inspect_repo", "read"].as_slice(),
+            NeedKind::Execute => ["write_and_run"].as_slice(),
+            _ => [].as_slice(),
+        };
+        preferred
+            .iter()
+            .find_map(|id| self.tools.iter().find(|tool| tool.id == *id))
+    }
+
+    fn tool_path(&self, tool: &InstalledToolRef) -> PathBuf {
+        let entrypoint = Path::new(&tool.entrypoint);
+        if entrypoint.is_absolute() {
+            return entrypoint.to_path_buf();
+        }
+        Path::new(&self.installed.source)
+            .parent()
+            .map(|parent| parent.join(entrypoint))
+            .unwrap_or_else(|| entrypoint.to_path_buf())
+    }
+
+    fn run_tool(&self, tool: &InstalledToolRef, need: &Need) -> ToolResult {
+        let path = self.tool_path(tool);
+        if !path.exists() {
+            return ToolResult::failed(format!("missing tool entrypoint: {}", path.display()));
+        }
+
+        let mut command = Command::new(&path);
+        match tool.id.as_str() {
+            "inspect_repo" | "run_tests" | "github_status" => {
+                command.arg(default_tool_query(&need.query));
+            }
+            "read" => {
+                for arg in read_args(&need.query) {
+                    command.arg(arg);
+                }
+            }
+            "write_and_run" => {
+                command.arg(".");
+                command.stdin(Stdio::piped());
+            }
+            _ => {
+                command.arg(default_tool_query(&need.query));
+            }
+        }
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(error) => {
+                return ToolResult::failed(format!("{} failed to start: {error}", tool.id))
+            }
+        };
+        if tool.id == "write_and_run" {
+            if let Some(mut stdin) = child.stdin.take() {
+                if let Err(error) = stdin.write_all(need.query.as_bytes()) {
+                    return ToolResult::failed(format!("{} stdin failed: {error}", tool.id));
+                }
+            }
+        }
+        let output = match child.wait_with_output() {
+            Ok(output) => output,
+            Err(error) => return ToolResult::failed(format!("{} failed: {error}", tool.id)),
+        };
+        let text = trim_output(&String::from_utf8_lossy(if output.stdout.is_empty() {
+            &output.stderr
+        } else {
+            &output.stdout
+        }));
+        let mut result = if output.status.success() {
+            ToolResult::satisfied(&tool.id, text)
+        } else {
+            ToolResult::failed(text)
+        };
+        result.metadata.insert("tool".to_string(), tool.id.clone());
+        result
+            .metadata
+            .insert("entrypoint".to_string(), path.to_string_lossy().to_string());
+        result.metadata.insert(
+            "returncode".to_string(),
+            exit_code(&output.status).to_string(),
+        );
+        result
+    }
+}
+
+impl Tentacle for ManifestShellTentacle {
+    fn name(&self) -> &str {
+        &self.route_id
+    }
+
+    fn supports(&self, need: &Need) -> bool {
+        self.installed
+            .needs
+            .iter()
+            .any(|need_key| need_key == kind_key(&need.kind))
+            && self.select_tool(need).is_some()
+    }
+
+    fn feed(&mut self, need: &Need) -> Feed {
+        let Some(tool) = self.select_tool(need) else {
+            return Feed::unsupported(need, "no manifest tool supports this need");
+        };
+        let result = self.run_tool(tool, need);
+        let status = result.status.clone();
+        let mut metadata = result.metadata.clone();
+        metadata.insert("tool".to_string(), tool.id.clone());
+        metadata.insert("runtime".to_string(), "shell".to_string());
+        metadata.insert("tentacle_brain".to_string(), self.route_id.clone());
+        Feed {
+            need: need.clone(),
+            status,
+            evidence: result.evidence,
+            summary: result.output,
+            metadata,
+        }
     }
 }
 
@@ -1309,8 +1482,9 @@ pub fn load_tentacle_manifests(
         let content = fs::read_to_string(&path)?;
         let manifest = serde_json::from_str::<TentacleManifest>(&content)
             .map_err(|error| Error::new(ErrorKind::InvalidData, error))?;
+        let source = fs::canonicalize(&path).unwrap_or(path);
         manifests.push(LoadedTentacleManifest {
-            path: path.to_string_lossy().to_string(),
+            path: source.to_string_lossy().to_string(),
             manifest,
         });
     }
@@ -1944,6 +2118,42 @@ fn route_key(kind: &NeedKind, name: &str) -> String {
     format!("{}:{name}", kind_key(kind))
 }
 
+fn default_tool_query(query: &str) -> String {
+    let query = query.trim();
+    if query.is_empty() {
+        ".".to_string()
+    } else {
+        query.to_string()
+    }
+}
+
+fn read_args(query: &str) -> Vec<String> {
+    let mut args = query
+        .split_whitespace()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if args.is_empty() {
+        args.push("README.md".to_string());
+    }
+    args
+}
+
+fn trim_output(output: &str) -> String {
+    const MAX_BYTES: usize = 16_000;
+    if output.len() <= MAX_BYTES {
+        return output.trim().to_string();
+    }
+    let mut end = MAX_BYTES;
+    while !output.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\n[truncated]", output[..end].trim())
+}
+
+fn exit_code(status: &std::process::ExitStatus) -> i32 {
+    status.code().unwrap_or(-1)
+}
+
 fn tool_status(results: &[ToolResult]) -> Status {
     if results
         .iter()
@@ -1978,7 +2188,7 @@ mod tests {
 
         let feedback = harness.feed(&[Need::new(NeedKind::Recall, "tools")]);
 
-        assert_eq!(feedback.status, Status::Satisfied);
+        assert_eq!(feedback.status, Status::Satisfied, "{}", feedback.summary);
         assert!(feedback.summary.contains("tools stay outside the brain"));
     }
 
@@ -2317,5 +2527,28 @@ mod tests {
             .iter()
             .any(|tool| tool.contains("read:shell")));
         assert!(state.install_manifest(&root, "missing").is_err());
+    }
+
+    #[test]
+    fn installed_manifest_tentacle_feeds_observe_need() {
+        let repo = fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")).unwrap();
+        let mut state = HarnessState::default();
+        state
+            .install_manifest(repo.join("tentacles"), "swe-agent")
+            .unwrap();
+        let mut harness = Harness::with_state(state);
+
+        let feedback = harness.feed(&[Need::new(
+            NeedKind::Observe,
+            repo.to_string_lossy().to_string(),
+        )]);
+
+        assert_eq!(feedback.status, Status::Satisfied, "{}", feedback.summary);
+        assert!(feedback.summary.contains("== project =="));
+        assert_eq!(
+            feedback.feeds[0].metadata.get("tool"),
+            Some(&"inspect_repo".to_string())
+        );
+        assert!(harness.state.routes.score(&NeedKind::Observe, "swe-agent") > 1.0);
     }
 }
