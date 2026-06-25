@@ -2268,6 +2268,15 @@ pub struct EvolutionPatchCandidate {
     pub rationale: String,
     pub change_plan: Vec<String>,
     pub checks: Vec<String>,
+    pub draft: EvolutionPatchDraft,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EvolutionPatchDraft {
+    pub path: String,
+    pub status: String,
+    pub authorization_required: bool,
+    pub apply_hint: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -2275,6 +2284,8 @@ pub struct EvolutionArtifact {
     pub directory: String,
     pub proposal_path: String,
     pub candidates_path: String,
+    pub drafts_path: String,
+    pub patch_draft_paths: Vec<String>,
     pub json_path: String,
 }
 
@@ -2412,13 +2423,28 @@ pub fn write_tentacle_evolution_artifacts(
         .join("evolution")
         .join(&proposal.tentacle_id);
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    let patches_dir = directory.join("patches");
+    fs::create_dir_all(&patches_dir).map_err(|error| error.to_string())?;
     let proposal_path = directory.join("PROPOSAL.md");
     let candidates_path = directory.join("PATCH_CANDIDATES.md");
+    let drafts_path = directory.join("PATCH_DRAFTS.md");
     let json_path = directory.join("proposal.json");
     fs::write(&proposal_path, render_tentacle_evolution_proposal(proposal))
         .map_err(|error| error.to_string())?;
     fs::write(&candidates_path, render_tentacle_patch_candidates(proposal))
         .map_err(|error| error.to_string())?;
+    fs::write(&drafts_path, render_tentacle_patch_drafts(proposal))
+        .map_err(|error| error.to_string())?;
+    let mut patch_draft_paths = Vec::new();
+    for candidate in &proposal.patch_candidates {
+        let draft_path = directory.join(&candidate.draft.path);
+        if let Some(parent) = draft_path.parent() {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        fs::write(&draft_path, render_single_patch_draft(proposal, candidate))
+            .map_err(|error| error.to_string())?;
+        patch_draft_paths.push(draft_path.to_string_lossy().to_string());
+    }
     fs::write(
         &json_path,
         serde_json::to_string_pretty(proposal).map_err(|error| error.to_string())?,
@@ -2428,6 +2454,8 @@ pub fn write_tentacle_evolution_artifacts(
         directory: directory.to_string_lossy().to_string(),
         proposal_path: proposal_path.to_string_lossy().to_string(),
         candidates_path: candidates_path.to_string_lossy().to_string(),
+        drafts_path: drafts_path.to_string_lossy().to_string(),
+        patch_draft_paths,
         json_path: json_path.to_string_lossy().to_string(),
     })
 }
@@ -2492,6 +2520,12 @@ pub fn render_tentacle_patch_candidates(proposal: &TentacleEvolutionProposal) ->
         markdown.push_str(&format!("surface: `{}`\n", candidate.surface_id));
         markdown.push_str(&format!("target: `{}`\n", candidate.target));
         markdown.push_str(&format!("rationale: {}\n\n", candidate.rationale));
+        markdown.push_str(&format!("draft: `{}`\n", candidate.draft.path));
+        markdown.push_str(&format!("status: `{}`\n", candidate.draft.status));
+        markdown.push_str(&format!(
+            "authorization required: {}\n\n",
+            candidate.draft.authorization_required
+        ));
         markdown.push_str("change plan:\n");
         for step in &candidate.change_plan {
             markdown.push_str(&format!("- {step}\n"));
@@ -2501,6 +2535,46 @@ pub fn render_tentacle_patch_candidates(proposal: &TentacleEvolutionProposal) ->
             markdown.push_str(&format!("- `{check}`\n"));
         }
         markdown.push('\n');
+    }
+    markdown
+}
+
+pub fn render_tentacle_patch_drafts(proposal: &TentacleEvolutionProposal) -> String {
+    let mut markdown = String::new();
+    markdown.push_str(&format!("# Patch Drafts: {}\n\n", proposal.tentacle_id));
+    markdown.push_str("These drafts are local review artifacts. They do not modify harness files until a user or authorized repo tentacle turns one into a patch.\n\n");
+    for candidate in &proposal.patch_candidates {
+        markdown.push_str(&format!(
+            "- `{}` -> `{}` ({})\n",
+            candidate.id, candidate.draft.path, candidate.draft.status
+        ));
+    }
+    markdown
+}
+
+pub fn render_single_patch_draft(
+    proposal: &TentacleEvolutionProposal,
+    candidate: &EvolutionPatchCandidate,
+) -> String {
+    let mut markdown = String::new();
+    markdown.push_str(&format!("# Patch Draft: {}\n\n", candidate.id));
+    markdown.push_str(&format!("tentacle: `{}`\n", proposal.tentacle_id));
+    markdown.push_str(&format!("objective: {}\n", proposal.objective));
+    markdown.push_str(&format!("surface: `{}`\n", candidate.surface_id));
+    markdown.push_str(&format!("target: `{}`\n", candidate.target));
+    markdown.push_str(&format!("status: `{}`\n", candidate.draft.status));
+    markdown.push_str(&format!(
+        "authorization_required: {}\n",
+        candidate.draft.authorization_required
+    ));
+    markdown.push_str(&format!("apply_hint: {}\n\n", candidate.draft.apply_hint));
+    markdown.push_str("diff intent:\n");
+    for step in &candidate.change_plan {
+        markdown.push_str(&format!("- {step}\n"));
+    }
+    markdown.push_str("\nchecks:\n");
+    for check in &candidate.checks {
+        markdown.push_str(&format!("- `{check}`\n"));
     }
     markdown
 }
@@ -3237,15 +3311,30 @@ fn evolution_patch_candidates(
         .iter()
         .enumerate()
         .map(|(index, surface)| EvolutionPatchCandidate {
-            id: format!("{:02}-{}", index + 1, surface.id.replace('_', "-")),
+            id: evolution_candidate_id(index, &surface.id),
             surface_id: surface.id.clone(),
             title: evolution_candidate_title(&surface.id, tentacle_id),
             target: evolution_candidate_target(manifest_dir, surface),
             rationale: format!("advance {objective} through {}", surface.description),
             change_plan: evolution_candidate_plan(surface),
             checks: checks.clone(),
+            draft: evolution_patch_draft(index, surface),
         })
         .collect()
+}
+
+fn evolution_candidate_id(index: usize, surface_id: &str) -> String {
+    format!("{:02}-{}", index + 1, surface_id.replace('_', "-"))
+}
+
+fn evolution_patch_draft(index: usize, surface: &EvolutionSurface) -> EvolutionPatchDraft {
+    let id = evolution_candidate_id(index, &surface.id);
+    EvolutionPatchDraft {
+        path: format!("patches/{id}.patch.md"),
+        status: "draft_pending_authorization".to_string(),
+        authorization_required: true,
+        apply_hint: "review the draft, create a narrow harness patch, run listed checks, then commit through an explicit grant".to_string(),
+    }
 }
 
 fn evolution_candidate_title(surface_id: &str, tentacle_id: &str) -> String {
@@ -4331,7 +4420,8 @@ mod tests {
             .patch_candidates
             .iter()
             .any(|candidate| candidate.surface_id == "runtime_code"
-                && candidate.title.contains("runtime harness")));
+                && candidate.title.contains("runtime harness")
+                && candidate.draft.authorization_required));
         assert!(proposal
             .files
             .iter()
@@ -4346,6 +4436,13 @@ mod tests {
         let artifact = write_tentacle_evolution_artifacts(&workspace, &proposal).unwrap();
         let markdown = fs::read_to_string(&artifact.proposal_path).unwrap();
         let candidates = fs::read_to_string(&artifact.candidates_path).unwrap();
+        let drafts = fs::read_to_string(&artifact.drafts_path).unwrap();
+        let runtime_draft_path = artifact
+            .patch_draft_paths
+            .iter()
+            .find(|path| path.contains("03-runtime-code"))
+            .unwrap();
+        let runtime_draft = fs::read_to_string(runtime_draft_path).unwrap();
         let json = fs::read_to_string(&artifact.json_path).unwrap();
 
         assert!(markdown.contains("# Tentacle Evolution: swe-agent"));
@@ -4354,6 +4451,9 @@ mod tests {
         assert!(markdown.contains("## Patch Candidates"));
         assert!(candidates.contains("# Patch Candidates: swe-agent"));
         assert!(candidates.contains("surface: `runtime_code`"));
+        assert!(drafts.contains("# Patch Drafts: swe-agent"));
+        assert!(runtime_draft.contains("authorization_required: true"));
+        assert!(runtime_draft.contains("diff intent:"));
         assert!(json.contains("\"tentacle_id\": \"swe-agent\""));
         assert!(json.contains("\"patch_candidates\""));
         let _ = fs::remove_dir_all(workspace);

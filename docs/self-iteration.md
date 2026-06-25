@@ -51,7 +51,7 @@ Harness evolution drafts stay local and auditable:
 octopus evolve swe-agent "improve repository observation feed quality"
 ```
 
-The draft lands under `.octopus/evolution/<tentacle>/` with `PROPOSAL.md`, `PATCH_CANDIDATES.md`, and `proposal.json`. The candidate queue is grouped by evolution surface, so prompt, metadata, runtime code, and policy changes stay reviewable.
+The draft lands under `.octopus/evolution/<tentacle>/` with `PROPOSAL.md`, `PATCH_CANDIDATES.md`, `PATCH_DRAFTS.md`, per-candidate files under `patches/`, and `proposal.json`. The queue is grouped by evolution surface, so prompt, metadata, runtime code, and policy changes stay reviewable before any authorized patch.
 
 ## Guardrails
 

@@ -1685,6 +1685,7 @@ fn print_evolution_proposal(
             println!("objective: {}", proposal.objective);
             println!("proposal: {}", artifact.proposal_path);
             println!("candidates: {}", artifact.candidates_path);
+            println!("patch drafts: {}", artifact.drafts_path);
             println!("json: {}", artifact.json_path);
             println!("candidate count: {}", proposal.patch_candidates.len());
             println!("editable: {}", join_or_none(&proposal.editable));
@@ -1696,6 +1697,7 @@ fn print_evolution_proposal(
             println!("目标: {}", proposal.objective);
             println!("草案: {}", artifact.proposal_path);
             println!("候选: {}", artifact.candidates_path);
+            println!("补丁草案: {}", artifact.drafts_path);
             println!("JSON: {}", artifact.json_path);
             println!("候选数量: {}", proposal.patch_candidates.len());
             println!("可编辑: {}", join_or_none(&proposal.editable));
@@ -2522,8 +2524,21 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
             .join("evolution")
             .join("swe-agent")
             .join("PATCH_CANDIDATES.md");
+        let drafts = dir
+            .join(".octopus")
+            .join("evolution")
+            .join("swe-agent")
+            .join("PATCH_DRAFTS.md");
+        let runtime_draft = dir
+            .join(".octopus")
+            .join("evolution")
+            .join("swe-agent")
+            .join("patches")
+            .join("03-runtime-code.patch.md");
         assert!(proposal.exists());
         assert!(candidates.exists());
+        assert!(drafts.exists());
+        assert!(runtime_draft.exists());
         assert!(json.exists());
         let markdown = fs::read_to_string(proposal).unwrap();
         assert!(markdown.contains("Tentacle Evolution: swe-agent"));
@@ -2531,6 +2546,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
         let candidates_markdown = fs::read_to_string(candidates).unwrap();
         assert!(candidates_markdown.contains("Patch Candidates: swe-agent"));
         assert!(candidates_markdown.contains("runtime_code"));
+        assert!(fs::read_to_string(drafts)
+            .unwrap()
+            .contains("Patch Drafts: swe-agent"));
+        assert!(fs::read_to_string(runtime_draft)
+            .unwrap()
+            .contains("authorization_required: true"));
         let _ = fs::remove_dir_all(dir);
     }
 
