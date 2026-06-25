@@ -305,8 +305,9 @@ cargo run -q -p octopus-core -- --state "$tmp/state.json" adapt
 cargo run -q -p octopus-core -- --state "$tmp/state.json" install research
 cargo run -q -p octopus-core -- --state "$tmp/state.json" install swe-agent
 cargo run -q -p octopus-core -- --state "$tmp/state.json" installed
-cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe .
 cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build a clean-brain agent"
+cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe .
+cargo run -q -p octopus-core -- --state "$tmp/state.json" status
 cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" beat 200
 cargo run -q -p octopus-core -- --state "$tmp/state.json" goal

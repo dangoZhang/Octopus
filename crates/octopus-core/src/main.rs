@@ -1,7 +1,7 @@
 use octopus_core::{
     default_permissions, default_tentacle_profiles, inspect_tentacle_manifests, AdaptReport,
     CapabilityGrant, EnvironmentReport, GoalChat, Harness, HarnessState, HeartbeatReport, Need,
-    NeedKind, SelfIterationPlan, TentacleManifestReport,
+    NeedKind, SelfIterationPlan, StatusReport, TentacleManifestReport,
 };
 use std::env;
 use std::path::PathBuf;
@@ -120,6 +120,19 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_goal(&loaded, language);
+            }
+            Ok(())
+        }
+        Some("status") | Some("doctor") => {
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let report = loaded.status_report();
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_status_report(&report, language);
             }
             Ok(())
         }
@@ -459,6 +472,70 @@ fn localize_beat(name: &str) -> &str {
     }
 }
 
+fn print_status_report(report: &StatusReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus status");
+            println!(
+                "hearts: {}",
+                report
+                    .hearts
+                    .iter()
+                    .map(|beat| format!("{}={}", beat.name, beat.summary))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            println!("profiles: {}", join_or_none(&report.installed_profiles));
+            println!("tentacles: {}", status_tentacles(report));
+            println!("goal: {}", status_goal(report));
+            println!("grants: {}", join_or_none(&report.active_grants));
+            println!("warnings: {}", join_or_none(&report.warnings));
+            println!("next: {}", report.next_action);
+        }
+        Language::Zh => {
+            println!("章鱼状态");
+            println!(
+                "心脏: {}",
+                report
+                    .hearts
+                    .iter()
+                    .map(|beat| format!("{}={}", localize_beat(&beat.name), beat.summary))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            println!("配置: {}", join_or_none(&report.installed_profiles));
+            println!("触手: {}", status_tentacles(report));
+            println!("目标: {}", status_goal(report));
+            println!("授权: {}", join_or_none(&report.active_grants));
+            println!("警告: {}", join_or_none(&report.warnings));
+            println!("下一步: {}", report.next_action);
+        }
+    }
+}
+
+fn status_tentacles(report: &StatusReport) -> String {
+    let items = report
+        .tentacles
+        .iter()
+        .map(|tentacle| {
+            format!(
+                "{}({}; {} tools)",
+                tentacle.id,
+                tentacle.runtime_kinds.join(","),
+                tentacle.tool_count
+            )
+        })
+        .collect::<Vec<_>>();
+    join_or_none(&items)
+}
+
+fn status_goal(report: &StatusReport) -> String {
+    report.goal.as_ref().map_or_else(
+        || "none".to_string(),
+        |goal| format!("{} ({} refinements)", goal.objective, goal.refinements),
+    )
+}
+
 fn print_goal(state: &HarnessState, language: Language) {
     let Some(goal) = &state.goal else {
         match language {
@@ -592,7 +669,7 @@ fn default_tentacles_root() -> PathBuf {
 }
 
 fn usage() -> String {
-    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | goal | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]
@@ -729,6 +806,47 @@ mod tests {
         assert!(content.contains("installed_profiles"));
         assert!(content.contains("installed_tentacles"));
         assert!(content.contains("visual"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_status_and_doctor_commands_run() {
+        let path =
+            std::env::temp_dir().join(format!("octopus-status-state-{}.json", std::process::id()));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "status".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--lang".to_string(),
+            "zh".to_string(),
+            "doctor".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "install".to_string(),
+            "swe-agent".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "status".to_string(),
+        ])
+        .unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("swe-agent"));
         let _ = fs::remove_file(path);
     }
 

@@ -156,6 +156,37 @@ pub struct AdaptReport {
     pub skipped_manifests: Vec<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct StatusReport {
+    pub hearts: Vec<HeartBeat>,
+    pub memory_count: usize,
+    pub route_count: usize,
+    pub installed_profiles: Vec<String>,
+    pub tentacles: Vec<TentacleStatus>,
+    pub goal: Option<GoalSnapshot>,
+    pub active_grants: Vec<String>,
+    pub warnings: Vec<String>,
+    pub next_action: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TentacleStatus {
+    pub id: String,
+    pub name: String,
+    pub brain_kind: String,
+    pub runtime_kinds: Vec<String>,
+    pub needs: Vec<String>,
+    pub tool_count: usize,
+    pub editable: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct GoalSnapshot {
+    pub objective: String,
+    pub refinements: usize,
+    pub status: GoalStatus,
+}
+
 impl Need {
     pub fn new(kind: NeedKind, query: impl Into<String>) -> Self {
         Self {
@@ -938,6 +969,85 @@ impl HarnessState {
                     )]),
                 },
             ],
+        }
+    }
+
+    pub fn status_report(&self) -> StatusReport {
+        let tentacles = self
+            .installed_tentacles
+            .iter()
+            .map(|tentacle| TentacleStatus {
+                id: tentacle.id.clone(),
+                name: tentacle.name.clone(),
+                brain_kind: tentacle.brain_kind.clone(),
+                runtime_kinds: tentacle.runtime_kinds.clone(),
+                needs: tentacle.needs.clone(),
+                tool_count: tentacle.tool_meta.len().max(tentacle.tools.len()),
+                editable: tentacle.editable.clone(),
+            })
+            .collect::<Vec<_>>();
+        let active_grants = self
+            .grants
+            .iter()
+            .filter(|grant| grant.status == GrantStatus::Active)
+            .map(|grant| grant.id.clone())
+            .collect::<Vec<_>>();
+        let goal = self.goal.as_ref().map(|goal| GoalSnapshot {
+            objective: goal.objective.clone(),
+            refinements: goal.constraints.len(),
+            status: goal.status.clone(),
+        });
+        let mut warnings = Vec::new();
+        if self.installed_tentacles.is_empty() {
+            warnings.push("no installed tentacle manifests".to_string());
+        }
+        if self.goal.is_none() {
+            warnings.push("no active goal".to_string());
+        }
+        if active_grants.is_empty() {
+            warnings.push("no active OAuth grants".to_string());
+        }
+        let next_action = if self.installed_tentacles.is_empty() {
+            "cargo run -q -p octopus-core -- adapt".to_string()
+        } else if self.goal.is_none() {
+            "cargo run -q -p octopus-core -- chat \"describe your goal\"".to_string()
+        } else if self.routes.scores.is_empty() {
+            "cargo run -q -p octopus-core -- need observe .".to_string()
+        } else {
+            "cargo run -q -p octopus-core -- beat 200".to_string()
+        };
+        StatusReport {
+            hearts: vec![
+                HeartBeat {
+                    name: "heartbeat".to_string(),
+                    changed: false,
+                    summary: "ready".to_string(),
+                    data: BTreeMap::new(),
+                },
+                HeartBeat {
+                    name: "memory".to_string(),
+                    changed: false,
+                    summary: format!("{} memories", self.memory.len()),
+                    data: BTreeMap::from([("records".to_string(), self.memory.len().to_string())]),
+                },
+                HeartBeat {
+                    name: "harness".to_string(),
+                    changed: false,
+                    summary: format!("{} routes", self.routes.scores.len()),
+                    data: BTreeMap::from([(
+                        "routes".to_string(),
+                        self.routes.scores.len().to_string(),
+                    )]),
+                },
+            ],
+            memory_count: self.memory.len(),
+            route_count: self.routes.scores.len(),
+            installed_profiles: self.installed_profiles.clone(),
+            tentacles,
+            goal,
+            active_grants,
+            warnings,
+            next_action,
         }
     }
 
@@ -2515,6 +2625,63 @@ mod tests {
                 .find(|beat| beat.name == "memory")
                 .unwrap()
                 .changed
+        );
+    }
+
+    #[test]
+    fn harness_state_status_report_is_read_only_doctor() {
+        let mut state = HarnessState::default();
+        let empty = state.status_report();
+
+        assert_eq!(empty.memory_count, 0);
+        assert_eq!(empty.route_count, 0);
+        assert_eq!(
+            empty
+                .hearts
+                .iter()
+                .map(|beat| beat.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["heartbeat", "memory", "harness"]
+        );
+        assert_eq!(
+            empty.next_action,
+            "cargo run -q -p octopus-core -- adapt".to_string()
+        );
+        assert!(empty
+            .warnings
+            .contains(&"no installed tentacle manifests".to_string()));
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        state.install_manifest(&root, "swe-agent").unwrap();
+        state.grant_oauth(
+            "github",
+            "dangoZhang/Octopus",
+            default_permissions("github"),
+        );
+        let mut harness = Harness::with_state(state);
+        harness.chat("build a clean-brain agent");
+        harness.feed_one(&Need::new(NeedKind::Observe, "."));
+        let report = harness.state.status_report();
+
+        assert_eq!(report.tentacles[0].id, "swe-agent");
+        assert_eq!(report.tentacles[0].brain_kind, "llm");
+        assert!(report.tentacles[0]
+            .runtime_kinds
+            .contains(&"shell".to_string()));
+        assert_eq!(report.tentacles[0].tool_count, 5);
+        assert_eq!(
+            report.goal.as_ref().unwrap().objective,
+            "build a clean-brain agent"
+        );
+        assert_eq!(
+            report.active_grants,
+            vec!["github:dangoZhang/Octopus".to_string()]
+        );
+        assert_eq!(
+            report.next_action,
+            "cargo run -q -p octopus-core -- beat 200".to_string()
         );
     }
 

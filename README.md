@@ -26,8 +26,9 @@ cargo run -q -p octopus-core -- --state "$tmp/state.json" adapt
 cargo run -q -p octopus-core -- --state "$tmp/state.json" install research
 cargo run -q -p octopus-core -- --state "$tmp/state.json" install swe-agent
 cargo run -q -p octopus-core -- --state "$tmp/state.json" installed
-cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe .
 cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build a clean-brain agent"
+cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe .
+cargo run -q -p octopus-core -- --state "$tmp/state.json" status
 cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think through tentacles"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" beat 200
 cargo run -q -p octopus-core -- --state "$tmp/state.json" goal
@@ -48,13 +49,17 @@ Tentacle manifests:
 - computer-use-agent: brain=llm, runtime=mcp,shell, tools=5, status=ok
 - visual: brain=llm, runtime=static-html, tools=1, status=ok
 推荐触手: memory, visual, repo-maintainer, swe-agent, code, research, bash-only, computer-use-agent
-adapted tentacles:
+adapted tentacles: visual, repo-maintainer, swe-agent, bash-only, computer-use-agent
 installed research
 installed swe-agent (runtimes: shell)
-profiles:
-tentacles:
-== project ==
+profiles: memory, visual, repo-maintainer, swe-agent, code, research, bash-only, computer-use-agent
+tentacles: visual(static-html), repo-maintainer(shell), swe-agent(shell), bash-only(shell), computer-use-agent(mcp,shell)
 goal: build a clean-brain agent
+== project ==
+Octopus status
+hearts: heartbeat=ready, memory=1 memories, harness=2 routes
+warnings: no active OAuth grants
+next: cargo run -q -p octopus-core -- beat 200
 turn 2: remembered m2
 refinements: 1
 heartbeat: alive

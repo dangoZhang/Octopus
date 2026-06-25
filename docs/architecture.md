@@ -13,6 +13,7 @@ Octopus keeps the non-evolvable base small.
 - `RouteBook`: data-driven routing that learns from feed quality.
 - `HarnessState`: persistent memory and routes.
 - `HeartbeatReport`: three-heart pulse for liveness, memory compaction, and route evolution.
+- `StatusReport`: read-only doctor view for hearts, installed tentacles, grants, goal, warnings, and next action.
 - `ManifestTentacle`: installed manifests become feed providers through runtime adapters and return plan metadata for supported needs.
 - `PlanningTentacle`: tool-side planner that selects tools before execution.
 - `ChatPlanner`: provider-neutral chat adapter for LLM-backed tentacle brains.
