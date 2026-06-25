@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Octopus</title>
-    <meta name="description" content="Need -> Feed -> Feedback agent core with a clean brain and evolvable harness." />
+    <meta name="description" content="Independent-thinking tools with a clean agent brain and evolvable harness." />
     <style>
       :root {
         color-scheme: light;
@@ -244,6 +244,7 @@
         <div class="brand">Octopus</div>
         <div class="nav-links">
           <a href="#core">Core</a>
+          <a href="./about.html">About</a>
           <a href="#quickstart">Quick start</a>
           <a class="button" href="https://github.com/dangoZhang/Octopus">GitHub</a>
         </div>
@@ -254,13 +255,13 @@
       <section class="hero shell">
         <div>
           <h1>Octopus</h1>
-          <p class="lead">A clean agent brain with smart arms. The model asks for cognition; an evolvable harness supplies the feed.</p>
+          <p class="lead">Independent-thinking tools with a clean agent brain. The model asks for cognition; an evolvable harness supplies the feed.</p>
           <div class="flow" aria-label="Need Feed Feedback flow">
-            <div class="node need"><strong>Need</strong><span>verify, reproduce, compare, remember, forget, execute</span></div>
+            <div class="node need"><strong>Clean brain</strong><span>verify, reproduce, compare, remember, forget, execute</span></div>
             <div class="arrow">-&gt;</div>
-            <div class="node feed"><strong>Feed</strong><span>tool-side planner, memory, shell, browser, sub-LLM</span></div>
+            <div class="node feed"><strong>Tentacle brain</strong><span>tool-side planner, memory, shell, browser, sub-LLM</span></div>
             <div class="arrow">-&gt;</div>
-            <div class="node feedback"><strong>Feedback</strong><span>compact evidence, route signals, next cognitive supply</span></div>
+            <div class="node feedback"><strong>Data feed</strong><span>compact evidence, route signals, next cognitive supply</span></div>
           </div>
         </div>
       </section>
@@ -269,7 +270,7 @@
         <div class="shell">
           <h2>Core</h2>
           <div class="grid">
-            <article class="card"><h3>Clean brain</h3><p>The brain emits Need objects. It never imports tools or hard-codes execution flow.</p></article>
+            <article class="card"><h3>Rust kernel</h3><p>The stable base owns Need, Feed, Feedback, memory state, and route learning.</p></article>
             <article class="card"><h3>Thinking tentacles</h3><p>Each tentacle can own a planner or LLM, choose tools, run them, and return evidence.</p></article>
             <article class="card"><h3>Three hearts</h3><p>Heartbeat keeps life, memory beat compacts memory, harness beat evolves routes.</p></article>
           </div>
@@ -279,16 +280,17 @@
       <section id="quickstart">
         <div class="shell">
           <h2>Quick start</h2>
-          <pre><code>pip install -e .
-octopus need remember "tools stay outside the brain"
+          <pre><code>cargo test
+cargo run -p octopus-core -- need remember "tools stay outside the brain"
+pip install -e .
 python examples/smart_tentacle.py</code></pre>
-          <p class="copy">No framework lock-in. Add a tentacle, give it tools, let data improve routing.</p>
+          <p class="copy">The kernel stays small. SDKs and tentacles can evolve around it.</p>
         </div>
       </section>
     </main>
 
     <footer>
-      <div class="shell">MIT licensed. Built around Need -&gt; Feed -&gt; Feedback.</div>
+      <div class="shell">MIT licensed. Rust kernel, Python SDK, evolvable harness.</div>
     </footer>
   </body>
 </html>

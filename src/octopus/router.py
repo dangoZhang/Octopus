@@ -51,8 +51,17 @@ class RouteBook:
     def snapshot(self) -> dict[str, float]:
         return {f"{kind}:{name}": value for (kind, name), value in sorted(self._scores.items())}
 
+    @classmethod
+    def from_snapshot(cls, data: dict[str, float], *, base_score: float = 1.0) -> "RouteBook":
+        book = cls(base_score=base_score)
+        for route, score in data.items():
+            if ":" not in route:
+                continue
+            kind, name = route.split(":", 1)
+            book._scores[(kind, name)] = float(score)
+        return book
+
     def _confidence(self, feed: Feed) -> float:
         if not feed.evidence:
             return 0.5
         return sum(item.confidence for item in feed.evidence) / len(feed.evidence)
-

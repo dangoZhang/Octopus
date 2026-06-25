@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 from collections import defaultdict
+from pathlib import Path
+from typing import Any
 from typing import Iterable
 
 from .brain import Brain
@@ -14,11 +17,11 @@ from .tentacle import FunctionTentacle, Tentacle
 class Harness:
     """Data-driven feed layer between a clean brain and tool tentacles."""
 
-    def __init__(self, *, memory: MemoryStore | None = None):
+    def __init__(self, *, memory: MemoryStore | None = None, router: RouteBook | None = None):
         self.memory = memory or MemoryStore()
         self._tentacles: list[Tentacle] = []
         self._scores: dict[str, float] = defaultdict(lambda: 1.0)
-        self.router = RouteBook()
+        self.router = router or RouteBook()
         self._history: list[Feed] = []
         self.add_tentacle(FunctionTentacle("memory", [NeedType.REMEMBER], self._remember))
         self.add_tentacle(FunctionTentacle("forget", [NeedType.FORGET], self._forget))
@@ -44,6 +47,29 @@ class Harness:
 
     def evolve(self) -> None:
         self.router.decay()
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "version": 1,
+            "memory": self.memory.snapshot(),
+            "routes": self.router.snapshot(),
+        }
+
+    def save(self, path: str | Path) -> None:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(self.snapshot(), ensure_ascii=False, indent=2), encoding="utf-8")
+
+    @classmethod
+    def load(cls, path: str | Path) -> "Harness":
+        source = Path(path)
+        if not source.exists():
+            return cls()
+        data = json.loads(source.read_text(encoding="utf-8"))
+        return cls(
+            memory=MemoryStore.from_snapshot(data.get("memory", {})),
+            router=RouteBook.from_snapshot(data.get("routes", {})),
+        )
 
     def _feed_one(self, need: Need) -> Feed:
         candidates = [tentacle for tentacle in self._tentacles if tentacle.supports(need)]

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from time import time
 from typing import Any
 from uuid import uuid4
@@ -14,10 +16,29 @@ class MemoryRecord:
     created_at: float = field(default_factory=time)
     weight: float = 1.0
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "text": self.text,
+            "metadata": self.metadata,
+            "created_at": self.created_at,
+            "weight": self.weight,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "MemoryRecord":
+        return cls(
+            id=str(data["id"]),
+            text=str(data["text"]),
+            metadata=dict(data.get("metadata", {})),
+            created_at=float(data.get("created_at", time())),
+            weight=float(data.get("weight", 1.0)),
+        )
+
 
 class MemoryStore:
-    def __init__(self):
-        self._records: dict[str, MemoryRecord] = {}
+    def __init__(self, records: tuple[MemoryRecord, ...] = ()):
+        self._records: dict[str, MemoryRecord] = {record.id: record for record in records}
 
     def remember(self, text: str, **metadata: Any) -> MemoryRecord:
         record = MemoryRecord(text=text, metadata=metadata)
@@ -59,3 +80,24 @@ class MemoryStore:
 
     def __len__(self) -> int:
         return len(self._records)
+
+    def snapshot(self) -> dict[str, Any]:
+        records = sorted(self._records.values(), key=lambda record: record.created_at)
+        return {"records": [record.to_dict() for record in records]}
+
+    @classmethod
+    def from_snapshot(cls, data: dict[str, Any]) -> "MemoryStore":
+        records = tuple(MemoryRecord.from_dict(item) for item in data.get("records", []))
+        return cls(records)
+
+    def save(self, path: str | Path) -> None:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(self.snapshot(), ensure_ascii=False, indent=2), encoding="utf-8")
+
+    @classmethod
+    def load(cls, path: str | Path) -> "MemoryStore":
+        source = Path(path)
+        if not source.exists():
+            return cls()
+        return cls.from_snapshot(json.loads(source.read_text(encoding="utf-8")))

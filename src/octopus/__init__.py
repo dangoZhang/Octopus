@@ -1,4 +1,4 @@
-"""Octopus: Need -> Feed -> Feedback for clean agent brains."""
+"""Octopus: independent-thinking tools for clean agent brains."""
 
 from .brain import Brain, StaticBrain
 from .color import Chromatophore

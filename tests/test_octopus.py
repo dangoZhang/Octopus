@@ -1,4 +1,5 @@
 import unittest
+from tempfile import TemporaryDirectory
 
 from octopus import (
     FunctionTentacle,
@@ -71,6 +72,19 @@ class OctopusTest(unittest.TestCase):
         self.assertEqual(feedback.status, Status.SATISFIED)
         self.assertEqual(feedback.summary, "ran task")
         self.assertEqual(feedback.feeds[0].metadata["tools"], ["echo"])
+
+    def test_harness_state_persists_memory_and_routes(self):
+        with TemporaryDirectory() as directory:
+            path = f"{directory}/state.json"
+            harness = Harness()
+            harness.feed(Need.remember("persistent feed"))
+            harness.save(path)
+
+            restored = Harness.load(path)
+            feedback = restored.feed(Need.recall("persistent"))
+
+            self.assertIn("persistent feed", feedback.summary)
+            self.assertGreater(restored.routes["recall:recall"], 1.0)
 
 
 if __name__ == "__main__":

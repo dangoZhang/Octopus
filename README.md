@@ -1,37 +1,33 @@
 # Octopus
 
-> Clean agent core with smart arms: `Need -> Feed -> Feedback`.
+> Independent-thinking tools, clean agent brain.
 
 ## Why
 
-Classic agents bind thought to tool calls. Octopus keeps the brain clean: it asks for cognition, the harness supplies data, and tentacles think during execution.
+Agents still carry tool burden in the brain. Octopus moves execution intelligence into tentacles and lets data decide the feed.
 
 ## What it does
 
-- Need: verify, reproduce, compare, remember, forget, execute, recall.
-- Feed: thinking tentacles use tools, sub-LLMs, memory, browser, shell, or future arms.
-- Feedback: compact evidence returns to the brain.
-- Three hearts: heartbeat, memory beat, harness route beat.
+- Clean brain: emits cognitive needs only.
+- Tentacle brain: tools can plan, call sub-LLMs, execute, and return evidence.
+- Three hearts: heartbeat, memory evolution, harness route evolution.
+- Color change: image interaction stays outside the kernel.
+- Kernel: Rust. SDK/prototype: Python.
 
 ## Quick start
 
 ```bash
+cargo test
+cargo run -p octopus-core -- need remember "tools stay outside the brain"
 pip install -e .
-octopus need remember "tools stay outside the brain"
-```
-
-```python
-from octopus import FunctionTool, Harness, Need, NeedType, PlanningTentacleBrain, SmartTentacle
-harness = Harness()
-tool = FunctionTool("verify", "checks claims", (NeedType.VERIFY,), lambda need: "verified")
-harness.add_tentacle(SmartTentacle("research", [NeedType.VERIFY], PlanningTentacleBrain((tool,))))
-print(harness.feed(Need.verify("Need does not name tools.")).summary)
 ```
 
 ## Example output
 
-`verified`
+`remembered m1`
+
+Mechanism: `Need -> Feed -> Feedback`. The model asks for cognition; the harness supplies evidence.
 
 ## Proof
 
-Core: `src/octopus`. Docs: `docs`. Tests: `tests`. License: MIT.
+Core: `crates/octopus-core`. SDK: `src/octopus`. Docs: `docs`. License: MIT.
