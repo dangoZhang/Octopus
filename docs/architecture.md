@@ -22,4 +22,4 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 Brains emit needs. Tentacles may think, plan, and call tools. Harness evolves the feed path from data. The brain never carries tool burden.
 
-See [Research Map](./references.md) for the papers shaping this design.
+See [Research Map](./references.md) for the papers shaping this design and [Self-Iteration Loop](./self-iteration.md) for the future repo-improvement path.

@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Octopus Research Map</title>
-    <meta name="description" content="Research papers shaping Octopus: tool use, feedback learning, memory, and retrieval." />
+    <title>Octopus Self-Iteration</title>
+    <meta name="description" content="How Octopus can safely iterate its own repository through an authorized repo tentacle." />
     <style>
       :root {
         color-scheme: light;
@@ -13,6 +13,7 @@
         --line: #d8dde6;
         --paper: #ffffff;
         --soft: #f5f7fa;
+        --teal: #0f766e;
       }
 
       * {
@@ -32,7 +33,7 @@
       }
 
       .shell {
-        width: min(920px, calc(100% - 32px));
+        width: min(900px, calc(100% - 32px));
         margin: 0 auto;
       }
 
@@ -88,15 +89,19 @@
         padding: 30px 0;
       }
 
-      li {
-        margin: 10px 0;
+      pre {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-left: 6px solid var(--teal);
+        border-radius: 8px;
+        padding: 18px;
+        background: var(--soft);
+        line-height: 1.5;
       }
 
       code {
-        background: var(--soft);
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        padding: 2px 6px;
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-size: 14px;
       }
 
       footer {
@@ -119,45 +124,42 @@
         <div class="links">
           <a href="./">Home</a>
           <a href="./about.html">About</a>
-          <a href="./self-iteration.html">Self-iteration</a>
+          <a href="./references.html">Research</a>
           <a href="https://github.com/dangoZhang/Octopus">GitHub</a>
         </div>
       </nav>
     </header>
 
     <main class="shell">
-      <h1>Research Map</h1>
-      <p>Octopus uses these papers as pressure tests for architecture, not as templates to clone.</p>
+      <h1>Self-Iteration</h1>
+      <p>Octopus should eventually improve its own repository through an authorized repo tentacle, not through hidden background power.</p>
 
       <section>
-        <h2>Tool Use</h2>
+        <h2>Boundary</h2>
+        <p>The brain emits needs such as inspect repo health, verify tests, compare docs and code, or propose an improvement. The repo tentacle reads files, edits branches, runs checks, and opens pull requests.</p>
+      </section>
+
+      <section>
+        <h2>OAuth</h2>
+        <p>LLM OAuth is a capability grant. Without it, Octopus can plan and report. With it, Octopus may create branches, commits, and PRs within the allowed repository scope.</p>
+      </section>
+
+      <section>
+        <h2>Guardrails</h2>
         <ul>
-          <li><a href="https://arxiv.org/abs/2210.03629">ReAct</a>: reasoning and environment actions. Octopus moves concrete action work into tentacles.</li>
-          <li><a href="https://arxiv.org/abs/2302.04761">Toolformer</a>: learned tool-use decisions. Octopus makes tool choice a harness/tentacle concern.</li>
-          <li><a href="https://arxiv.org/abs/2305.15334">Gorilla</a>: accurate API use over changing docs. Octopus treats tools as intelligent surfaces.</li>
-          <li><a href="https://arxiv.org/abs/2307.16789">ToolLLM</a>: large-scale tool learning. Octopus keeps the kernel small so many tool systems can attach.</li>
+          <li>Never push to <code>main</code> directly.</li>
+          <li>Prefer small pull requests.</li>
+          <li>Run Rust and Python tests before proposing merge.</li>
+          <li>Store route outcomes in harness state.</li>
+          <li>Keep the Rust kernel small enough to audit.</li>
         </ul>
       </section>
 
       <section>
-        <h2>Feedback Learning</h2>
-        <ul>
-          <li><a href="https://arxiv.org/abs/2303.11366">Reflexion</a>: feedback and memory improve later trials. Octopus persists memory and route scores.</li>
-          <li><a href="https://arxiv.org/abs/2305.16291">Voyager</a>: executable skill growth from environment feedback. Octopus separates skill growth from the clean brain.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>Memory And Retrieval</h2>
-        <ul>
-          <li><a href="https://arxiv.org/abs/2310.08560">MemGPT</a>: context as managed memory. Octopus keeps memory as a harness-evolved beat.</li>
-          <li><a href="https://arxiv.org/abs/2310.11511">Self-RAG</a>: demand-driven retrieval and critique. Octopus expresses demand as Need and feeds evidence through Feedback.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>Design Bet</h2>
-        <p><code>DataDriven</code> cognitive supply: once the brain emits a need, the harness should learn how to satisfy it with the best available feed.</p>
+        <h2>Loop</h2>
+        <pre><code>Need: improve Octopus usability
+Feed: repo tentacle inspects code, docs, CI, issues, and papers
+Feedback: patch, tests, PR link, route score</code></pre>
       </section>
     </main>
 
@@ -166,3 +168,4 @@
     </footer>
   </body>
 </html>
+
