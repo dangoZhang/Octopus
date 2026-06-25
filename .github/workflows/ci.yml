@@ -28,6 +28,10 @@ jobs:
       - run: cargo run -q -p octopus-core -- catalog
       - run: cargo run -q -p octopus-core -- skills | grep -q "computer-use"
       - run: |
+          rm -rf .octopus/evolution/swe-agent
+          cargo run -q -p octopus-core -- evolve swe-agent improve | grep -q "candidates:"
+          grep -q runtime_code .octopus/evolution/swe-agent/PATCH_CANDIDATES.md
+      - run: |
           cargo run -q -p octopus-core -- --json pet success | grep -q '"state": "success"'
       - run: cargo run -q -p octopus-core -- manifests | grep -q "surfaces=brain_prompt"
       - run: cargo run -q -p octopus-core -- --lang zh env

@@ -1684,7 +1684,9 @@ fn print_evolution_proposal(
             println!("tentacle: {}", proposal.tentacle_id);
             println!("objective: {}", proposal.objective);
             println!("proposal: {}", artifact.proposal_path);
+            println!("candidates: {}", artifact.candidates_path);
             println!("json: {}", artifact.json_path);
+            println!("candidate count: {}", proposal.patch_candidates.len());
             println!("editable: {}", join_or_none(&proposal.editable));
             println!("surfaces: {}", join_or_none(&surfaces));
             println!("checks: {}", join_or_none(&proposal.checks));
@@ -1693,7 +1695,9 @@ fn print_evolution_proposal(
             println!("触手: {}", proposal.tentacle_id);
             println!("目标: {}", proposal.objective);
             println!("草案: {}", artifact.proposal_path);
+            println!("候选: {}", artifact.candidates_path);
             println!("JSON: {}", artifact.json_path);
+            println!("候选数量: {}", proposal.patch_candidates.len());
             println!("可编辑: {}", join_or_none(&proposal.editable));
             println!("可进化面: {}", join_or_none(&surfaces));
             println!("检查: {}", join_or_none(&proposal.checks));
@@ -2513,11 +2517,20 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
             .join("evolution")
             .join("swe-agent")
             .join("proposal.json");
+        let candidates = dir
+            .join(".octopus")
+            .join("evolution")
+            .join("swe-agent")
+            .join("PATCH_CANDIDATES.md");
         assert!(proposal.exists());
+        assert!(candidates.exists());
         assert!(json.exists());
         let markdown = fs::read_to_string(proposal).unwrap();
         assert!(markdown.contains("Tentacle Evolution: swe-agent"));
         assert!(markdown.contains("Evolution Surfaces"));
+        let candidates_markdown = fs::read_to_string(candidates).unwrap();
+        assert!(candidates_markdown.contains("Patch Candidates: swe-agent"));
+        assert!(candidates_markdown.contains("runtime_code"));
         let _ = fs::remove_dir_all(dir);
     }
 

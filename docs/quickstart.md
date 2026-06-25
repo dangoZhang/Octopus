@@ -60,6 +60,8 @@ octopus evolve swe-agent "improve repository observation feed quality"
 tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build a clean-brain agent"
 ```
 
+`evolve` writes `PROPOSAL.md`, `PATCH_CANDIDATES.md`, and `proposal.json` under `.octopus/evolution/<tentacle>/`.
+
 ## Expected Signals
 
 ```text

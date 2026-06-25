@@ -2248,6 +2248,7 @@ pub struct TentacleEvolutionProposal {
     pub checks: Vec<String>,
     pub constraints: Vec<String>,
     pub files: Vec<EvolutionFileTarget>,
+    pub patch_candidates: Vec<EvolutionPatchCandidate>,
     pub next_steps: Vec<String>,
 }
 
@@ -2259,9 +2260,21 @@ pub struct EvolutionFileTarget {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EvolutionPatchCandidate {
+    pub id: String,
+    pub surface_id: String,
+    pub title: String,
+    pub target: String,
+    pub rationale: String,
+    pub change_plan: Vec<String>,
+    pub checks: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct EvolutionArtifact {
     pub directory: String,
     pub proposal_path: String,
+    pub candidates_path: String,
     pub json_path: String,
 }
 
@@ -2343,8 +2356,16 @@ pub fn propose_tentacle_evolution(
         .iter()
         .map(|target| evolution_file_target(&manifest_dir, target, objective))
         .collect::<Vec<_>>();
+    let patch_candidates = evolution_patch_candidates(
+        &manifest_dir,
+        &loaded.manifest.id,
+        objective,
+        &loaded.manifest.evolution.surfaces,
+        &loaded.manifest.evolution.checks,
+    );
     let mut next_steps = vec![
         "review PROPOSAL.md".to_string(),
+        "review PATCH_CANDIDATES.md".to_string(),
         "edit only listed harness files".to_string(),
     ];
     next_steps.extend(
@@ -2376,6 +2397,7 @@ pub fn propose_tentacle_evolution(
         checks: loaded.manifest.evolution.checks,
         constraints: loaded.manifest.evolution.constraints,
         files,
+        patch_candidates,
         next_steps,
     })
 }
@@ -2391,8 +2413,11 @@ pub fn write_tentacle_evolution_artifacts(
         .join(&proposal.tentacle_id);
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let proposal_path = directory.join("PROPOSAL.md");
+    let candidates_path = directory.join("PATCH_CANDIDATES.md");
     let json_path = directory.join("proposal.json");
     fs::write(&proposal_path, render_tentacle_evolution_proposal(proposal))
+        .map_err(|error| error.to_string())?;
+    fs::write(&candidates_path, render_tentacle_patch_candidates(proposal))
         .map_err(|error| error.to_string())?;
     fs::write(
         &json_path,
@@ -2402,6 +2427,7 @@ pub fn write_tentacle_evolution_artifacts(
     Ok(EvolutionArtifact {
         directory: directory.to_string_lossy().to_string(),
         proposal_path: proposal_path.to_string_lossy().to_string(),
+        candidates_path: candidates_path.to_string_lossy().to_string(),
         json_path: json_path.to_string_lossy().to_string(),
     })
 }
@@ -2443,9 +2469,38 @@ pub fn render_tentacle_evolution_proposal(proposal: &TentacleEvolutionProposal) 
     for check in &proposal.checks {
         markdown.push_str(&format!("- `{check}`\n"));
     }
+    markdown.push_str("\n## Patch Candidates\n\n");
+    for candidate in &proposal.patch_candidates {
+        markdown.push_str(&format!(
+            "- `{}`: {} -> `{}`\n",
+            candidate.id, candidate.title, candidate.target
+        ));
+    }
     markdown.push_str("\n## Next Steps\n\n");
     for step in &proposal.next_steps {
         markdown.push_str(&format!("- {step}\n"));
+    }
+    markdown
+}
+
+pub fn render_tentacle_patch_candidates(proposal: &TentacleEvolutionProposal) -> String {
+    let mut markdown = String::new();
+    markdown.push_str(&format!("# Patch Candidates: {}\n\n", proposal.tentacle_id));
+    markdown.push_str(&format!("objective: {}\n\n", proposal.objective));
+    for candidate in &proposal.patch_candidates {
+        markdown.push_str(&format!("## {}. {}\n\n", candidate.id, candidate.title));
+        markdown.push_str(&format!("surface: `{}`\n", candidate.surface_id));
+        markdown.push_str(&format!("target: `{}`\n", candidate.target));
+        markdown.push_str(&format!("rationale: {}\n\n", candidate.rationale));
+        markdown.push_str("change plan:\n");
+        for step in &candidate.change_plan {
+            markdown.push_str(&format!("- {step}\n"));
+        }
+        markdown.push_str("\nchecks:\n");
+        for check in &candidate.checks {
+            markdown.push_str(&format!("- `{check}`\n"));
+        }
+        markdown.push('\n');
     }
     markdown
 }
@@ -3163,6 +3218,87 @@ fn evolution_file_target(
             action: "prepare a scoped harness edit".to_string(),
             rationale: format!("support {objective}"),
         },
+    }
+}
+
+fn evolution_patch_candidates(
+    manifest_dir: &Path,
+    tentacle_id: &str,
+    objective: &str,
+    surfaces: &[EvolutionSurface],
+    checks: &[String],
+) -> Vec<EvolutionPatchCandidate> {
+    let checks = if checks.is_empty() {
+        vec!["cargo test".to_string()]
+    } else {
+        checks.to_vec()
+    };
+    surfaces
+        .iter()
+        .enumerate()
+        .map(|(index, surface)| EvolutionPatchCandidate {
+            id: format!("{:02}-{}", index + 1, surface.id.replace('_', "-")),
+            surface_id: surface.id.clone(),
+            title: evolution_candidate_title(&surface.id, tentacle_id),
+            target: evolution_candidate_target(manifest_dir, surface),
+            rationale: format!("advance {objective} through {}", surface.description),
+            change_plan: evolution_candidate_plan(surface),
+            checks: checks.clone(),
+        })
+        .collect()
+}
+
+fn evolution_candidate_title(surface_id: &str, tentacle_id: &str) -> String {
+    match surface_id {
+        "brain_prompt" => format!("Retune {tentacle_id} tool-side thinking"),
+        "tool_meta" => format!("Tighten {tentacle_id} tool metadata"),
+        "runtime_code" => format!("Improve {tentacle_id} runtime harness code"),
+        "evolution_policy" => format!("Strengthen {tentacle_id} evolution policy"),
+        value => format!("Improve {tentacle_id} {value}"),
+    }
+}
+
+fn evolution_candidate_target(manifest_dir: &Path, surface: &EvolutionSurface) -> String {
+    let target = surface
+        .targets
+        .first()
+        .map(String::as_str)
+        .unwrap_or("manifest.json");
+    if target.starts_with("brain.")
+        || target.starts_with("tools[]")
+        || target.starts_with("evolution.")
+    {
+        return format!(
+            "{}#{}",
+            manifest_dir.join("manifest.json").to_string_lossy(),
+            target
+        );
+    }
+    manifest_dir.join(target).to_string_lossy().to_string()
+}
+
+fn evolution_candidate_plan(surface: &EvolutionSurface) -> Vec<String> {
+    match surface.id.as_str() {
+        "brain_prompt" => vec![
+            "rewrite the tentacle prompt around one Need-to-Feed responsibility".to_string(),
+            "keep the feedback contract compact and evidence-first".to_string(),
+        ],
+        "tool_meta" => vec![
+            "make tool inputs and outputs specific enough for tool-side planning".to_string(),
+            "declare octopus-json-v1 when the runtime consumes the full Need envelope".to_string(),
+        ],
+        "runtime_code" => vec![
+            "patch only the runtime adapter needed for this objective".to_string(),
+            "preserve path safety, exit status, and compact evidence output".to_string(),
+        ],
+        "evolution_policy" => vec![
+            "add the smallest check that proves the changed surface works".to_string(),
+            "keep constraints aligned with user-visible safety boundaries".to_string(),
+        ],
+        _ => vec![
+            "inspect the listed targets before editing".to_string(),
+            "return a narrow harness patch with matching checks".to_string(),
+        ],
     }
 }
 
@@ -4192,6 +4328,11 @@ mod tests {
             .iter()
             .any(|surface| surface.id == "runtime_code"));
         assert!(proposal
+            .patch_candidates
+            .iter()
+            .any(|candidate| candidate.surface_id == "runtime_code"
+                && candidate.title.contains("runtime harness")));
+        assert!(proposal
             .files
             .iter()
             .any(|file| file.path == "manifest.json#brain.prompt"));
@@ -4204,12 +4345,17 @@ mod tests {
         let _ = fs::remove_dir_all(&workspace);
         let artifact = write_tentacle_evolution_artifacts(&workspace, &proposal).unwrap();
         let markdown = fs::read_to_string(&artifact.proposal_path).unwrap();
+        let candidates = fs::read_to_string(&artifact.candidates_path).unwrap();
         let json = fs::read_to_string(&artifact.json_path).unwrap();
 
         assert!(markdown.contains("# Tentacle Evolution: swe-agent"));
         assert!(markdown.contains("improve repository observation feed quality"));
         assert!(markdown.contains("## Evolution Surfaces"));
+        assert!(markdown.contains("## Patch Candidates"));
+        assert!(candidates.contains("# Patch Candidates: swe-agent"));
+        assert!(candidates.contains("surface: `runtime_code`"));
         assert!(json.contains("\"tentacle_id\": \"swe-agent\""));
+        assert!(json.contains("\"patch_candidates\""));
         let _ = fs::remove_dir_all(workspace);
     }
 
