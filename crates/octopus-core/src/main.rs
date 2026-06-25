@@ -1,8 +1,8 @@
 use octopus_core::{
     default_permissions, default_tentacle_profiles, inspect_tentacle_manifests, AdaptReport,
     CapabilityGrant, ChatClient, ChatMessage, ChatRole, EnvironmentReport, GoalChat, Harness,
-    HarnessState, HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient, SelfIterationPlan,
-    StatusReport, TentacleManifestReport,
+    HarnessState, HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient,
+    OpenAiCompatibleConfig, SelfIterationPlan, StatusReport, TentacleManifestReport,
 };
 use std::env;
 use std::path::PathBuf;
@@ -64,7 +64,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .map(|values| values.join(" "))
                 .ok_or_else(|| "need requires a query".to_string())?;
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            let mut harness = Harness::with_state(loaded);
+            let mut harness = harness_for_need(loaded, &kind)?;
             let feedback = harness.feed(&[Need::new(kind, query)]);
             harness
                 .state
@@ -693,6 +693,28 @@ fn default_tentacles_root() -> PathBuf {
     })
 }
 
+fn harness_for_need(state: HarnessState, kind: &NeedKind) -> Result<Harness, String> {
+    if matches!(
+        kind,
+        NeedKind::Remember | NeedKind::Recall | NeedKind::Forget
+    ) {
+        return Ok(Harness::with_state(state));
+    }
+    if manifest_llm_enabled() {
+        return Ok(Harness::with_state_and_manifest_llm(
+            state,
+            OpenAiCompatibleConfig::from_env()?,
+        ));
+    }
+    Ok(Harness::with_state(state))
+}
+
+fn manifest_llm_enabled() -> bool {
+    env::var("OCTOPUS_LLM_MANIFEST")
+        .ok()
+        .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "yes" | "on"))
+}
+
 fn usage() -> String {
     "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | llm <message> | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
@@ -924,6 +946,64 @@ mod tests {
         restore_env("OCTOPUS_LLM_API_KEY", old_api_key);
         restore_env("OCTOPUS_LLM_TIMEOUT", old_timeout);
         restore_env("OCTOPUS_LLM_CURL", old_curl);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cli_need_can_use_manifest_llm_planning() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir =
+            std::env::temp_dir().join(format!("octopus-cli-manifest-llm-{}", std::process::id()));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = dir.join("fake-curl.sh");
+        fs::write(
+            &curl,
+            "#!/bin/sh\nprintf '%s' '{\"choices\":[{\"message\":{\"content\":\"{\\\"calls\\\":[{\\\"tool\\\":\\\"read\\\",\\\"reason\\\":\\\"inspect requested file\\\"}],\\\"summary\\\":\\\"planned by llm\\\"}\"}}]}'\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "install".to_string(),
+            "swe-agent".to_string(),
+        ])
+        .unwrap();
+        let old_manifest = std::env::var("OCTOPUS_LLM_MANIFEST").ok();
+        let old_model = std::env::var("OCTOPUS_LLM_MODEL").ok();
+        let old_base_url = std::env::var("OCTOPUS_LLM_BASE_URL").ok();
+        let old_curl = std::env::var("OCTOPUS_LLM_CURL").ok();
+        std::env::set_var("OCTOPUS_LLM_MANIFEST", "1");
+        std::env::set_var("OCTOPUS_LLM_MODEL", "test-model");
+        std::env::set_var("OCTOPUS_LLM_BASE_URL", "https://llm.example/v1");
+        std::env::set_var("OCTOPUS_LLM_CURL", curl.to_string_lossy().to_string());
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "need".to_string(),
+            "observe".to_string(),
+            "Cargo.toml".to_string(),
+            "1".to_string(),
+            "1".to_string(),
+        ])
+        .unwrap();
+
+        restore_env("OCTOPUS_LLM_MANIFEST", old_manifest);
+        restore_env("OCTOPUS_LLM_MODEL", old_model);
+        restore_env("OCTOPUS_LLM_BASE_URL", old_base_url);
+        restore_env("OCTOPUS_LLM_CURL", old_curl);
+        let content = fs::read_to_string(&state_path).unwrap();
+        assert!(content.contains("observe:swe-agent"));
         let _ = fs::remove_dir_all(dir);
     }
 

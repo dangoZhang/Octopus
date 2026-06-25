@@ -27,7 +27,7 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 `src/octopus` is the Python SDK/prototype layer. It is useful for quick integrations, demos, and LLM-tool experiments.
 
-`OpenAiCompatibleChatClient` in Rust and `OpenAICompatibleLLM` in Python adapt any chat-completions-compatible provider through `OCTOPUS_LLM_MODEL`, `OCTOPUS_LLM_BASE_URL`, and `OCTOPUS_LLM_API_KEY`. The Rust adapter keeps the kernel light by using a `curl` runtime adapter.
+`OpenAiCompatibleChatClient` in Rust and `OpenAICompatibleLLM` in Python adapt any chat-completions-compatible provider through `OCTOPUS_LLM_MODEL`, `OCTOPUS_LLM_BASE_URL`, and `OCTOPUS_LLM_API_KEY`. The Rust adapter keeps the kernel light by using a `curl` runtime adapter. Set `OCTOPUS_LLM_MANIFEST=1` to let installed manifest tentacles ask the provider to pick tools before execution; failures fall back to rule planning.
 
 ## Code-As-Harness
 

@@ -635,6 +635,7 @@ pub struct ToolSpec {
 pub struct ToolCall {
     pub tool: String,
     pub reason: String,
+    #[serde(default)]
     pub payload: BTreeMap<String, String>,
 }
 
@@ -1322,6 +1323,7 @@ impl HarnessState {
 pub struct Harness {
     pub state: HarnessState,
     tentacles: Vec<Box<dyn Tentacle>>,
+    manifest_llm_config: Option<OpenAiCompatibleConfig>,
 }
 
 impl Harness {
@@ -1329,6 +1331,7 @@ impl Harness {
         Self {
             state: HarnessState::default(),
             tentacles: Vec::new(),
+            manifest_llm_config: None,
         }
     }
 
@@ -1336,6 +1339,20 @@ impl Harness {
         let mut harness = Self {
             state,
             tentacles: Vec::new(),
+            manifest_llm_config: None,
+        };
+        harness.add_installed_tentacles();
+        harness
+    }
+
+    pub fn with_state_and_manifest_llm(
+        state: HarnessState,
+        config: OpenAiCompatibleConfig,
+    ) -> Self {
+        let mut harness = Self {
+            state,
+            tentacles: Vec::new(),
+            manifest_llm_config: Some(config),
         };
         harness.add_installed_tentacles();
         harness
@@ -1347,7 +1364,10 @@ impl Harness {
 
     fn add_installed_tentacles(&mut self) {
         for tentacle in self.state.installed_tentacles.clone() {
-            self.add_tentacle(Box::new(ManifestTentacle::new(tentacle)));
+            self.add_tentacle(Box::new(ManifestTentacle::new_with_llm(
+                tentacle,
+                self.manifest_llm_config.clone(),
+            )));
         }
     }
 
@@ -1506,16 +1526,25 @@ struct ManifestToolPlan {
     tool: InstalledToolRef,
     reason: String,
     candidates: Vec<String>,
+    source: String,
 }
 
 pub struct ManifestTentacle {
     route_id: String,
     installed: InstalledTentacle,
     tools: Vec<InstalledToolRef>,
+    llm_config: Option<OpenAiCompatibleConfig>,
 }
 
 impl ManifestTentacle {
     pub fn new(installed: InstalledTentacle) -> Self {
+        Self::new_with_llm(installed, None)
+    }
+
+    pub fn new_with_llm(
+        installed: InstalledTentacle,
+        llm_config: Option<OpenAiCompatibleConfig>,
+    ) -> Self {
         let route_id = installed.id.clone();
         let tools = if installed.tool_meta.is_empty() {
             installed
@@ -1534,22 +1563,37 @@ impl ManifestTentacle {
             route_id,
             installed,
             tools,
+            llm_config,
         }
     }
 
-    fn plan_tool(&self, need: &Need) -> Option<ManifestToolPlan> {
+    fn plan_tool(&mut self, need: &Need) -> Option<ManifestToolPlan> {
+        let tools = self.available_tools(need);
+        self.llm_plan_tool(need, &tools)
+            .or_else(|| self.rule_plan_tool(need, &tools))
+    }
+
+    fn available_tools(&self, need: &Need) -> Vec<InstalledToolRef> {
         if self.route_id == "computer-use-agent"
             && need.kind == NeedKind::Observe
             && !is_desktop_observe(&need.query)
         {
-            return None;
+            return Vec::new();
         }
         if self.route_id == "visual"
             && need.kind == NeedKind::Observe
             && !is_visual_observe(&need.query)
         {
-            return None;
+            return Vec::new();
         }
+        self.tools
+            .iter()
+            .filter(|tool| self.can_feed_tool(tool))
+            .cloned()
+            .collect()
+    }
+
+    fn rule_plan_tool(&self, need: &Need, tools: &[InstalledToolRef]) -> Option<ManifestToolPlan> {
         let preferred = match need.kind {
             NeedKind::Observe => [
                 "inspect_repo",
@@ -1574,26 +1618,80 @@ impl ManifestTentacle {
             NeedKind::Execute => ["write_and_run", "bash", "mcp", "open_url"].as_slice(),
             _ => [].as_slice(),
         };
-        let candidates = self
-            .tools
-            .iter()
-            .filter(|tool| self.can_feed_tool(tool))
-            .map(|tool| tool.id.clone())
-            .collect::<Vec<_>>();
+        let candidates = tools.iter().map(|tool| tool.id.clone()).collect::<Vec<_>>();
         let tool = preferred
             .iter()
-            .find_map(|id| {
-                self.tools
-                    .iter()
-                    .find(|tool| tool.id == *id && self.can_feed_tool(tool))
-            })
-            .or_else(|| self.tools.iter().find(|tool| self.can_feed_tool(tool)))
+            .find_map(|id| tools.iter().find(|tool| tool.id == *id))
+            .or_else(|| tools.first())
             .cloned()?;
         let reason = manifest_plan_reason(need, &tool);
         Some(ManifestToolPlan {
             tool,
             reason,
             candidates,
+            source: "rule".to_string(),
+        })
+    }
+
+    fn llm_plan_tool(
+        &mut self,
+        need: &Need,
+        tools: &[InstalledToolRef],
+    ) -> Option<ManifestToolPlan> {
+        let config = self.llm_config.clone()?;
+        if tools.is_empty() {
+            return None;
+        }
+        let tool_sheet = tools
+            .iter()
+            .map(|tool| {
+                format!(
+                    "- {}: {} | runtime={} | input={} | output={}",
+                    tool.id, tool.description, tool.kind, tool.input, tool.output
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut client = OpenAiCompatibleChatClient::new(config);
+        let response = client
+            .chat(&[
+                ChatMessage::new(
+                    ChatRole::System,
+                    format!(
+                        "You are the '{}' Octopus tentacle brain. {}\nReturn only JSON: {{\"calls\":[{{\"tool\":\"id\",\"reason\":\"short\"}}],\"summary\":\"short\"}}",
+                        self.route_id, self.installed.brain_prompt
+                    ),
+                ),
+                ChatMessage::new(
+                    ChatRole::User,
+                    format!(
+                        "Need: {}: {}\nAvailable tools:\n{}",
+                        kind_key(&need.kind),
+                        need.query,
+                        tool_sheet
+                    ),
+                ),
+            ])
+            .ok()?;
+        let plan = serde_json::from_str::<Plan>(&response.content).ok()?;
+        let call = plan.calls.first()?;
+        let tool = tools.iter().find(|tool| tool.id == call.tool).cloned()?;
+        let candidates = tools.iter().map(|tool| tool.id.clone()).collect::<Vec<_>>();
+        let reason = if call.reason.is_empty() {
+            format!("llm selected {} for {}", tool.id, kind_key(&need.kind))
+        } else {
+            format!(
+                "llm selected {} for {}: {}",
+                tool.id,
+                kind_key(&need.kind),
+                call.reason
+            )
+        };
+        Some(ManifestToolPlan {
+            tool,
+            reason,
+            candidates,
+            source: "llm".to_string(),
         })
     }
 
@@ -1715,7 +1813,9 @@ impl Tentacle for ManifestTentacle {
             .needs
             .iter()
             .any(|need_key| need_key == kind_key(&need.kind))
-            && self.plan_tool(need).is_some()
+            && self
+                .rule_plan_tool(need, &self.available_tools(need))
+                .is_some()
     }
 
     fn feed(&mut self, need: &Need) -> Feed {
@@ -1729,6 +1829,7 @@ impl Tentacle for ManifestTentacle {
         metadata.insert("tool".to_string(), tool.id.clone());
         metadata.insert("tool_description".to_string(), tool.description.clone());
         metadata.insert("plan".to_string(), plan.reason);
+        metadata.insert("plan_source".to_string(), plan.source);
         metadata.insert("available_tools".to_string(), plan.candidates.join(","));
         metadata.insert("runtime".to_string(), tool.kind.clone());
         metadata.insert("tentacle_brain".to_string(), self.route_id.clone());
@@ -3226,6 +3327,57 @@ mod tests {
             .get("brain_prompt")
             .is_some_and(|prompt| prompt.contains("select tools from metadata")));
         assert!(harness.state.routes.score(&NeedKind::Observe, "swe-agent") > 1.0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn installed_manifest_tentacle_can_plan_with_llm_before_execution() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let repo = fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")).unwrap();
+        let fake =
+            std::env::temp_dir().join(format!("octopus-manifest-llm-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&fake);
+        fs::create_dir_all(&fake).unwrap();
+        let curl = fake.join("fake-curl.sh");
+        fs::write(
+            &curl,
+            "#!/bin/sh\nprintf '%s' '{\"choices\":[{\"message\":{\"content\":\"{\\\"calls\\\":[{\\\"tool\\\":\\\"read\\\",\\\"reason\\\":\\\"inspect requested file\\\"}],\\\"summary\\\":\\\"planned by llm\\\"}\"}}]}'\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+        let mut state = HarnessState::default();
+        state
+            .install_manifest(repo.join("tentacles"), "swe-agent")
+            .unwrap();
+        let config = OpenAiCompatibleConfig {
+            model: "test-model".to_string(),
+            api_key: None,
+            base_url: "https://llm.example/v1".to_string(),
+            timeout_seconds: 1,
+            curl_command: curl.to_string_lossy().to_string(),
+        };
+        let mut harness = Harness::with_state_and_manifest_llm(state, config);
+
+        let feedback = harness.feed(&[Need::new(NeedKind::Observe, "Cargo.toml 1 1")]);
+
+        assert_eq!(feedback.status, Status::Satisfied, "{}", feedback.summary);
+        assert!(feedback.summary.contains("[package]"));
+        assert_eq!(
+            feedback.feeds[0].metadata.get("tool"),
+            Some(&"read".to_string())
+        );
+        assert_eq!(
+            feedback.feeds[0].metadata.get("plan_source"),
+            Some(&"llm".to_string())
+        );
+        assert!(feedback.feeds[0]
+            .metadata
+            .get("plan")
+            .is_some_and(|plan| plan.contains("inspect requested file")));
+        let _ = fs::remove_dir_all(fake);
     }
 
     #[test]
