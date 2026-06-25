@@ -10,7 +10,7 @@ octopus demo dangoZhang/Octopus
 octopus catalog
 octopus manifests
 octopus --lang zh env
-octopus --state "$tmp/state.json" adapt
+octopus --state "$tmp/state.json" init
 octopus --state "$tmp/state.json" install research
 octopus --state "$tmp/state.json" install swe-agent
 octopus --state "$tmp/state.json" installed
@@ -57,6 +57,7 @@ tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build 
 
 ```text
 Octopus demo
+Octopus init
 installed swe-agent
 == project ==
 Octopus doctor

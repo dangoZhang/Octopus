@@ -20,13 +20,14 @@ The mechanism is `Need -> Feed -> Feedback`. The outcome is less tool burden and
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus
-tmp=$(mktemp -d)
 octopus demo dangoZhang/Octopus
-octopus --state "$tmp/state.json" adapt
-octopus --state "$tmp/state.json" install swe-agent
-octopus --state "$tmp/state.json" need observe .
-octopus --state "$tmp/state.json" doctor
-octopus --state "$tmp/state.json" beat 200
+octopus init
+octopus install swe-agent
+octopus chat "build a clean-brain agent"
+octopus need observe .
+octopus doctor
+octopus beat 200
+tmp=$(mktemp -d)
 (cd "$tmp" && octopus scaffold my-feed python)
 (cd "$tmp" && octopus probe my-feed observe README.md)
 ```
@@ -35,6 +36,7 @@ Output includes:
 
 ```text
 Octopus demo
+Octopus init
 == project ==
 Octopus doctor
 heartbeat: alive

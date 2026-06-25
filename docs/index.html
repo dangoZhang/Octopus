@@ -297,13 +297,14 @@
         <div class="shell">
           <h2>Quick Install & Use</h2>
           <pre><code>cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus
-tmp=$(mktemp -d)
 octopus demo dangoZhang/Octopus
-octopus --state "$tmp/state.json" adapt
-octopus --state "$tmp/state.json" install swe-agent
-octopus --state "$tmp/state.json" need observe .
-octopus --state "$tmp/state.json" doctor
-octopus --state "$tmp/state.json" beat 200
+octopus init
+octopus install swe-agent
+octopus chat "build a clean-brain agent"
+octopus need observe .
+octopus doctor
+octopus beat 200
+tmp=$(mktemp -d)
 (cd "$tmp" &amp;&amp; octopus scaffold my-feed python)
 (cd "$tmp" &amp;&amp; octopus probe my-feed observe README.md)</code></pre>
           <p class="copy"><a href="./quickstart.html">Full walkthrough</a>. The kernel stays small. SDKs and tentacles can evolve around it.</p>

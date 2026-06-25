@@ -206,13 +206,14 @@
         <div class="shell">
           <h2>快速安装与使用</h2>
           <pre><code>cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus
-tmp=$(mktemp -d)
 octopus demo dangoZhang/Octopus
-octopus --state "$tmp/state.json" adapt
-octopus --state "$tmp/state.json" install swe-agent
-octopus --state "$tmp/state.json" need observe .
-octopus --state "$tmp/state.json" --lang zh doctor
-octopus --state "$tmp/state.json" --lang zh beat 200
+octopus --lang zh init
+octopus install swe-agent
+octopus chat "build a clean-brain agent"
+octopus need observe .
+octopus --lang zh doctor
+octopus --lang zh beat 200
+tmp=$(mktemp -d)
 (cd "$tmp" &amp;&amp; octopus scaffold my-feed python)
 (cd "$tmp" &amp;&amp; octopus probe my-feed observe README.md)</code></pre>
           <p><a href="../quickstart.html">完整流程</a>。内核保持小，SDK 和触手围绕它进化。</p>

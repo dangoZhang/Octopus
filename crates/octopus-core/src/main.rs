@@ -8,7 +8,7 @@ use octopus_core::{
 };
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -58,6 +58,23 @@ struct DoctorLlmReport {
 struct DoctorPetReport {
     path: String,
     exists: bool,
+}
+
+#[derive(serde::Serialize)]
+struct InitReport {
+    state_path: String,
+    state_existed: bool,
+    adapt: AdaptReport,
+    installed_profiles: Vec<String>,
+    installed_tentacles: Vec<String>,
+    files: Vec<InitFileReport>,
+    next: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+struct InitFileReport {
+    path: String,
+    created: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -202,6 +219,22 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_demo_report(&report, language);
+            }
+            Ok(())
+        }
+        Some("init") => {
+            let root = rest
+                .get(1)
+                .map(PathBuf::from)
+                .unwrap_or_else(default_tentacles_root);
+            let report = init_workspace(state.clone(), root)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_init_report(&report, language);
             }
             Ok(())
         }
@@ -734,6 +767,163 @@ fn print_demo_report(report: &DemoReport, language: Language) {
             println!("下一步: {}", join_or_none(&report.next));
         }
     }
+}
+
+fn init_workspace(state_path: PathBuf, tentacles_root: PathBuf) -> Result<InitReport, String> {
+    let state_existed = state_path.exists();
+    let cwd = env::current_dir().map_err(|error| error.to_string())?;
+    let mut state = HarnessState::load(&state_path).map_err(|error| error.to_string())?;
+    let adapt = state.adapt_environment(&cwd, tentacles_root);
+    state.save(&state_path).map_err(|error| error.to_string())?;
+    let files = init_files(&state_path)?;
+    let state_arg = shell_arg(&state_path.to_string_lossy());
+    let mut next = vec![
+        format!("octopus --state {state_arg} chat \"describe your goal\""),
+        format!("octopus --state {state_arg} need observe ."),
+        format!("octopus --state {state_arg} doctor"),
+    ];
+    if let Some(env_file) = files
+        .iter()
+        .find(|file| file.path.ends_with("llm.env.example"))
+    {
+        let example = PathBuf::from(&env_file.path);
+        let target = example.with_file_name("llm.env");
+        next.push(format!(
+            "copy {} to {}, fill it, then source {}",
+            shell_arg(&env_file.path),
+            shell_arg(&target.to_string_lossy()),
+            shell_arg(&target.to_string_lossy())
+        ));
+    }
+    Ok(InitReport {
+        state_path: state_path.to_string_lossy().to_string(),
+        state_existed,
+        adapt,
+        installed_profiles: state.installed_profiles,
+        installed_tentacles: state
+            .installed_tentacles
+            .into_iter()
+            .map(|tentacle| tentacle.id)
+            .collect(),
+        files,
+        next,
+    })
+}
+
+fn init_files(state_path: &Path) -> Result<Vec<InitFileReport>, String> {
+    let directory = state_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(directory).map_err(|error| error.to_string())?;
+    let gitignore = write_init_file(
+        &directory.join(".gitignore"),
+        "state.json\nllm.env\nself-iteration/\nevolution/\n",
+    )?;
+    let llm_env = write_init_file(&directory.join("llm.env.example"), LLM_ENV_EXAMPLE)?;
+    Ok(vec![gitignore, llm_env])
+}
+
+const LLM_ENV_EXAMPLE: &str = r#"# Copy to llm.env, fill the key, then source that file.
+export OCTOPUS_LLM_MODEL=gpt-4.1-mini
+export OCTOPUS_LLM_BASE_URL=https://api.openai.com/v1
+export OCTOPUS_LLM_API_KEY=
+export OCTOPUS_LLM_MANIFEST=1
+"#;
+
+fn write_init_file(path: &Path, content: &str) -> Result<InitFileReport, String> {
+    let created = !path.exists();
+    if created {
+        fs::write(path, content).map_err(|error| error.to_string())?;
+    }
+    Ok(InitFileReport {
+        path: path.to_string_lossy().to_string(),
+        created,
+    })
+}
+
+fn print_init_report(report: &InitReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus init");
+            println!(
+                "state: {} ({})",
+                report.state_path,
+                if report.state_existed {
+                    "existing"
+                } else {
+                    "created"
+                }
+            );
+            println!(
+                "adapted profiles: {}",
+                join_or_none(&report.adapt.installed_profiles)
+            );
+            println!(
+                "adapted tentacles: {}",
+                join_or_none(&report.adapt.installed_tentacles)
+            );
+            println!(
+                "installed profiles: {}",
+                join_or_none(&report.installed_profiles)
+            );
+            println!(
+                "installed tentacles: {}",
+                join_or_none(&report.installed_tentacles)
+            );
+            println!("files: {}", init_file_summary(&report.files));
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼初始化");
+            println!(
+                "状态: {} ({})",
+                report.state_path,
+                if report.state_existed {
+                    "已存在"
+                } else {
+                    "已创建"
+                }
+            );
+            println!(
+                "已适配配置: {}",
+                join_or_none(&report.adapt.installed_profiles)
+            );
+            println!(
+                "已适配触手: {}",
+                join_or_none(&report.adapt.installed_tentacles)
+            );
+            println!("已安装配置: {}", join_or_none(&report.installed_profiles));
+            println!("已安装触手: {}", join_or_none(&report.installed_tentacles));
+            println!("文件: {}", init_file_summary(&report.files));
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn init_file_summary(files: &[InitFileReport]) -> String {
+    let items = files
+        .iter()
+        .map(|file| {
+            format!(
+                "{}({})",
+                file.path,
+                if file.created { "created" } else { "existing" }
+            )
+        })
+        .collect::<Vec<_>>();
+    join_or_none(&items)
+}
+
+fn shell_arg(value: &str) -> String {
+    if !value.is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || "/._-=".contains(ch))
+    {
+        return value.to_string();
+    }
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn localize_beat(name: &str) -> &str {
@@ -1279,7 +1469,7 @@ fn manifest_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]
@@ -1443,6 +1633,44 @@ mod tests {
         assert!(content.contains("installed_tentacles"));
         assert!(content.contains("visual"));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_init_creates_state_files_and_adapts_workspace() {
+        let dir = std::env::temp_dir().join(format!("octopus-cli-init-{}", std::process::id()));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles")
+            .to_string_lossy()
+            .to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "init".to_string(),
+            root.clone(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state,
+            "--json".to_string(),
+            "init".to_string(),
+            root,
+        ])
+        .unwrap();
+
+        let state = fs::read_to_string(state_path).unwrap();
+        assert!(state.contains("installed_profiles"));
+        assert!(state.contains("visual"));
+        assert!(dir.join(".gitignore").exists());
+        let env_example = fs::read_to_string(dir.join("llm.env.example")).unwrap();
+        assert!(env_example.contains("OCTOPUS_LLM_MANIFEST"));
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
