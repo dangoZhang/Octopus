@@ -1,7 +1,7 @@
 use octopus_core::{
     default_permissions, default_tentacle_profiles, inspect_tentacle_manifests,
     propose_tentacle_evolution, scaffold_tentacle, write_tentacle_evolution_artifacts, AdaptReport,
-    CapabilityGrant, ChatClient, ChatMessage, ChatRole, EnvironmentReport, EvolutionArtifact,
+    CapabilityGrant, ChatClient, ChatMessage, ChatRole, EnvironmentReport, EvolutionArtifact, Feed,
     GoalChat, Harness, HarnessState, HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient,
     OpenAiCompatibleConfig, SelfIterationPlan, StatusReport, TentacleEvolutionProposal,
     TentacleManifestReport, TentacleScaffold,
@@ -289,6 +289,33 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_tentacle_scaffold(&scaffold, language);
+            }
+            Ok(())
+        }
+        Some("probe") => {
+            let tentacle_id = rest
+                .get(1)
+                .ok_or_else(|| "probe requires a tentacle id".to_string())?;
+            let kind = rest
+                .get(2)
+                .ok_or_else(|| "probe requires a need kind".to_string())
+                .and_then(|value| parse_kind(value))?;
+            let query = rest
+                .get(3..)
+                .filter(|values| !values.is_empty())
+                .map(|values| values.join(" "))
+                .ok_or_else(|| "probe requires a query".to_string())?;
+            let mut state = HarnessState::default();
+            state.install_manifest(default_tentacles_root(), tentacle_id)?;
+            let mut harness = harness_for_need(state, &kind)?;
+            let feed = harness.feed_one(&Need::new(kind, query));
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&feed).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_probe_feed(&feed, language);
             }
             Ok(())
         }
@@ -723,6 +750,43 @@ fn print_tentacle_scaffold(scaffold: &TentacleScaffold, language: Language) {
     }
 }
 
+fn print_probe_feed(feed: &Feed, language: Language) {
+    match language {
+        Language::En => {
+            println!("status: {:?}", feed.status);
+            println!("summary: {}", feed.summary);
+            println!("evidence: {}", feed.evidence.len());
+            println!("metadata: {}", probe_metadata(feed));
+        }
+        Language::Zh => {
+            println!("状态: {:?}", feed.status);
+            println!("摘要: {}", localize_summary(&feed.summary, language));
+            println!("证据: {}", feed.evidence.len());
+            println!("元数据: {}", probe_metadata(feed));
+        }
+    }
+}
+
+fn probe_metadata(feed: &Feed) -> String {
+    let keys = [
+        "tentacle_brain",
+        "tool",
+        "runtime",
+        "contract",
+        "plan_source",
+        "returncode",
+    ];
+    let values = keys
+        .iter()
+        .filter_map(|key| {
+            feed.metadata
+                .get(*key)
+                .map(|value| format!("{key}={value}"))
+        })
+        .collect::<Vec<_>>();
+    join_or_none(&values)
+}
+
 fn print_environment(report: &EnvironmentReport, language: Language) {
     match language {
         Language::En => {
@@ -810,7 +874,7 @@ fn manifest_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | llm <message> | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [python|node|shell|http] | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | llm <message> | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [python|node|shell|http] | probe <tentacle> <kind> <query> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]
@@ -1177,6 +1241,14 @@ mod tests {
             state.clone(),
             "install".to_string(),
             "local_feed".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--json".to_string(),
+            "probe".to_string(),
+            "local_feed".to_string(),
+            "observe".to_string(),
+            "README.md".to_string(),
         ])
         .unwrap();
 

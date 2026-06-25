@@ -40,6 +40,7 @@ jobs:
           cd "$tmp"
           cargo run -q --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" -p octopus-core -- scaffold ci-feed python
           cargo run -q --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" -p octopus-core -- manifests tentacles
+          cargo run -q --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" -p octopus-core -- probe ci-feed observe README.md | grep -q "status: Satisfied"
           cargo run -q --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" -p octopus-core -- --state state.json install ci-feed
           cargo run -q --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" -p octopus-core -- --state state.json need observe README.md | grep -q "observe feed"
       - run: |

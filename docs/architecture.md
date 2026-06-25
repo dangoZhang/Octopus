@@ -37,6 +37,8 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 `scaffold <tentacle> [runtime]` creates a user-owned manifest, schema, and starter tool code for Python, Node, shell, or HTTP.
 
+`probe <tentacle> <kind> <query>` runs one tentacle without saving state, making runtime contracts debuggable.
+
 `evolve <tentacle> <objective>` writes an auditable draft under `.octopus/evolution/` listing the prompt, metadata, code files, checks, and constraints that can change safely.
 
 ## Color Pet
