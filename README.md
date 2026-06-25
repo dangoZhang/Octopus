@@ -23,6 +23,7 @@ cargo run -q -p octopus-core -- catalog
 cargo run -q -p octopus-core -- manifests
 cargo run -q -p octopus-core -- --lang zh env
 cargo run -q -p octopus-core -- --state "$tmp/state.json" install research
+cargo run -q -p octopus-core -- --state "$tmp/state.json" install swe-agent
 cargo run -q -p octopus-core -- --state "$tmp/state.json" installed
 cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build a clean-brain agent"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think through tentacles"
@@ -45,7 +46,9 @@ Tentacle manifests:
 - visual: brain=llm, runtime=static-html, tools=1, status=ok
 推荐触手: memory, visual, repo-maintainer, swe-agent, code, research, bash-only, computer-use-agent
 installed research
-research
+installed swe-agent (manifest: shell)
+profiles: research, swe-agent
+tentacles: swe-agent(shell)
 goal: build a clean-brain agent
 turn 2: remembered m2
 refinements: 1

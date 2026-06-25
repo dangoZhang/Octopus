@@ -201,7 +201,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let root = rest
                 .get(1)
                 .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("tentacles"));
+                .unwrap_or_else(default_tentacles_root);
             let reports = inspect_tentacle_manifests(&root).map_err(|error| error.to_string())?;
             if json {
                 println!(
@@ -231,11 +231,31 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .get(1)
                 .ok_or_else(|| "install requires a profile id".to_string())?;
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            loaded.install_profile(profile)?;
+            let profile_installed = loaded.install_profile(profile).is_ok();
+            let manifest_installed = loaded
+                .install_manifest(default_tentacles_root(), profile)
+                .ok();
+            if !profile_installed && manifest_installed.is_none() {
+                return Err(format!("unknown profile or tentacle manifest: {profile}"));
+            }
             loaded.save(&state).map_err(|error| error.to_string())?;
-            match language {
-                Language::En => println!("installed {profile}"),
-                Language::Zh => println!("已安装 {profile}"),
+            match (language, manifest_installed) {
+                (Language::En, Some(tentacle)) => {
+                    println!(
+                        "installed {} (manifest: {})",
+                        profile,
+                        tentacle.runtime_kinds.join(",")
+                    )
+                }
+                (Language::Zh, Some(tentacle)) => {
+                    println!(
+                        "已安装 {} (manifest: {})",
+                        profile,
+                        tentacle.runtime_kinds.join(",")
+                    )
+                }
+                (Language::En, None) => println!("installed {profile}"),
+                (Language::Zh, None) => println!("已安装 {profile}"),
             }
             Ok(())
         }
@@ -244,16 +264,20 @@ fn run(args: Vec<String>) -> Result<(), String> {
             if json {
                 println!(
                     "{}",
-                    serde_json::to_string_pretty(&loaded.installed_profiles)
-                        .map_err(|error| error.to_string())?
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "profiles": loaded.installed_profiles,
+                        "tentacles": loaded.installed_tentacles,
+                    }))
+                    .map_err(|error| error.to_string())?
                 );
-            } else if loaded.installed_profiles.is_empty() {
+            } else if loaded.installed_profiles.is_empty() && loaded.installed_tentacles.is_empty()
+            {
                 match language {
                     Language::En => println!("no tentacles installed"),
                     Language::Zh => println!("尚未安装触手"),
                 }
             } else {
-                println!("{}", loaded.installed_profiles.join(", "));
+                print_installed(&loaded, language);
             }
             Ok(())
         }
@@ -332,6 +356,27 @@ fn print_manifest_reports(reports: &[TentacleManifestReport], language: Language
             report.tool_count,
             status
         );
+    }
+}
+
+fn print_installed(state: &HarnessState, language: Language) {
+    if !state.installed_profiles.is_empty() {
+        match language {
+            Language::En => println!("profiles: {}", state.installed_profiles.join(", ")),
+            Language::Zh => println!("配置: {}", state.installed_profiles.join(", ")),
+        }
+    }
+    if !state.installed_tentacles.is_empty() {
+        let tentacles = state
+            .installed_tentacles
+            .iter()
+            .map(|tentacle| format!("{}({})", tentacle.id, tentacle.runtime_kinds.join(",")))
+            .collect::<Vec<_>>()
+            .join(", ");
+        match language {
+            Language::En => println!("tentacles: {tentacles}"),
+            Language::Zh => println!("触手: {tentacles}"),
+        }
     }
 }
 
@@ -439,6 +484,18 @@ fn print_environment(report: &EnvironmentReport, language: Language) {
     }
 }
 
+fn default_tentacles_root() -> PathBuf {
+    let cwd_root = env::current_dir()
+        .ok()
+        .map(|cwd| cwd.join("tentacles"))
+        .filter(|path| path.exists());
+    cwd_root.unwrap_or_else(|| {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles")
+    })
+}
+
 fn usage() -> String {
     "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | goal | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | routes | catalog | manifests [root] | env | install <profile> | installed".to_string()
 }
@@ -536,10 +593,19 @@ mod tests {
             "research".to_string(),
         ])
         .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "install".to_string(),
+            "swe-agent".to_string(),
+        ])
+        .unwrap();
         run(vec!["--state".to_string(), state, "installed".to_string()]).unwrap();
 
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("research"));
+        assert!(content.contains("installed_tentacles"));
+        assert!(content.contains("tools/read.sh"));
         let _ = fs::remove_file(path);
     }
 

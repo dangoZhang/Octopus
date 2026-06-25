@@ -769,6 +769,8 @@ pub struct HarnessState {
     #[serde(default)]
     pub installed_profiles: Vec<String>,
     #[serde(default)]
+    pub installed_tentacles: Vec<InstalledTentacle>,
+    #[serde(default)]
     pub goal: Option<Goal>,
     #[serde(default)]
     pub goal_turns: Vec<GoalTurn>,
@@ -810,6 +812,30 @@ impl HarnessState {
             self.installed_profiles.push(profile_id.to_string());
         }
         Ok(())
+    }
+
+    pub fn install_manifest(
+        &mut self,
+        root: impl AsRef<Path>,
+        tentacle_id: &str,
+    ) -> Result<InstalledTentacle, String> {
+        let root = root.as_ref();
+        let manifests = load_tentacle_manifests(root).map_err(|error| error.to_string())?;
+        let loaded = manifests
+            .into_iter()
+            .find(|loaded| loaded.manifest.id == tentacle_id)
+            .ok_or_else(|| format!("unknown manifest: {tentacle_id}"))?;
+        let installed = installed_tentacle_from_manifest(root, loaded)?;
+        if let Some(existing) = self
+            .installed_tentacles
+            .iter_mut()
+            .find(|item| item.id == installed.id)
+        {
+            *existing = installed.clone();
+        } else {
+            self.installed_tentacles.push(installed.clone());
+        }
+        Ok(installed)
     }
 
     pub fn grant_oauth(
@@ -1099,6 +1125,18 @@ pub struct TentacleProfile {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct InstalledTentacle {
+    pub id: String,
+    pub name: String,
+    pub source: String,
+    pub brain_kind: String,
+    pub runtime_kinds: Vec<String>,
+    pub needs: Vec<String>,
+    pub tools: Vec<String>,
+    pub editable: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TentacleManifest {
     #[serde(default, rename = "$schema")]
     pub schema: Option<String>,
@@ -1160,6 +1198,9 @@ pub fn load_tentacle_manifests(
     root: impl AsRef<Path>,
 ) -> Result<Vec<LoadedTentacleManifest>, Error> {
     let root = root.as_ref();
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
     let mut manifests = Vec::new();
     for entry in fs::read_dir(root)? {
         let entry = entry?;
@@ -1551,6 +1592,40 @@ fn manifest_report(root: &Path, loaded: LoadedTentacleManifest) -> TentacleManif
         editable: loaded.manifest.evolution.editable,
         missing_entrypoints,
     }
+}
+
+fn installed_tentacle_from_manifest(
+    root: &Path,
+    loaded: LoadedTentacleManifest,
+) -> Result<InstalledTentacle, String> {
+    let report = manifest_report(root, loaded.clone());
+    if !report.missing_entrypoints.is_empty() {
+        return Err(format!(
+            "manifest has missing entrypoints: {}",
+            report.missing_entrypoints.join(", ")
+        ));
+    }
+    let tools = loaded
+        .manifest
+        .tools
+        .iter()
+        .map(|tool| {
+            format!(
+                "{}:{}:{}",
+                tool.id, tool.implementation.kind, tool.implementation.entrypoint
+            )
+        })
+        .collect::<Vec<_>>();
+    Ok(InstalledTentacle {
+        id: report.id,
+        name: report.name,
+        source: report.path,
+        brain_kind: report.brain_kind,
+        runtime_kinds: report.runtime_kinds,
+        needs: report.needs,
+        tools,
+        editable: report.editable,
+    })
 }
 
 fn entrypoint_exists(root: &Path, manifest_path: &Path, entrypoint: &str) -> bool {
@@ -2070,5 +2145,25 @@ mod tests {
 
         assert_eq!(state.installed_profiles, vec!["research".to_string()]);
         assert!(state.install_profile("missing").is_err());
+    }
+
+    #[test]
+    fn harness_state_installs_manifest_tentacle_package() {
+        let mut state = HarnessState::default();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+
+        let installed = state.install_manifest(&root, "swe-agent").unwrap();
+        state.install_manifest(&root, "swe-agent").unwrap();
+
+        assert_eq!(state.installed_tentacles.len(), 1);
+        assert_eq!(installed.brain_kind, "llm");
+        assert!(installed.runtime_kinds.contains(&"shell".to_string()));
+        assert!(installed
+            .tools
+            .iter()
+            .any(|tool| tool.contains("read:shell")));
+        assert!(state.install_manifest(&root, "missing").is_err());
     }
 }
