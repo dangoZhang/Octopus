@@ -209,33 +209,14 @@
 tmp=$(mktemp -d)
 repo=$PWD
 cargo run -q -p octopus-core -- demo dangoZhang/Octopus
-cargo run -q -p octopus-core -- catalog
-cargo run -q -p octopus-core -- manifests
-cargo run -q -p octopus-core -- --lang zh env
 cargo run -q -p octopus-core -- --state "$tmp/state.json" adapt
-cargo run -q -p octopus-core -- --state "$tmp/state.json" install research
 cargo run -q -p octopus-core -- --state "$tmp/state.json" install swe-agent
-cargo run -q -p octopus-core -- --state "$tmp/state.json" installed
-cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh chat "构建干净大脑 agent"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe .
 cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh doctor
-cargo run -q -p octopus-core -- --state "$tmp/state.json" --json doctor
-cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh chat "让工具通过触手思考"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh beat 200
-cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh goal
-cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh self-iterate dangoZhang/Octopus
-cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh oauth github dangoZhang/Octopus
-cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh self-iterate dangoZhang/Octopus
-OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" cargo run -q -p octopus-core -- llm "provider check"
-OCTOPUS_LLM_MANIFEST=1 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" cargo run -q -p octopus-core -- --state "$tmp/state.json" --json need observe README.md 1 1
 (cd "$tmp" &amp;&amp; cargo run -q --manifest-path "$repo/Cargo.toml" -p octopus-core -- scaffold my-feed python)
-(cd "$tmp" &amp;&amp; cargo run -q --manifest-path "$repo/Cargo.toml" -p octopus-core -- probe my-feed observe README.md)
-cargo run -q -p octopus-core -- evolve swe-agent "improve repository observation feed quality"
-tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build a clean-brain agent"
-tentacles/repo-maintainer/tools/draft_pr.sh "$tmp" dangoZhang/Octopus "improve usability"
-cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh need remember "工具不进大脑"
-cargo run -q -p octopus-core -- --state "$tmp/state.json" need recall 工具
-cargo run -q -p octopus-core --example thinking_tentacle</code></pre>
+(cd "$tmp" &amp;&amp; cargo run -q --manifest-path "$repo/Cargo.toml" -p octopus-core -- probe my-feed observe README.md)</code></pre>
+          <p><a href="../quickstart.html">完整流程</a>。内核保持小，SDK 和触手围绕它进化。</p>
         </div>
       </section>
     </main>

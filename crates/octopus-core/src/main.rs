@@ -1279,7 +1279,7 @@ fn manifest_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [python|node|shell|http] | probe <tentacle> <kind> <query> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]

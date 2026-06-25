@@ -45,6 +45,9 @@ jobs:
           cargo run -q --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" -p octopus-core -- probe ci-feed observe README.md | grep -q "status: Satisfied"
           cargo run -q --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" -p octopus-core -- --state state.json install ci-feed
           cargo run -q --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" -p octopus-core -- --state state.json need observe README.md | grep -q "observe feed"
+          cargo run -q --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" -p octopus-core -- scaffold native-feed rust
+          cargo run -q --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" -p octopus-core -- manifests tentacles | grep -q "native-feed"
+          cargo run -q --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" -p octopus-core -- manifests tentacles | grep -q "tools/feed"
       - run: |
           tmp=$(mktemp -d)
           cargo run -q -p octopus-core -- --state "$tmp/state.json" adapt

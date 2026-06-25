@@ -2306,14 +2306,7 @@ pub fn scaffold_tentacle(
     runtime: Option<&str>,
 ) -> Result<TentacleScaffold, String> {
     let tentacle_id = validate_tentacle_id(tentacle_id)?;
-    let runtime = runtime
-        .unwrap_or("python")
-        .trim()
-        .to_ascii_lowercase()
-        .replace("javascript", "node");
-    if !["python", "node", "shell", "http"].contains(&runtime.as_str()) {
-        return Err("runtime must be one of: python, node, shell, http".to_string());
-    }
+    let runtime = normalize_runtime(runtime)?;
 
     let tentacles_root = workspace_root.as_ref().join("tentacles");
     let directory = tentacles_root.join(&tentacle_id);
@@ -2351,7 +2344,7 @@ pub fn scaffold_tentacle(
             ("tools/feed.sh".to_string(), Some(path))
         }
         "http" => ("https://example.com/octopus-feed".to_string(), None),
-        _ => unreachable!(),
+        _ => ("tools/feed".to_string(), None),
     };
 
     let manifest_path = directory.join("manifest.json");
@@ -2365,11 +2358,20 @@ pub fn scaffold_tentacle(
     )
     .map_err(|error| error.to_string())?;
 
-    let next_steps = vec![
+    let mut next_steps = vec![
         format!("review {}", manifest_path.display()),
         format!("octopus-core manifests {}", tentacles_root.display()),
         format!("octopus-core --state /tmp/octopus.json install {tentacle_id}"),
     ];
+    if tool_path.is_none() && runtime != "http" {
+        next_steps.insert(
+            1,
+            format!(
+                "add executable {} that reads {OCTOPUS_JSON_CONTRACT} from stdin",
+                directory.join("tools/feed").display()
+            ),
+        );
+    }
     Ok(TentacleScaffold {
         tentacle_id,
         runtime,
@@ -2378,6 +2380,25 @@ pub fn scaffold_tentacle(
         tool_path: tool_path.map(|path| path.to_string_lossy().to_string()),
         next_steps,
     })
+}
+
+fn normalize_runtime(runtime: Option<&str>) -> Result<String, String> {
+    let value = runtime.unwrap_or("python").trim().to_ascii_lowercase();
+    let value = match value.as_str() {
+        "javascript" => "node".to_string(),
+        "bash" => "shell".to_string(),
+        _ => value,
+    };
+    if value.is_empty() {
+        return Err("runtime cannot be empty".to_string());
+    }
+    if !value
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || character == '-' || character == '_')
+    {
+        return Err("runtime can only contain ASCII letters, numbers, '-' and '_'".to_string());
+    }
+    Ok(value)
 }
 
 fn validate_tentacle_id(value: &str) -> Result<String, String> {
@@ -4007,6 +4028,36 @@ print(json.dumps({
             feed.metadata.get("contract").map(String::as_str),
             Some(OCTOPUS_JSON_CONTRACT)
         );
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn scaffold_accepts_custom_runtime_manifest_only() {
+        let workspace =
+            std::env::temp_dir().join(format!("octopus-scaffold-custom-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&workspace);
+        fs::create_dir_all(&workspace).unwrap();
+
+        let scaffold = scaffold_tentacle(&workspace, "native_feed", Some("rust")).unwrap();
+        let tentacles_root = workspace.join("tentacles");
+        let reports = inspect_tentacle_manifests(&tentacles_root).unwrap();
+
+        assert_eq!(scaffold.runtime, "rust");
+        assert!(Path::new(&scaffold.manifest_path).exists());
+        assert!(scaffold.tool_path.is_none());
+        assert!(scaffold
+            .next_steps
+            .iter()
+            .any(|step| step.contains("add executable")));
+        assert_eq!(reports[0].runtime_kinds, vec!["rust".to_string()]);
+        assert_eq!(
+            reports[0].missing_entrypoints,
+            vec!["tools/feed".to_string()]
+        );
+        let mut state = HarnessState::default();
+        assert!(state
+            .install_manifest(&tentacles_root, "native_feed")
+            .is_err());
         let _ = fs::remove_dir_all(workspace);
     }
 
