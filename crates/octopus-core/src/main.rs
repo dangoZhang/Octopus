@@ -1,10 +1,11 @@
 use octopus_core::{
     default_permissions, default_tentacle_profiles, inspect_tentacle_manifests,
-    propose_tentacle_evolution, scaffold_tentacle, write_tentacle_evolution_artifacts, AdaptReport,
-    CapabilityGrant, ChatClient, ChatMessage, ChatRole, EnvironmentReport, EvolutionArtifact, Feed,
-    GoalChat, Harness, HarnessState, HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient,
-    OpenAiCompatibleConfig, SelfIterationPlan, StatusReport, TentacleEvolutionProposal,
-    TentacleManifestReport, TentacleScaffold,
+    load_tentacle_manifests, propose_tentacle_evolution, scaffold_tentacle,
+    write_tentacle_evolution_artifacts, AdaptReport, CapabilityGrant, ChatClient, ChatMessage,
+    ChatRole, EnvironmentReport, EvolutionArtifact, Feed, GoalChat, Harness, HarnessState,
+    HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient, OpenAiCompatibleConfig,
+    SelfIterationPlan, StatusReport, TentacleEvolutionProposal, TentacleManifestReport,
+    TentacleScaffold,
 };
 use std::env;
 use std::fs;
@@ -79,6 +80,21 @@ struct InitReport {
 struct InitFileReport {
     path: String,
     created: bool,
+}
+
+#[derive(serde::Serialize)]
+struct SkillReport {
+    id: String,
+    name: String,
+    description: String,
+    source_kind: String,
+    source: String,
+    brain_kind: String,
+    needs: Vec<String>,
+    tools: Vec<String>,
+    runtimes: Vec<String>,
+    installed: bool,
+    llm_ready: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -450,6 +466,23 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
+        Some("skills") => {
+            let root = rest
+                .get(1)
+                .map(PathBuf::from)
+                .unwrap_or_else(default_tentacles_root);
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let reports = skill_reports(&loaded, root)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&reports).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_skill_reports(&reports, language);
+            }
+            Ok(())
+        }
         Some("manifests") => {
             let root = rest
                 .get(1)
@@ -606,6 +639,39 @@ fn print_catalog(profiles: &[octopus_core::TentacleProfile], language: Language)
     }
     for profile in profiles {
         println!("- {}: {}", profile.id, profile.description);
+    }
+}
+
+fn print_skill_reports(reports: &[SkillReport], language: Language) {
+    match language {
+        Language::En => println!("Skills:"),
+        Language::Zh => println!("能力:"),
+    }
+    if reports.is_empty() {
+        match language {
+            Language::En => println!("- none"),
+            Language::Zh => println!("- 无"),
+        }
+        return;
+    }
+    for report in reports {
+        let installed = match (language, report.installed) {
+            (Language::En, true) => "installed",
+            (Language::En, false) => "available",
+            (Language::Zh, true) => "已安装",
+            (Language::Zh, false) => "可用",
+        };
+        println!(
+            "- {} [{}:{}; {}] needs={} tools={} runtimes={} :: {}",
+            report.id,
+            report.source_kind,
+            report.source,
+            installed,
+            join_or_none(&report.needs),
+            join_or_none(&report.tools),
+            join_or_none(&report.runtimes),
+            report.description
+        );
     }
 }
 
@@ -794,6 +860,7 @@ fn init_workspace(state_path: PathBuf, tentacles_root: PathBuf) -> Result<InitRe
     let state_arg = shell_arg(&state_path.to_string_lossy());
     let mut next = vec![
         format!("octopus --state {state_arg} chat \"describe your goal\""),
+        format!("octopus --state {state_arg} skills"),
         format!("octopus --state {state_arg} need observe ."),
         format!("octopus --state {state_arg} doctor"),
     ];
@@ -932,6 +999,126 @@ fn init_file_summary(files: &[InitFileReport]) -> String {
         })
         .collect::<Vec<_>>();
     join_or_none(&items)
+}
+
+fn skill_reports(state: &HarnessState, root: PathBuf) -> Result<Vec<SkillReport>, String> {
+    let mut reports = Vec::new();
+    let manifests = load_tentacle_manifests(&root).map_err(|error| error.to_string())?;
+    let manifest_ids = manifests
+        .iter()
+        .map(|loaded| loaded.manifest.id.as_str())
+        .collect::<Vec<_>>();
+    for profile in default_tentacle_profiles() {
+        if manifest_ids.contains(&profile.id.as_str()) {
+            continue;
+        }
+        let mut runtimes = profile
+            .tools
+            .iter()
+            .map(|tool| tool.implementation.kind.clone())
+            .collect::<Vec<_>>();
+        runtimes.sort();
+        runtimes.dedup();
+        let installed = state
+            .installed_profiles
+            .iter()
+            .any(|installed| installed == &profile.id)
+            || state
+                .installed_tentacles
+                .iter()
+                .any(|installed| installed.id == profile.id);
+        for skill in profile.skills {
+            reports.push(SkillReport {
+                id: skill.id,
+                name: skill.name,
+                description: skill.description,
+                source_kind: "profile".to_string(),
+                source: profile.id.clone(),
+                brain_kind: profile.brain.kind.clone(),
+                needs: skill.needs.iter().map(need_label).collect(),
+                tools: skill.tools,
+                runtimes: runtimes.clone(),
+                installed,
+                llm_ready: profile.llm_ready,
+            });
+        }
+    }
+
+    for loaded in manifests {
+        let mut runtimes = loaded
+            .manifest
+            .tools
+            .iter()
+            .map(|tool| tool.implementation.kind.clone())
+            .collect::<Vec<_>>();
+        runtimes.sort();
+        runtimes.dedup();
+        let tools = loaded
+            .manifest
+            .tools
+            .iter()
+            .map(|tool| tool.id.clone())
+            .collect::<Vec<_>>();
+        let installed = state
+            .installed_tentacles
+            .iter()
+            .any(|installed| installed.id == loaded.manifest.id);
+        for skill in loaded.manifest.skills {
+            reports.push(SkillReport {
+                id: skill.id.clone(),
+                name: title_from_id(&skill.id),
+                description: skill.description,
+                source_kind: "manifest".to_string(),
+                source: loaded.manifest.id.clone(),
+                brain_kind: loaded.manifest.brain.kind.clone(),
+                needs: skill.needs.iter().map(need_label).collect(),
+                tools: tools.clone(),
+                runtimes: runtimes.clone(),
+                installed,
+                llm_ready: loaded.manifest.brain.kind == "llm",
+            });
+        }
+    }
+    reports.sort_by(|left, right| {
+        left.id
+            .cmp(&right.id)
+            .then_with(|| left.source_kind.cmp(&right.source_kind))
+            .then_with(|| left.source.cmp(&right.source))
+    });
+    Ok(reports)
+}
+
+fn need_label(kind: &NeedKind) -> String {
+    match kind {
+        NeedKind::Verify => "verify",
+        NeedKind::Reproduce => "reproduce",
+        NeedKind::Compare => "compare",
+        NeedKind::Remember => "remember",
+        NeedKind::Forget => "forget",
+        NeedKind::Execute => "execute",
+        NeedKind::Recall => "recall",
+        NeedKind::Observe => "observe",
+    }
+    .to_string()
+}
+
+fn title_from_id(value: &str) -> String {
+    value
+        .split(['-', '_'])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => format!(
+                    "{}{}",
+                    first.to_uppercase().collect::<String>(),
+                    chars.as_str()
+                ),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn shell_arg(value: &str) -> String {
@@ -1542,12 +1729,13 @@ fn chat_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{localize_summary, run, Language};
+    use super::{localize_summary, run, skill_reports, Language};
+    use octopus_core::HarnessState;
     use std::fs;
     use std::path::Path;
     use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -1689,6 +1877,13 @@ mod tests {
             .join("tentacles")
             .to_string_lossy()
             .to_string();
+        run(vec!["skills".to_string(), root.clone()]).unwrap();
+        run(vec![
+            "--json".to_string(),
+            "skills".to_string(),
+            root.clone(),
+        ])
+        .unwrap();
         run(vec!["manifests".to_string(), root]).unwrap();
         run(vec![
             "--lang".to_string(),
@@ -1757,6 +1952,25 @@ mod tests {
         let env_example = fs::read_to_string(dir.join("llm.env.example")).unwrap();
         assert!(env_example.contains("OCTOPUS_LLM_MANIFEST"));
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn skills_report_profiles_manifests_and_install_status() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        let before = skill_reports(&state, root.clone()).unwrap();
+        assert!(before.iter().any(|skill| skill.id == "swe-workflow"));
+        assert!(before
+            .iter()
+            .any(|skill| skill.id == "computer-use" && skill.source_kind == "manifest"));
+
+        state.install_manifest(root.clone(), "swe-agent").unwrap();
+        let after = skill_reports(&state, root).unwrap();
+        assert!(after.iter().any(|skill| {
+            skill.id == "swe-workflow" && skill.source == "swe-agent" && skill.installed
+        }));
     }
 
     #[test]

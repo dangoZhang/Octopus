@@ -24,6 +24,7 @@ The mechanism is `Need -> Feed -> Feedback`. The outcome is less tool burden and
 cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus
 octopus demo dangoZhang/Octopus
 octopus init
+octopus skills
 octopus install swe-agent
 octopus chat "build a clean-brain agent"
 octopus need observe .

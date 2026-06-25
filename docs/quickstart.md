@@ -8,6 +8,7 @@ cargo install --path crates/octopus-core --bin octopus --force
 tmp=$(mktemp -d)
 octopus demo dangoZhang/Octopus
 octopus catalog
+octopus skills
 octopus manifests
 octopus --lang zh env
 octopus --state "$tmp/state.json" init
