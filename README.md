@@ -35,6 +35,7 @@ cargo run -q -p octopus-core -- --state "$tmp/state.json" goal
 cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 cargo run -q -p octopus-core -- --state "$tmp/state.json" oauth github dangoZhang/Octopus
 cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
+OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" cargo run -q -p octopus-core -- llm "provider check"
 tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build a clean-brain agent"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh need remember "工具不进大脑"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" need recall 工具
@@ -69,6 +70,7 @@ mode: report-only
 oauth grant active: github:dangoZhang/Octopus
 mode: pr-ready
 draft branch: octopus/build-a-clean-brain-agent
+provider check
 queue=.octopus/self-iteration/PATCH_QUEUE.md
 已记住 m3
 工具不进大脑

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::env;
 use std::fs;
 use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
@@ -703,6 +704,129 @@ pub struct ChatResponse {
 
 pub trait ChatClient {
     fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String>;
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct OpenAiCompatibleConfig {
+    pub model: String,
+    pub api_key: Option<String>,
+    pub base_url: String,
+    pub timeout_seconds: u64,
+    pub curl_command: String,
+}
+
+impl OpenAiCompatibleConfig {
+    pub fn from_env() -> Result<Self, String> {
+        Self::from_env_prefix("OCTOPUS_LLM")
+    }
+
+    pub fn from_env_prefix(prefix: &str) -> Result<Self, String> {
+        let model_key = format!("{prefix}_MODEL");
+        let model = env::var(&model_key)
+            .map_err(|_| format!("{model_key} is required for provider chat"))?;
+        let api_key = env::var(format!("{prefix}_API_KEY"))
+            .ok()
+            .filter(|value| !value.is_empty());
+        let base_url = env::var(format!("{prefix}_BASE_URL"))
+            .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
+        let timeout_seconds = env::var(format!("{prefix}_TIMEOUT"))
+            .ok()
+            .map(|value| {
+                value
+                    .parse::<u64>()
+                    .map_err(|_| format!("{prefix}_TIMEOUT must be an integer"))
+            })
+            .transpose()?
+            .unwrap_or(60);
+        let curl_command =
+            env::var(format!("{prefix}_CURL")).unwrap_or_else(|_| "curl".to_string());
+        Ok(Self {
+            model,
+            api_key,
+            base_url,
+            timeout_seconds,
+            curl_command,
+        })
+    }
+
+    pub fn endpoint(&self) -> String {
+        format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
+    }
+}
+
+pub struct OpenAiCompatibleChatClient {
+    config: OpenAiCompatibleConfig,
+}
+
+impl OpenAiCompatibleChatClient {
+    pub fn new(config: OpenAiCompatibleConfig) -> Self {
+        Self { config }
+    }
+
+    pub fn from_env() -> Result<Self, String> {
+        Ok(Self::new(OpenAiCompatibleConfig::from_env()?))
+    }
+
+    fn request_body(&self, messages: &[ChatMessage]) -> Result<String, String> {
+        serde_json::to_string(&serde_json::json!({
+            "model": self.config.model.as_str(),
+            "messages": messages,
+        }))
+        .map_err(|error| error.to_string())
+    }
+}
+
+impl ChatClient for OpenAiCompatibleChatClient {
+    fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+        let body = self.request_body(messages)?;
+        let mut command = Command::new(&self.config.curl_command);
+        command
+            .arg("-sS")
+            .arg("--max-time")
+            .arg(self.config.timeout_seconds.to_string())
+            .arg("-X")
+            .arg("POST")
+            .arg(self.config.endpoint())
+            .arg("-H")
+            .arg("Content-Type: application/json")
+            .arg("--data-binary")
+            .arg(body);
+        if let Some(api_key) = &self.config.api_key {
+            command
+                .arg("-H")
+                .arg(format!("Authorization: Bearer {api_key}"));
+        }
+        let output = command.output().map_err(|error| {
+            format!(
+                "{} failed to start: {error}",
+                self.config.curl_command.as_str()
+            )
+        })?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        if !output.status.success() {
+            let message = if stderr.trim().is_empty() {
+                stdout
+            } else {
+                stderr
+            };
+            return Err(trim_output(&message));
+        }
+        let data = serde_json::from_str::<serde_json::Value>(&stdout)
+            .map_err(|error| format!("invalid chat response JSON: {error}"))?;
+        let content = data
+            .pointer("/choices/0/message/content")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "chat response missing choices[0].message.content".to_string())?;
+        Ok(ChatResponse {
+            content: content.to_string(),
+            metadata: BTreeMap::from([
+                ("provider".to_string(), "openai-compatible".to_string()),
+                ("model".to_string(), self.config.model.clone()),
+                ("base_url".to_string(), self.config.base_url.clone()),
+            ]),
+        })
+    }
 }
 
 pub struct ChatPlanner<C>
@@ -2839,6 +2963,66 @@ mod tests {
 
         assert_eq!(plan.summary, "planned by chat");
         assert_eq!(plan.calls[0].tool, "verifier");
+    }
+
+    #[test]
+    fn openai_compatible_chat_client_builds_payload_and_parses_response() {
+        let config = OpenAiCompatibleConfig {
+            model: "test-model".to_string(),
+            api_key: Some("token".to_string()),
+            base_url: "https://llm.example/v1/".to_string(),
+            timeout_seconds: 3,
+            curl_command: "curl".to_string(),
+        };
+        let client = OpenAiCompatibleChatClient::new(config.clone());
+        let body = client
+            .request_body(&[
+                ChatMessage::new(ChatRole::System, "system"),
+                ChatMessage::new(ChatRole::User, "user"),
+            ])
+            .unwrap();
+
+        assert_eq!(config.endpoint(), "https://llm.example/v1/chat/completions");
+        assert!(body.contains("\"model\":\"test-model\""));
+        assert!(body.contains("\"role\":\"system\""));
+        assert!(body.contains("\"role\":\"user\""));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn openai_compatible_chat_client_uses_curl_adapter() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!("octopus-fake-curl-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = dir.join("fake-curl.sh");
+        fs::write(
+            &curl,
+            "#!/bin/sh\nprintf '%s' '{\"choices\":[{\"message\":{\"content\":\"provider ok\"}}]}'\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+        let mut client = OpenAiCompatibleChatClient::new(OpenAiCompatibleConfig {
+            model: "test-model".to_string(),
+            api_key: None,
+            base_url: "https://llm.example/v1".to_string(),
+            timeout_seconds: 1,
+            curl_command: curl.to_string_lossy().to_string(),
+        });
+
+        let response = client
+            .chat(&[ChatMessage::new(ChatRole::User, "hello")])
+            .unwrap();
+
+        assert_eq!(response.content, "provider ok");
+        assert_eq!(
+            response.metadata.get("provider"),
+            Some(&"openai-compatible".to_string())
+        );
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
