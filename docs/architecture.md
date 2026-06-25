@@ -23,6 +23,10 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 `src/octopus` is the Python SDK/prototype layer. It is useful for quick integrations, demos, and LLM-tool experiments.
 
+## Code-As-Harness
+
+`tentacles/` contains editable harness code. Initial profiles include SWE-style `read/edit`, computer-use `mcp/bash`, and bash-only `write .sh, run .sh` tools.
+
 ## Boundary
 
 Chat refines a `Goal`. Brains emit `Need`. Tentacles may think, plan, and call tools through `Tool`, `Planner`, or `ChatClient`. Harness evolves the feed path from data. The brain never carries tool burden.

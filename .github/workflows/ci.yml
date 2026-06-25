@@ -15,6 +15,10 @@ jobs:
       - run: cargo run -q -p octopus-core --example thinking_tentacle
       - run: cargo run -q -p octopus-core -- catalog
       - run: cargo run -q -p octopus-core -- --lang zh env
+      - run: tentacles/swe-agent/tools/read.sh README.md 1 2
+      - run: |
+          tmp=$(mktemp -d)
+          printf 'echo bash-only-ok\n' | tentacles/bash-only/tools/write_and_run.sh "$tmp"
       - run: |
           tmp=$(mktemp -d)
           cargo run -q -p octopus-core -- --state "$tmp/state.json" install research

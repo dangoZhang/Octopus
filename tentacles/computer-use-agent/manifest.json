@@ -1,0 +1,14 @@
+{
+  "id": "computer-use-agent",
+  "name": "Computer Use Tentacle",
+  "description": "Code-as-harness tools for local UI workflows such as screenshots and opening URLs.",
+  "skills": ["mcp", "bash", "screenshot", "open_url", "describe_screen"],
+  "tools": [
+    "tools/mcp.sh",
+    "tools/bash.sh",
+    "tools/screenshot.sh",
+    "tools/open_url.sh",
+    "tools/describe_screen.sh"
+  ]
+}
+

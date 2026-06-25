@@ -184,14 +184,14 @@
           <div class="grid">
             <article class="card"><h3>干净大脑</h3><p>主模型只说需要查证、复现、比较、记忆、遗忘或执行，不背工具细节。</p></article>
             <article class="card"><h3>触手大脑</h3><p>工具侧可以拥有 planner 或 LLM，先选工具，再执行，再返回证据。</p></article>
-            <article class="card"><h3>自适配触手</h3><p>Catalog、skill、chat adapter 和环境检测帮助用户选择合适触手。</p></article>
+            <article class="card"><h3>Code-as-harness</h3><p>初始触手包括 SWE read/edit、computer-use mcp/bash、bash-only shell 工具。</p></article>
           </div>
         </div>
       </section>
 
       <section>
         <div class="shell">
-          <h2>快速开始</h2>
+          <h2>快速安装与使用</h2>
           <pre><code>cargo test
 tmp=$(mktemp -d)
 cargo run -q -p octopus-core -- catalog

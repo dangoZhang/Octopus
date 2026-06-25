@@ -1,0 +1,13 @@
+{
+  "id": "swe-agent",
+  "name": "SWE Agent Tentacle",
+  "description": "Code-as-harness tools for repository inspection, patch preparation, and test execution.",
+  "skills": ["read", "edit", "inspect_repo", "write_patch", "run_tests"],
+  "tools": [
+    "tools/read.sh",
+    "tools/edit.sh",
+    "tools/inspect_repo.sh",
+    "tools/write_patch.sh",
+    "tools/run_tests.sh"
+  ]
+}

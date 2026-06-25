@@ -1,0 +1,8 @@
+{
+  "id": "bash-only",
+  "name": "Bash Only Tentacle",
+  "description": "Every tool call is written to a .sh file, then executed by bash.",
+  "skills": ["write_and_run"],
+  "tools": ["tools/write_and_run.sh"]
+}
+

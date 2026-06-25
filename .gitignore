@@ -8,4 +8,5 @@ dist/
 build/
 *.egg-info/
 target/
+.octopus/
 .DS_Store

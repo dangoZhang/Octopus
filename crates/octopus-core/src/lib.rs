@@ -954,6 +954,57 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
             }],
             llm_ready: true,
         },
+        TentacleProfile {
+            id: "swe-agent".to_string(),
+            name: "SWE Agent Tentacle".to_string(),
+            description: "Code-as-harness repo tools for inspect, patch, and test workflows.".to_string(),
+            skills: vec![SkillManifest {
+                id: "swe-workflow".to_string(),
+                name: "SWE Workflow".to_string(),
+                description: "Read/edit files, inspect a repository, prepare patches, and run tests through editable shell tools.".to_string(),
+                needs: vec![NeedKind::Observe, NeedKind::Execute, NeedKind::Verify],
+                tools: vec![
+                    "tentacles/swe-agent/tools/read.sh".to_string(),
+                    "tentacles/swe-agent/tools/edit.sh".to_string(),
+                    "tentacles/swe-agent/tools/inspect_repo.sh".to_string(),
+                    "tentacles/swe-agent/tools/write_patch.sh".to_string(),
+                    "tentacles/swe-agent/tools/run_tests.sh".to_string(),
+                ],
+            }],
+            llm_ready: true,
+        },
+        TentacleProfile {
+            id: "computer-use-agent".to_string(),
+            name: "Computer Use Tentacle".to_string(),
+            description: "Code-as-harness local UI tools for screenshots and desktop workflows.".to_string(),
+            skills: vec![SkillManifest {
+                id: "computer-use".to_string(),
+                name: "Computer Use".to_string(),
+                description: "Use MCP, bash, URLs, screenshots, and desktop environment probes.".to_string(),
+                needs: vec![NeedKind::Observe, NeedKind::Execute],
+                tools: vec![
+                    "tentacles/computer-use-agent/tools/mcp.sh".to_string(),
+                    "tentacles/computer-use-agent/tools/bash.sh".to_string(),
+                    "tentacles/computer-use-agent/tools/screenshot.sh".to_string(),
+                    "tentacles/computer-use-agent/tools/open_url.sh".to_string(),
+                    "tentacles/computer-use-agent/tools/describe_screen.sh".to_string(),
+                ],
+            }],
+            llm_ready: true,
+        },
+        TentacleProfile {
+            id: "bash-only".to_string(),
+            name: "Bash Only Tentacle".to_string(),
+            description: "Writes every tool call into a .sh file and executes it with bash.".to_string(),
+            skills: vec![SkillManifest {
+                id: "write-and-run".to_string(),
+                name: "Write And Run".to_string(),
+                description: "Represent execution as editable shell scripts under .octopus/harness.".to_string(),
+                needs: vec![NeedKind::Execute, NeedKind::Reproduce, NeedKind::Verify],
+                tools: vec!["tentacles/bash-only/tools/write_and_run.sh".to_string()],
+            }],
+            llm_ready: true,
+        },
     ]
 }
 
@@ -978,14 +1029,25 @@ impl EnvironmentReport {
         .filter(|(path, _)| path.exists())
         .map(|(_, name)| name.to_string())
         .collect::<Vec<_>>();
-        let commands = ["git", "cargo", "python3", "gh"]
-            .into_iter()
-            .filter(|command| command_available(command))
-            .map(str::to_string)
-            .collect::<Vec<_>>();
+        let commands = [
+            "git",
+            "cargo",
+            "python3",
+            "gh",
+            "bash",
+            "open",
+            "screencapture",
+            "xdg-open",
+            "gnome-screenshot",
+        ]
+        .into_iter()
+        .filter(|command| command_available(command))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
         let mut recommended_profiles = vec!["memory".to_string()];
         if manifests.iter().any(|item| item == "git") {
             recommended_profiles.push("repo-maintainer".to_string());
+            recommended_profiles.push("swe-agent".to_string());
         }
         if manifests
             .iter()
@@ -995,6 +1057,17 @@ impl EnvironmentReport {
         }
         if manifests.iter().any(|item| item == "docs") {
             recommended_profiles.push("research".to_string());
+        }
+        if commands.iter().any(|item| item == "bash") {
+            recommended_profiles.push("bash-only".to_string());
+        }
+        if commands.iter().any(|item| {
+            item == "open"
+                || item == "xdg-open"
+                || item == "screencapture"
+                || item == "gnome-screenshot"
+        }) {
+            recommended_profiles.push("computer-use-agent".to_string());
         }
         Self {
             manifests,
@@ -1158,6 +1231,11 @@ mod tests {
         assert!(profiles
             .iter()
             .any(|profile| profile.id == "repo-maintainer"));
+        assert!(profiles.iter().any(|profile| profile.id == "swe-agent"));
+        assert!(profiles
+            .iter()
+            .any(|profile| profile.id == "computer-use-agent"));
+        assert!(profiles.iter().any(|profile| profile.id == "bash-only"));
         assert!(profiles
             .iter()
             .any(|profile| profile.skills.iter().any(|skill| skill.id == "memory")));
