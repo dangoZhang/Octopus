@@ -22,6 +22,7 @@ The mechanism is `Need -> Feed -> Feedback`. The outcome is less tool burden and
 cargo test
 tmp=$(mktemp -d)
 repo=$PWD
+cargo run -q -p octopus-core -- demo dangoZhang/Octopus
 cargo run -q -p octopus-core -- catalog
 cargo run -q -p octopus-core -- manifests
 cargo run -q -p octopus-core -- --lang zh env
@@ -52,6 +53,7 @@ cargo run -q -p octopus-core --example thinking_tentacle
 Output includes:
 
 ```text
+Octopus demo
 Installable tentacles: research, code, memory, visual, repo-maintainer, swe-agent, computer-use-agent, bash-only
 Tentacle manifests:
 - computer-use-agent: brain=llm, runtime=mcp,shell, tools=5, status=ok

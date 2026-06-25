@@ -299,6 +299,7 @@
           <pre><code>cargo test
 tmp=$(mktemp -d)
 repo=$PWD
+cargo run -q -p octopus-core -- demo dangoZhang/Octopus
 cargo run -q -p octopus-core -- catalog
 cargo run -q -p octopus-core -- manifests
 cargo run -q -p octopus-core -- --lang zh env

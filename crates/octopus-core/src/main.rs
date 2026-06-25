@@ -7,7 +7,24 @@ use octopus_core::{
     TentacleManifestReport, TentacleScaffold,
 };
 use std::env;
+use std::fs;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[derive(serde::Serialize)]
+struct DemoReport {
+    workspace: String,
+    adapted_profiles: Vec<String>,
+    adapted_tentacles: Vec<String>,
+    installed_tentacles: Vec<String>,
+    goal_summary: String,
+    observe_summary: String,
+    probe_summary: String,
+    hearts: Vec<String>,
+    self_iteration_mode: String,
+    pet: String,
+    next: Vec<String>,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Language {
@@ -135,6 +152,22 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 println!("{}", response.content);
+            }
+            Ok(())
+        }
+        Some("demo") => {
+            let repository = rest
+                .get(1)
+                .map(String::as_str)
+                .unwrap_or("dangoZhang/Octopus");
+            let report = run_demo(repository)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_demo_report(&report, language);
             }
             Ok(())
         }
@@ -305,10 +338,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .filter(|values| !values.is_empty())
                 .map(|values| values.join(" "))
                 .ok_or_else(|| "probe requires a query".to_string())?;
-            let mut state = HarnessState::default();
-            state.install_manifest(default_tentacles_root(), tentacle_id)?;
-            let mut harness = harness_for_need(state, &kind)?;
-            let feed = harness.feed_one(&Need::new(kind, query));
+            let feed = probe_tentacle(default_tentacles_root(), tentacle_id, kind, query)?;
             if json {
                 println!(
                     "{}",
@@ -557,6 +587,104 @@ fn print_heartbeat_report(report: &HeartbeatReport, language: Language) {
         match language {
             Language::En => println!("{}: {}", beat.name, beat.summary),
             Language::Zh => println!("{}: {}", localize_beat(&beat.name), beat.summary),
+        }
+    }
+}
+
+fn run_demo(repository: &str) -> Result<DemoReport, String> {
+    let workspace = env::temp_dir().join(format!("octopus-demo-{}", unique_suffix()));
+    let _ = fs::remove_dir_all(&workspace);
+    fs::create_dir_all(&workspace).map_err(|error| error.to_string())?;
+
+    let mut state = HarnessState::default();
+    let cwd = env::current_dir().map_err(|error| error.to_string())?;
+    let adapt = state.adapt_environment(cwd, default_tentacles_root());
+    let _ = state.install_manifest(default_tentacles_root(), "swe-agent");
+    let scaffold = scaffold_tentacle(&workspace, "demo-feed", Some("python"))?;
+    state.install_manifest(workspace.join("tentacles"), "demo-feed")?;
+
+    let mut harness = Harness::with_state(state);
+    let chat = harness.chat("build a clean-brain agent");
+    let feedback = harness.feed(&[Need::new(NeedKind::Observe, "README.md")]);
+    let beat = harness.state.beat(200);
+    let plan = harness
+        .state
+        .self_iteration_plan(repository, Some("improve usability"));
+    let probe = probe_tentacle(
+        workspace.join("tentacles"),
+        "demo-feed",
+        NeedKind::Observe,
+        "README.md".to_string(),
+    )?;
+
+    let installed_tentacles = harness
+        .state
+        .installed_tentacles
+        .iter()
+        .map(|tentacle| tentacle.id.clone())
+        .collect::<Vec<_>>();
+    let pet = format!(
+        "{}?state=harness",
+        repo_root().join("docs/pet.html").to_string_lossy()
+    );
+
+    Ok(DemoReport {
+        workspace: workspace.to_string_lossy().to_string(),
+        adapted_profiles: adapt.installed_profiles,
+        adapted_tentacles: adapt.installed_tentacles,
+        installed_tentacles,
+        goal_summary: chat.turn.summary,
+        observe_summary: feedback.summary,
+        probe_summary: probe.summary,
+        hearts: beat
+            .beats
+            .iter()
+            .map(|beat| format!("{}={}", beat.name, beat.summary))
+            .collect(),
+        self_iteration_mode: plan.mode,
+        pet,
+        next: vec![
+            format!("review {}", scaffold.manifest_path),
+            "install a tentacle".to_string(),
+            "run need observe .".to_string(),
+            "open the pet state page".to_string(),
+        ],
+    })
+}
+
+fn print_demo_report(report: &DemoReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus demo");
+            println!("workspace: {}", report.workspace);
+            println!("adapted: {}", join_or_none(&report.adapted_tentacles));
+            println!("installed: {}", join_or_none(&report.installed_tentacles));
+            println!("goal: {}", report.goal_summary);
+            println!("observe: {}", report.observe_summary);
+            println!("probe: {}", report.probe_summary);
+            println!("hearts: {}", report.hearts.join(", "));
+            println!("self-iteration: {}", report.self_iteration_mode);
+            println!("pet: {}", report.pet);
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼 demo");
+            println!("workspace: {}", report.workspace);
+            println!("已适配: {}", join_or_none(&report.adapted_tentacles));
+            println!("已安装: {}", join_or_none(&report.installed_tentacles));
+            println!("目标: {}", localize_summary(&report.goal_summary, language));
+            println!(
+                "观察: {}",
+                localize_summary(&report.observe_summary, language)
+            );
+            println!(
+                "probe: {}",
+                localize_summary(&report.probe_summary, language)
+            );
+            println!("心脏: {}", report.hearts.join(", "));
+            println!("自迭代: {}", report.self_iteration_mode);
+            println!("桌宠: {}", report.pet);
+            println!("下一步: {}", join_or_none(&report.next));
         }
     }
 }
@@ -851,6 +979,31 @@ fn default_tentacles_root() -> PathBuf {
     })
 }
 
+fn repo_root() -> PathBuf {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    fs::canonicalize(&root).unwrap_or(root)
+}
+
+fn unique_suffix() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    format!("{}-{nanos}", std::process::id())
+}
+
+fn probe_tentacle(
+    root: PathBuf,
+    tentacle_id: &str,
+    kind: NeedKind,
+    query: String,
+) -> Result<Feed, String> {
+    let mut state = HarnessState::default();
+    state.install_manifest(root, tentacle_id)?;
+    let mut harness = Harness::with_state(state);
+    Ok(harness.feed_one(&Need::new(kind, query)))
+}
+
 fn harness_for_need(state: HarnessState, kind: &NeedKind) -> Result<Harness, String> {
     if matches!(
         kind,
@@ -874,7 +1027,7 @@ fn manifest_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | llm <message> | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [python|node|shell|http] | probe <tentacle> <kind> <query> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | scaffold <tentacle> [python|node|shell|http] | probe <tentacle> <kind> <query> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]
@@ -1079,6 +1232,17 @@ mod tests {
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("swe-agent"));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_demo_runs_end_to_end() {
+        run(vec!["demo".to_string(), "dangoZhang/Octopus".to_string()]).unwrap();
+        run(vec![
+            "--json".to_string(),
+            "demo".to_string(),
+            "dangoZhang/Octopus".to_string(),
+        ])
+        .unwrap();
     }
 
     #[cfg(unix)]

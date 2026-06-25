@@ -29,6 +29,8 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 `OpenAiCompatibleChatClient` in Rust and `OpenAICompatibleLLM` in Python adapt any chat-completions-compatible provider through `OCTOPUS_LLM_MODEL`, `OCTOPUS_LLM_BASE_URL`, and `OCTOPUS_LLM_API_KEY`. The Rust adapter keeps the kernel light by using a `curl` runtime adapter. Set `OCTOPUS_LLM_MANIFEST=1` to let installed manifest tentacles ask the provider to pick tools before execution; failures fall back to rule planning.
 
+`demo [repo]` runs a source-local end-to-end loop: adapt, install, chat, feed, probe, heartbeat, self-iteration mode, and pet link.
+
 ## Code-As-Harness
 
 `tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Initial profiles include SWE-style `read/edit`, computer-use `mcp/bash`, and bash-only as one transparent seed runtime.
