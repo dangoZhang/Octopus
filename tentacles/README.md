@@ -2,6 +2,12 @@
 
 Each tentacle is code-as-harness: LLM brain prompt, tool metadata, code implementation, and evolution policy.
 
+Inspect installable manifests:
+
+```bash
+cargo run -q -p octopus-core -- manifests
+```
+
 - `swe-agent`: repo work through `read`, `edit`, inspection, patch, and test tools.
 - `repo-maintainer`: OAuth-bounded self-iteration with repo inspection and PR draft data.
 - `computer-use-agent`: local UI work through `mcp`, `bash`, screenshots, URLs, and desktop probes.

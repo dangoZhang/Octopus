@@ -1,6 +1,7 @@
 use octopus_core::{
-    default_permissions, default_tentacle_profiles, CapabilityGrant, EnvironmentReport, GoalChat,
-    Harness, HarnessState, Need, NeedKind, SelfIterationPlan,
+    default_permissions, default_tentacle_profiles, inspect_tentacle_manifests, CapabilityGrant,
+    EnvironmentReport, GoalChat, Harness, HarnessState, Need, NeedKind, SelfIterationPlan,
+    TentacleManifestReport,
 };
 use std::env;
 use std::path::PathBuf;
@@ -196,6 +197,22 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
+        Some("manifests") => {
+            let root = rest
+                .get(1)
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("tentacles"));
+            let reports = inspect_tentacle_manifests(&root).map_err(|error| error.to_string())?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&reports).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_manifest_reports(&reports, language);
+            }
+            Ok(())
+        }
         Some("env") => {
             let cwd = env::current_dir().map_err(|error| error.to_string())?;
             let report = EnvironmentReport::detect(cwd);
@@ -293,6 +310,28 @@ fn print_catalog(profiles: &[octopus_core::TentacleProfile], language: Language)
     }
     for profile in profiles {
         println!("- {}: {}", profile.id, profile.description);
+    }
+}
+
+fn print_manifest_reports(reports: &[TentacleManifestReport], language: Language) {
+    match language {
+        Language::En => println!("Tentacle manifests:"),
+        Language::Zh => println!("触手 manifest:"),
+    }
+    for report in reports {
+        let status = if report.missing_entrypoints.is_empty() {
+            "ok".to_string()
+        } else {
+            format!("missing {}", report.missing_entrypoints.join(","))
+        };
+        println!(
+            "- {}: brain={}, runtime={}, tools={}, status={}",
+            report.id,
+            report.brain_kind,
+            report.runtime_kinds.join(","),
+            report.tool_count,
+            status
+        );
     }
 }
 
@@ -401,13 +440,14 @@ fn print_environment(report: &EnvironmentReport, language: Language) {
 }
 
 fn usage() -> String {
-    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | goal | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | routes | catalog | env | install <profile> | installed".to_string()
+    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | goal | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | routes | catalog | manifests [root] | env | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::{localize_summary, run, Language};
     use std::fs;
+    use std::path::Path;
 
     #[test]
     fn cli_persists_memory_between_runs() {
@@ -468,6 +508,12 @@ mod tests {
     #[test]
     fn cli_catalog_and_env_commands_run() {
         run(vec!["catalog".to_string()]).unwrap();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles")
+            .to_string_lossy()
+            .to_string();
+        run(vec!["manifests".to_string(), root]).unwrap();
         run(vec![
             "--lang".to_string(),
             "zh".to_string(),

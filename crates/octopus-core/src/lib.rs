@@ -1098,6 +1098,101 @@ pub struct TentacleProfile {
     pub llm_ready: bool,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TentacleManifest {
+    #[serde(default, rename = "$schema")]
+    pub schema: Option<String>,
+    pub schema_version: String,
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub brain: ManifestBrain,
+    pub skills: Vec<ManifestSkill>,
+    pub tools: Vec<ManifestTool>,
+    pub evolution: EvolutionPolicy,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ManifestBrain {
+    pub kind: String,
+    pub model: Option<String>,
+    pub prompt: String,
+    #[serde(default)]
+    pub feedback_contract: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ManifestSkill {
+    pub id: String,
+    pub description: String,
+    pub needs: Vec<NeedKind>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ManifestTool {
+    pub id: String,
+    pub description: String,
+    pub input: String,
+    pub output: String,
+    pub implementation: ToolImplementation,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct LoadedTentacleManifest {
+    pub path: String,
+    pub manifest: TentacleManifest,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TentacleManifestReport {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub brain_kind: String,
+    pub runtime_kinds: Vec<String>,
+    pub needs: Vec<String>,
+    pub tool_count: usize,
+    pub editable: Vec<String>,
+    pub missing_entrypoints: Vec<String>,
+}
+
+pub fn load_tentacle_manifests(
+    root: impl AsRef<Path>,
+) -> Result<Vec<LoadedTentacleManifest>, Error> {
+    let root = root.as_ref();
+    let mut manifests = Vec::new();
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let path = entry.path().join("manifest.json");
+        if !path.exists() {
+            continue;
+        }
+        let content = fs::read_to_string(&path)?;
+        let manifest = serde_json::from_str::<TentacleManifest>(&content)
+            .map_err(|error| Error::new(ErrorKind::InvalidData, error))?;
+        manifests.push(LoadedTentacleManifest {
+            path: path.to_string_lossy().to_string(),
+            manifest,
+        });
+    }
+    manifests.sort_by(|left, right| left.manifest.id.cmp(&right.manifest.id));
+    Ok(manifests)
+}
+
+pub fn inspect_tentacle_manifests(
+    root: impl AsRef<Path>,
+) -> Result<Vec<TentacleManifestReport>, Error> {
+    let root = root.as_ref();
+    let manifests = load_tentacle_manifests(root)?;
+    Ok(manifests
+        .into_iter()
+        .map(|loaded| manifest_report(root, loaded))
+        .collect())
+}
+
 pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
     vec![
         TentacleProfile {
@@ -1412,6 +1507,67 @@ fn evolution_policy(checks: &[&str], constraints: &[&str]) -> EvolutionPolicy {
         checks: checks.iter().map(|item| item.to_string()).collect(),
         constraints: constraints.iter().map(|item| item.to_string()).collect(),
     }
+}
+
+fn manifest_report(root: &Path, loaded: LoadedTentacleManifest) -> TentacleManifestReport {
+    let mut runtime_kinds = loaded
+        .manifest
+        .tools
+        .iter()
+        .map(|tool| tool.implementation.kind.clone())
+        .collect::<Vec<_>>();
+    runtime_kinds.sort();
+    runtime_kinds.dedup();
+
+    let mut needs = loaded
+        .manifest
+        .skills
+        .iter()
+        .flat_map(|skill| skill.needs.iter().map(kind_key))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    needs.sort();
+    needs.dedup();
+
+    let manifest_path = Path::new(&loaded.path);
+    let missing_entrypoints = loaded
+        .manifest
+        .tools
+        .iter()
+        .filter(|tool| {
+            !entrypoint_exists(root, manifest_path, tool.implementation.entrypoint.as_str())
+        })
+        .map(|tool| tool.implementation.entrypoint.clone())
+        .collect::<Vec<_>>();
+
+    TentacleManifestReport {
+        id: loaded.manifest.id,
+        name: loaded.manifest.name,
+        path: loaded.path,
+        brain_kind: loaded.manifest.brain.kind,
+        runtime_kinds,
+        needs,
+        tool_count: loaded.manifest.tools.len(),
+        editable: loaded.manifest.evolution.editable,
+        missing_entrypoints,
+    }
+}
+
+fn entrypoint_exists(root: &Path, manifest_path: &Path, entrypoint: &str) -> bool {
+    let entrypoint = Path::new(entrypoint);
+    if entrypoint.is_absolute() && entrypoint.exists() {
+        return true;
+    }
+    let manifest_relative = manifest_path
+        .parent()
+        .map(|parent| parent.join(entrypoint))
+        .is_some_and(|path| path.exists());
+    if manifest_relative {
+        return true;
+    }
+    root.parent()
+        .map(|parent| parent.join(entrypoint).exists())
+        .unwrap_or(false)
 }
 
 pub fn default_permissions(provider: &str) -> Vec<String> {
@@ -1846,6 +2002,48 @@ mod tests {
             .iter()
             .any(|tool| tool.implementation.entrypoint
                 == "tentacles/repo-maintainer/tools/draft_pr.sh"));
+    }
+
+    #[test]
+    fn repo_tentacle_manifests_are_code_as_harness() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let reports = inspect_tentacle_manifests(&root).unwrap();
+
+        assert!(reports.iter().any(|report| report.id == "swe-agent"));
+        assert!(reports.iter().all(|report| report.brain_kind == "llm"));
+        assert!(reports
+            .iter()
+            .all(|report| report.missing_entrypoints.is_empty()));
+        assert!(reports
+            .iter()
+            .find(|report| report.id == "computer-use-agent")
+            .unwrap()
+            .runtime_kinds
+            .contains(&"mcp".to_string()));
+        assert!(reports
+            .iter()
+            .find(|report| report.id == "bash-only")
+            .unwrap()
+            .editable
+            .contains(&"brain.prompt".to_string()));
+    }
+
+    #[test]
+    fn loads_tentacle_manifest_prompts_and_needs() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let manifests = load_tentacle_manifests(&root).unwrap();
+        let swe = manifests
+            .iter()
+            .find(|loaded| loaded.manifest.id == "swe-agent")
+            .unwrap();
+
+        assert!(swe.manifest.brain.prompt.contains("cognitive Need"));
+        assert!(swe.manifest.skills[0].needs.contains(&NeedKind::Verify));
+        assert_eq!(swe.manifest.tools[0].implementation.kind, "shell");
     }
 
     #[test]

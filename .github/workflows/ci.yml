@@ -14,6 +14,7 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo run -q -p octopus-core --example thinking_tentacle
       - run: cargo run -q -p octopus-core -- catalog
+      - run: cargo run -q -p octopus-core -- manifests
       - run: cargo run -q -p octopus-core -- --lang zh env
       - run: python -m json.tool tentacles/tentacle.schema.json > /dev/null
       - run: python -m json.tool tentacles/swe-agent/manifest.json > /dev/null

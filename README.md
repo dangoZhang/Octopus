@@ -20,6 +20,7 @@ The mechanism is `Need -> Feed -> Feedback`. The outcome is less tool burden and
 cargo test
 tmp=$(mktemp -d)
 cargo run -q -p octopus-core -- catalog
+cargo run -q -p octopus-core -- manifests
 cargo run -q -p octopus-core -- --lang zh env
 cargo run -q -p octopus-core -- --state "$tmp/state.json" install research
 cargo run -q -p octopus-core -- --state "$tmp/state.json" installed
@@ -39,6 +40,9 @@ Output includes:
 
 ```text
 Installable tentacles: research, code, memory, visual, repo-maintainer, swe-agent, computer-use-agent, bash-only
+Tentacle manifests:
+- computer-use-agent: brain=llm, runtime=mcp,shell, tools=5, status=ok
+- visual: brain=llm, runtime=static-html, tools=1, status=ok
 推荐触手: memory, visual, repo-maintainer, swe-agent, code, research, bash-only, computer-use-agent
 installed research
 research
