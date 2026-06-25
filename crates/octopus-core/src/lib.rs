@@ -73,6 +73,21 @@ impl Goal {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct GoalTurn {
+    pub index: u64,
+    pub message: String,
+    pub summary: String,
+    pub status: Status,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct GoalChat {
+    pub goal: Goal,
+    pub turn: GoalTurn,
+    pub feedback: Feedback,
+}
+
 impl Need {
     pub fn new(kind: NeedKind, query: impl Into<String>) -> Self {
         Self {
@@ -218,11 +233,15 @@ impl MemoryStore {
             .cloned()
             .map(|record| {
                 let haystack = record.text.to_lowercase();
-                let score = words
+                let matches = words
                     .iter()
                     .filter(|word| haystack.contains(word.as_str()))
-                    .count() as f32
-                    + record.weight * 0.01;
+                    .count() as f32;
+                let score = if words.is_empty() || matches > 0.0 {
+                    matches + record.weight * 0.01
+                } else {
+                    0.0
+                };
                 (score, record)
             })
             .filter(|(score, _)| *score > 0.0)
@@ -702,6 +721,10 @@ pub struct HarnessState {
     pub routes: RouteBook,
     #[serde(default)]
     pub installed_profiles: Vec<String>,
+    #[serde(default)]
+    pub goal: Option<Goal>,
+    #[serde(default)]
+    pub goal_turns: Vec<GoalTurn>,
 }
 
 impl HarnessState {
@@ -805,6 +828,33 @@ impl Harness {
     pub fn feed(&mut self, needs: &[Need]) -> Feedback {
         let feeds = needs.iter().map(|need| self.feed_one(need)).collect();
         Feedback::from_feeds(feeds)
+    }
+
+    pub fn chat(&mut self, message: impl Into<String>) -> GoalChat {
+        let message = message.into();
+        let goal = match self.state.goal.take() {
+            Some(mut goal) => {
+                goal.refine(message.clone());
+                goal
+            }
+            None => Goal::new(message.clone()),
+        };
+        let need = goal.need(NeedKind::Remember, format!("goal update: {message}"));
+        let feed = self.feed_one(&need);
+        let feedback = Feedback::from_feeds(vec![feed.clone()]);
+        let turn = GoalTurn {
+            index: self.state.goal_turns.len() as u64 + 1,
+            message,
+            summary: feed.summary,
+            status: feed.status,
+        };
+        self.state.goal = Some(goal.clone());
+        self.state.goal_turns.push(turn.clone());
+        GoalChat {
+            goal,
+            turn,
+            feedback,
+        }
     }
 
     fn memory_feed(&mut self, need: &Need) -> Option<Feed> {
@@ -1309,6 +1359,18 @@ mod tests {
     }
 
     #[test]
+    fn memory_recall_ignores_unmatched_weighted_records() {
+        let mut memory = MemoryStore::default();
+        memory.remember("alpha route");
+        memory.remember("beta tentacle");
+
+        let recalled = memory.recall("tentacle", 5);
+
+        assert_eq!(recalled.len(), 1);
+        assert_eq!(recalled[0].text, "beta tentacle");
+    }
+
+    #[test]
     fn router_learns_successful_tentacle() {
         let mut harness = Harness::new();
         harness.add_tentacle(Box::new(FunctionTentacle::new(
@@ -1331,6 +1393,27 @@ mod tests {
 
         assert_eq!(restored.memory.records.len(), 1);
         assert!(restored.routes.score(&NeedKind::Remember, "memory") > 1.0);
+    }
+
+    #[test]
+    fn chat_refines_goal_outside_brain_state() {
+        let mut harness = Harness::new();
+
+        let first = harness.chat("build a clean-brain agent");
+        let second = harness.chat("make tools think through tentacles");
+
+        let goal = harness.state.goal.as_ref().unwrap();
+        assert_eq!(first.goal.objective, "build a clean-brain agent");
+        assert_eq!(second.goal.constraints.len(), 1);
+        assert_eq!(goal.objective, "build a clean-brain agent");
+        assert_eq!(
+            goal.constraints,
+            vec!["make tools think through tentacles".to_string()]
+        );
+        assert_eq!(harness.state.goal_turns.len(), 2);
+        assert!(harness.state.memory.recall("tentacles", 1)[0]
+            .text
+            .contains("goal update"));
     }
 
     #[test]

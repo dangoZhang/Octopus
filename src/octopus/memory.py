@@ -61,7 +61,10 @@ class MemoryStore:
 
         def score(record: MemoryRecord) -> float:
             haystack = f"{record.text} {record.metadata}".lower()
-            return sum(1 for word in words if word in haystack) + record.weight * 0.01
+            matches = sum(1 for word in words if word in haystack)
+            if not words or matches:
+                return matches + record.weight * 0.01
+            return 0.0
 
         records = sorted(self._records.values(), key=score, reverse=True)
         recalled = tuple(record for record in records[:limit] if score(record) > 0)

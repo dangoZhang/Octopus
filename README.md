@@ -23,8 +23,11 @@ cargo run -q -p octopus-core -- catalog
 cargo run -q -p octopus-core -- --lang zh env
 cargo run -q -p octopus-core -- --state "$tmp/state.json" install research
 cargo run -q -p octopus-core -- --state "$tmp/state.json" installed
-cargo run -p octopus-core -- --state "$tmp/state.json" --lang zh need remember "工具不进大脑"
-cargo run -p octopus-core -- --state "$tmp/state.json" need recall 工具
+cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build a clean-brain agent"
+cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think through tentacles"
+cargo run -q -p octopus-core -- --state "$tmp/state.json" goal
+cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh need remember "工具不进大脑"
+cargo run -q -p octopus-core -- --state "$tmp/state.json" need recall 工具
 cargo run -q -p octopus-core --example thinking_tentacle
 ```
 
@@ -35,7 +38,10 @@ Installable tentacles: research, code, memory, visual, repo-maintainer, swe-agen
 推荐触手: memory, visual, repo-maintainer, swe-agent, code, research, bash-only, computer-use-agent
 installed research
 research
-已记住 m1
+goal: build a clean-brain agent
+turn 2: remembered m2
+refinements: 1
+已记住 m3
 工具不进大脑
 verified: the brain does not name tools
 plan: selected first matching tool

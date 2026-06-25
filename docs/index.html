@@ -301,7 +301,10 @@ tmp=$(mktemp -d)
 cargo run -q -p octopus-core -- catalog
 cargo run -q -p octopus-core -- --lang zh env
 cargo run -q -p octopus-core -- --state "$tmp/state.json" install research
-cargo run -p octopus-core -- --state "$tmp/state.json" need remember "tools stay outside the brain"
+cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build a clean-brain agent"
+cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think"
+cargo run -q -p octopus-core -- --state "$tmp/state.json" goal
+cargo run -q -p octopus-core -- --state "$tmp/state.json" need remember "tools stay outside the brain"
 cargo run -q -p octopus-core --example thinking_tentacle
 pip install -e .
 python examples/smart_tentacle.py</code></pre>

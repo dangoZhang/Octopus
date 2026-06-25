@@ -29,6 +29,9 @@ jobs:
           tmp=$(mktemp -d)
           cargo run -q -p octopus-core -- --state "$tmp/state.json" install research
           cargo run -q -p octopus-core -- --state "$tmp/state.json" installed
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build octopus"
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think"
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" goal
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh need remember "工具不进大脑"
 
   python:

@@ -38,6 +38,15 @@ class OctopusTest(unittest.TestCase):
 
         self.assertIn("implementation are split", feedback.summary)
 
+    def test_memory_recall_ignores_unmatched_weighted_records(self):
+        harness = Harness()
+
+        harness.feed(Need.remember("alpha route"))
+        harness.feed(Need.remember("beta tentacle"))
+        feedback = harness.feed(Need.recall("tentacle"))
+
+        self.assertEqual(feedback.summary, "beta tentacle")
+
     def test_octopus_pulse_returns_feedback_to_brain(self):
         brain = StaticBrain([Need.remember("three hearts")])
         octopus = Octopus(brain)

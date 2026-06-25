@@ -1,5 +1,5 @@
 use octopus_core::{
-    default_tentacle_profiles, EnvironmentReport, Harness, HarnessState, Need, NeedKind,
+    default_tentacle_profiles, EnvironmentReport, GoalChat, Harness, HarnessState, Need, NeedKind,
 };
 use std::env;
 use std::path::PathBuf;
@@ -84,6 +84,41 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 serde_json::to_string_pretty(&loaded.routes.scores)
                     .map_err(|error| error.to_string())?
             );
+            Ok(())
+        }
+        Some("chat") => {
+            let message = rest
+                .get(1..)
+                .filter(|values| !values.is_empty())
+                .map(|values| values.join(" "))
+                .ok_or_else(|| "chat requires a message".to_string())?;
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let mut harness = Harness::with_state(loaded);
+            let chat = harness.chat(message);
+            harness
+                .state
+                .save(&state)
+                .map_err(|error| error.to_string())?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&chat).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_chat(&chat, language);
+            }
+            Ok(())
+        }
+        Some("goal") => {
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&loaded.goal).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_goal(&loaded, language);
+            }
             Ok(())
         }
         Some("catalog") => {
@@ -198,6 +233,55 @@ fn print_catalog(profiles: &[octopus_core::TentacleProfile], language: Language)
     }
 }
 
+fn print_chat(chat: &GoalChat, language: Language) {
+    match language {
+        Language::En => {
+            println!("goal: {}", chat.goal.objective);
+            println!("turn {}: {}", chat.turn.index, chat.turn.summary);
+            println!("refinements: {}", chat.goal.constraints.len());
+        }
+        Language::Zh => {
+            println!("目标: {}", chat.goal.objective);
+            println!(
+                "第 {} 轮: {}",
+                chat.turn.index,
+                localize_summary(&chat.turn.summary, language)
+            );
+            println!("调整: {}", chat.goal.constraints.len());
+        }
+    }
+}
+
+fn print_goal(state: &HarnessState, language: Language) {
+    let Some(goal) = &state.goal else {
+        match language {
+            Language::En => println!("no active goal"),
+            Language::Zh => println!("没有活跃目标"),
+        }
+        return;
+    };
+    match language {
+        Language::En => {
+            println!("goal: {}", goal.objective);
+            if !goal.constraints.is_empty() {
+                println!("refinements:");
+                for item in &goal.constraints {
+                    println!("- {item}");
+                }
+            }
+        }
+        Language::Zh => {
+            println!("目标: {}", goal.objective);
+            if !goal.constraints.is_empty() {
+                println!("调整:");
+                for item in &goal.constraints {
+                    println!("- {item}");
+                }
+            }
+        }
+    }
+}
+
 fn print_environment(report: &EnvironmentReport, language: Language) {
     match language {
         Language::En => {
@@ -216,7 +300,7 @@ fn print_environment(report: &EnvironmentReport, language: Language) {
 }
 
 fn usage() -> String {
-    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | routes | catalog | env | install <profile> | installed".to_string()
+    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | goal | routes | catalog | env | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]
@@ -309,6 +393,39 @@ mod tests {
 
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("research"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_chat_refines_goal() {
+        let path =
+            std::env::temp_dir().join(format!("octopus-chat-state-{}.json", std::process::id()));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "chat".to_string(),
+            "build".to_string(),
+            "octopus".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "chat".to_string(),
+            "make".to_string(),
+            "tools".to_string(),
+            "think".to_string(),
+        ])
+        .unwrap();
+        run(vec!["--state".to_string(), state, "goal".to_string()]).unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("\"objective\": \"build octopus\""));
+        assert!(content.contains("make tools think"));
+        assert!(content.contains("goal_turns"));
         let _ = fs::remove_file(path);
     }
 }

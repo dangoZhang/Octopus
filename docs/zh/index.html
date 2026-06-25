@@ -210,8 +210,11 @@ tmp=$(mktemp -d)
 cargo run -q -p octopus-core -- catalog
 cargo run -q -p octopus-core -- --lang zh env
 cargo run -q -p octopus-core -- --state "$tmp/state.json" install research
-cargo run -p octopus-core -- --state "$tmp/state.json" --lang zh need remember "工具不进大脑"
-cargo run -p octopus-core -- --state "$tmp/state.json" need recall 工具
+cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh chat "构建干净大脑 agent"
+cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh chat "让工具通过触手思考"
+cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh goal
+cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh need remember "工具不进大脑"
+cargo run -q -p octopus-core -- --state "$tmp/state.json" need recall 工具
 cargo run -q -p octopus-core --example thinking_tentacle</code></pre>
         </div>
       </section>
