@@ -6,7 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 
-@dataclass(frozen=True)
+@dataclass
 class MemoryRecord:
     text: str
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -43,7 +43,10 @@ class MemoryStore:
             return sum(1 for word in words if word in haystack) + record.weight * 0.01
 
         records = sorted(self._records.values(), key=score, reverse=True)
-        return tuple(record for record in records[:limit] if score(record) > 0)
+        recalled = tuple(record for record in records[:limit] if score(record) > 0)
+        for record in recalled:
+            record.weight += 0.1
+        return recalled
 
     def compact(self, *, keep: int = 200) -> int:
         if len(self._records) <= keep:
@@ -56,4 +59,3 @@ class MemoryStore:
 
     def __len__(self) -> int:
         return len(self._records)
-

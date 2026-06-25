@@ -1,6 +1,17 @@
 import unittest
 
-from octopus import FunctionTentacle, Harness, Need, NeedType, Octopus, StaticBrain, Status
+from octopus import (
+    FunctionTentacle,
+    FunctionTool,
+    Harness,
+    Need,
+    NeedType,
+    Octopus,
+    PlanningTentacleBrain,
+    SmartTentacle,
+    StaticBrain,
+    Status,
+)
 
 
 class OctopusTest(unittest.TestCase):
@@ -34,6 +45,32 @@ class OctopusTest(unittest.TestCase):
 
         self.assertEqual(feedback.status, Status.SATISFIED)
         self.assertEqual(brain.feedback, (feedback,))
+
+    def test_harness_learns_successful_route(self):
+        harness = Harness()
+        harness.add_tentacle(FunctionTentacle("first", [NeedType.VERIFY], lambda need: "ok"))
+
+        feedback = harness.feed(Need.verify("claim"))
+
+        self.assertEqual(feedback.status, Status.SATISFIED)
+        self.assertGreater(harness.routes["verify:first"], 1.0)
+
+    def test_smart_tentacle_thinks_before_tool_execution(self):
+        tool = FunctionTool(
+            "echo",
+            "echoes the need query",
+            (NeedType.EXECUTE,),
+            lambda need: f"ran {need.query}",
+        )
+        brain = PlanningTentacleBrain((tool,))
+        harness = Harness()
+        harness.add_tentacle(SmartTentacle("executor", [NeedType.EXECUTE], brain))
+
+        feedback = harness.feed(Need.execute("task"))
+
+        self.assertEqual(feedback.status, Status.SATISFIED)
+        self.assertEqual(feedback.summary, "ran task")
+        self.assertEqual(feedback.feeds[0].metadata["tools"], ["echo"])
 
 
 if __name__ == "__main__":

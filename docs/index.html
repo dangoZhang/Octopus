@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Octopus</title>
+    <meta name="description" content="Need -> Feed -> Feedback agent core with a clean brain and evolvable harness." />
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #111318;
+        --muted: #596070;
+        --line: #d8dde6;
+        --paper: #ffffff;
+        --soft: #f5f7fa;
+        --teal: #0f766e;
+        --coral: #cf4d32;
+        --gold: #a16207;
+        --violet: #6d5bd0;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .shell {
+        width: min(1120px, calc(100% - 32px));
+        margin: 0 auto;
+      }
+
+      header {
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.94);
+        position: sticky;
+        top: 0;
+        z-index: 2;
+      }
+
+      nav {
+        min-height: 64px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .brand {
+        font-size: 18px;
+        font-weight: 800;
+      }
+
+      .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .button {
+        border: 1px solid var(--ink);
+        border-radius: 8px;
+        padding: 9px 12px;
+        text-decoration: none;
+        color: var(--ink);
+        font-weight: 700;
+      }
+
+      .hero {
+        min-height: 82vh;
+        display: grid;
+        align-items: center;
+        gap: 40px;
+        padding: 68px 0 42px;
+      }
+
+      h1 {
+        margin: 0;
+        max-width: 820px;
+        font-size: 96px;
+        line-height: 0.94;
+        letter-spacing: 0;
+      }
+
+      .lead {
+        margin: 22px 0 0;
+        max-width: 720px;
+        color: var(--muted);
+        font-size: 20px;
+        line-height: 1.55;
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+        align-items: stretch;
+        margin-top: 34px;
+      }
+
+      .node,
+      .arrow {
+        min-height: 92px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 16px;
+        display: grid;
+        align-content: center;
+      }
+
+      .node strong {
+        display: block;
+        font-size: 22px;
+      }
+
+      .node span {
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.35;
+        margin-top: 6px;
+      }
+
+      .need {
+        border-top: 5px solid var(--teal);
+      }
+
+      .feed {
+        border-top: 5px solid var(--coral);
+      }
+
+      .feedback {
+        border-top: 5px solid var(--gold);
+      }
+
+      .arrow {
+        border-style: dashed;
+        place-items: center;
+        color: var(--violet);
+        font-size: 28px;
+        font-weight: 800;
+      }
+
+      section {
+        padding: 64px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      h2 {
+        margin: 0 0 18px;
+        font-size: 30px;
+        letter-spacing: 0;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 20px;
+        background: var(--paper);
+      }
+
+      .card h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+
+      .card p,
+      .copy {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      pre {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+        background: var(--soft);
+        line-height: 1.5;
+      }
+
+      code {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-size: 14px;
+      }
+
+      footer {
+        padding: 36px 0;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+      }
+
+      @media (max-width: 760px) {
+        .nav-links {
+          gap: 10px;
+          font-size: 13px;
+        }
+
+        .hero {
+          min-height: 80vh;
+          padding-top: 44px;
+        }
+
+        .lead {
+          font-size: 17px;
+        }
+
+        h1 {
+          font-size: 54px;
+        }
+
+        .flow,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .arrow {
+          min-height: 48px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <nav class="shell" aria-label="Primary navigation">
+        <div class="brand">Octopus</div>
+        <div class="nav-links">
+          <a href="#core">Core</a>
+          <a href="#quickstart">Quick start</a>
+          <a class="button" href="https://github.com/dangoZhang/Octopus">GitHub</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero shell">
+        <div>
+          <h1>Octopus</h1>
+          <p class="lead">A clean agent brain with smart arms. The model asks for cognition; an evolvable harness supplies the feed.</p>
+          <div class="flow" aria-label="Need Feed Feedback flow">
+            <div class="node need"><strong>Need</strong><span>verify, reproduce, compare, remember, forget, execute</span></div>
+            <div class="arrow">-&gt;</div>
+            <div class="node feed"><strong>Feed</strong><span>tool-side planner, memory, shell, browser, sub-LLM</span></div>
+            <div class="arrow">-&gt;</div>
+            <div class="node feedback"><strong>Feedback</strong><span>compact evidence, route signals, next cognitive supply</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="core">
+        <div class="shell">
+          <h2>Core</h2>
+          <div class="grid">
+            <article class="card"><h3>Clean brain</h3><p>The brain emits Need objects. It never imports tools or hard-codes execution flow.</p></article>
+            <article class="card"><h3>Thinking tentacles</h3><p>Each tentacle can own a planner or LLM, choose tools, run them, and return evidence.</p></article>
+            <article class="card"><h3>Three hearts</h3><p>Heartbeat keeps life, memory beat compacts memory, harness beat evolves routes.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section id="quickstart">
+        <div class="shell">
+          <h2>Quick start</h2>
+          <pre><code>pip install -e .
+octopus need remember "tools stay outside the brain"
+python examples/smart_tentacle.py</code></pre>
+          <p class="copy">No framework lock-in. Add a tentacle, give it tools, let data improve routing.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="shell">MIT licensed. Built around Need -&gt; Feed -&gt; Feedback.</div>
+    </footer>
+  </body>
+</html>

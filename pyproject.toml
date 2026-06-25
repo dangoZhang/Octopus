@@ -19,8 +19,11 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/dangoZhang/Octopus"
+Documentation = "https://dangozhang.github.io/Octopus/"
 Repository = "https://github.com/dangoZhang/Octopus"
 
+[project.scripts]
+octopus = "octopus.cli:main"
 
 [build-system]
 requires = ["hatchling"]

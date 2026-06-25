@@ -7,6 +7,7 @@ from .brain import Brain
 from .heart import HarnessBeat, Heartbeat, MemoryBeat
 from .memory import MemoryStore
 from .models import Evidence, Feedback, Feed, Need, NeedType, Status
+from .router import RouteBook
 from .tentacle import FunctionTentacle, Tentacle
 
 
@@ -17,6 +18,7 @@ class Harness:
         self.memory = memory or MemoryStore()
         self._tentacles: list[Tentacle] = []
         self._scores: dict[str, float] = defaultdict(lambda: 1.0)
+        self.router = RouteBook()
         self._history: list[Feed] = []
         self.add_tentacle(FunctionTentacle("memory", [NeedType.REMEMBER], self._remember))
         self.add_tentacle(FunctionTentacle("forget", [NeedType.FORGET], self._forget))
@@ -24,7 +26,7 @@ class Harness:
 
     @property
     def routes(self) -> dict[str, float]:
-        return dict(self._scores)
+        return self.router.snapshot() or dict(self._scores)
 
     @property
     def history(self) -> tuple[Feed, ...]:
@@ -41,27 +43,25 @@ class Harness:
         return Feedback.from_feeds(feeds, routes=self.routes)
 
     def evolve(self) -> None:
-        for feed in self._history[-100:]:
-            name = str(feed.metadata.get("tentacle", "unsupported"))
-            if feed.status == Status.SATISFIED:
-                self._scores[name] += 0.1
-            elif feed.status in {Status.FAILED, Status.UNSUPPORTED}:
-                self._scores[name] *= 0.95
+        self.router.decay()
 
     def _feed_one(self, need: Need) -> Feed:
         candidates = [tentacle for tentacle in self._tentacles if tentacle.supports(need)]
         if not candidates:
             return Feed.unsupported(need)
 
-        tentacle = max(candidates, key=lambda candidate: self._scores[candidate.name])
+        decision = self.router.choose(need, tuple(candidate.name for candidate in candidates))
+        tentacle = next(candidate for candidate in candidates if candidate.name == decision.tentacle)
         feed = tentacle.feed(need)
-        return Feed(
+        routed = Feed(
             need=feed.need,
             status=feed.status,
             evidence=feed.evidence,
             summary=feed.summary,
-            metadata={**feed.metadata, "tentacle": tentacle.name},
+            metadata={**feed.metadata, "tentacle": tentacle.name, "route": decision.reason},
         )
+        self.router.learn(routed)
+        return routed
 
     def _remember(self, need: Need) -> Feed:
         record = self.memory.remember(need.query, **dict(need.context))
@@ -104,4 +104,3 @@ class Octopus:
         result = self.harness.feed(needs)
         self.brain.needs(result)
         return result
-
