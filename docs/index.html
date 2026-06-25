@@ -307,6 +307,7 @@ cargo run -q -p octopus-core -- --state "$tmp/state.json" goal
 cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 cargo run -q -p octopus-core -- --state "$tmp/state.json" oauth github dangoZhang/Octopus
 cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
+tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build a clean-brain agent"
 tentacles/repo-maintainer/tools/draft_pr.sh "$tmp" dangoZhang/Octopus "improve usability"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" need remember "tools stay outside the brain"
 cargo run -q -p octopus-core --example thinking_tentacle

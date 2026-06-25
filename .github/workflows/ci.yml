@@ -24,8 +24,11 @@ jobs:
       - run: grep -q data-state docs/pet.html
       - run: tentacles/swe-agent/tools/read.sh README.md 1 2
       - run: tentacles/repo-maintainer/tools/inspect_repo.sh .
+      - run: tentacles/repo-maintainer/tools/github_status.sh dangoZhang/Octopus | python -m json.tool > /dev/null
       - run: |
           tmp=$(mktemp -d)
+          tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "improve usability"
+          grep -q "Patch Queue" "$tmp/.octopus/self-iteration/PATCH_QUEUE.md"
           tentacles/repo-maintainer/tools/draft_pr.sh "$tmp" dangoZhang/Octopus "improve usability"
           grep -q "Draft PR" "$tmp/.octopus/self-iteration/PR_DRAFT.md"
       - run: |

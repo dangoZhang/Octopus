@@ -29,6 +29,7 @@ cargo run -q -p octopus-core -- --state "$tmp/state.json" goal
 cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 cargo run -q -p octopus-core -- --state "$tmp/state.json" oauth github dangoZhang/Octopus
 cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
+tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build a clean-brain agent"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh need remember "工具不进大脑"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" need recall 工具
 cargo run -q -p octopus-core --example thinking_tentacle
@@ -48,6 +49,7 @@ mode: report-only
 oauth grant active: github:dangoZhang/Octopus
 mode: pr-ready
 draft branch: octopus/build-a-clean-brain-agent
+queue=.octopus/self-iteration/PATCH_QUEUE.md
 已记住 m3
 工具不进大脑
 verified: the brain does not name tools

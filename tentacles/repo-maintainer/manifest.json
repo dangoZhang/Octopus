@@ -26,6 +26,20 @@
       "implementation": { "kind": "shell", "entrypoint": "tools/inspect_repo.sh" }
     },
     {
+      "id": "github_status",
+      "description": "Read GitHub issues and workflow runs when gh is available.",
+      "input": "owner/repo plus optional limit",
+      "output": "JSON status with issues and runs",
+      "implementation": { "kind": "shell", "entrypoint": "tools/github_status.sh" }
+    },
+    {
+      "id": "patch_queue",
+      "description": "Generate candidate patch queue from issues, CI, or the current goal.",
+      "input": "workspace root, repository, objective",
+      "output": "patch queue path and candidate count",
+      "implementation": { "kind": "shell", "entrypoint": "tools/patch_queue.sh" }
+    },
+    {
       "id": "draft_pr",
       "description": "Write branch plan and pull request draft data under .octopus/self-iteration.",
       "input": "workspace root, repository, objective",
@@ -37,6 +51,8 @@
     "editable": ["manifest.json", "brain.prompt", "tools/*.sh", "future GitHub/OAuth adapters"],
     "checks": [
       "tools/inspect_repo.sh .",
+      "tools/github_status.sh dangoZhang/Octopus",
+      "tools/patch_queue.sh $(mktemp -d) dangoZhang/Octopus improve-usability",
       "tools/draft_pr.sh $(mktemp -d) dangoZhang/Octopus improve-usability"
     ],
     "constraints": [

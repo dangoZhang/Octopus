@@ -216,6 +216,7 @@ cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh goal
 cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh self-iterate dangoZhang/Octopus
 cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh oauth github dangoZhang/Octopus
 cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh self-iterate dangoZhang/Octopus
+tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build a clean-brain agent"
 tentacles/repo-maintainer/tools/draft_pr.sh "$tmp" dangoZhang/Octopus "improve usability"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" --lang zh need remember "工具不进大脑"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" need recall 工具

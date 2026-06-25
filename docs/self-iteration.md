@@ -37,11 +37,13 @@ The repo-maintainer tentacle can also write local draft artifacts:
 
 ```bash
 tentacles/repo-maintainer/tools/inspect_repo.sh .
+tentacles/repo-maintainer/tools/github_status.sh dangoZhang/Octopus
 tmp=$(mktemp -d)
+tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "improve usability"
 tentacles/repo-maintainer/tools/draft_pr.sh "$tmp" dangoZhang/Octopus "improve usability"
 ```
 
-Draft data lands under `.octopus/self-iteration/` in the selected workspace.
+GitHub status, patch queue, and draft data land under `.octopus/self-iteration/` in the selected workspace.
 
 ## Guardrails
 

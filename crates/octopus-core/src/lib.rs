@@ -113,7 +113,17 @@ pub struct SelfIterationPlan {
     pub steps: Vec<String>,
     pub checks: Vec<String>,
     pub guardrails: Vec<String>,
+    pub candidates: Vec<PatchCandidate>,
     pub draft: Option<PullRequestDraft>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct PatchCandidate {
+    pub id: String,
+    pub title: String,
+    pub source: String,
+    pub reason: String,
+    pub branch: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -857,6 +867,7 @@ impl HarnessState {
         let authorized = grant.is_some();
         let checks = self_iteration_checks();
         let guardrails = self_iteration_guardrails();
+        let candidates = vec![patch_candidate("goal", &objective)];
         let mut steps = vec![
             "inspect repository health".to_string(),
             "compare docs, manifests, and tests".to_string(),
@@ -893,6 +904,7 @@ impl HarnessState {
             steps,
             checks,
             guardrails,
+            candidates,
             draft,
         }
     }
@@ -1218,6 +1230,8 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 needs: vec![NeedKind::Observe, NeedKind::Verify, NeedKind::Execute],
                 tools: vec![
                     "tentacles/repo-maintainer/tools/inspect_repo.sh".to_string(),
+                    "tentacles/repo-maintainer/tools/github_status.sh".to_string(),
+                    "tentacles/repo-maintainer/tools/patch_queue.sh".to_string(),
                     "tentacles/repo-maintainer/tools/draft_pr.sh".to_string(),
                 ],
             }],
@@ -1229,6 +1243,18 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "tentacles/repo-maintainer/tools/inspect_repo.sh",
                 ),
                 tool_meta(
+                    "github_status",
+                    "Read GitHub issues and workflow runs when gh is available.",
+                    "shell",
+                    "tentacles/repo-maintainer/tools/github_status.sh",
+                ),
+                tool_meta(
+                    "patch_queue",
+                    "Generate candidate patch queue from GitHub and goal signals.",
+                    "shell",
+                    "tentacles/repo-maintainer/tools/patch_queue.sh",
+                ),
+                tool_meta(
                     "draft_pr",
                     "Write branch plan and pull request draft data.",
                     "shell",
@@ -1238,6 +1264,8 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
             evolution: evolution_policy(
                 &[
                     "tentacles/repo-maintainer/tools/inspect_repo.sh .",
+                    "tentacles/repo-maintainer/tools/github_status.sh dangoZhang/Octopus",
+                    "tentacles/repo-maintainer/tools/patch_queue.sh $(mktemp -d) dangoZhang/Octopus improve-usability",
                     "tentacles/repo-maintainer/tools/draft_pr.sh $(mktemp -d) dangoZhang/Octopus improve-usability",
                 ],
                 &["Wait for explicit OAuth/user grant before preparing branch or PR work."],
@@ -1422,6 +1450,17 @@ fn self_iteration_guardrails() -> Vec<String> {
         "prefer small pull requests".to_string(),
         "keep the kernel small enough to audit".to_string(),
     ]
+}
+
+fn patch_candidate(source: &str, objective: &str) -> PatchCandidate {
+    let title = draft_title(objective);
+    PatchCandidate {
+        id: format!("{source}:{}", slug(objective)),
+        title,
+        source: source.to_string(),
+        reason: format!("candidate derived from {source} signal"),
+        branch: format!("octopus/{}", slug(objective)),
+    }
 }
 
 fn pull_request_body(
@@ -1692,6 +1731,7 @@ mod tests {
         assert!(pr_ready.authorized);
         assert_eq!(pr_ready.mode, "pr-ready");
         assert_eq!(pr_ready.grant_id, Some(grant.id));
+        assert_eq!(pr_ready.candidates[0].branch, "octopus/improve-usability");
         let draft = pr_ready.draft.as_ref().unwrap();
         assert_eq!(draft.branch, "octopus/improve-usability");
         assert_eq!(draft.title, "Improve usability");
