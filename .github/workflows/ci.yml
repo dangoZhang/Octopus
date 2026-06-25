@@ -37,6 +37,8 @@ jobs:
           printf 'echo bash-only-ok\n' | tentacles/bash-only/tools/write_and_run.sh "$tmp"
       - run: |
           tmp=$(mktemp -d)
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" adapt
+          grep -q installed_tentacles "$tmp/state.json"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" install research
           cargo run -q -p octopus-core -- --state "$tmp/state.json" install swe-agent
           cargo run -q -p octopus-core -- --state "$tmp/state.json" installed

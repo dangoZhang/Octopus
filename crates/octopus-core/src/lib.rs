@@ -148,6 +148,14 @@ pub struct HeartbeatReport {
     pub beats: Vec<HeartBeat>,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct AdaptReport {
+    pub environment: EnvironmentReport,
+    pub installed_profiles: Vec<String>,
+    pub installed_tentacles: Vec<String>,
+    pub skipped_manifests: Vec<String>,
+}
+
 impl Need {
     pub fn new(kind: NeedKind, query: impl Into<String>) -> Self {
         Self {
@@ -933,6 +941,45 @@ impl HarnessState {
         }
     }
 
+    pub fn adapt_environment(
+        &mut self,
+        cwd: impl AsRef<Path>,
+        tentacles_root: impl AsRef<Path>,
+    ) -> AdaptReport {
+        let environment = EnvironmentReport::detect(cwd);
+        let tentacles_root = tentacles_root.as_ref();
+        let mut installed_profiles = Vec::new();
+        let mut installed_tentacles = Vec::new();
+        let mut skipped_manifests = Vec::new();
+        for profile in &environment.recommended_profiles {
+            let profile_was_installed = self
+                .installed_profiles
+                .iter()
+                .any(|installed| installed == profile);
+            if self.install_profile(profile).is_ok() && !profile_was_installed {
+                installed_profiles.push(profile.clone());
+            }
+
+            let tentacle_was_installed = self
+                .installed_tentacles
+                .iter()
+                .any(|tentacle| tentacle.id == *profile);
+            match self.install_manifest(tentacles_root, profile) {
+                Ok(tentacle) if !tentacle_was_installed => installed_tentacles.push(tentacle.id),
+                Ok(_) => {}
+                Err(_) => skipped_manifests.push(profile.clone()),
+            }
+        }
+        skipped_manifests.sort();
+        skipped_manifests.dedup();
+        AdaptReport {
+            environment,
+            installed_profiles,
+            installed_tentacles,
+            skipped_manifests,
+        }
+    }
+
     pub fn grant_oauth(
         &mut self,
         provider: &str,
@@ -1254,6 +1301,12 @@ impl ManifestShellTentacle {
     }
 
     fn plan_tool(&self, need: &Need) -> Option<ManifestToolPlan> {
+        if self.route_id == "computer-use-agent"
+            && need.kind == NeedKind::Observe
+            && !is_desktop_observe(&need.query)
+        {
+            return None;
+        }
         let preferred = match need.kind {
             NeedKind::Observe => ["inspect_repo", "describe_screen", "read"].as_slice(),
             NeedKind::Verify | NeedKind::Reproduce => {
@@ -2238,6 +2291,13 @@ fn manifest_plan_reason(need: &Need, tool: &InstalledToolRef) -> String {
     )
 }
 
+fn is_desktop_observe(query: &str) -> bool {
+    let query = query.to_lowercase();
+    ["screen", "desktop", "window", "browser", "url", "ui"]
+        .iter()
+        .any(|word| query.contains(word))
+}
+
 fn trim_output(output: &str) -> String {
     const MAX_BYTES: usize = 16_000;
     if output.len() <= MAX_BYTES {
@@ -2599,6 +2659,39 @@ mod tests {
     }
 
     #[test]
+    fn harness_state_adapts_environment_into_installed_tentacles() {
+        let dir = std::env::temp_dir().join(format!("octopus-adapt-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".git")).unwrap();
+        fs::create_dir_all(dir.join("docs")).unwrap();
+        fs::write(dir.join("Cargo.toml"), "[workspace]\n").unwrap();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+
+        let report = state.adapt_environment(&dir, &root);
+
+        assert!(report
+            .environment
+            .recommended_profiles
+            .contains(&"swe-agent".to_string()));
+        assert!(report.installed_profiles.contains(&"swe-agent".to_string()));
+        assert!(state
+            .installed_tentacles
+            .iter()
+            .any(|tentacle| tentacle.id == "swe-agent"));
+        assert!(state
+            .installed_tentacles
+            .iter()
+            .any(|tentacle| tentacle.id == "repo-maintainer"));
+        let second = state.adapt_environment(&dir, &root);
+        assert!(second.installed_profiles.is_empty());
+        assert!(second.installed_tentacles.is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn harness_state_installs_profiles_idempotently() {
         let mut state = HarnessState::default();
 
@@ -2668,5 +2761,18 @@ mod tests {
             .get("brain_prompt")
             .is_some_and(|prompt| prompt.contains("select tools from metadata")));
         assert!(harness.state.routes.score(&NeedKind::Observe, "swe-agent") > 1.0);
+    }
+
+    #[test]
+    fn computer_use_tentacle_does_not_take_repo_observe_need() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        let installed = state.install_manifest(&root, "computer-use-agent").unwrap();
+        let tentacle = ManifestShellTentacle::new(installed);
+
+        assert!(!tentacle.supports(&Need::new(NeedKind::Observe, ".")));
+        assert!(tentacle.supports(&Need::new(NeedKind::Observe, "describe screen")));
     }
 }

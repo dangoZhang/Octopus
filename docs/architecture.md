@@ -18,6 +18,7 @@ Octopus keeps the non-evolvable base small.
 - `ChatPlanner`: provider-neutral chat adapter for LLM-backed tentacle brains.
 - `SkillManifest` and `TentacleProfile`: installable behavior bundles with brain, tool metadata, implementation pointers, and evolution policy.
 - `EnvironmentReport`: local environment detection for adaptive defaults.
+- `adapt`: installs recommended profiles and matching tentacle manifests from local environment signals.
 
 Rust is the kernel language because this layer must be fast, typed, portable, and boring. It is the part we do not want an adaptive harness to rewrite casually.
 

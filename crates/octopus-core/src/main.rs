@@ -1,7 +1,7 @@
 use octopus_core::{
-    default_permissions, default_tentacle_profiles, inspect_tentacle_manifests, CapabilityGrant,
-    EnvironmentReport, GoalChat, Harness, HarnessState, HeartbeatReport, Need, NeedKind,
-    SelfIterationPlan, TentacleManifestReport,
+    default_permissions, default_tentacle_profiles, inspect_tentacle_manifests, AdaptReport,
+    CapabilityGrant, EnvironmentReport, GoalChat, Harness, HarnessState, HeartbeatReport, Need,
+    NeedKind, SelfIterationPlan, TentacleManifestReport,
 };
 use std::env;
 use std::path::PathBuf;
@@ -246,6 +246,25 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_environment(&report, language);
+            }
+            Ok(())
+        }
+        Some("adapt") => {
+            let root = rest
+                .get(1)
+                .map(PathBuf::from)
+                .unwrap_or_else(default_tentacles_root);
+            let cwd = env::current_dir().map_err(|error| error.to_string())?;
+            let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let report = loaded.adapt_environment(cwd, root);
+            loaded.save(&state).map_err(|error| error.to_string())?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_adapt_report(&report, language);
             }
             Ok(())
         }
@@ -525,6 +544,41 @@ fn print_environment(report: &EnvironmentReport, language: Language) {
     }
 }
 
+fn print_adapt_report(report: &AdaptReport, language: Language) {
+    match language {
+        Language::En => {
+            println!(
+                "adapted profiles: {}",
+                join_or_none(&report.installed_profiles)
+            );
+            println!(
+                "adapted tentacles: {}",
+                join_or_none(&report.installed_tentacles)
+            );
+            println!(
+                "recommended: {}",
+                report.environment.recommended_profiles.join(", ")
+            );
+        }
+        Language::Zh => {
+            println!("已适配配置: {}", join_or_none(&report.installed_profiles));
+            println!("已适配触手: {}", join_or_none(&report.installed_tentacles));
+            println!(
+                "推荐触手: {}",
+                report.environment.recommended_profiles.join(", ")
+            );
+        }
+    }
+}
+
+fn join_or_none(values: &[String]) -> String {
+    if values.is_empty() {
+        "none".to_string()
+    } else {
+        values.join(", ")
+    }
+}
+
 fn default_tentacles_root() -> PathBuf {
     let cwd_root = env::current_dir()
         .ok()
@@ -538,7 +592,7 @@ fn default_tentacles_root() -> PathBuf {
 }
 
 fn usage() -> String {
-    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | goal | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | routes | catalog | manifests [root] | env | install <profile> | installed".to_string()
+    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | goal | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | routes | catalog | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]
@@ -655,6 +709,27 @@ mod tests {
             "env".to_string(),
         ])
         .unwrap();
+    }
+
+    #[test]
+    fn cli_adapts_environment_into_state() {
+        let path =
+            std::env::temp_dir().join(format!("octopus-adapt-state-{}.json", std::process::id()));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "adapt".to_string(),
+        ])
+        .unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("installed_profiles"));
+        assert!(content.contains("installed_tentacles"));
+        assert!(content.contains("visual"));
+        let _ = fs::remove_file(path);
     }
 
     #[test]

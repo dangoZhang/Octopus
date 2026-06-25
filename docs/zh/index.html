@@ -210,6 +210,7 @@ tmp=$(mktemp -d)
 cargo run -q -p octopus-core -- catalog
 cargo run -q -p octopus-core -- manifests
 cargo run -q -p octopus-core -- --lang zh env
+cargo run -q -p octopus-core -- --state "$tmp/state.json" adapt
 cargo run -q -p octopus-core -- --state "$tmp/state.json" install research
 cargo run -q -p octopus-core -- --state "$tmp/state.json" install swe-agent
 cargo run -q -p octopus-core -- --state "$tmp/state.json" installed
