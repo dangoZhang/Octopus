@@ -1183,6 +1183,9 @@ impl Default for Harness {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct InstalledToolRef {
     id: String,
+    description: String,
+    input: String,
+    output: String,
     kind: String,
     entrypoint: String,
 }
@@ -1192,10 +1195,31 @@ impl InstalledToolRef {
         let mut parts = value.splitn(3, ':');
         Some(Self {
             id: parts.next()?.to_string(),
+            description: String::new(),
+            input: String::new(),
+            output: String::new(),
             kind: parts.next()?.to_string(),
             entrypoint: parts.next()?.to_string(),
         })
     }
+
+    fn from_installed(tool: &InstalledTool) -> Self {
+        Self {
+            id: tool.id.clone(),
+            description: tool.description.clone(),
+            input: tool.input.clone(),
+            output: tool.output.clone(),
+            kind: tool.kind.clone(),
+            entrypoint: tool.entrypoint.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ManifestToolPlan {
+    tool: InstalledToolRef,
+    reason: String,
+    candidates: Vec<String>,
 }
 
 pub struct ManifestShellTentacle {
@@ -1207,12 +1231,21 @@ pub struct ManifestShellTentacle {
 impl ManifestShellTentacle {
     pub fn new(installed: InstalledTentacle) -> Self {
         let route_id = installed.id.clone();
-        let tools = installed
-            .tools
-            .iter()
-            .filter_map(|tool| InstalledToolRef::parse(tool))
-            .filter(|tool| tool.kind == "shell")
-            .collect();
+        let tools = if installed.tool_meta.is_empty() {
+            installed
+                .tools
+                .iter()
+                .filter_map(|tool| InstalledToolRef::parse(tool))
+                .filter(|tool| tool.kind == "shell")
+                .collect()
+        } else {
+            installed
+                .tool_meta
+                .iter()
+                .map(InstalledToolRef::from_installed)
+                .filter(|tool| tool.kind == "shell")
+                .collect()
+        };
         Self {
             route_id,
             installed,
@@ -1220,7 +1253,7 @@ impl ManifestShellTentacle {
         }
     }
 
-    fn select_tool(&self, need: &Need) -> Option<&InstalledToolRef> {
+    fn plan_tool(&self, need: &Need) -> Option<ManifestToolPlan> {
         let preferred = match need.kind {
             NeedKind::Observe => ["inspect_repo", "describe_screen", "read"].as_slice(),
             NeedKind::Verify | NeedKind::Reproduce => {
@@ -1230,9 +1263,21 @@ impl ManifestShellTentacle {
             NeedKind::Execute => ["write_and_run"].as_slice(),
             _ => [].as_slice(),
         };
-        preferred
+        let candidates = self
+            .tools
+            .iter()
+            .map(|tool| tool.id.clone())
+            .collect::<Vec<_>>();
+        let tool = preferred
             .iter()
             .find_map(|id| self.tools.iter().find(|tool| tool.id == *id))
+            .cloned()?;
+        let reason = manifest_plan_reason(need, &tool);
+        Some(ManifestToolPlan {
+            tool,
+            reason,
+            candidates,
+        })
     }
 
     fn tool_path(&self, tool: &InstalledToolRef) -> PathBuf {
@@ -1320,19 +1365,30 @@ impl Tentacle for ManifestShellTentacle {
             .needs
             .iter()
             .any(|need_key| need_key == kind_key(&need.kind))
-            && self.select_tool(need).is_some()
+            && self.plan_tool(need).is_some()
     }
 
     fn feed(&mut self, need: &Need) -> Feed {
-        let Some(tool) = self.select_tool(need) else {
+        let Some(plan) = self.plan_tool(need) else {
             return Feed::unsupported(need, "no manifest tool supports this need");
         };
-        let result = self.run_tool(tool, need);
+        let tool = plan.tool;
+        let result = self.run_tool(&tool, need);
         let status = result.status.clone();
         let mut metadata = result.metadata.clone();
         metadata.insert("tool".to_string(), tool.id.clone());
+        metadata.insert("tool_description".to_string(), tool.description.clone());
+        metadata.insert("plan".to_string(), plan.reason);
+        metadata.insert("available_tools".to_string(), plan.candidates.join(","));
         metadata.insert("runtime".to_string(), "shell".to_string());
         metadata.insert("tentacle_brain".to_string(), self.route_id.clone());
+        metadata.insert(
+            "brain_prompt".to_string(),
+            self.installed.brain_prompt.clone(),
+        );
+        if let Some(contract) = &self.installed.feedback_contract {
+            metadata.insert("feedback_contract".to_string(), contract.clone());
+        }
         Feed {
             need: need.clone(),
             status,
@@ -1398,10 +1454,26 @@ pub struct InstalledTentacle {
     pub name: String,
     pub source: String,
     pub brain_kind: String,
+    #[serde(default)]
+    pub brain_prompt: String,
+    #[serde(default)]
+    pub feedback_contract: Option<String>,
     pub runtime_kinds: Vec<String>,
     pub needs: Vec<String>,
     pub tools: Vec<String>,
+    #[serde(default)]
+    pub tool_meta: Vec<InstalledTool>,
     pub editable: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct InstalledTool {
+    pub id: String,
+    pub description: String,
+    pub input: String,
+    pub output: String,
+    pub kind: String,
+    pub entrypoint: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -1885,14 +1957,30 @@ fn installed_tentacle_from_manifest(
             )
         })
         .collect::<Vec<_>>();
+    let tool_meta = loaded
+        .manifest
+        .tools
+        .iter()
+        .map(|tool| InstalledTool {
+            id: tool.id.clone(),
+            description: tool.description.clone(),
+            input: tool.input.clone(),
+            output: tool.output.clone(),
+            kind: tool.implementation.kind.clone(),
+            entrypoint: tool.implementation.entrypoint.clone(),
+        })
+        .collect::<Vec<_>>();
     Ok(InstalledTentacle {
         id: report.id,
         name: report.name,
         source: report.path,
         brain_kind: report.brain_kind,
+        brain_prompt: loaded.manifest.brain.prompt,
+        feedback_contract: loaded.manifest.brain.feedback_contract,
         runtime_kinds: report.runtime_kinds,
         needs: report.needs,
         tools,
+        tool_meta,
         editable: report.editable,
     })
 }
@@ -2136,6 +2224,18 @@ fn read_args(query: &str) -> Vec<String> {
         args.push("README.md".to_string());
     }
     args
+}
+
+fn manifest_plan_reason(need: &Need, tool: &InstalledToolRef) -> String {
+    if tool.description.is_empty() {
+        return format!("selected {} for {}", tool.id, kind_key(&need.kind));
+    }
+    format!(
+        "selected {} for {}: {}",
+        tool.id,
+        kind_key(&need.kind),
+        tool.description
+    )
 }
 
 fn trim_output(output: &str) -> String {
@@ -2521,11 +2621,17 @@ mod tests {
 
         assert_eq!(state.installed_tentacles.len(), 1);
         assert_eq!(installed.brain_kind, "llm");
+        assert!(installed.brain_prompt.contains("cognitive Need"));
         assert!(installed.runtime_kinds.contains(&"shell".to_string()));
         assert!(installed
             .tools
             .iter()
             .any(|tool| tool.contains("read:shell")));
+        assert!(installed
+            .tool_meta
+            .iter()
+            .any(|tool| tool.id == "inspect_repo"
+                && tool.description.contains("Summarize repo state")));
         assert!(state.install_manifest(&root, "missing").is_err());
     }
 
@@ -2549,6 +2655,18 @@ mod tests {
             feedback.feeds[0].metadata.get("tool"),
             Some(&"inspect_repo".to_string())
         );
+        assert!(feedback.feeds[0]
+            .metadata
+            .get("plan")
+            .is_some_and(|plan| plan.contains("selected inspect_repo")));
+        assert!(feedback.feeds[0]
+            .metadata
+            .get("available_tools")
+            .is_some_and(|tools| tools.contains("inspect_repo")));
+        assert!(feedback.feeds[0]
+            .metadata
+            .get("brain_prompt")
+            .is_some_and(|prompt| prompt.contains("select tools from metadata")));
         assert!(harness.state.routes.score(&NeedKind::Observe, "swe-agent") > 1.0);
     }
 }
