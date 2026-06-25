@@ -12,6 +12,7 @@ Octopus keeps the non-evolvable base small.
 - `Feedback`: compact result for the brain.
 - `RouteBook`: data-driven routing that learns from feed quality.
 - `HarnessState`: persistent memory and routes.
+- `HeartbeatReport`: three-heart pulse for liveness, memory compaction, and route evolution.
 - `PlanningTentacle`: tool-side planner that selects tools before execution.
 - `ChatPlanner`: provider-neutral chat adapter for LLM-backed tentacle brains.
 - `SkillManifest` and `TentacleProfile`: installable behavior bundles with brain, tool metadata, implementation pointers, and evolution policy.

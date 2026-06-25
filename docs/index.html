@@ -306,6 +306,7 @@ cargo run -q -p octopus-core -- --state "$tmp/state.json" install swe-agent
 cargo run -q -p octopus-core -- --state "$tmp/state.json" installed
 cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build a clean-brain agent"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think"
+cargo run -q -p octopus-core -- --state "$tmp/state.json" beat 200
 cargo run -q -p octopus-core -- --state "$tmp/state.json" goal
 cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 cargo run -q -p octopus-core -- --state "$tmp/state.json" oauth github dangoZhang/Octopus

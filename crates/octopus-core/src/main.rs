@@ -1,7 +1,7 @@
 use octopus_core::{
     default_permissions, default_tentacle_profiles, inspect_tentacle_manifests, CapabilityGrant,
-    EnvironmentReport, GoalChat, Harness, HarnessState, Need, NeedKind, SelfIterationPlan,
-    TentacleManifestReport,
+    EnvironmentReport, GoalChat, Harness, HarnessState, HeartbeatReport, Need, NeedKind,
+    SelfIterationPlan, TentacleManifestReport,
 };
 use std::env;
 use std::path::PathBuf;
@@ -120,6 +120,29 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_goal(&loaded, language);
+            }
+            Ok(())
+        }
+        Some("beat") => {
+            let memory_keep = rest
+                .get(1)
+                .map(|value| {
+                    value
+                        .parse::<usize>()
+                        .map_err(|_| format!("invalid memory keep: {value}"))
+                })
+                .transpose()?
+                .unwrap_or(200);
+            let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let report = loaded.beat(memory_keep);
+            loaded.save(&state).map_err(|error| error.to_string())?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_heartbeat_report(&report, language);
             }
             Ok(())
         }
@@ -399,6 +422,24 @@ fn print_chat(chat: &GoalChat, language: Language) {
     }
 }
 
+fn print_heartbeat_report(report: &HeartbeatReport, language: Language) {
+    for beat in &report.beats {
+        match language {
+            Language::En => println!("{}: {}", beat.name, beat.summary),
+            Language::Zh => println!("{}: {}", localize_beat(&beat.name), beat.summary),
+        }
+    }
+}
+
+fn localize_beat(name: &str) -> &str {
+    match name {
+        "heartbeat" => "心跳",
+        "memory" => "记忆",
+        "harness" => "harness",
+        _ => name,
+    }
+}
+
 fn print_goal(state: &HarnessState, language: Language) {
     let Some(goal) = &state.goal else {
         match language {
@@ -497,7 +538,7 @@ fn default_tentacles_root() -> PathBuf {
 }
 
 fn usage() -> String {
-    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | goal | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | routes | catalog | manifests [root] | env | install <profile> | installed".to_string()
+    "usage: octopus-core [--state path] [--lang en|zh] [--json] need <kind> <query> | chat <message> | goal | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | routes | catalog | manifests [root] | env | install <profile> | installed".to_string()
 }
 
 #[cfg(test)]
@@ -534,6 +575,43 @@ mod tests {
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("clean brain"));
         assert!(content.contains("recall:memory"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_beat_compacts_memory_and_saves_state() {
+        let path =
+            std::env::temp_dir().join(format!("octopus-beat-state-{}.json", std::process::id()));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "need".to_string(),
+            "remember".to_string(),
+            "first".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "need".to_string(),
+            "remember".to_string(),
+            "second".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "beat".to_string(),
+            "1".to_string(),
+        ])
+        .unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(!content.contains("first"));
+        assert!(content.contains("second"));
         let _ = fs::remove_file(path);
     }
 

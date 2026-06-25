@@ -135,6 +135,19 @@ pub struct PullRequestDraft {
     pub check_results: Vec<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct HeartBeat {
+    pub name: String,
+    pub changed: bool,
+    pub summary: String,
+    pub data: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct HeartbeatReport {
+    pub beats: Vec<HeartBeat>,
+}
+
 impl Need {
     pub fn new(kind: NeedKind, query: impl Into<String>) -> Self {
         Self {
@@ -320,6 +333,42 @@ impl MemoryStore {
         }
         ids.len()
     }
+
+    pub fn compact(&mut self, keep: usize) -> usize {
+        if self.records.len() <= keep {
+            return 0;
+        }
+        let mut records = self
+            .records
+            .values()
+            .map(|record| {
+                (
+                    record.weight,
+                    memory_id_number(&record.id),
+                    record.id.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        records.sort_by(|left, right| {
+            left.0
+                .total_cmp(&right.0)
+                .then_with(|| left.1.cmp(&right.1))
+                .then_with(|| left.2.cmp(&right.2))
+        });
+        let drop_count = self.records.len() - keep;
+        for (_, _, id) in records.into_iter().take(drop_count) {
+            self.records.remove(&id);
+        }
+        drop_count
+    }
+
+    pub fn len(&self) -> usize {
+        self.records.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -388,6 +437,19 @@ impl RouteBook {
             .get(&route_key(kind, name))
             .copied()
             .unwrap_or(self.base_score)
+    }
+
+    pub fn decay(&mut self, rate: f32) -> usize {
+        let rate = rate.clamp(0.0, 1.0);
+        let mut changed = 0;
+        for score in self.scores.values_mut() {
+            let next = (*score * rate).clamp(0.05, 10.0);
+            if (next - *score).abs() > f32::EPSILON {
+                changed += 1;
+            }
+            *score = next;
+        }
+        changed
     }
 }
 
@@ -836,6 +898,39 @@ impl HarnessState {
             self.installed_tentacles.push(installed.clone());
         }
         Ok(installed)
+    }
+
+    pub fn beat(&mut self, memory_keep: usize) -> HeartbeatReport {
+        let dropped = self.memory.compact(memory_keep);
+        let routes_changed = self.routes.decay(0.995);
+        HeartbeatReport {
+            beats: vec![
+                HeartBeat {
+                    name: "heartbeat".to_string(),
+                    changed: true,
+                    summary: "alive".to_string(),
+                    data: BTreeMap::new(),
+                },
+                HeartBeat {
+                    name: "memory".to_string(),
+                    changed: dropped > 0,
+                    summary: format!("compacted {dropped} memories"),
+                    data: BTreeMap::from([
+                        ("dropped".to_string(), dropped.to_string()),
+                        ("kept".to_string(), self.memory.len().to_string()),
+                    ]),
+                },
+                HeartBeat {
+                    name: "harness".to_string(),
+                    changed: routes_changed > 0,
+                    summary: format!("evolved {routes_changed} routes"),
+                    data: BTreeMap::from([(
+                        "routes".to_string(),
+                        self.routes.scores.len().to_string(),
+                    )]),
+                },
+            ],
+        }
     }
 
     pub fn grant_oauth(
@@ -1839,6 +1934,12 @@ fn kind_key(kind: &NeedKind) -> &'static str {
     }
 }
 
+fn memory_id_number(id: &str) -> u64 {
+    id.strip_prefix('m')
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(u64::MAX)
+}
+
 fn route_key(kind: &NeedKind, name: &str) -> String {
     format!("{}:{name}", kind_key(kind))
 }
@@ -1894,6 +1995,22 @@ mod tests {
     }
 
     #[test]
+    fn memory_compaction_keeps_higher_weight_records() {
+        let mut memory = MemoryStore::default();
+        memory.remember("alpha");
+        memory.remember("beta");
+        memory.remember("gamma");
+        memory.recall("gamma", 1);
+
+        let dropped = memory.compact(2);
+
+        assert_eq!(dropped, 1);
+        assert_eq!(memory.len(), 2);
+        assert_eq!(memory.recall("alpha", 1), Vec::<MemoryRecord>::new());
+        assert_eq!(memory.recall("gamma", 1)[0].text, "gamma");
+    }
+
+    #[test]
     fn router_learns_successful_tentacle() {
         let mut harness = Harness::new();
         harness.add_tentacle(Box::new(FunctionTentacle::new(
@@ -1905,6 +2022,41 @@ mod tests {
         harness.feed_one(&Need::new(NeedKind::Verify, "claim"));
 
         assert!(harness.state.routes.score(&NeedKind::Verify, "verifier") > 1.0);
+    }
+
+    #[test]
+    fn harness_state_beat_runs_three_hearts() {
+        let mut harness = Harness::new();
+        harness.feed_one(&Need::new(NeedKind::Remember, "older memory"));
+        harness.feed_one(&Need::new(NeedKind::Remember, "newer memory"));
+        harness.add_tentacle(Box::new(FunctionTentacle::new(
+            "verifier",
+            vec![NeedKind::Verify],
+            |need| Feed::satisfied(need, "verified", "verifier"),
+        )));
+        harness.feed_one(&Need::new(NeedKind::Verify, "claim"));
+        let route_before = harness.state.routes.score(&NeedKind::Verify, "verifier");
+
+        let report = harness.state.beat(1);
+
+        assert_eq!(
+            report
+                .beats
+                .iter()
+                .map(|beat| beat.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["heartbeat", "memory", "harness"]
+        );
+        assert_eq!(harness.state.memory.len(), 1);
+        assert!(harness.state.routes.score(&NeedKind::Verify, "verifier") < route_before);
+        assert!(
+            report
+                .beats
+                .iter()
+                .find(|beat| beat.name == "memory")
+                .unwrap()
+                .changed
+        );
     }
 
     #[test]

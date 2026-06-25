@@ -27,6 +27,7 @@ cargo run -q -p octopus-core -- --state "$tmp/state.json" install swe-agent
 cargo run -q -p octopus-core -- --state "$tmp/state.json" installed
 cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build a clean-brain agent"
 cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think through tentacles"
+cargo run -q -p octopus-core -- --state "$tmp/state.json" beat 200
 cargo run -q -p octopus-core -- --state "$tmp/state.json" goal
 cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 cargo run -q -p octopus-core -- --state "$tmp/state.json" oauth github dangoZhang/Octopus
@@ -52,6 +53,9 @@ tentacles: swe-agent(shell)
 goal: build a clean-brain agent
 turn 2: remembered m2
 refinements: 1
+heartbeat: alive
+memory: compacted 0 memories
+harness: evolved 2 routes
 mode: report-only
 oauth grant active: github:dangoZhang/Octopus
 mode: pr-ready
