@@ -1,8 +1,34 @@
 {
+  "$schema": "../tentacle.schema.json",
+  "schema_version": "0.1.0",
   "id": "bash-only",
   "name": "Bash Only Tentacle",
-  "description": "Every tool call is written to a .sh file, then executed by bash.",
-  "skills": ["write_and_run"],
-  "tools": ["tools/write_and_run.sh"]
+  "description": "LLM-guided execution where every action becomes a readable shell script before it runs.",
+  "brain": {
+    "kind": "llm",
+    "model": null,
+    "prompt": "Convert an execution Need into a small, auditable shell script. Keep the script readable, replayable, and narrow.",
+    "feedback_contract": "Return script path, exit status, stdout/stderr summary, and whether the script can be reused."
+  },
+  "skills": [
+    {
+      "id": "write-and-run",
+      "description": "Represent execution as editable scripts under .octopus/harness.",
+      "needs": ["execute", "verify", "reproduce"]
+    }
+  ],
+  "tools": [
+    {
+      "id": "write_and_run",
+      "description": "Write stdin to a .sh file and execute it.",
+      "input": "script on stdin plus optional workspace root",
+      "output": "script output and stored script path",
+      "implementation": { "kind": "shell", "entrypoint": "tools/write_and_run.sh" }
+    }
+  ],
+  "evolution": {
+    "editable": ["manifest.json", "brain.prompt", "tools/write_and_run.sh"],
+    "checks": ["printf 'echo ok\\n' | tools/write_and_run.sh $(mktemp -d)"],
+    "constraints": ["Generated scripts should stay readable and replayable."]
+  }
 }
-

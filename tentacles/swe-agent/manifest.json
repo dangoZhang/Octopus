@@ -1,13 +1,62 @@
 {
+  "$schema": "../tentacle.schema.json",
+  "schema_version": "0.1.0",
   "id": "swe-agent",
   "name": "SWE Agent Tentacle",
-  "description": "Code-as-harness tools for repository inspection, patch preparation, and test execution.",
-  "skills": ["read", "edit", "inspect_repo", "write_patch", "run_tests"],
+  "description": "LLM-guided repository work with editable tool metadata and code implementations.",
+  "brain": {
+    "kind": "llm",
+    "model": null,
+    "prompt": "Map a cognitive Need to the smallest repo action, select tools from metadata, execute implementation code, and return compact patch/test evidence.",
+    "feedback_contract": "Return status, evidence, touched files, and the next useful Need. Do not return hidden reasoning."
+  },
+  "skills": [
+    {
+      "id": "swe-workflow",
+      "description": "Read, edit, inspect, patch, and verify a repository.",
+      "needs": ["observe", "execute", "verify", "reproduce"]
+    }
+  ],
   "tools": [
-    "tools/read.sh",
-    "tools/edit.sh",
-    "tools/inspect_repo.sh",
-    "tools/write_patch.sh",
-    "tools/run_tests.sh"
-  ]
+    {
+      "id": "read",
+      "description": "Read a safe line range from a workspace file.",
+      "input": "file path plus optional start/end lines",
+      "output": "plain text file slice",
+      "implementation": { "kind": "shell", "entrypoint": "tools/read.sh" }
+    },
+    {
+      "id": "edit",
+      "description": "Apply one scoped text replacement.",
+      "input": "file path, old text, new text",
+      "output": "edit status",
+      "implementation": { "kind": "shell", "entrypoint": "tools/edit.sh" }
+    },
+    {
+      "id": "inspect_repo",
+      "description": "Summarize repo state and project type.",
+      "input": "workspace root",
+      "output": "status, files, and detected manifests",
+      "implementation": { "kind": "shell", "entrypoint": "tools/inspect_repo.sh" }
+    },
+    {
+      "id": "write_patch",
+      "description": "Write a patch file and optionally apply it.",
+      "input": "patch on stdin",
+      "output": "patch path and apply-check status",
+      "implementation": { "kind": "shell", "entrypoint": "tools/write_patch.sh" }
+    },
+    {
+      "id": "run_tests",
+      "description": "Run detected project tests.",
+      "input": "workspace root",
+      "output": "test output",
+      "implementation": { "kind": "shell", "entrypoint": "tools/run_tests.sh" }
+    }
+  ],
+  "evolution": {
+    "editable": ["manifest.json", "brain.prompt", "tools/*.sh", "future tools in any runtime"],
+    "checks": ["tools/read.sh README.md 1 2", "cargo test"],
+    "constraints": ["Keep path safety checks unless a stronger sandbox replaces them."]
+  }
 }

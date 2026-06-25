@@ -1,9 +1,10 @@
 # Tentacles
 
-Each tentacle is code-as-harness: a small manifest plus editable tools.
+Each tentacle is code-as-harness: LLM brain prompt, tool metadata, code implementation, and evolution policy.
 
-- `swe-agent`: `read`, `edit`, repo inspection, patch writing, test running.
-- `computer-use-agent`: `mcp`, `bash`, screenshot, open-url, desktop helpers.
-- `bash-only`: writes every tool call to a `.sh` file and runs it.
+- `swe-agent`: repo work through `read`, `edit`, inspection, patch, and test tools.
+- `computer-use-agent`: local UI work through `mcp`, `bash`, screenshots, URLs, and desktop probes.
+- `bash-only`: every action becomes a readable `.sh` script before it runs.
+- `visual`: color-changing status pet for heartbeat, memory, harness, blocked, and success states.
 
-The Rust kernel stays clean. These files are intentionally ordinary code so Octopus can later edit, test, and improve them through a repo tentacle.
+Shell is only the seed implementation. A tentacle can evolve into Python, TypeScript, Rust, MCP, HTTP, native tools, or mixed runtimes while the kernel contract stays stable.

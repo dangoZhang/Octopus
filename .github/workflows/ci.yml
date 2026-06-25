@@ -15,6 +15,12 @@ jobs:
       - run: cargo run -q -p octopus-core --example thinking_tentacle
       - run: cargo run -q -p octopus-core -- catalog
       - run: cargo run -q -p octopus-core -- --lang zh env
+      - run: python -m json.tool tentacles/tentacle.schema.json > /dev/null
+      - run: python -m json.tool tentacles/swe-agent/manifest.json > /dev/null
+      - run: python -m json.tool tentacles/computer-use-agent/manifest.json > /dev/null
+      - run: python -m json.tool tentacles/bash-only/manifest.json > /dev/null
+      - run: python -m json.tool tentacles/visual/manifest.json > /dev/null
+      - run: grep -q data-state docs/pet.html
       - run: tentacles/swe-agent/tools/read.sh README.md 1 2
       - run: |
           tmp=$(mktemp -d)

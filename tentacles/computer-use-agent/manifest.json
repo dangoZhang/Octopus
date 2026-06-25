@@ -1,14 +1,62 @@
 {
+  "$schema": "../tentacle.schema.json",
+  "schema_version": "0.1.0",
   "id": "computer-use-agent",
   "name": "Computer Use Tentacle",
-  "description": "Code-as-harness tools for local UI workflows such as screenshots and opening URLs.",
-  "skills": ["mcp", "bash", "screenshot", "open_url", "describe_screen"],
+  "description": "LLM-guided local UI work through MCP, shell, screenshots, URLs, and desktop probes.",
+  "brain": {
+    "kind": "llm",
+    "model": null,
+    "prompt": "Translate observation or execution Needs into MCP, local UI, shell, or URL actions. Prefer visible, reversible steps and compact evidence.",
+    "feedback_contract": "Return status, visible evidence, commands or MCP calls used, and unresolved user-visible risk."
+  },
+  "skills": [
+    {
+      "id": "computer-use",
+      "description": "Observe and operate a local desktop environment.",
+      "needs": ["observe", "execute", "verify"]
+    }
+  ],
   "tools": [
-    "tools/mcp.sh",
-    "tools/bash.sh",
-    "tools/screenshot.sh",
-    "tools/open_url.sh",
-    "tools/describe_screen.sh"
-  ]
+    {
+      "id": "mcp",
+      "description": "Call an MCP tool through a client adapter.",
+      "input": "server id, tool id, JSON args",
+      "output": "MCP call result",
+      "implementation": { "kind": "mcp", "entrypoint": "tools/mcp.sh" }
+    },
+    {
+      "id": "bash",
+      "description": "Write and run a local shell script.",
+      "input": "script on stdin",
+      "output": "script output and stored script path",
+      "implementation": { "kind": "shell", "entrypoint": "tools/bash.sh" }
+    },
+    {
+      "id": "screenshot",
+      "description": "Capture the current screen.",
+      "input": "output path",
+      "output": "image file path",
+      "implementation": { "kind": "shell", "entrypoint": "tools/screenshot.sh" }
+    },
+    {
+      "id": "open_url",
+      "description": "Open a URL in the local desktop.",
+      "input": "URL",
+      "output": "open status",
+      "implementation": { "kind": "shell", "entrypoint": "tools/open_url.sh" }
+    },
+    {
+      "id": "describe_screen",
+      "description": "Return lightweight desktop context.",
+      "input": "none",
+      "output": "OS and process hints",
+      "implementation": { "kind": "shell", "entrypoint": "tools/describe_screen.sh" }
+    }
+  ],
+  "evolution": {
+    "editable": ["manifest.json", "brain.prompt", "tools/*.sh", "future MCP/native/browser tools"],
+    "checks": ["tools/describe_screen.sh"],
+    "constraints": ["Ask for user-visible actions only when the product flow grants it."]
+  }
 }
-

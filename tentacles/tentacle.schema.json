@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dangoZhang/Octopus/tentacles/tentacle.schema.json",
+  "title": "Octopus Tentacle Manifest",
+  "type": "object",
+  "required": ["schema_version", "id", "name", "description", "brain", "skills", "tools", "evolution"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema_version": { "type": "string" },
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "brain": {
+      "type": "object",
+      "required": ["kind", "prompt"],
+      "properties": {
+        "kind": { "type": "string" },
+        "model": { "type": ["string", "null"] },
+        "prompt": { "type": "string" },
+        "feedback_contract": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "needs"],
+        "properties": {
+          "id": { "type": "string" },
+          "description": { "type": "string" },
+          "needs": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "input", "output", "implementation"],
+        "properties": {
+          "id": { "type": "string" },
+          "description": { "type": "string" },
+          "input": { "type": "string" },
+          "output": { "type": "string" },
+          "implementation": {
+            "type": "object",
+            "required": ["kind", "entrypoint"],
+            "properties": {
+              "kind": { "type": "string" },
+              "entrypoint": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "evolution": {
+      "type": "object",
+      "required": ["editable", "checks", "constraints"],
+      "properties": {
+        "editable": { "type": "array", "items": { "type": "string" } },
+        "checks": { "type": "array", "items": { "type": "string" } },
+        "constraints": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

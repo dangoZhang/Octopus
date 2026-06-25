@@ -6,11 +6,11 @@
 
 Most agents make the brain carry tools, memory, skills, and execution flow. Octopus keeps the brain clean: it only says what cognition it needs.
 
-Tentacles think during execution. They can plan, call sub-LLMs, use tools, and return compact evidence. The harness learns which feed works from data.
+Tentacles think during execution. A tentacle is an LLM brain prompt, tool metadata, code implementation, and evolution policy. The harness learns which feed works from data.
 
-Initial tentacles are editable code-as-harness: SWE (`read/edit`), computer-use (`mcp/bash`), and bash-only (`write .sh, run .sh`).
+Initial tentacles are editable code-as-harness: SWE (`read/edit`), computer-use (`mcp/bash`), and bash-only (`write .sh, run .sh`) as one transparent seed implementation.
 
-Three hearts keep it alive: heartbeat, memory evolution, and harness route evolution. Color change can become an image UI layer, outside the kernel.
+Three hearts keep it alive: heartbeat, memory evolution, and harness route evolution. Color change is a visual pet/status layer outside the kernel.
 
 The mechanism is `Need -> Feed -> Feedback`. The outcome is less tool burden and stronger tools.
 
@@ -32,7 +32,7 @@ Output includes:
 
 ```text
 Installable tentacles: research, code, memory, visual, repo-maintainer, swe-agent, computer-use-agent, bash-only
-推荐触手: memory, repo-maintainer, swe-agent, code, research, bash-only, computer-use-agent
+推荐触手: memory, visual, repo-maintainer, swe-agent, code, research, bash-only, computer-use-agent
 installed research
 research
 已记住 m1

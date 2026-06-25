@@ -14,7 +14,7 @@ Octopus keeps the non-evolvable base small.
 - `HarnessState`: persistent memory and routes.
 - `PlanningTentacle`: tool-side planner that selects tools before execution.
 - `ChatPlanner`: provider-neutral chat adapter for LLM-backed tentacle brains.
-- `SkillManifest` and `TentacleProfile`: installable behavior bundles.
+- `SkillManifest` and `TentacleProfile`: installable behavior bundles with brain, tool metadata, implementation pointers, and evolution policy.
 - `EnvironmentReport`: local environment detection for adaptive defaults.
 
 Rust is the kernel language because this layer must be fast, typed, portable, and boring. It is the part we do not want an adaptive harness to rewrite casually.
@@ -25,7 +25,11 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 ## Code-As-Harness
 
-`tentacles/` contains editable harness code. Initial profiles include SWE-style `read/edit`, computer-use `mcp/bash`, and bash-only `write .sh, run .sh` tools.
+`tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Initial profiles include SWE-style `read/edit`, computer-use `mcp/bash`, and bash-only `write .sh, run .sh` as one transparent seed runtime.
+
+## Color Pet
+
+Color change is a visual pet/status layer. It can show heartbeat, memory beat, harness beat, blocked state, or success without changing `Need`, `Feed`, or `Feedback`.
 
 ## Boundary
 

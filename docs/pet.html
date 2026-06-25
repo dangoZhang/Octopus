@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Octopus Status Pet</title>
+    <meta name="description" content="A color-changing Octopus status pet for heartbeat, memory, and harness state." />
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #101318;
+        --muted: #596070;
+        --line: #d8dde6;
+        --paper: #ffffff;
+        --soft: #f5f7fa;
+        --pet: #0f766e;
+        --accent: #cf4d32;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .shell {
+        width: min(920px, calc(100% - 32px));
+        margin: 0 auto;
+      }
+
+      nav {
+        min-height: 64px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .brand {
+        font-size: 18px;
+        font-weight: 800;
+      }
+
+      .links {
+        display: flex;
+        gap: 18px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      main {
+        min-height: calc(100vh - 64px);
+        display: grid;
+        align-items: center;
+        padding: 48px 0;
+      }
+
+      .stage {
+        display: grid;
+        grid-template-columns: minmax(260px, 1fr) minmax(260px, 360px);
+        gap: 32px;
+        align-items: center;
+      }
+
+      .pet-wrap {
+        display: grid;
+        place-items: center;
+        min-height: 430px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--soft);
+      }
+
+      .pet {
+        position: relative;
+        width: min(300px, 78vw);
+        aspect-ratio: 1;
+        color: var(--pet);
+      }
+
+      .head {
+        position: absolute;
+        left: 22%;
+        top: 10%;
+        width: 56%;
+        height: 54%;
+        border-radius: 48% 48% 44% 44%;
+        background: currentColor;
+        box-shadow: inset 0 -14px 0 rgba(0, 0, 0, 0.08);
+      }
+
+      .eye {
+        position: absolute;
+        top: 31%;
+        width: 11%;
+        aspect-ratio: 1;
+        border-radius: 999px;
+        background: #ffffff;
+      }
+
+      .eye::after {
+        content: "";
+        position: absolute;
+        inset: 32%;
+        border-radius: 999px;
+        background: var(--ink);
+      }
+
+      .eye.left {
+        left: 37%;
+      }
+
+      .eye.right {
+        right: 37%;
+      }
+
+      .arm {
+        position: absolute;
+        bottom: 18%;
+        width: 14%;
+        height: 38%;
+        border-radius: 999px;
+        background: currentColor;
+        transform-origin: top center;
+      }
+
+      .arm.a1 { left: 18%; transform: rotate(38deg); }
+      .arm.a2 { left: 34%; transform: rotate(12deg); }
+      .arm.a3 { right: 34%; transform: rotate(-12deg); }
+      .arm.a4 { right: 18%; transform: rotate(-38deg); }
+
+      .state {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 22px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 40px;
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      .label {
+        margin: 14px 0 22px;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      button {
+        min-height: 44px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--paper);
+        color: var(--ink);
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button[aria-pressed="true"] {
+        border-color: var(--ink);
+        box-shadow: inset 0 -4px 0 var(--accent);
+      }
+
+      @media (max-width: 760px) {
+        .stage {
+          grid-template-columns: 1fr;
+        }
+
+        .pet-wrap {
+          min-height: 320px;
+        }
+
+        h1 {
+          font-size: 32px;
+        }
+      }
+    </style>
+  </head>
+  <body data-state="heartbeat">
+    <nav class="shell">
+      <div class="brand">Octopus</div>
+      <div class="links">
+        <a href="./">Home</a>
+        <a href="https://github.com/dangoZhang/Octopus">GitHub</a>
+      </div>
+    </nav>
+
+    <main class="shell">
+      <div class="stage">
+        <div class="pet-wrap" aria-label="Octopus status pet">
+          <div class="pet" aria-hidden="true">
+            <div class="head"></div>
+            <div class="eye left"></div>
+            <div class="eye right"></div>
+            <div class="arm a1"></div>
+            <div class="arm a2"></div>
+            <div class="arm a3"></div>
+            <div class="arm a4"></div>
+          </div>
+        </div>
+
+        <section class="state" aria-live="polite">
+          <h1 id="state-title">Heartbeat</h1>
+          <p class="label" id="state-label">Kernel and chat loop are alive.</p>
+          <div class="swatches">
+            <button type="button" data-state="heartbeat">Heartbeat</button>
+            <button type="button" data-state="memory">Memory</button>
+            <button type="button" data-state="harness">Harness</button>
+            <button type="button" data-state="blocked">Blocked</button>
+            <button type="button" data-state="success">Success</button>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const states = {
+        heartbeat: ["Heartbeat", "Kernel and chat loop are alive.", "#0f766e", "#0f766e"],
+        memory: ["Memory beat", "Context was recalled, compacted, or forgotten.", "#6d5bd0", "#6d5bd0"],
+        harness: ["Harness beat", "Routes or tools are adapting from feedback.", "#cf4d32", "#cf4d32"],
+        blocked: ["Blocked", "The harness needs a grant or external change.", "#a16207", "#a16207"],
+        success: ["Success", "Feedback returned useful evidence.", "#16833a", "#16833a"]
+      };
+
+      const title = document.querySelector("#state-title");
+      const label = document.querySelector("#state-label");
+      const buttons = [...document.querySelectorAll("[data-state]")];
+
+      function setState(name) {
+        const state = states[name] || states.heartbeat;
+        document.body.dataset.state = name;
+        document.documentElement.style.setProperty("--pet", state[2]);
+        document.documentElement.style.setProperty("--accent", state[3]);
+        title.textContent = state[0];
+        label.textContent = state[1];
+        buttons.forEach((button) => {
+          button.setAttribute("aria-pressed", String(button.dataset.state === name));
+        });
+      }
+
+      const initial = new URLSearchParams(window.location.search).get("state") || "heartbeat";
+      buttons.forEach((button) => button.addEventListener("click", () => setState(button.dataset.state)));
+      setState(initial);
+    </script>
+  </body>
+</html>

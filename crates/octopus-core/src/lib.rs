@@ -863,11 +863,42 @@ pub struct SkillManifest {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TentacleBrain {
+    pub kind: String,
+    pub description: String,
+    pub model: Option<String>,
+    pub prompt: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ToolImplementation {
+    pub kind: String,
+    pub entrypoint: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ToolMetadata {
+    pub id: String,
+    pub description: String,
+    pub implementation: ToolImplementation,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EvolutionPolicy {
+    pub editable: Vec<String>,
+    pub checks: Vec<String>,
+    pub constraints: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TentacleProfile {
     pub id: String,
     pub name: String,
     pub description: String,
+    pub brain: TentacleBrain,
     pub skills: Vec<SkillManifest>,
+    pub tools: Vec<ToolMetadata>,
+    pub evolution: EvolutionPolicy,
     pub llm_ready: bool,
 }
 
@@ -877,6 +908,10 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
             id: "research".to_string(),
             name: "Research Tentacle".to_string(),
             description: "Verifies, compares, retrieves, and returns compact evidence.".to_string(),
+            brain: llm_brain(
+                "Evidence planner",
+                "Turn a Need into source checks, comparison steps, and compact evidence.",
+            ),
             skills: vec![SkillManifest {
                 id: "verify".to_string(),
                 name: "Verify".to_string(),
@@ -888,6 +923,12 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "citation".to_string(),
                 ],
             }],
+            tools: vec![
+                tool_meta("search", "Find candidate sources.", "adapter", "search"),
+                tool_meta("browser", "Inspect source pages.", "adapter", "browser"),
+                tool_meta("citation", "Return compact citations.", "adapter", "citation"),
+            ],
+            evolution: evolution_policy(&["cargo test"], &["Return evidence, not hidden chain of thought."]),
             llm_ready: true,
         },
         TentacleProfile {
@@ -895,6 +936,10 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
             name: "Code Tentacle".to_string(),
             description: "Inspects repositories, edits code, runs tests, and summarizes patches."
                 .to_string(),
+            brain: llm_brain(
+                "Code planner",
+                "Map a Need onto repository reads, edits, verification, and a concise patch summary.",
+            ),
             skills: vec![SkillManifest {
                 id: "harness-work".to_string(),
                 name: "Harness Work".to_string(),
@@ -908,12 +953,25 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "test-runner".to_string(),
                 ],
             }],
+            tools: vec![
+                tool_meta("git", "Inspect versioned state.", "adapter", "git"),
+                tool_meta("shell", "Run local commands.", "adapter", "shell"),
+                tool_meta("test-runner", "Verify changes.", "adapter", "test-runner"),
+            ],
+            evolution: evolution_policy(
+                &["cargo test", "python -m unittest discover -s tests -q"],
+                &["Keep edits scoped to the requested harness work."],
+            ),
             llm_ready: true,
         },
         TentacleProfile {
             id: "memory".to_string(),
             name: "Memory Tentacle".to_string(),
             description: "Remembers, recalls, forgets, and compacts context.".to_string(),
+            brain: rule_brain(
+                "Memory policy",
+                "Store, recall, forget, and compact context outside the main brain.",
+            ),
             skills: vec![SkillManifest {
                 id: "memory".to_string(),
                 name: "Memory".to_string(),
@@ -921,21 +979,41 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 needs: vec![NeedKind::Remember, NeedKind::Recall, NeedKind::Forget],
                 tools: vec!["memory-store".to_string()],
             }],
+            tools: vec![tool_meta(
+                "memory-store",
+                "Persist and retrieve compact memories.",
+                "native",
+                "HarnessState.memory",
+            )],
+            evolution: evolution_policy(&["cargo test"], &["Do not store secrets or noisy transcripts."]),
             llm_ready: false,
         },
         TentacleProfile {
             id: "visual".to_string(),
-            name: "Color Tentacle".to_string(),
-            description: "Turns feedback into visual or image interaction outside the kernel."
-                .to_string(),
+            name: "Color Pet Tentacle".to_string(),
+            description: "Shows heartbeat, memory, harness, blocked, and success state as a color-changing pet.".to_string(),
+            brain: llm_brain(
+                "Visual state translator",
+                "Convert Feedback into user-visible pet state without changing the kernel contract.",
+            ),
             skills: vec![SkillManifest {
                 id: "color-change".to_string(),
                 name: "Color Change".to_string(),
                 description: "Render visual feedback without changing the core agent loop."
                     .to_string(),
                 needs: vec![NeedKind::Observe],
-                tools: vec!["image".to_string(), "ui".to_string()],
+                tools: vec!["status-pet".to_string()],
             }],
+            tools: vec![tool_meta(
+                "status-pet",
+                "Render color-changing Octopus status.",
+                "static-html",
+                "docs/pet.html",
+            )],
+            evolution: evolution_policy(
+                &["grep -q data-state docs/pet.html"],
+                &["Keep visual state outside Need, Feed, and Feedback."],
+            ),
             llm_ready: true,
         },
         TentacleProfile {
@@ -943,6 +1021,10 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
             name: "Repo Maintainer Tentacle".to_string(),
             description: "Future self-iteration profile for branches, CI, and pull requests."
                 .to_string(),
+            brain: llm_brain(
+                "Self-iteration planner",
+                "Inspect repo health, propose small changes, and prepare PR-ready feedback after OAuth grant.",
+            ),
             skills: vec![SkillManifest {
                 id: "self-iteration".to_string(),
                 name: "Self Iteration".to_string(),
@@ -952,12 +1034,22 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 needs: vec![NeedKind::Observe, NeedKind::Verify, NeedKind::Execute],
                 tools: vec!["git".to_string(), "github".to_string(), "ci".to_string()],
             }],
+            tools: vec![
+                tool_meta("git", "Inspect local changes.", "adapter", "git"),
+                tool_meta("github", "Inspect and update GitHub state.", "adapter", "github"),
+                tool_meta("ci", "Read check status and logs.", "adapter", "ci"),
+            ],
+            evolution: evolution_policy(&["cargo test"], &["Wait for explicit OAuth/user grant before pushing changes."]),
             llm_ready: true,
         },
         TentacleProfile {
             id: "swe-agent".to_string(),
             name: "SWE Agent Tentacle".to_string(),
             description: "Code-as-harness repo tools for inspect, patch, and test workflows.".to_string(),
+            brain: llm_brain(
+                "SWE harness planner",
+                "Choose repo tools from metadata, execute implementation code, and return patch/test evidence.",
+            ),
             skills: vec![SkillManifest {
                 id: "swe-workflow".to_string(),
                 name: "SWE Workflow".to_string(),
@@ -971,12 +1063,30 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "tentacles/swe-agent/tools/run_tests.sh".to_string(),
                 ],
             }],
+            tools: vec![
+                tool_meta("read", "Read a safe slice of a workspace file.", "shell", "tentacles/swe-agent/tools/read.sh"),
+                tool_meta("edit", "Apply one scoped text replacement.", "shell", "tentacles/swe-agent/tools/edit.sh"),
+                tool_meta("inspect_repo", "Summarize repo state and project type.", "shell", "tentacles/swe-agent/tools/inspect_repo.sh"),
+                tool_meta("write_patch", "Write and optionally apply a patch.", "shell", "tentacles/swe-agent/tools/write_patch.sh"),
+                tool_meta("run_tests", "Run detected project tests.", "shell", "tentacles/swe-agent/tools/run_tests.sh"),
+            ],
+            evolution: evolution_policy(
+                &[
+                    "tentacles/swe-agent/tools/read.sh README.md 1 2",
+                    "cargo test",
+                ],
+                &["Keep path safety checks unless a stronger sandbox replaces them."],
+            ),
             llm_ready: true,
         },
         TentacleProfile {
             id: "computer-use-agent".to_string(),
             name: "Computer Use Tentacle".to_string(),
             description: "Code-as-harness local UI tools for screenshots and desktop workflows.".to_string(),
+            brain: llm_brain(
+                "Computer-use planner",
+                "Translate observation or execution Needs into MCP, local UI, shell, or URL actions.",
+            ),
             skills: vec![SkillManifest {
                 id: "computer-use".to_string(),
                 name: "Computer Use".to_string(),
@@ -990,12 +1100,27 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "tentacles/computer-use-agent/tools/describe_screen.sh".to_string(),
                 ],
             }],
+            tools: vec![
+                tool_meta("mcp", "Call an MCP tool through a client adapter.", "mcp", "tentacles/computer-use-agent/tools/mcp.sh"),
+                tool_meta("bash", "Write and run a local shell script.", "shell", "tentacles/computer-use-agent/tools/bash.sh"),
+                tool_meta("screenshot", "Capture the current screen.", "shell", "tentacles/computer-use-agent/tools/screenshot.sh"),
+                tool_meta("open_url", "Open a URL in the local desktop.", "shell", "tentacles/computer-use-agent/tools/open_url.sh"),
+                tool_meta("describe_screen", "Return lightweight desktop context.", "shell", "tentacles/computer-use-agent/tools/describe_screen.sh"),
+            ],
+            evolution: evolution_policy(
+                &["tentacles/computer-use-agent/tools/describe_screen.sh"],
+                &["Ask for user-visible actions only when the product flow grants it."],
+            ),
             llm_ready: true,
         },
         TentacleProfile {
             id: "bash-only".to_string(),
             name: "Bash Only Tentacle".to_string(),
             description: "Writes every tool call into a .sh file and executes it with bash.".to_string(),
+            brain: llm_brain(
+                "Shell-only planner",
+                "Represent each action as a transparent script before execution.",
+            ),
             skills: vec![SkillManifest {
                 id: "write-and-run".to_string(),
                 name: "Write And Run".to_string(),
@@ -1003,9 +1128,60 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 needs: vec![NeedKind::Execute, NeedKind::Reproduce, NeedKind::Verify],
                 tools: vec!["tentacles/bash-only/tools/write_and_run.sh".to_string()],
             }],
+            tools: vec![tool_meta(
+                "write_and_run",
+                "Write stdin to a .sh file and execute it.",
+                "shell",
+                "tentacles/bash-only/tools/write_and_run.sh",
+            )],
+            evolution: evolution_policy(
+                &["printf 'echo ok\\n' | tentacles/bash-only/tools/write_and_run.sh $(mktemp -d)"],
+                &["Prefer generated scripts that are readable and replayable."],
+            ),
             llm_ready: true,
         },
     ]
+}
+
+fn llm_brain(description: &str, prompt: &str) -> TentacleBrain {
+    TentacleBrain {
+        kind: "llm".to_string(),
+        description: description.to_string(),
+        model: None,
+        prompt: prompt.to_string(),
+    }
+}
+
+fn rule_brain(description: &str, prompt: &str) -> TentacleBrain {
+    TentacleBrain {
+        kind: "rule".to_string(),
+        description: description.to_string(),
+        model: None,
+        prompt: prompt.to_string(),
+    }
+}
+
+fn tool_meta(id: &str, description: &str, kind: &str, entrypoint: &str) -> ToolMetadata {
+    ToolMetadata {
+        id: id.to_string(),
+        description: description.to_string(),
+        implementation: ToolImplementation {
+            kind: kind.to_string(),
+            entrypoint: entrypoint.to_string(),
+        },
+    }
+}
+
+fn evolution_policy(checks: &[&str], constraints: &[&str]) -> EvolutionPolicy {
+    EvolutionPolicy {
+        editable: vec![
+            "manifest.json".to_string(),
+            "brain.prompt".to_string(),
+            "tools/*".to_string(),
+        ],
+        checks: checks.iter().map(|item| item.to_string()).collect(),
+        constraints: constraints.iter().map(|item| item.to_string()).collect(),
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -1044,7 +1220,7 @@ impl EnvironmentReport {
         .filter(|command| command_available(command))
         .map(str::to_string)
         .collect::<Vec<_>>();
-        let mut recommended_profiles = vec!["memory".to_string()];
+        let mut recommended_profiles = vec!["memory".to_string(), "visual".to_string()];
         if manifests.iter().any(|item| item == "git") {
             recommended_profiles.push("repo-maintainer".to_string());
             recommended_profiles.push("swe-agent".to_string());
@@ -1228,6 +1404,7 @@ mod tests {
         let profiles = default_tentacle_profiles();
 
         assert!(profiles.iter().any(|profile| profile.id == "research"));
+        assert!(profiles.iter().any(|profile| profile.id == "visual"));
         assert!(profiles
             .iter()
             .any(|profile| profile.id == "repo-maintainer"));
@@ -1239,6 +1416,20 @@ mod tests {
         assert!(profiles
             .iter()
             .any(|profile| profile.skills.iter().any(|skill| skill.id == "memory")));
+        assert!(profiles
+            .iter()
+            .all(|profile| !profile.brain.prompt.is_empty()));
+        assert!(profiles.iter().all(|profile| !profile.tools.is_empty()));
+        assert!(profiles
+            .iter()
+            .all(|profile| !profile.evolution.checks.is_empty()));
+        assert!(profiles
+            .iter()
+            .find(|profile| profile.id == "visual")
+            .unwrap()
+            .tools
+            .iter()
+            .any(|tool| tool.implementation.entrypoint == "docs/pet.html"));
     }
 
     #[test]
