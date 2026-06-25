@@ -25,6 +25,8 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 `src/octopus` is the Python SDK/prototype layer. It is useful for quick integrations, demos, and LLM-tool experiments.
 
+`OpenAICompatibleLLM` adapts any chat-completions-compatible provider through `OCTOPUS_LLM_MODEL`, `OCTOPUS_LLM_BASE_URL`, and `OCTOPUS_LLM_API_KEY`.
+
 ## Code-As-Harness
 
 `tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Initial profiles include SWE-style `read/edit`, computer-use `mcp/bash`, and bash-only `write .sh, run .sh` as one transparent seed runtime.

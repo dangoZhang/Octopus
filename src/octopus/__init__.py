@@ -4,6 +4,7 @@ from .brain import Brain, StaticBrain
 from .color import Chromatophore
 from .heart import HarnessBeat, Heartbeat, MemoryBeat
 from .harness import Harness, Octopus
+from .llm import OpenAICompatibleLLM, llm_from_env
 from .memory import MemoryRecord, MemoryStore
 from .models import Evidence, Feedback, Feed, Need, NeedType, Status
 from .planner import LLMPlanner, Plan, PlanningTentacleBrain, RulePlanner, TextLLM, ToolCall
@@ -29,6 +30,7 @@ __all__ = [
     "Need",
     "NeedType",
     "Octopus",
+    "OpenAICompatibleLLM",
     "Plan",
     "PlanningTentacleBrain",
     "RouteBook",
@@ -44,4 +46,5 @@ __all__ = [
     "Tool",
     "ToolCall",
     "ToolResult",
+    "llm_from_env",
 ]

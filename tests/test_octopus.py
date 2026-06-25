@@ -1,17 +1,21 @@
 import unittest
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from octopus import (
     FunctionTentacle,
     FunctionTool,
     Harness,
+    LLMPlanner,
     Need,
     NeedType,
     Octopus,
+    OpenAICompatibleLLM,
     PlanningTentacleBrain,
     SmartTentacle,
     StaticBrain,
     Status,
+    llm_from_env,
 )
 
 
@@ -94,6 +98,88 @@ class OctopusTest(unittest.TestCase):
 
             self.assertIn("persistent feed", feedback.summary)
             self.assertGreater(restored.routes["recall:recall"], 1.0)
+
+    def test_openai_compatible_llm_posts_chat_completion(self):
+        captured = {}
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"choices":[{"message":{"content":"{\\"calls\\":[],\\"summary\\":\\"ok\\"}"}}]}'
+
+        def fake_urlopen(request, timeout):
+            captured["url"] = request.full_url
+            captured["timeout"] = timeout
+            captured["headers"] = dict(request.header_items())
+            captured["body"] = request.data
+            return Response()
+
+        llm = OpenAICompatibleLLM(
+            model="test-model",
+            api_key="token",
+            base_url="https://llm.example/v1/",
+            timeout=3,
+        )
+
+        with patch("urllib.request.urlopen", fake_urlopen):
+            content = llm.complete("system", "user")
+
+        body = captured["body"].decode("utf-8")
+        self.assertEqual(captured["url"], "https://llm.example/v1/chat/completions")
+        self.assertEqual(captured["timeout"], 3)
+        self.assertIn(("Authorization", "Bearer token"), captured["headers"].items())
+        self.assertIn('"model": "test-model"', body)
+        self.assertIn('"role": "system"', body)
+        self.assertIn('"role": "user"', body)
+        self.assertIn('"summary":"ok"', content)
+
+    def test_llm_from_env_builds_openai_compatible_adapter(self):
+        env = {
+            "OCTOPUS_LLM_MODEL": "local-model",
+            "OCTOPUS_LLM_BASE_URL": "http://localhost:11434/v1",
+            "OCTOPUS_LLM_API_KEY": "",
+            "OCTOPUS_LLM_TIMEOUT": "2",
+        }
+        with patch.dict("os.environ", env, clear=False):
+            llm = llm_from_env()
+
+        self.assertEqual(llm.model, "local-model")
+        self.assertEqual(llm.base_url, "http://localhost:11434/v1")
+        self.assertEqual(llm.timeout, 2)
+
+    def test_llm_planner_accepts_openai_compatible_adapter(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return (
+                    b'{"choices":[{"message":{"content":'
+                    b'"{\\"calls\\":[{\\"tool\\":\\"echo\\",\\"reason\\":\\"match\\"}],'
+                    b'\\"summary\\":\\"planned by provider\\"}"}}]}'
+                )
+
+        tool = FunctionTool(
+            "echo",
+            "echoes the need query",
+            (NeedType.EXECUTE,),
+            lambda need: f"ran {need.query}",
+        )
+        planner = LLMPlanner(OpenAICompatibleLLM(model="test-model"))
+
+        with patch("urllib.request.urlopen", lambda request, timeout: Response()):
+            plan = planner.plan(Need.execute("task"), (tool,))
+
+        self.assertEqual(plan.summary, "planned by provider")
+        self.assertEqual(plan.calls[0].tool, "echo")
 
 
 if __name__ == "__main__":
