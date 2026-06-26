@@ -37,6 +37,9 @@ octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" goal set "build a clean-brain agent"
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
 octopus --state "$tmp/state.json" explore "what should the brain ask next?"
+octopus --state "$tmp/state.json" explore --save "what should the brain ask next?"
+octopus --state "$tmp/state.json" needs
+octopus --state "$tmp/state.json" needs take 1
 octopus --state "$tmp/state.json" context observe .
 octopus --state "$tmp/state.json" think swe-agent observe README.md
 octopus --state "$tmp/state.json" need observe .

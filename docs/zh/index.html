@@ -219,6 +219,8 @@ octopus install harness-repair-agent
 octopus goal set "build a clean-brain agent"
 octopus chat "build a clean-brain agent"
 octopus explore "what should the brain ask next?"
+octopus explore --save "what should the brain ask next?"
+octopus needs
 octopus think swe-agent observe README.md
 octopus need observe .
 octopus traces
