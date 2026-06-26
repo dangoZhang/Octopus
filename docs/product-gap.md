@@ -69,6 +69,7 @@ Updated: 2026-06-26
 - Added CLI/HTML install checks so seed-tentacle checks can be run and shown as ok/failed in the native app.
 - Added per-check stdout/stderr drilldown in the native HTML install guide.
 - Added single-check rerun support in CLI, bridge, and the HTML install guide.
+- Rolled the cleanup/version cadence to `0.0.4` after the install-guide product cycle.
 
 ## Remaining Gaps
 

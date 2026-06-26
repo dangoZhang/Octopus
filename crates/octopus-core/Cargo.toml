@@ -1,6 +1,6 @@
 [package]
 name = "octopus-core"
-version = "0.0.3"
+version = "0.0.4"
 description = "Rust kernel for independent-thinking tools and clean agent brains."
 edition.workspace = true
 license.workspace = true
