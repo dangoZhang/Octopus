@@ -48,7 +48,7 @@
     }
   ],
   "evolution": {
-    "editable": ["manifest.json", "brain.prompt", "tools/*.sh", "future GitHub/OAuth adapters"],
+    "editable": ["manifest.json", "brain.prompt", "tools/*", "adapters/*"],
     "surfaces": [
       {
         "id": "brain_prompt",
@@ -63,7 +63,7 @@
       {
         "id": "runtime_code",
         "description": "Editable local repo, GitHub, OAuth, and PR draft adapters.",
-        "targets": ["tools/*.sh", "future GitHub/OAuth adapters"]
+        "targets": ["tools/*", "tools[].implementation.kind", "tools[].implementation.entrypoint"]
       },
       {
         "id": "evolution_policy",

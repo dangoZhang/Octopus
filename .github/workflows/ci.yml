@@ -35,10 +35,15 @@ jobs:
           grep -q "authorization_required: true" .octopus/evolution/swe-agent/patches/03-runtime-code.patch.md
           cargo run -q -p octopus-core -- --state .octopus/apply-state.json evolve apply swe-agent runtime_code | grep -q "needs_authorization"
           cargo run -q -p octopus-core -- --state .octopus/apply-state.json oauth octopus evolve:swe-agent harness:write
-          cargo run -q -p octopus-core -- --state .octopus/apply-state.json evolve apply swe-agent runtime_code | grep -q "ready_for_authorized_patch"
+          cargo run -q -p octopus-core -- --state .octopus/apply-state.json evolve apply swe-agent runtime_code > .octopus/apply-output.txt
+          grep -q "ready_for_authorized_patch" .octopus/apply-output.txt
+          grep -q "patch:" .octopus/apply-output.txt
+          grep -q "diff --git" .octopus/evolution/swe-agent/apply/03-runtime-code.patch
       - run: |
           cargo run -q -p octopus-core -- --json pet success | grep -q '"state": "success"'
-      - run: cargo run -q -p octopus-core -- manifests | grep -q "surfaces=brain_prompt"
+      - run: |
+          cargo run -q -p octopus-core -- manifests > .octopus/manifests.txt
+          grep -q "surfaces=brain_prompt" .octopus/manifests.txt
       - run: cargo run -q -p octopus-core -- --lang zh env
       - run: python -m json.tool tentacles/tentacle.schema.json > /dev/null
       - run: python -m json.tool tentacles/swe-agent/manifest.json > /dev/null

@@ -1755,6 +1755,9 @@ fn print_evolution_apply_plan(
             println!("authorized: {}", plan.authorized);
             println!("required grant: {}", plan.required_grant);
             println!("plan: {}", artifact.plan_path);
+            if let Some(path) = &artifact.patch_path {
+                println!("patch: {path}");
+            }
             println!("json: {}", artifact.json_path);
             println!("next: {}", join_or_none(&plan.next_steps));
         }
@@ -1765,6 +1768,9 @@ fn print_evolution_apply_plan(
             println!("已授权: {}", plan.authorized);
             println!("所需授权: {}", plan.required_grant);
             println!("计划: {}", artifact.plan_path);
+            if let Some(path) = &artifact.patch_path {
+                println!("补丁: {path}");
+            }
             println!("JSON: {}", artifact.json_path);
             println!("下一步: {}", join_or_none(&plan.next_steps));
         }
@@ -2634,9 +2640,16 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
             .join("swe-agent")
             .join("apply")
             .join("03-runtime-code.md");
+        let apply_patch = dir
+            .join(".octopus")
+            .join("evolution")
+            .join("swe-agent")
+            .join("apply")
+            .join("03-runtime-code.patch");
         assert!(fs::read_to_string(&apply_plan)
             .unwrap()
             .contains("needs_authorization"));
+        assert!(!apply_patch.exists());
 
         run(vec![
             "--state".to_string(),
@@ -2644,6 +2657,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
             "oauth".to_string(),
             "octopus".to_string(),
             "evolve:swe-agent".to_string(),
+            "harness:write".to_string(),
         ])
         .unwrap();
         run(vec![
@@ -2658,6 +2672,9 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
         assert!(fs::read_to_string(apply_plan)
             .unwrap()
             .contains("authorized: true"));
+        let patch = fs::read_to_string(apply_patch).unwrap();
+        assert!(patch.contains("diff --git"));
+        assert!(patch.contains("Octopus evolution candidate 03-runtime-code"));
         let _ = fs::remove_dir_all(dir);
     }
 

@@ -50,11 +50,11 @@ Harness evolution drafts stay local and auditable:
 ```bash
 octopus evolve swe-agent "improve repository observation feed quality"
 octopus evolve apply swe-agent runtime_code
-octopus oauth octopus evolve:swe-agent
+octopus oauth octopus evolve:swe-agent harness:write
 octopus evolve apply swe-agent runtime_code
 ```
 
-The draft lands under `.octopus/evolution/<tentacle>/` with `PROPOSAL.md`, `PATCH_CANDIDATES.md`, `PATCH_DRAFTS.md`, per-candidate files under `patches/`, and `proposal.json`. `evolve apply` writes an apply plan under `apply/`; it stays in `needs_authorization` until the matching `octopus:evolve:<tentacle>` grant has `harness:write`.
+The draft lands under `.octopus/evolution/<tentacle>/` with `PROPOSAL.md`, `PATCH_CANDIDATES.md`, `PATCH_DRAFTS.md`, per-candidate files under `patches/`, and `proposal.json`. `evolve apply` writes an apply plan under `apply/`; it stays in `needs_authorization` until the matching `octopus:evolve:<tentacle>` grant has `harness:write`, then writes a reviewable `.patch` file without applying it.
 
 ## Guardrails
 

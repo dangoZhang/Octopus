@@ -55,7 +55,7 @@
     }
   ],
   "evolution": {
-    "editable": ["manifest.json", "brain.prompt", "tools/*.sh", "future MCP/native/browser tools"],
+    "editable": ["manifest.json", "brain.prompt", "tools/*", "adapters/*"],
     "surfaces": [
       {
         "id": "brain_prompt",
@@ -69,8 +69,8 @@
       },
       {
         "id": "runtime_code",
-        "description": "Editable UI, MCP, shell, native, or browser adapters.",
-        "targets": ["tools/*.sh", "future MCP/native/browser tools"]
+        "description": "Editable UI, MCP, shell, native, browser, or remote adapters.",
+        "targets": ["tools/*", "tools[].implementation.kind", "tools[].implementation.entrypoint"]
       },
       {
         "id": "evolution_policy",

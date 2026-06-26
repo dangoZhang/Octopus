@@ -8,7 +8,7 @@ Most agents make the brain carry tools, memory, skills, and execution flow. Octo
 
 Tentacles think during execution. A tentacle is an LLM brain prompt, tool metadata, code implementation, and evolution policy. Its evolution surfaces are explicit: `brain_prompt`, `tool_meta`, `runtime_code`, and `evolution_policy`.
 
-Initial tentacles are editable code-as-harness: SWE (`read/edit`), computer-use (`mcp/bash`), and one transparent bash-only seed.
+Seed tentacles are selectable behaviors: SWE repo tools, computer-use tools, and one transparent script-writing runner.
 
 Shell is only a seed runtime. A tentacle can declare `contract: octopus-json-v1` and run Python, Node, MCP, HTTP, native code, or any custom adapter.
 

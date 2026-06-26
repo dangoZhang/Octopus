@@ -55,7 +55,7 @@
     }
   ],
   "evolution": {
-    "editable": ["manifest.json", "brain.prompt", "tools/*.sh", "future tools in any runtime"],
+    "editable": ["manifest.json", "brain.prompt", "tools/*", "adapters/*"],
     "surfaces": [
       {
         "id": "brain_prompt",
@@ -69,8 +69,8 @@
       },
       {
         "id": "runtime_code",
-        "description": "Editable repository harness implementations.",
-        "targets": ["tools/*.sh", "future tools in any runtime"]
+        "description": "Editable repository harness implementations across runtimes.",
+        "targets": ["tools/*", "tools[].implementation.kind", "tools[].implementation.entrypoint"]
       },
       {
         "id": "evolution_policy",

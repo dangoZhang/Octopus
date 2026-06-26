@@ -2309,6 +2309,7 @@ pub struct EvolutionApplyPlan {
 pub struct EvolutionApplyArtifact {
     pub directory: String,
     pub plan_path: String,
+    pub patch_path: Option<String>,
     pub json_path: String,
 }
 
@@ -2550,6 +2551,20 @@ pub fn write_tentacle_apply_artifacts(
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let stem = plan.candidate_id.replace('/', "-");
     let plan_path = directory.join(format!("{stem}.md"));
+    let patch_file_path = directory.join(format!("{stem}.patch"));
+    let patch_path = if plan.authorized {
+        fs::write(
+            &patch_file_path,
+            render_authorized_apply_patch(plan, &directory),
+        )
+        .map_err(|error| error.to_string())?;
+        Some(patch_file_path)
+    } else {
+        if patch_file_path.exists() {
+            fs::remove_file(&patch_file_path).map_err(|error| error.to_string())?;
+        }
+        None
+    };
     let json_path = directory.join(format!("{stem}.json"));
     fs::write(&plan_path, render_tentacle_apply_plan(plan)).map_err(|error| error.to_string())?;
     fs::write(
@@ -2560,6 +2575,7 @@ pub fn write_tentacle_apply_artifacts(
     Ok(EvolutionApplyArtifact {
         directory: directory.to_string_lossy().to_string(),
         plan_path: plan_path.to_string_lossy().to_string(),
+        patch_path: patch_path.map(|path| path.to_string_lossy().to_string()),
         json_path: json_path.to_string_lossy().to_string(),
     })
 }
@@ -2580,6 +2596,9 @@ pub fn render_tentacle_apply_plan(plan: &EvolutionApplyPlan) -> String {
     }
     markdown.push_str(&format!("target: `{}`\n", plan.target));
     markdown.push_str(&format!("draft: `{}`\n\n", plan.draft_path));
+    if plan.authorized {
+        markdown.push_str(&format!("patch: `{}.patch`\n\n", plan.candidate_id));
+    }
     markdown.push_str("guardrails:\n");
     for guardrail in &plan.guardrails {
         markdown.push_str(&format!("- {guardrail}\n"));
@@ -2595,11 +2614,139 @@ pub fn render_tentacle_apply_plan(plan: &EvolutionApplyPlan) -> String {
     markdown
 }
 
+pub fn render_authorized_apply_patch(plan: &EvolutionApplyPlan, apply_dir: &Path) -> String {
+    if let Some(target) = resolve_existing_patch_target(&plan.target) {
+        if let Some(patch) = render_existing_file_patch(plan, &target) {
+            return patch;
+        }
+    }
+    render_apply_note_patch(plan, apply_dir)
+}
+
 fn candidate_matches(candidate: &EvolutionPatchCandidate, value: &str) -> bool {
     candidate.id == value
         || candidate.surface_id == value
         || candidate.id.replace('-', "_") == value
         || candidate.surface_id.replace('_', "-") == value
+}
+
+fn resolve_existing_patch_target(target: &str) -> Option<PathBuf> {
+    let path = target.split('#').next().unwrap_or(target);
+    if path.contains('*') {
+        return resolve_wildcard_target(path);
+    }
+    let path = PathBuf::from(path);
+    path.exists().then_some(path)
+}
+
+fn resolve_wildcard_target(value: &str) -> Option<PathBuf> {
+    let path = Path::new(value);
+    let parent = path.parent()?;
+    let pattern = path.file_name()?.to_string_lossy();
+    let (prefix, suffix) = pattern.split_once('*')?;
+    let mut matches = fs::read_dir(parent)
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .map(|name| name.to_string_lossy())
+                .is_some_and(|name| name.starts_with(prefix) && name.ends_with(suffix))
+        })
+        .collect::<Vec<_>>();
+    matches.sort();
+    matches.into_iter().next()
+}
+
+fn render_existing_file_patch(plan: &EvolutionApplyPlan, target: &Path) -> Option<String> {
+    let content = fs::read_to_string(target).ok()?;
+    let comment = patch_comment_for(target, plan)?;
+    let context = content.lines().take(4).collect::<Vec<_>>();
+    if context.is_empty() {
+        return None;
+    }
+    let insert_at = if context.first().is_some_and(|line| line.starts_with("#!")) {
+        1
+    } else {
+        0
+    };
+    let display = patch_display_path(target);
+    let mut patch = String::new();
+    patch.push_str(&format!("diff --git a/{display} b/{display}\n"));
+    patch.push_str(&format!("--- a/{display}\n"));
+    patch.push_str(&format!("+++ b/{display}\n"));
+    patch.push_str(&format!(
+        "@@ -1,{} +1,{} @@\n",
+        context.len(),
+        context.len() + 1
+    ));
+    for (index, line) in context.iter().enumerate() {
+        if index == insert_at {
+            patch.push_str(&format!("+{comment}\n"));
+        }
+        patch.push_str(&format!(" {line}\n"));
+    }
+    if insert_at >= context.len() {
+        patch.push_str(&format!("+{comment}\n"));
+    }
+    Some(patch)
+}
+
+fn patch_comment_for(target: &Path, plan: &EvolutionApplyPlan) -> Option<String> {
+    let note = format!(
+        "Octopus evolution candidate {}: {}",
+        plan.candidate_id,
+        one_line(&plan.objective)
+    );
+    let extension = target
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
+    match extension {
+        "sh" | "py" | "rb" | "toml" | "yaml" | "yml" => Some(format!("# {note}")),
+        "js" | "ts" | "rs" | "go" | "java" | "c" | "cpp" | "h" => Some(format!("// {note}")),
+        "md" | "html" => Some(format!("<!-- {note} -->")),
+        _ => None,
+    }
+}
+
+fn render_apply_note_patch(plan: &EvolutionApplyPlan, apply_dir: &Path) -> String {
+    let note_path = apply_dir.join(format!("{}-note.md", plan.candidate_id));
+    let display = patch_display_path(&note_path);
+    let lines = [
+        format!("# Authorized Evolution Candidate {}", plan.candidate_id),
+        String::new(),
+        format!("tentacle: {}", plan.tentacle_id),
+        format!("target: {}", plan.target),
+        format!("objective: {}", one_line(&plan.objective)),
+        "status: ready_for_authorized_patch".to_string(),
+    ];
+    let mut patch = String::new();
+    patch.push_str(&format!("diff --git a/{display} b/{display}\n"));
+    patch.push_str("new file mode 100644\n");
+    patch.push_str("--- /dev/null\n");
+    patch.push_str(&format!("+++ b/{display}\n"));
+    patch.push_str(&format!("@@ -0,0 +1,{} @@\n", lines.len()));
+    for line in lines {
+        patch.push_str(&format!("+{line}\n"));
+    }
+    patch
+}
+
+fn patch_display_path(path: &Path) -> String {
+    let value = path.to_string_lossy().replace('\\', "/");
+    for marker in ["tentacles/", "docs/", ".octopus/"] {
+        if let Some(index) = value.find(marker) {
+            return value[index..].to_string();
+        }
+    }
+    path.file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| value)
+}
+
+fn one_line(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 pub fn render_tentacle_evolution_proposal(proposal: &TentacleEvolutionProposal) -> String {
@@ -4630,12 +4777,29 @@ mod tests {
 
         let workspace = std::env::temp_dir().join(format!("octopus-apply-{}", std::process::id()));
         let _ = fs::remove_dir_all(&workspace);
+        let blocked_artifact = write_tentacle_apply_artifacts(&workspace, &blocked).unwrap();
+        assert!(blocked_artifact.patch_path.is_none());
+        let expected_patch = workspace
+            .join(".octopus")
+            .join("evolution")
+            .join("swe-agent")
+            .join("apply")
+            .join("03-runtime-code.patch");
+        assert!(!expected_patch.exists());
         let artifact = write_tentacle_apply_artifacts(&workspace, &ready).unwrap();
         let markdown = fs::read_to_string(&artifact.plan_path).unwrap();
+        let patch_path = artifact.patch_path.as_ref().unwrap();
+        let patch = fs::read_to_string(patch_path).unwrap();
         let json = fs::read_to_string(&artifact.json_path).unwrap();
         assert!(markdown.contains("Evolution Apply Plan"));
         assert!(markdown.contains("authorized: true"));
+        assert!(markdown.contains("patch: `03-runtime-code.patch`"));
+        assert!(patch.contains("diff --git"));
+        assert!(patch.contains("Octopus evolution candidate 03-runtime-code"));
         assert!(json.contains("\"authorized\": true"));
+        let blocked_again = write_tentacle_apply_artifacts(&workspace, &blocked).unwrap();
+        assert!(blocked_again.patch_path.is_none());
+        assert!(!expected_patch.exists());
         let _ = fs::remove_dir_all(workspace);
     }
 

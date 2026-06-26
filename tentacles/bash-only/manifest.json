@@ -3,7 +3,7 @@
   "schema_version": "0.1.0",
   "id": "bash-only",
   "name": "Bash Only Tentacle",
-  "description": "LLM-guided execution where every action becomes a readable shell script before it runs.",
+  "description": "LLM-guided execution through a transparent script-writing runner.",
   "brain": {
     "kind": "llm",
     "model": null,
@@ -20,14 +20,14 @@
   "tools": [
     {
       "id": "write_and_run",
-      "description": "Write stdin to a .sh file and execute it.",
+      "description": "Write stdin to an auditable script and execute it.",
       "input": "script on stdin plus optional workspace root",
       "output": "script output and stored script path",
       "implementation": { "kind": "shell", "entrypoint": "tools/write_and_run.sh" }
     }
   ],
   "evolution": {
-    "editable": ["manifest.json", "brain.prompt", "tools/write_and_run.sh"],
+    "editable": ["manifest.json", "brain.prompt", "tools/*"],
     "surfaces": [
       {
         "id": "brain_prompt",
@@ -42,7 +42,7 @@
       {
         "id": "runtime_code",
         "description": "Auditable script-writing and execution adapter.",
-        "targets": ["tools/write_and_run.sh"]
+        "targets": ["tools/*", "tools[].implementation.kind", "tools[].implementation.entrypoint"]
       },
       {
         "id": "evolution_policy",

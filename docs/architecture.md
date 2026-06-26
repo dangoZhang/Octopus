@@ -37,7 +37,7 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 ## Code-As-Harness
 
-`tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Each manifest declares evolution surfaces: `brain_prompt`, `tool_meta`, `runtime_code`, and `evolution_policy`. Initial profiles include SWE-style `read/edit`, computer-use `mcp/bash`, and one transparent bash-only seed.
+`tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Each manifest declares evolution surfaces: `brain_prompt`, `tool_meta`, `runtime_code`, and `evolution_policy`. Current seeds cover SWE repo tools, computer-use tools, and one transparent script-writing runner; the contract is runtime-neutral.
 
 `contract: octopus-json-v1` lets any runtime receive the same Need/tool/tentacle JSON envelope through stdin and return compact text or structured JSON feedback. Legacy executable entrypoints still work.
 
@@ -45,7 +45,7 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 `probe <tentacle> <kind> <query>` runs one tentacle without saving state, making runtime contracts debuggable.
 
-`evolve <tentacle> <objective>` writes an auditable draft under `.octopus/evolution/` listing the surfaces, prompt, metadata, code files, patch candidates, per-candidate patch drafts, checks, and constraints that can change safely. `evolve apply <tentacle> <candidate>` writes an apply plan and stays grant-bound.
+`evolve <tentacle> <objective>` writes an auditable draft under `.octopus/evolution/` listing the surfaces, prompt, metadata, code files, patch candidates, per-candidate patch drafts, checks, and constraints that can change safely. `evolve apply <tentacle> <candidate>` writes an apply plan; with `harness:write`, it also emits a reviewable `.patch` file without applying it.
 
 ## Color Pet
 
@@ -57,4 +57,4 @@ Color change is a visual pet/status layer. It can show heartbeat, memory beat, h
 
 Chat refines a `Goal`. Brains emit `Need`. Tentacles may think, plan, and call tools through `Tool`, `Planner`, or `ChatClient`. Harness evolves the feed path from data. The brain never carries tool burden.
 
-See [Research Map](./references.md) for the papers shaping this design and [Self-Iteration Loop](./self-iteration.md) for the future repo-improvement path.
+See [Research Map](./references.md) for the papers shaping this design, [Self-Iteration Loop](./self-iteration.md) for repo improvement, and [Product Gap Log](./product-gap.md) for current gaps.

@@ -159,9 +159,9 @@ tentacles/repo-maintainer/tools/draft_pr.sh "$tmp" dangoZhang/Octopus "improve u
         <h2>Harness Evolution</h2>
         <pre><code>octopus evolve swe-agent "improve repository observation feed quality"
 octopus evolve apply swe-agent runtime_code
-octopus oauth octopus evolve:swe-agent
+octopus oauth octopus evolve:swe-agent harness:write
 octopus evolve apply swe-agent runtime_code</code></pre>
-        <p>The draft lands under <code>.octopus/evolution/&lt;tentacle&gt;/</code> with <code>PROPOSAL.md</code>, <code>PATCH_CANDIDATES.md</code>, <code>PATCH_DRAFTS.md</code>, per-candidate files under <code>patches/</code>, and <code>proposal.json</code>. <code>evolve apply</code> writes an apply plan under <code>apply/</code>; it stays in <code>needs_authorization</code> until the matching <code>octopus:evolve:&lt;tentacle&gt;</code> grant has <code>harness:write</code>.</p>
+        <p>The draft lands under <code>.octopus/evolution/&lt;tentacle&gt;/</code> with <code>PROPOSAL.md</code>, <code>PATCH_CANDIDATES.md</code>, <code>PATCH_DRAFTS.md</code>, per-candidate files under <code>patches/</code>, and <code>proposal.json</code>. <code>evolve apply</code> writes an apply plan under <code>apply/</code>; it stays in <code>needs_authorization</code> until the matching <code>octopus:evolve:&lt;tentacle&gt;</code> grant has <code>harness:write</code>, then writes a reviewable <code>.patch</code> file without applying it.</p>
       </section>
 
       <section>
