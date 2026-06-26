@@ -3320,6 +3320,40 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
             llm_ready: true,
         },
         TentacleProfile {
+            id: "json-feed".to_string(),
+            name: "JSON Feed Tentacle".to_string(),
+            description: "Python octopus-json-v1 seed runtime for structured non-shell feedback."
+                .to_string(),
+            brain: llm_brain(
+                "JSON feed planner",
+                "Map a Need onto a compact Python JSON feed and return structured evidence.",
+            ),
+            skills: vec![SkillManifest {
+                id: "json-feed".to_string(),
+                name: "JSON Feed".to_string(),
+                description: "Feed observe, verify, compare, and reproduce Needs through a non-shell JSON runtime.".to_string(),
+                needs: vec![
+                    NeedKind::Observe,
+                    NeedKind::Verify,
+                    NeedKind::Compare,
+                    NeedKind::Reproduce,
+                ],
+                tools: vec!["tentacles/json-feed/tools/feed.py".to_string()],
+            }],
+            tools: vec![tool_meta_with_contract(
+                "feed",
+                "Consume octopus-json-v1 and return structured feedback.",
+                "python",
+                "tentacles/json-feed/tools/feed.py",
+                OCTOPUS_JSON_CONTRACT,
+            )],
+            evolution: evolution_policy(
+                &["python3 -m py_compile tentacles/json-feed/tools/feed.py"],
+                &["Keep octopus-json-v1 input and compact feedback output stable."],
+            ),
+            llm_ready: true,
+        },
+        TentacleProfile {
             id: "swe-agent".to_string(),
             name: "SWE Agent Tentacle".to_string(),
             description: "Code-as-harness repo tools for inspect, patch, and test workflows.".to_string(),
@@ -3448,6 +3482,18 @@ fn tool_meta(id: &str, description: &str, kind: &str, entrypoint: &str) -> ToolM
             contract: None,
         },
     }
+}
+
+fn tool_meta_with_contract(
+    id: &str,
+    description: &str,
+    kind: &str,
+    entrypoint: &str,
+    contract: &str,
+) -> ToolMetadata {
+    let mut meta = tool_meta(id, description, kind, entrypoint);
+    meta.implementation.contract = Some(contract.to_string());
+    meta
 }
 
 fn evolution_policy(checks: &[&str], constraints: &[&str]) -> EvolutionPolicy {
@@ -3916,6 +3962,9 @@ impl EnvironmentReport {
             .any(|item| item == "rust" || item == "python")
         {
             recommended_profiles.push("code".to_string());
+        }
+        if commands.iter().any(|item| item == "python3") {
+            recommended_profiles.push("json-feed".to_string());
         }
         if manifests.iter().any(|item| item == "docs") {
             recommended_profiles.push("research".to_string());
@@ -4529,6 +4578,7 @@ mod tests {
         assert!(profiles
             .iter()
             .any(|profile| profile.id == "repo-maintainer"));
+        assert!(profiles.iter().any(|profile| profile.id == "json-feed"));
         assert!(profiles.iter().any(|profile| profile.id == "swe-agent"));
         assert!(profiles
             .iter()
@@ -4559,6 +4609,14 @@ mod tests {
             .iter()
             .any(|tool| tool.implementation.entrypoint
                 == "tentacles/repo-maintainer/tools/draft_pr.sh"));
+        assert!(profiles
+            .iter()
+            .find(|profile| profile.id == "json-feed")
+            .unwrap()
+            .tools
+            .iter()
+            .any(|tool| tool.implementation.kind == "python"
+                && tool.implementation.contract.as_deref() == Some(OCTOPUS_JSON_CONTRACT)));
     }
 
     #[test]
@@ -4579,6 +4637,12 @@ mod tests {
             .unwrap()
             .runtime_kinds
             .contains(&"mcp".to_string()));
+        assert!(reports
+            .iter()
+            .find(|report| report.id == "json-feed")
+            .unwrap()
+            .runtime_kinds
+            .contains(&"python".to_string()));
         assert!(reports
             .iter()
             .find(|report| report.id == "bash-only")
@@ -4606,10 +4670,21 @@ mod tests {
             .iter()
             .find(|loaded| loaded.manifest.id == "swe-agent")
             .unwrap();
+        let json_feed = manifests
+            .iter()
+            .find(|loaded| loaded.manifest.id == "json-feed")
+            .unwrap();
 
         assert!(swe.manifest.brain.prompt.contains("cognitive Need"));
         assert!(swe.manifest.skills[0].needs.contains(&NeedKind::Verify));
         assert_eq!(swe.manifest.tools[0].implementation.kind, "shell");
+        assert_eq!(
+            json_feed.manifest.tools[0]
+                .implementation
+                .contract
+                .as_deref(),
+            Some(OCTOPUS_JSON_CONTRACT)
+        );
     }
 
     #[test]
@@ -4869,6 +4944,49 @@ print(json.dumps({
             Some("python")
         );
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn builtin_json_feed_manifest_runs_python_contract() {
+        if !command_available("python3") {
+            return;
+        }
+        let repo = fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")).unwrap();
+        let mut state = HarnessState::default();
+        let installed = state
+            .install_manifest(repo.join("tentacles"), "json-feed")
+            .unwrap();
+        assert!(installed.runtime_kinds.contains(&"python".to_string()));
+        assert!(installed
+            .tool_meta
+            .iter()
+            .any(|tool| tool.contract.as_deref() == Some(OCTOPUS_JSON_CONTRACT)));
+        let mut harness = Harness::with_state(state);
+
+        let feedback = harness.feed(&[Need::new(NeedKind::Observe, "Cargo.toml")]);
+
+        assert_eq!(feedback.status, Status::Satisfied, "{}", feedback.summary);
+        assert!(feedback
+            .summary
+            .contains("json-feed observe: file Cargo.toml"));
+        assert_eq!(
+            feedback.feeds[0]
+                .metadata
+                .get("runtime")
+                .map(String::as_str),
+            Some("python")
+        );
+        assert_eq!(
+            feedback.feeds[0]
+                .metadata
+                .get("contract")
+                .map(String::as_str),
+            Some(OCTOPUS_JSON_CONTRACT)
+        );
+        assert_eq!(
+            feedback.feeds[0].metadata.get("schema").map(String::as_str),
+            Some(OCTOPUS_TOOL_CALL_SCHEMA)
+        );
     }
 
     #[test]

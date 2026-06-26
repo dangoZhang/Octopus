@@ -25,6 +25,7 @@ tmp=$(mktemp -d)
 
 - `swe-agent`: repo work through `read`, `edit`, inspection, patch, and test tools.
 - `repo-maintainer`: OAuth-bounded self-iteration with repo inspection and PR draft data.
+- `json-feed`: Python runtime that consumes `octopus-json-v1` and returns structured feedback.
 - `computer-use-agent`: local UI work through MCP, local commands, screenshots, URLs, and desktop probes.
 - `bash-only`: transparent script-writing runner for audit and replay.
 - `visual`: color-changing status pet for heartbeat, memory, harness, blocked, and success states.

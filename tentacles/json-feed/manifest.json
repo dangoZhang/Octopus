@@ -1,0 +1,63 @@
+{
+  "$schema": "../tentacle.schema.json",
+  "schema_version": "0.1.0",
+  "id": "json-feed",
+  "name": "JSON Feed Tentacle",
+  "description": "Python runtime seed that consumes octopus-json-v1 and returns structured feedback.",
+  "brain": {
+    "kind": "llm",
+    "model": null,
+    "prompt": "Map a cognitive Need to one compact Python JSON feed. Use the full octopus-json-v1 envelope, return evidence first, and never expose hidden reasoning.",
+    "feedback_contract": "Return status, output, evidence, metadata, and the next useful signal in compact JSON."
+  },
+  "skills": [
+    {
+      "id": "json-feed",
+      "description": "Feed observe, verify, compare, and reproduce Needs through a non-shell JSON runtime.",
+      "needs": ["observe", "verify", "compare", "reproduce"]
+    }
+  ],
+  "tools": [
+    {
+      "id": "feed",
+      "description": "Consume the full octopus-json-v1 tool call envelope and return structured feedback.",
+      "input": "octopus-json-v1 tool call on stdin",
+      "output": "JSON status, output, evidence, and metadata",
+      "implementation": {
+        "kind": "python",
+        "entrypoint": "tools/feed.py",
+        "contract": "octopus-json-v1"
+      }
+    }
+  ],
+  "evolution": {
+    "editable": ["manifest.json", "brain.prompt", "tools/*", "adapters/*"],
+    "surfaces": [
+      {
+        "id": "brain_prompt",
+        "description": "Tool-side JSON feed prompt and feedback contract.",
+        "targets": ["brain.prompt", "brain.feedback_contract"]
+      },
+      {
+        "id": "tool_meta",
+        "description": "JSON feed descriptions, inputs, outputs, and call contract.",
+        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].implementation.contract"]
+      },
+      {
+        "id": "runtime_code",
+        "description": "Python runtime adapter that consumes octopus-json-v1.",
+        "targets": ["tools/*", "tools[].implementation.kind", "tools[].implementation.entrypoint"]
+      },
+      {
+        "id": "evolution_policy",
+        "description": "Checks and constraints that keep structured feedback stable.",
+        "targets": ["evolution.checks", "evolution.constraints", "evolution.surfaces"]
+      }
+    ],
+    "checks": ["python3 -m py_compile tools/feed.py"],
+    "constraints": [
+      "Keep octopus-json-v1 input stable.",
+      "Return compact evidence and metadata without hidden reasoning."
+    ]
+  }
+}

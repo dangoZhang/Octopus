@@ -84,6 +84,7 @@ octopus manifests
 octopus --lang zh env
 octopus --state "$tmp/state.json" init
 octopus --state "$tmp/state.json" install research
+octopus --state "$tmp/state.json" install json-feed
 octopus --state "$tmp/state.json" install swe-agent
 octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
@@ -100,6 +101,7 @@ octopus --state "$tmp/state.json" goal</code></pre>
 (cd "$tmp" &amp;&amp; octopus scaffold native-feed rust)
 (cd "$tmp" &amp;&amp; octopus manifests tentacles)</code></pre>
       <p>Known runtimes get starter code. Any other runtime gets a manifest and <code>tools/feed</code> contract so the tentacle can add its own adapter, MCP bridge, native binary, or remote executor.</p>
+      <p><code>json-feed</code> is the built-in non-shell seed: Python receives the full <code>octopus-json-v1</code> envelope and returns structured feedback.</p>
 
       <h2>Optional LLM</h2>
       <pre><code>OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" \

@@ -2226,12 +2226,21 @@ mod tests {
         assert!(before
             .iter()
             .any(|skill| skill.id == "computer-use" && skill.source_kind == "manifest"));
+        assert!(before.iter().any(|skill| {
+            skill.id == "json-feed"
+                && skill.source_kind == "manifest"
+                && skill.runtimes.contains(&"python".to_string())
+        }));
 
         state.install_manifest(root.clone(), "swe-agent").unwrap();
+        state.install_manifest(root.clone(), "json-feed").unwrap();
         let after = skill_reports(&state, root).unwrap();
         assert!(after.iter().any(|skill| {
             skill.id == "swe-workflow" && skill.source == "swe-agent" && skill.installed
         }));
+        assert!(after
+            .iter()
+            .any(|skill| skill.id == "json-feed" && skill.installed));
     }
 
     #[test]

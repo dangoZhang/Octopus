@@ -9,7 +9,7 @@ Updated: 2026-06-26
 - Harness stores memory, route scores, OAuth grants, installed tentacles, and goal state.
 - Three beats exist: heartbeat, memory compaction, and harness route evolution.
 - Color pet exposes heartbeat, memory, harness, blocked, and success states.
-- Seeds include SWE repo tools, computer-use tools, repo-maintainer, visual, memory, and a script-writing runner.
+- Seeds include SWE repo tools, computer-use tools, repo-maintainer, visual, memory, a Python JSON feed, and a script-writing runner.
 - LLM adapters support OpenAI-compatible providers for chat goal refinement and manifest tool planning.
 
 ## Filled This Iteration
@@ -18,6 +18,7 @@ Updated: 2026-06-26
 - Moved seed manifests away from `tools/*.sh` as the conceptual evolution surface.
 - Authorized `evolve apply` now emits a reviewable `.patch` file and leaves application to the grant-bound outer flow.
 - Added stale patch cleanup when authorization is absent.
+- Added a built-in non-shell `json-feed` tentacle that consumes `octopus-json-v1`.
 
 ## Remaining Gaps
 
@@ -31,4 +32,4 @@ Updated: 2026-06-26
 
 - Turn repo-maintainer from draft artifacts into an OAuth-scoped PR adapter.
 - Persist evolution outcomes so harness changes can be ranked by real feedback.
-- Add one non-shell seed implementation that consumes `octopus-json-v1`.
+- Add richer non-shell adapters beyond the JSON feed seed.
