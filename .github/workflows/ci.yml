@@ -95,8 +95,11 @@ jobs:
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json skills | grep -q '"installed": true'
           cargo run -q -p octopus-core -- --state "$tmp/state.json" installed
           grep -q installed_tentacles "$tmp/state.json"
-          cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe . | grep -q "== project =="
-          cargo run -q -p octopus-core -- --state "$tmp/state.json" --json need observe . | grep -q '"plan"'
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe . > "$tmp/observe.txt"
+          test -s "$tmp/observe.txt"
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" --json need observe . > "$tmp/observe.json"
+          grep -q '"status": "satisfied"' "$tmp/observe.json"
+          grep -q '"plan"' "$tmp/observe.json"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" pet | grep -q "state: harness"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" doctor | grep -q "Octopus doctor"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json doctor | grep -q '"llm"'
