@@ -10,10 +10,12 @@ use octopus_core::{
 };
 use std::env;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(serde::Serialize)]
@@ -1275,13 +1277,20 @@ fn run_bridge(addr: &str) -> Result<(), String> {
 fn handle_bridge_connection(stream: &mut TcpStream) -> Result<(), String> {
     let request = read_http_request(stream)?;
     match (request.method.as_str(), request.path.as_str()) {
-        ("OPTIONS", "/api/run") => write_http_response(stream, 204, "text/plain", b""),
+        ("OPTIONS", "/api/run" | "/api/stream") => {
+            write_http_response(stream, 204, "text/plain", b"")
+        }
         ("POST", "/api/run") => {
             let request = serde_json::from_slice::<BridgeRunRequest>(&request.body)
                 .map_err(|error| format!("invalid bridge JSON: {error}"))?;
             let response = run_bridge_command(&request.args)?;
             let body = serde_json::to_vec_pretty(&response).map_err(|error| error.to_string())?;
             write_http_response(stream, 200, "application/json", &body)
+        }
+        ("POST", "/api/stream") => {
+            let request = serde_json::from_slice::<BridgeRunRequest>(&request.body)
+                .map_err(|error| format!("invalid bridge JSON: {error}"))?;
+            stream_bridge_command(stream, &request.args)
         }
         ("GET", path) => {
             if let Ok((content_type, body)) = bridge_static(path) {
@@ -1396,6 +1405,26 @@ fn write_http_response(
         .map_err(|error| error.to_string())
 }
 
+fn write_http_stream_header(stream: &mut TcpStream) -> Result<(), String> {
+    stream
+        .write_all(
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream; charset=utf-8\r\ncache-control: no-cache\r\naccess-control-allow-origin: *\r\naccess-control-allow-headers: content-type\r\naccess-control-allow-methods: GET, POST, OPTIONS\r\nconnection: close\r\n\r\n",
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn write_sse_event(
+    stream: &mut TcpStream,
+    event: &str,
+    value: &serde_json::Value,
+) -> Result<(), String> {
+    let data = serde_json::to_string(value).map_err(|error| error.to_string())?;
+    stream
+        .write_all(format!("event: {event}\ndata: {data}\n\n").as_bytes())
+        .and_then(|_| stream.flush())
+        .map_err(|error| error.to_string())
+}
+
 fn bridge_static(path: &str) -> Result<(&'static str, Vec<u8>), String> {
     let file = match path {
         "/" | "/app.html" => "app.html",
@@ -1427,6 +1456,85 @@ fn run_bridge_command(args: &[String]) -> Result<BridgeRunResponse, String> {
         stdout: String::from_utf8_lossy(&output.stdout).to_string(),
         stderr: String::from_utf8_lossy(&output.stderr).to_string(),
     })
+}
+
+fn stream_bridge_command(stream: &mut TcpStream, args: &[String]) -> Result<(), String> {
+    if !bridge_command_allowed(args) {
+        return Err("bridge command not allowed".to_string());
+    }
+    write_http_stream_header(stream)?;
+    write_sse_event(
+        stream,
+        "start",
+        &serde_json::json!({ "args": args, "summary": "started" }),
+    )?;
+    let mut child = Command::new(env::current_exe().map_err(|error| error.to_string())?)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("bridge command failed to start: {error}"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "bridge command stdout unavailable".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "bridge command stderr unavailable".to_string())?;
+    let (sender, receiver) = mpsc::channel::<(String, String)>();
+    spawn_stream_reader("stdout", stdout, sender.clone());
+    spawn_stream_reader("stderr", stderr, sender);
+    loop {
+        match receiver.recv_timeout(Duration::from_millis(100)) {
+            Ok((kind, text)) => {
+                write_sse_event(stream, &kind, &serde_json::json!({ "text": text }))?;
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if child
+                    .try_wait()
+                    .map_err(|error| error.to_string())?
+                    .is_some()
+                {
+                    break;
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                if child
+                    .try_wait()
+                    .map_err(|error| error.to_string())?
+                    .is_some()
+                {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(100));
+            }
+        }
+    }
+    let status = child.wait().map_err(|error| error.to_string())?;
+    while let Ok((kind, text)) = receiver.try_recv() {
+        write_sse_event(stream, &kind, &serde_json::json!({ "text": text }))?;
+    }
+    write_sse_event(
+        stream,
+        "done",
+        &serde_json::json!({
+            "ok": status.success(),
+            "code": status.code(),
+        }),
+    )
+}
+
+fn spawn_stream_reader<R>(kind: &str, reader: R, sender: mpsc::Sender<(String, String)>)
+where
+    R: Read + Send + 'static,
+{
+    let kind = kind.to_string();
+    thread::spawn(move || {
+        for text in BufReader::new(reader).lines().map_while(Result::ok) {
+            let _ = sender.send((kind.clone(), text));
+        }
+    });
 }
 
 fn bridge_command_allowed(args: &[String]) -> bool {
