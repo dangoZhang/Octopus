@@ -1,6 +1,6 @@
 {
   "$schema": "../tentacle.schema.json",
-  "schema_version": "0.1.0",
+  "schema_version": "0.0.1",
   "id": "swe-agent",
   "name": "SWE Agent Tentacle",
   "description": "LLM-guided repository work with editable tool metadata and code implementations.",

@@ -3405,7 +3405,7 @@ fn validate_tentacle_id(value: &str) -> Result<String, String> {
 fn scaffold_manifest(tentacle_id: &str, runtime: &str, entrypoint: &str) -> serde_json::Value {
     serde_json::json!({
         "$schema": "../tentacle.schema.json",
-        "schema_version": "0.1.0",
+        "schema_version": "0.0.1",
         "id": tentacle_id,
         "name": tentacle_title(tentacle_id),
         "description": "User-owned code-as-harness tentacle.",
@@ -5208,7 +5208,7 @@ mod tests {
         fs::write(
             manifest_dir.join("manifest.json"),
             r#"{
-  "schema_version": "0.1.0",
+  "schema_version": "0.0.1",
   "id": "http-tentacle",
   "name": "HTTP Tentacle",
   "description": "Remote tool runtime.",

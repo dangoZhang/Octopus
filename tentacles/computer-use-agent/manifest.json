@@ -1,6 +1,6 @@
 {
   "$schema": "../tentacle.schema.json",
-  "schema_version": "0.1.0",
+  "schema_version": "0.0.1",
   "id": "computer-use-agent",
   "name": "Computer Use Tentacle",
   "description": "LLM-guided local UI work through MCP, shell, screenshots, URLs, and desktop probes.",

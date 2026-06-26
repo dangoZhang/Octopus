@@ -1,6 +1,6 @@
 {
   "$schema": "../tentacle.schema.json",
-  "schema_version": "0.1.0",
+  "schema_version": "0.0.1",
   "id": "repo-maintainer",
   "name": "Repo Maintainer Tentacle",
   "description": "LLM-guided repository self-iteration through explicit OAuth grants and PR-ready draft data.",

@@ -1,6 +1,6 @@
 {
   "$schema": "../tentacle.schema.json",
-  "schema_version": "0.1.0",
+  "schema_version": "0.0.1",
   "id": "json-feed",
   "name": "JSON Feed Runtime Seed",
   "description": "Python runtime seed that consumes octopus-json-v1 and returns structured feedback.",

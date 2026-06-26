@@ -1,6 +1,6 @@
 {
   "$schema": "../tentacle.schema.json",
-  "schema_version": "0.1.0",
+  "schema_version": "0.0.1",
   "id": "visual",
   "name": "Color Pet Layer",
   "description": "A color-changing Octopus pixel pet layer for heartbeat, memory, harness, blocked, and success states.",

@@ -1,6 +1,6 @@
 {
   "$schema": "../tentacle.schema.json",
-  "schema_version": "0.1.0",
+  "schema_version": "0.0.1",
   "id": "bash-only",
   "name": "Write-and-Run Tentacle",
   "description": "LLM-guided execution through a transparent write-and-run harness.",
