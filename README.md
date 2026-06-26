@@ -31,7 +31,7 @@ octopus provider save openai
 # set OPENAI_API_KEY, then: source .octopus/llm.env && octopus provider check
 octopus doctor
 octopus demo dangoZhang/Octopus
-octopus init
+octopus bootstrap
 octopus skills
 octopus install swe-agent
 octopus install computer-use-agent
@@ -63,7 +63,7 @@ Local app:
 octopus bridge
 ```
 
-Open `http://127.0.0.1:8765/app.html` for provider env save/readiness, context, product report, structured Feed tests, install, checks, beat, and grant-bound harness evolution apply artifacts. Bridge reads `.octopus/llm.env` for child commands.
+Open `http://127.0.0.1:8765/app.html` for bootstrap, provider env save/readiness, context, product report, structured Feed tests, install, checks, beat, and grant-bound harness evolution apply artifacts. Bridge reads `.octopus/llm.env` for child commands.
 
 Update:
 
@@ -76,6 +76,7 @@ Output includes:
 ```text
 Octopus demo
 Octopus init
+Octopus bootstrap
 Provider status
 grants:
 checks:
