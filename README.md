@@ -46,6 +46,12 @@ tmp=$(mktemp -d)
 (cd "$tmp" && octopus probe my-feed observe README.md)
 ```
 
+Local app:
+
+```bash
+octopus bridge
+```
+
 Update:
 
 ```bash
@@ -68,5 +74,5 @@ status: Satisfied
 ```
 
 Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
-Native HTML app: [docs/app.html](docs/app.html).
+Native HTML app: [docs/app.html](docs/app.html). Local bridge: `octopus bridge`.
 Tentacle contract: [tentacles/README.md](tentacles/README.md).

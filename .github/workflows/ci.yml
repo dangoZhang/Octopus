@@ -73,6 +73,8 @@ jobs:
       - run: grep -q data-state docs/pet.html
       - run: grep -q "pixel-pet" docs/pet.html
       - run: grep -q "Command Surface" docs/app.html
+      - run: grep -q "/api/run" docs/app.html
+      - run: cargo run -q -p octopus-core -- 2>&1 | grep -q "bridge \\[addr\\]"
       - run: grep -q "Next planned cleanup/version commit" docs/version-plan.md
       - run: grep -q "every later version tag" docs/real-machine-test.md
       - run: tentacles/swe-agent/tools/read.sh README.md 1 2

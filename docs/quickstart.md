@@ -37,6 +37,12 @@ octopus --state "$tmp/state.json" pet
 octopus --state "$tmp/state.json" goal
 ```
 
+## Local App
+
+```bash
+octopus bridge
+```
+
 ## Tentacle Run
 
 ```bash
@@ -92,6 +98,7 @@ Octopus init
 installed swe-agent
 json-feed observe
 Octopus doctor
+Octopus bridge: http://127.0.0.1:8765
 pixel: 🟥
 event: harness beat
 heartbeat: alive

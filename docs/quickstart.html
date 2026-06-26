@@ -104,6 +104,9 @@ octopus --state "$tmp/state.json" beat 200
 octopus --state "$tmp/state.json" pet
 octopus --state "$tmp/state.json" goal</code></pre>
 
+      <h2>Local App</h2>
+      <pre><code>octopus bridge</code></pre>
+
       <h2>Tentacle Run</h2>
       <pre><code>(cd "$tmp" &amp;&amp; octopus scaffold my-feed python)
 (cd "$tmp" &amp;&amp; octopus probe my-feed observe README.md)
@@ -143,6 +146,7 @@ Octopus init
 installed swe-agent
 json-feed observe
 Octopus doctor
+Octopus bridge: http://127.0.0.1:8765
 pixel: 🟥
 event: harness beat
 heartbeat: alive

@@ -10,9 +10,11 @@ use octopus_core::{
 };
 use std::env;
 use std::fs;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(serde::Serialize)]
 struct DemoReport {
@@ -66,6 +68,19 @@ struct DoctorLlmReport {
 struct DoctorPetReport {
     path: String,
     exists: bool,
+}
+
+#[derive(serde::Deserialize)]
+struct BridgeRunRequest {
+    args: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+struct BridgeRunResponse {
+    ok: bool,
+    code: Option<i32>,
+    stdout: String,
+    stderr: String,
 }
 
 #[derive(serde::Serialize)]
@@ -343,6 +358,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 print_provider_env(&report, language);
             }
             Ok(())
+        }
+        Some("bridge") => {
+            let addr = rest.get(1).map(String::as_str).unwrap_or("127.0.0.1:8765");
+            run_bridge(addr)
         }
         Some("demo") => {
             let repository = rest
@@ -1232,6 +1251,226 @@ fn print_provider_check(report: &ProviderCheckReport, language: Language) {
             println!("下一步: {}", join_or_none(&report.next));
         }
     }
+}
+
+fn run_bridge(addr: &str) -> Result<(), String> {
+    let listener =
+        TcpListener::bind(addr).map_err(|error| format!("bridge bind failed: {error}"))?;
+    println!("Octopus bridge: http://{addr}");
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut stream) => {
+                if let Err(error) = handle_bridge_connection(&mut stream) {
+                    let body = serde_json::json!({ "error": error }).to_string();
+                    let _ =
+                        write_http_response(&mut stream, 500, "application/json", body.as_bytes());
+                }
+            }
+            Err(error) => eprintln!("bridge connection failed: {error}"),
+        }
+    }
+    Ok(())
+}
+
+fn handle_bridge_connection(stream: &mut TcpStream) -> Result<(), String> {
+    let request = read_http_request(stream)?;
+    match (request.method.as_str(), request.path.as_str()) {
+        ("OPTIONS", "/api/run") => write_http_response(stream, 204, "text/plain", b""),
+        ("POST", "/api/run") => {
+            let request = serde_json::from_slice::<BridgeRunRequest>(&request.body)
+                .map_err(|error| format!("invalid bridge JSON: {error}"))?;
+            let response = run_bridge_command(&request.args)?;
+            let body = serde_json::to_vec_pretty(&response).map_err(|error| error.to_string())?;
+            write_http_response(stream, 200, "application/json", &body)
+        }
+        ("GET", path) => {
+            if let Ok((content_type, body)) = bridge_static(path) {
+                write_http_response(stream, 200, content_type, &body)
+            } else {
+                write_http_response(stream, 404, "text/plain", b"not found")
+            }
+        }
+        _ => write_http_response(stream, 404, "text/plain", b"not found"),
+    }
+}
+
+struct HttpRequest {
+    method: String,
+    path: String,
+    body: Vec<u8>,
+}
+
+fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .map_err(|error| error.to_string())?;
+    let mut data = Vec::new();
+    let mut buffer = [0_u8; 4096];
+    let header_end = loop {
+        let bytes = stream
+            .read(&mut buffer)
+            .map_err(|error| error.to_string())?;
+        if bytes == 0 {
+            return Err("empty bridge request".to_string());
+        }
+        data.extend_from_slice(&buffer[..bytes]);
+        if let Some(index) = find_header_end(&data) {
+            break index;
+        }
+        if data.len() > 64 * 1024 {
+            return Err("bridge request headers too large".to_string());
+        }
+    };
+    let header = String::from_utf8_lossy(&data[..header_end]).to_string();
+    let content_length = http_content_length(&header)?;
+    while data.len() < header_end + 4 + content_length {
+        let bytes = stream
+            .read(&mut buffer)
+            .map_err(|error| error.to_string())?;
+        if bytes == 0 {
+            break;
+        }
+        data.extend_from_slice(&buffer[..bytes]);
+    }
+    let request_line = header
+        .lines()
+        .next()
+        .ok_or_else(|| "missing request line".to_string())?;
+    let mut parts = request_line.split_whitespace();
+    let method = parts
+        .next()
+        .ok_or_else(|| "missing method".to_string())?
+        .to_string();
+    let path = parts
+        .next()
+        .ok_or_else(|| "missing path".to_string())?
+        .split('?')
+        .next()
+        .unwrap_or("/")
+        .to_string();
+    let body_start = header_end + 4;
+    let body_end = (body_start + content_length).min(data.len());
+    Ok(HttpRequest {
+        method,
+        path,
+        body: data[body_start..body_end].to_vec(),
+    })
+}
+
+fn find_header_end(data: &[u8]) -> Option<usize> {
+    data.windows(4).position(|window| window == b"\r\n\r\n")
+}
+
+fn http_content_length(header: &str) -> Result<usize, String> {
+    header
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse::<usize>())
+        })
+        .transpose()
+        .map_err(|_| "invalid content-length".to_string())
+        .map(|value| value.unwrap_or(0))
+}
+
+fn write_http_response(
+    stream: &mut TcpStream,
+    status: u16,
+    content_type: &str,
+    body: &[u8],
+) -> Result<(), String> {
+    let reason = match status {
+        200 => "OK",
+        204 => "No Content",
+        404 => "Not Found",
+        _ => "Error",
+    };
+    let header = format!(
+        "HTTP/1.1 {status} {reason}\r\ncontent-type: {content_type}; charset=utf-8\r\ncontent-length: {}\r\naccess-control-allow-origin: *\r\naccess-control-allow-headers: content-type\r\naccess-control-allow-methods: GET, POST, OPTIONS\r\nconnection: close\r\n\r\n",
+        body.len()
+    );
+    stream
+        .write_all(header.as_bytes())
+        .and_then(|_| stream.write_all(body))
+        .map_err(|error| error.to_string())
+}
+
+fn bridge_static(path: &str) -> Result<(&'static str, Vec<u8>), String> {
+    let file = match path {
+        "/" | "/app.html" => "app.html",
+        "/index.html" => "index.html",
+        "/pet.html" => "pet.html",
+        "/quickstart.html" => "quickstart.html",
+        "/about.html" => "about.html",
+        "/references.html" => "references.html",
+        "/self-iteration.html" => "self-iteration.html",
+        _ => return Err("bridge page not found".to_string()),
+    };
+    let path = repo_root().join("docs").join(file);
+    fs::read(path)
+        .map(|body| ("text/html", body))
+        .map_err(|error| format!("bridge static file unavailable: {error}"))
+}
+
+fn run_bridge_command(args: &[String]) -> Result<BridgeRunResponse, String> {
+    if !bridge_command_allowed(args) {
+        return Err("bridge command not allowed".to_string());
+    }
+    let output = Command::new(env::current_exe().map_err(|error| error.to_string())?)
+        .args(args)
+        .output()
+        .map_err(|error| format!("bridge command failed to start: {error}"))?;
+    Ok(BridgeRunResponse {
+        ok: output.status.success(),
+        code: output.status.code(),
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+    })
+}
+
+fn bridge_command_allowed(args: &[String]) -> bool {
+    let Some(command) = bridge_command_name(args) else {
+        return false;
+    };
+    if command == "self-iterate" && args.iter().any(|arg| arg == "pr") {
+        return false;
+    }
+    matches!(
+        command,
+        "init"
+            | "chat"
+            | "need"
+            | "pet"
+            | "doctor"
+            | "beat"
+            | "status"
+            | "goal"
+            | "installed"
+            | "install"
+            | "skills"
+            | "catalog"
+            | "manifests"
+            | "providers"
+            | "provider"
+            | "routes"
+            | "env"
+            | "adapt"
+            | "self-iterate"
+    )
+}
+
+fn bridge_command_name(args: &[String]) -> Option<&str> {
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--state" | "--lang" => index += 2,
+            "--json" => index += 1,
+            value if value.starts_with('-') => return None,
+            value => return Some(value),
+        }
+    }
+    None
 }
 
 fn run_demo(repository: &str) -> Result<DemoReport, String> {
@@ -2609,7 +2848,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider check [prefix] [message] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -2627,8 +2866,8 @@ fn parse_status(value: &str) -> Result<Status, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        localize_summary, percent_encode_path, pet_report, pet_report_for_state, run,
-        skill_reports, usage, Language,
+        bridge_command_allowed, bridge_command_name, http_content_length, localize_summary,
+        percent_encode_path, pet_report, pet_report_for_state, run, skill_reports, usage, Language,
     };
     use octopus_core::{Feed, Goal, GoalStatus, HarnessState, Need, NeedKind, Status};
     use std::fs;
@@ -2808,6 +3047,43 @@ mod tests {
             "env".to_string(),
         ])
         .unwrap();
+        assert!(usage().contains("bridge [addr]"));
+    }
+
+    #[test]
+    fn bridge_allows_only_octopus_commands() {
+        assert_eq!(
+            bridge_command_name(&[
+                "--state".to_string(),
+                "state.json".to_string(),
+                "--json".to_string(),
+                "doctor".to_string()
+            ]),
+            Some("doctor")
+        );
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "need".to_string(),
+            "observe".to_string(),
+            ".".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "sh".to_string(),
+            "-c".to_string(),
+            "echo unsafe".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "self-iterate".to_string(),
+            "pr".to_string(),
+            "dangoZhang/Octopus".to_string()
+        ]));
+        assert_eq!(
+            http_content_length("POST /api/run HTTP/1.1\r\nContent-Length: 42\r\n").unwrap(),
+            42
+        );
     }
 
     #[test]
