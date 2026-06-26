@@ -126,7 +126,11 @@ jobs:
       - run: grep -q "renderBeatReport" docs/app.html
       - run: grep -q "evolution_candidate" docs/app.html
       - run: grep -q "evolution_plan_preview" docs/app.html
+      - run: grep -q "evolution_score_target" docs/app.html
       - run: grep -q "Apply plan" docs/app.html
+      - run: grep -q "scoreEvolution" docs/app.html
+      - run: grep -q "\"evolve\"" docs/app.html
+      - run: grep -q "\"score\"" docs/app.html
       - run: grep -q "/api/stream" docs/app.html
       - run: grep -q "/api/run" docs/architecture.md
       - run: cargo run -q -p octopus-core -- 2>&1 | grep -q "bridge \\[addr\\]"

@@ -40,7 +40,7 @@ Context boundary: clean-brain LLM context is `Goal + Mem + Need + Feed`; tentacl
 
 Every executed Feed is also written to a compact harness trace journal. Manifest Feed carries a `tentacle_plan` evidence item, action metadata, and a short `feed_trace`, so tool-side thinking is visible after execution without adding tool burden to clean-brain context. LLM tentacle plans may execute up to two tool actions for one Need. `traces [limit]` reads that journal.
 
-`bridge [addr]` serves the native HTML app and exposes `/api/run` plus `/api/stream` for local Octopus subcommands so the GUI can execute init, install, check, chat, think, Need, pet, doctor, and beat flows without a shell. The app can read `--json install` reports, run seed-tentacle checks, show harness-beat evolution recommendations with an apply-plan preview, and grant local `octopus tool:*` scopes; bridge does not allow GitHub OAuth or PR publishing.
+`bridge [addr]` serves the native HTML app and exposes `/api/run` plus `/api/stream` for local Octopus subcommands so the GUI can execute init, install, check, chat, think, Need, pet, doctor, and beat flows without a shell. The app can read `--json install` reports, run seed-tentacle checks, show harness-beat evolution recommendations with an apply-plan preview, score the recommendation after review, and grant local `octopus tool:*` scopes; bridge does not allow GitHub OAuth, direct patch apply, or PR publishing.
 
 `skills [root]` lists profile and manifest skills as user-facing capability bundles. It is a catalog view; execution still starts from Need and routes through harness data.
 
@@ -48,7 +48,7 @@ Every executed Feed is also written to a compact harness trace journal. Manifest
 
 `check <tentacle> [index]` runs all manifest/profile evolution checks or one 1-based check, returns per-command status, records compact check history in harness state, and updates pet state from the result. Bridge exposes it only for built-in seed tentacles.
 
-`beat [memory_keep]` pulses the three hearts. The harness beat now watches recent failed or partial check history; when a matching tentacle manifest exists, it writes the next evolution proposal, recommendation, and apply plan under `.octopus/evolution/`, then exposes the candidate, preview, and next action in heartbeat data.
+`beat [memory_keep]` pulses the three hearts. The harness beat now watches recent failed or partial check history; when a matching tentacle manifest exists, it writes the next evolution proposal, recommendation, and apply plan under `.octopus/evolution/`, then exposes the candidate, preview, next action, and review target in heartbeat data.
 
 ## Code-As-Harness
 

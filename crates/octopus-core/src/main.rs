@@ -1435,6 +1435,10 @@ fn attach_harness_beat_evolution(report: &mut HeartbeatReport, evolution: &Harne
         "evolution_candidate".to_string(),
         evolution.candidate_id.clone(),
     );
+    beat.data.insert(
+        "evolution_score_target".to_string(),
+        format!("{} {}", evolution.tentacle_id, evolution.candidate_id),
+    );
     beat.data
         .insert("evolution_status".to_string(), evolution.status.clone());
     beat.data
@@ -2195,6 +2199,9 @@ fn bridge_command_allowed(args: &[String]) -> bool {
     if command == "check" {
         return bridge_check_allowed(args);
     }
+    if command == "evolve" {
+        return bridge_evolve_allowed(args);
+    }
     if command == "self-iterate" && args.iter().any(|arg| arg == "pr") {
         return false;
     }
@@ -2224,6 +2231,29 @@ fn bridge_command_allowed(args: &[String]) -> bool {
     )
 }
 
+fn bridge_evolve_allowed(args: &[String]) -> bool {
+    let Some(index) = bridge_command_index(args) else {
+        return false;
+    };
+    if args.get(index + 1).map(String::as_str) != Some("score") {
+        return false;
+    }
+    let Some(tentacle) = args.get(index + 2) else {
+        return false;
+    };
+    let Some(candidate) = args.get(index + 3) else {
+        return false;
+    };
+    let Some(status) = args.get(index + 4) else {
+        return false;
+    };
+    bridge_seed_tentacle(tentacle)
+        && bridge_safe_candidate(candidate)
+        && parse_status(status).is_ok_and(|status| {
+            matches!(status, Status::Satisfied | Status::Partial | Status::Failed)
+        })
+}
+
 fn bridge_check_allowed(args: &[String]) -> bool {
     let Some(index) = bridge_command_index(args) else {
         return false;
@@ -2236,15 +2266,27 @@ fn bridge_check_allowed(args: &[String]) -> bool {
             && args
                 .get(index + 2)
                 .is_some_and(|value| parse_check_index(value).is_ok())))
-        && matches!(
-            tentacle.as_str(),
-            "swe-agent"
-                | "computer-use-agent"
-                | "bash-only"
-                | "repo-maintainer"
-                | "json-feed"
-                | "visual"
-        )
+        && bridge_seed_tentacle(tentacle)
+}
+
+fn bridge_seed_tentacle(tentacle: &str) -> bool {
+    matches!(
+        tentacle,
+        "swe-agent"
+            | "computer-use-agent"
+            | "bash-only"
+            | "repo-maintainer"
+            | "json-feed"
+            | "visual"
+    )
+}
+
+fn bridge_safe_candidate(candidate: &str) -> bool {
+    !candidate.is_empty()
+        && candidate.len() <= 96
+        && candidate
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | ':'))
 }
 
 fn bridge_oauth_allowed(args: &[String]) -> bool {
@@ -4729,6 +4771,43 @@ mod tests {
             "tool:computer-use-agent".to_string(),
             "tool:observe".to_string(),
             "tool:ui".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "evolve".to_string(),
+            "score".to_string(),
+            "swe-agent".to_string(),
+            "03-runtime-code".to_string(),
+            "partial".to_string(),
+            "reviewed from app".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "evolve".to_string(),
+            "apply".to_string(),
+            "swe-agent".to_string(),
+            "03-runtime-code".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "evolve".to_string(),
+            "score".to_string(),
+            "custom-feed".to_string(),
+            "03-runtime-code".to_string(),
+            "partial".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "evolve".to_string(),
+            "score".to_string(),
+            "swe-agent".to_string(),
+            "../patch".to_string(),
+            "partial".to_string()
         ]));
         assert!(!bridge_command_allowed(&[
             "sh".to_string(),

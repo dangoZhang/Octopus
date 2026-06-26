@@ -60,7 +60,7 @@ Local app:
 octopus bridge
 ```
 
-Open `http://127.0.0.1:8765/app.html` for the native install, check, beat, and harness evolution surface.
+Open `http://127.0.0.1:8765/app.html` for install, checks, beat, and harness evolution review.
 
 Update:
 

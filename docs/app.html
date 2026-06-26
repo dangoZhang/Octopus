@@ -275,6 +275,16 @@
         padding: 0 10px;
       }
 
+      .feedback-controls {
+        display: grid;
+        gap: 8px;
+      }
+
+      .feedback-controls .toolbar button {
+        min-width: 92px;
+        padding: 0 10px;
+      }
+
       .check-command {
         display: inline;
         color: var(--ink);
@@ -546,14 +556,16 @@
         }
       }
 
-      async function runBeat() {
+      async function runBeat(updateOutput = true) {
         const state = $("state").value.trim() || ".octopus/state.json";
         $("beatReport").textContent = "loading...";
         try {
           const report = await runBridgeJson(["--state", state, "--json", "beat", "200"]);
           currentBeatReport = report;
           renderBeatReport(report);
-          $("output").textContent = JSON.stringify(report, null, 2);
+          if (updateOutput) {
+            $("output").textContent = JSON.stringify(report, null, 2);
+          }
         } catch (error) {
           $("beatReport").textContent = String(error);
           $("output").textContent = String(error);
@@ -647,6 +659,7 @@
           ["Candidate", data.evolution_candidate || "unknown"],
           ["Status", data.evolution_status || "unknown"],
           ["Source", data.evolution_source_check ? `check #${data.evolution_source_check}` : "check"],
+          ["Score", data.evolution_score_target || "review target"],
           ["Plan", data.evolution_plan || "none"],
           ["Next", data.evolution_next || "review plan"],
         ].forEach(([label, value]) => {
@@ -673,7 +686,56 @@
           details.append(summary, pre);
           section.appendChild(details);
         }
+        if (data.evolution_tentacle && data.evolution_candidate) {
+          section.appendChild(evolutionFeedbackControls(data));
+        }
         return section;
+      }
+
+      function evolutionFeedbackControls(data) {
+        const wrap = document.createElement("div");
+        wrap.className = "feedback-controls";
+        const noteLabel = document.createElement("label");
+        noteLabel.textContent = "Review note";
+        const note = document.createElement("input");
+        note.value = `reviewed ${data.evolution_candidate} from harness beat`;
+        noteLabel.appendChild(note);
+        const buttons = document.createElement("div");
+        buttons.className = "toolbar";
+        [
+          ["satisfied", "Accept"],
+          ["partial", "Partial"],
+          ["failed", "Reject"],
+        ].forEach(([status, label]) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = label;
+          button.addEventListener("click", () => scoreEvolution(data, status, note.value));
+          buttons.appendChild(button);
+        });
+        wrap.append(noteLabel, buttons);
+        return wrap;
+      }
+
+      async function scoreEvolution(data, status, summary) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        try {
+          const outcome = await runBridgeJson([
+            "--state",
+            state,
+            "--json",
+            "evolve",
+            "score",
+            data.evolution_tentacle,
+            data.evolution_candidate,
+            status,
+            summary || "reviewed from harness beat",
+          ]);
+          $("output").textContent = JSON.stringify(outcome, null, 2);
+          await runBeat(false);
+        } catch (error) {
+          $("output").textContent = String(error);
+        }
       }
 
       function reportSummary(report) {

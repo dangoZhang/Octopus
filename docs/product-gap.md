@@ -31,6 +31,7 @@ Updated: 2026-06-26
 - Patch candidates, patch drafts, and apply plans carry a feedback focus block from matching traces/checks.
 - LLM-generated evolution candidates can carry a provider-assisted unified diff into drafts and authorized apply artifacts.
 - Harness beat turns recent failed or partial check history into a written evolution proposal, recommendation, and apply plan.
+- Harness beat recommendations can be reviewed in the native HTML app and scored back into harness state.
 - The SWE read tool now returns a compact file/range header and line-numbered evidence.
 
 ## Filled So Far
@@ -79,6 +80,7 @@ Updated: 2026-06-26
 - Added provider-assisted patch drafts for `OCTOPUS_LLM_EVOLVE=1` candidates, including authorized `.patch` emission when the diff stays on the declared target.
 - Added harness-beat evolution recommendations so `beat` can write the next apply plan from failed or partial check history.
 - Added a native HTML harness-beat panel that renders heartbeat data, evolution candidate, plan path, and next action.
+- Added bridge-limited Harness Beat review buttons so accepted, partial, or rejected recommendations write `evolve score` feedback.
 
 ## Remaining Gaps
 
@@ -88,7 +90,7 @@ Updated: 2026-06-26
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include static layer diagnostics and live validation; provider-specific edge cases still need real-machine feedback.
 - Release packaging, examples, and docs now have richer install feedback; non-Rust packaging still needs finish.
-- The HTML app can run, stream, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, and show harness-beat evolution recommendations with apply-plan previews through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show harness-beat evolution recommendations with apply-plan previews, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
@@ -99,6 +101,5 @@ Updated: 2026-06-26
 - Use traced runtime targets to apply and score the next seed-tentacle improvement through the review/grant loop.
 - Exercise provider-assisted patch drafts with a real LLM provider and score the result through the review/grant loop.
 - Turn window/browser diagnostics into richer native control adapters.
-- Turn harness-beat preview and scored feedback into a stronger apply/review loop.
 - Add provider-specific fixes from real-machine feedback.
 - Run and record the first real-machine test before the `0.1.0` tag.
