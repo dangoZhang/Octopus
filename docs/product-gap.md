@@ -33,7 +33,7 @@ Updated: 2026-06-26
 - Runtime-code evolution candidates use recent Feed traces and failed checks to target the exact tool entrypoint that produced or broke Feed.
 - Patch candidates, patch drafts, and apply plans carry a feedback focus block from matching traces/checks.
 - LLM-generated evolution candidates can carry a provider-assisted unified diff into drafts and authorized apply artifacts.
-- Harness beat turns recent failed or partial check history into a written evolution proposal, recommendation, and apply plan.
+- Harness beat turns recent failed or partial check history or Feed traces into a written evolution proposal, recommendation, and apply plan.
 - Harness beat recommendations can be reviewed in the native HTML app and scored back into harness state.
 - The SWE read tool now returns a compact file/range header and line-numbered evidence.
 
@@ -90,11 +90,12 @@ Updated: 2026-06-26
 - Added `provider save` plus bridge-side `.octopus/llm.env` loading so app-generated provider setup can affect later bridge child commands.
 - Added a native HTML Provider Save action and limited provider env saving through bridge to the default path.
 - Added a native HTML Feed Test action that runs `--json need` through bridge and renders structured Feed metadata/evidence for tool-side planning.
+- Added Feed-trace-driven harness beat evolution so failed or partial Feed can produce the next reviewed apply plan without waiting for a manifest check failure.
 
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
-- LLM evolution can generate candidates and provider-assisted patch drafts from manifest surfaces, scored outcomes, recent Feed traces, and check history; local candidates now also target traced or failing runtime files, and patch writes stay review/grant-bound.
+- LLM evolution can generate candidates and provider-assisted patch drafts from manifest surfaces, scored outcomes, recent Feed traces, and check history; local candidates now also target traced or failing runtime files, and harness beat can start from Feed trace or check feedback while patch writes stay review/grant-bound.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, layer diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
@@ -107,7 +108,7 @@ Updated: 2026-06-26
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
 - Exercise multi-action tentacle planning with a real LLM provider and record provider-specific failures.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
-- Use traced runtime targets to apply and score the next seed-tentacle improvement through the review/grant loop.
+- Apply and score the next Feed-trace- or check-driven seed-tentacle improvement through the review/grant loop.
 - Exercise provider-assisted patch drafts with a real LLM provider and score the result through the review/grant loop.
 - Turn window/browser diagnostics into richer native control adapters.
 - Add provider-specific fixes from real-machine feedback.

@@ -1457,6 +1457,18 @@ fn attach_harness_beat_evolution(report: &mut HeartbeatReport, evolution: &Harne
         evolution.source_check_index.to_string(),
     );
     beat.data.insert(
+        "evolution_source_kind".to_string(),
+        evolution.source_kind.clone(),
+    );
+    beat.data.insert(
+        "evolution_source_index".to_string(),
+        evolution.source_index.to_string(),
+    );
+    beat.data.insert(
+        "evolution_source_summary".to_string(),
+        evolution.source_summary.clone(),
+    );
+    beat.data.insert(
         "evolution_tentacle".to_string(),
         evolution.tentacle_id.clone(),
     );
@@ -1524,14 +1536,26 @@ fn print_harness_beat_evolution(beat: &HeartBeat, language: Language) {
         .get("evolution_plan")
         .map(String::as_str)
         .unwrap_or("none");
+    let source_kind = beat
+        .data
+        .get("evolution_source_kind")
+        .map(String::as_str)
+        .unwrap_or("check_history");
+    let source_index = beat
+        .data
+        .get("evolution_source_index")
+        .map(String::as_str)
+        .unwrap_or("unknown");
     match language {
         Language::En => {
             println!("  recommendation: {tentacle} {candidate} ({status})");
+            println!("  source: {source_kind} #{source_index}");
             println!("  plan: {plan}");
             println!("  next: {next}");
         }
         Language::Zh => {
             println!("  推荐: {tentacle} {candidate} ({status})");
+            println!("  来源: {source_kind} #{source_index}");
             println!("  计划: {plan}");
             println!("  下一步: {next}");
         }
@@ -3659,6 +3683,7 @@ fn print_evolution_recommendation(
             println!("title: {}", recommendation.candidate_title);
             println!("score: {:.2}", recommendation.recommendation_score);
             println!("outcomes: {}", recommendation.outcome_count);
+            println!("feed traces: {}", recommendation.feed_trace_count);
             println!("check history: {}", recommendation.check_history_count);
             println!("reason: {}", recommendation.reason);
             println!("status: {}", recommendation.apply.status);
@@ -3674,6 +3699,7 @@ fn print_evolution_recommendation(
             println!("标题: {}", recommendation.candidate_title);
             println!("分数: {:.2}", recommendation.recommendation_score);
             println!("历史结果: {}", recommendation.outcome_count);
+            println!("Feed轨迹: {}", recommendation.feed_trace_count);
             println!("检查历史: {}", recommendation.check_history_count);
             println!("原因: {}", recommendation.reason);
             println!("状态: {}", recommendation.apply.status);

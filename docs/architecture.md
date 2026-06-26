@@ -48,7 +48,7 @@ Every executed Feed is also written to a compact harness trace journal. Manifest
 
 `check <tentacle> [index]` runs all manifest/profile evolution checks or one 1-based check, returns per-command status, records compact check history in harness state, and updates pet state from the result. Bridge exposes it only for built-in seed tentacles.
 
-`beat [memory_keep]` pulses the three hearts. The harness beat now watches recent failed or partial check history; when a matching tentacle manifest exists, it writes the next evolution proposal, recommendation, and apply plan under `.octopus/evolution/`, then exposes the candidate, preview, next action, and review target in heartbeat data.
+`beat [memory_keep]` pulses the three hearts. The harness beat now watches recent failed or partial check history and Feed traces; when a matching tentacle manifest exists, it writes the next evolution proposal, recommendation, and apply plan under `.octopus/evolution/`, then exposes the source signal, candidate, preview, next action, and review target in heartbeat data.
 
 ## Code-As-Harness
 

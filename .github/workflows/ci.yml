@@ -141,6 +141,8 @@ jobs:
       - run: grep -q "Harness Beat" docs/app.html
       - run: grep -q "renderBeatReport" docs/app.html
       - run: grep -q "evolution_candidate" docs/app.html
+      - run: grep -q "evolutionSourceLabel" docs/app.html
+      - run: grep -q "evolution_source_kind" docs/app.html
       - run: grep -q "evolution_plan_preview" docs/app.html
       - run: grep -q "evolution_score_target" docs/app.html
       - run: grep -q "Apply plan" docs/app.html

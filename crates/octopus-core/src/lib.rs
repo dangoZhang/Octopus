@@ -3131,6 +3131,7 @@ pub struct EvolutionRecommendation {
     pub candidate_title: String,
     pub surface_id: String,
     pub outcome_count: usize,
+    pub feed_trace_count: usize,
     pub check_history_count: usize,
     pub recommendation_score: f32,
     pub reason: String,
@@ -3148,6 +3149,9 @@ pub struct EvolutionApplyArtifact {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct HarnessBeatEvolution {
     pub source_check_index: u64,
+    pub source_kind: String,
+    pub source_index: u64,
+    pub source_summary: String,
     pub tentacle_id: String,
     pub objective: String,
     pub candidate_id: String,
@@ -3690,9 +3694,17 @@ pub fn recommend_tentacle_evolution_apply(
         .iter()
         .map(|candidate| {
             let (score, count) = evolution_candidate_outcome_score(candidate, proposal);
+            let (feed_score, feed_count) =
+                evolution_candidate_feed_trace_score(candidate, proposal);
             let (check_score, check_count) =
                 evolution_candidate_check_history_score(candidate, proposal);
-            (candidate, score + check_score, count, check_count)
+            (
+                candidate,
+                score + feed_score + check_score,
+                count,
+                feed_count,
+                check_count,
+            )
         })
         .max_by(|left, right| {
             left.1
@@ -3702,10 +3714,14 @@ pub fn recommend_tentacle_evolution_apply(
     else {
         return Err("no evolution candidates to recommend".to_string());
     };
-    let (candidate, score, outcome_count, check_history_count) = scored;
+    let (candidate, score, outcome_count, feed_trace_count, check_history_count) = scored;
     let apply = plan_tentacle_evolution_apply(proposal, state, &candidate.id)?;
     let reason = if outcome_count > 0 {
         format!("selected from {outcome_count} previous outcomes with score {score:.2}")
+    } else if feed_trace_count > 0 {
+        format!(
+            "selected from {feed_trace_count} matching Feed trace records with score {score:.2}"
+        )
     } else if check_history_count > 0 {
         format!("selected from {check_history_count} matching check history records with score {score:.2}")
     } else if proposal.generator == "llm" {
@@ -3721,6 +3737,7 @@ pub fn recommend_tentacle_evolution_apply(
         candidate_title: candidate.title.clone(),
         surface_id: candidate.surface_id.clone(),
         outcome_count,
+        feed_trace_count,
         check_history_count,
         recommendation_score: score,
         reason,
@@ -3792,39 +3809,89 @@ pub fn write_harness_beat_evolution_artifacts(
         ) else {
             continue;
         };
-        let proposal_artifact = write_tentacle_evolution_artifacts(workspace_root, &proposal)?;
-        let recommendation = recommend_tentacle_evolution_apply(&proposal, state)?;
-        let apply_artifact = write_tentacle_apply_artifacts(workspace_root, &recommendation.apply)?;
-        let apply_plan_preview = fs::read_to_string(&apply_artifact.plan_path)
-            .map(|content| short_text(&content, 2000))
-            .unwrap_or_default();
-        let next_action = if recommendation.apply.authorized {
-            format!(
-                "octopus evolve apply {} {}",
-                recommendation.tentacle_id, recommendation.candidate_id
-            )
-        } else {
-            format!(
-                "octopus oauth octopus evolve:{} harness:write",
-                recommendation.tentacle_id
-            )
+        return harness_beat_evolution_from_proposal(
+            workspace_root,
+            proposal,
+            state,
+            "check_history",
+            record.index,
+            record.index,
+            short_text(&one_line(&check_history_evolution_detail(record)), 160),
+        )
+        .map(Some);
+    }
+    for trace in state
+        .feed_traces
+        .iter()
+        .rev()
+        .filter(|trace| evolution_actionable_feed_trace_status(&trace.status))
+    {
+        let Some(tentacle_id) = trace.tentacle.as_deref() else {
+            continue;
         };
-        return Ok(Some(HarnessBeatEvolution {
-            source_check_index: record.index,
-            tentacle_id: recommendation.tentacle_id,
-            objective,
-            candidate_id: recommendation.candidate_id,
-            status: recommendation.apply.status,
-            reason: recommendation.reason,
-            recommendation_score: recommendation.recommendation_score,
-            proposal_path: proposal_artifact.proposal_path,
-            apply_plan_path: apply_artifact.plan_path,
-            apply_plan_preview,
-            patch_path: apply_artifact.patch_path,
-            next_action,
-        }));
+        let objective = feed_trace_evolution_objective(trace);
+        let Ok(proposal) =
+            propose_tentacle_evolution_with_state(tentacles_root, tentacle_id, &objective, state)
+        else {
+            continue;
+        };
+        return harness_beat_evolution_from_proposal(
+            workspace_root,
+            proposal,
+            state,
+            "feed_trace",
+            trace.index,
+            0,
+            short_text(&one_line(&trace.summary), 160),
+        )
+        .map(Some);
     }
     Ok(None)
+}
+
+fn harness_beat_evolution_from_proposal(
+    workspace_root: &Path,
+    proposal: TentacleEvolutionProposal,
+    state: &HarnessState,
+    source_kind: &str,
+    source_index: u64,
+    source_check_index: u64,
+    source_summary: String,
+) -> Result<HarnessBeatEvolution, String> {
+    let proposal_artifact = write_tentacle_evolution_artifacts(workspace_root, &proposal)?;
+    let recommendation = recommend_tentacle_evolution_apply(&proposal, state)?;
+    let apply_artifact = write_tentacle_apply_artifacts(workspace_root, &recommendation.apply)?;
+    let apply_plan_preview = fs::read_to_string(&apply_artifact.plan_path)
+        .map(|content| short_text(&content, 2000))
+        .unwrap_or_default();
+    let next_action = if recommendation.apply.authorized {
+        format!(
+            "octopus evolve apply {} {}",
+            recommendation.tentacle_id, recommendation.candidate_id
+        )
+    } else {
+        format!(
+            "octopus oauth octopus evolve:{} harness:write",
+            recommendation.tentacle_id
+        )
+    };
+    Ok(HarnessBeatEvolution {
+        source_check_index,
+        source_kind: source_kind.to_string(),
+        source_index,
+        source_summary,
+        tentacle_id: recommendation.tentacle_id,
+        objective: recommendation.objective,
+        candidate_id: recommendation.candidate_id,
+        status: recommendation.apply.status,
+        reason: recommendation.reason,
+        recommendation_score: recommendation.recommendation_score,
+        proposal_path: proposal_artifact.proposal_path,
+        apply_plan_path: apply_artifact.plan_path,
+        apply_plan_preview,
+        patch_path: apply_artifact.patch_path,
+        next_action,
+    })
 }
 
 pub fn render_tentacle_apply_plan(plan: &EvolutionApplyPlan) -> String {
@@ -3878,19 +3945,39 @@ fn evolution_actionable_check_status(status: &Status) -> bool {
     matches!(status, Status::Failed | Status::Partial)
 }
 
-fn check_history_evolution_objective(record: &CheckHistoryRecord) -> String {
-    let detail = if !record.stderr.trim().is_empty() {
-        &record.stderr
+fn evolution_actionable_feed_trace_status(status: &Status) -> bool {
+    matches!(status, Status::Failed | Status::Partial)
+}
+
+fn check_history_evolution_detail(record: &CheckHistoryRecord) -> String {
+    if !record.stderr.trim().is_empty() {
+        record.stderr.clone()
     } else if !record.stdout.trim().is_empty() {
-        &record.stdout
+        record.stdout.clone()
     } else {
-        &record.command
-    };
+        record.command.clone()
+    }
+}
+
+fn check_history_evolution_objective(record: &CheckHistoryRecord) -> String {
+    let detail = check_history_evolution_detail(record);
     format!(
         "repair check #{} for {}: {}",
         record.index,
         record.tentacle_id,
-        short_text(&one_line(detail), 160)
+        short_text(&one_line(&detail), 160)
+    )
+}
+
+fn feed_trace_evolution_objective(trace: &FeedTraceRecord) -> String {
+    let tentacle = trace.tentacle.as_deref().unwrap_or("unknown");
+    let tool = trace.tool.as_deref().unwrap_or("unknown tool");
+    format!(
+        "repair Feed trace #{} for {} via {}: {}",
+        trace.index,
+        tentacle,
+        tool,
+        short_text(&one_line(&trace.summary), 160)
     )
 }
 
@@ -3960,6 +4047,35 @@ fn evolution_candidate_check_history_score(
             let score = match record.status {
                 Status::Failed => 0.45,
                 Status::Partial => 0.2,
+                Status::Satisfied => 0.05,
+                Status::Unsupported => 0.0,
+            };
+            (score * weight, weight)
+        })
+        .fold((0.0, 0.0), |acc, item| (acc.0 + item.0, acc.1 + item.1));
+    (weighted.0 / weighted.1.max(1.0), matched.len())
+}
+
+fn evolution_candidate_feed_trace_score(
+    candidate: &EvolutionPatchCandidate,
+    proposal: &TentacleEvolutionProposal,
+) -> (f32, usize) {
+    let matched = proposal
+        .recent_feed_traces
+        .iter()
+        .filter(|trace| candidate_matches_feed_trace(candidate, trace))
+        .collect::<Vec<_>>();
+    if matched.is_empty() {
+        return (0.0, 0);
+    }
+    let weighted = matched
+        .iter()
+        .enumerate()
+        .map(|(index, trace)| {
+            let weight = (index + 1) as f32;
+            let score = match trace.status {
+                Status::Failed => 0.35,
+                Status::Partial => 0.18,
                 Status::Satisfied => 0.05,
                 Status::Unsupported => 0.0,
             };
@@ -7159,6 +7275,40 @@ mod tests {
     }
 
     #[test]
+    fn evolution_recommendation_scores_feed_trace_feedback() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Observe, "README.md"),
+            status: Status::Failed,
+            evidence: vec![Evidence::new("read", "read output omitted evidence")],
+            summary: "read output omitted evidence".to_string(),
+            metadata: BTreeMap::from([
+                ("tentacle".to_string(), "swe-agent".to_string()),
+                ("tool".to_string(), "read".to_string()),
+                ("plan_source".to_string(), "llm".to_string()),
+            ]),
+        });
+
+        let proposal = propose_tentacle_evolution_with_state(
+            &root,
+            "swe-agent",
+            "repair weak observe feed",
+            &state,
+        )
+        .unwrap();
+        let recommendation = recommend_tentacle_evolution_apply(&proposal, &state).unwrap();
+
+        assert_eq!(recommendation.candidate_id, "03-runtime-code");
+        assert_eq!(recommendation.surface_id, "runtime_code");
+        assert_eq!(recommendation.feed_trace_count, 1);
+        assert!(recommendation.reason.contains("Feed trace"));
+        assert!(recommendation.recommendation_score > 0.0);
+    }
+
+    #[test]
     fn tentacle_evolution_uses_recent_check_history() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
@@ -7298,6 +7448,55 @@ mod tests {
         assert!(evolution
             .apply_plan_preview
             .contains("read output lost line numbers"));
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn harness_beat_evolution_can_start_from_failed_feed_trace() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Observe, "README.md"),
+            status: Status::Failed,
+            evidence: vec![Evidence::new("read", "read feed lost the requested lines")],
+            summary: "read feed lost the requested lines".to_string(),
+            metadata: BTreeMap::from([
+                ("tentacle".to_string(), "swe-agent".to_string()),
+                ("tool".to_string(), "read".to_string()),
+                ("plan_source".to_string(), "llm".to_string()),
+            ]),
+        });
+        state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Observe, "unknown"),
+            status: Status::Failed,
+            evidence: vec![Evidence::new("missing", "stale missing tentacle")],
+            summary: "stale missing tentacle".to_string(),
+            metadata: BTreeMap::from([("tentacle".to_string(), "missing-tentacle".to_string())]),
+        });
+
+        let workspace =
+            std::env::temp_dir().join(format!("octopus-harness-beat-feed-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&workspace);
+        let evolution = write_harness_beat_evolution_artifacts(&root, &workspace, &state)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(evolution.source_kind, "feed_trace");
+        assert_eq!(evolution.source_index, 1);
+        assert_eq!(evolution.source_check_index, 0);
+        assert_eq!(evolution.tentacle_id, "swe-agent");
+        assert_eq!(evolution.candidate_id, "03-runtime-code");
+        assert!(evolution
+            .objective
+            .contains("read feed lost the requested lines"));
+        assert!(evolution.reason.contains("Feed trace"));
+        assert!(Path::new(&evolution.proposal_path).exists());
+        assert!(Path::new(&evolution.apply_plan_path).exists());
+        let plan = fs::read_to_string(&evolution.apply_plan_path).unwrap();
+        assert!(plan.contains("feedback focus:"));
+        assert!(plan.contains("read feed lost the requested lines"));
         let _ = fs::remove_dir_all(workspace);
     }
 

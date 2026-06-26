@@ -966,7 +966,8 @@
           ["Tentacle", data.evolution_tentacle || "unknown"],
           ["Candidate", data.evolution_candidate || "unknown"],
           ["Status", data.evolution_status || "unknown"],
-          ["Source", data.evolution_source_check ? `check #${data.evolution_source_check}` : "check"],
+          ["Source", evolutionSourceLabel(data)],
+          ["Signal", data.evolution_source_summary || "none"],
           ["Score", data.evolution_score_target || "review target"],
           ["Plan", data.evolution_plan || "none"],
           ["Next", data.evolution_next || "review plan"],
@@ -998,6 +999,13 @@
           section.appendChild(evolutionFeedbackControls(data));
         }
         return section;
+      }
+
+      function evolutionSourceLabel(data) {
+        if (data.evolution_source_kind && data.evolution_source_index) {
+          return `${data.evolution_source_kind} #${data.evolution_source_index}`;
+        }
+        return data.evolution_source_check ? `check #${data.evolution_source_check}` : "check";
       }
 
       function evolutionFeedbackControls(data) {
