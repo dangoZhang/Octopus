@@ -270,6 +270,28 @@
         padding: 0 10px;
       }
 
+      .badge {
+        display: inline-block;
+        min-width: 58px;
+        margin-right: 8px;
+        border-radius: 999px;
+        padding: 2px 8px;
+        background: #eef2f7;
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+      }
+
+      .badge.ok {
+        background: #dff5ef;
+        color: var(--teal);
+      }
+
+      .badge.failed {
+        background: #fde7e0;
+        color: var(--coral);
+      }
+
       @media (max-width: 820px) {
         .grid,
         .row,
@@ -363,6 +385,7 @@
             <button type="button" data-run="init">Init</button>
             <button type="button" data-run="install">Install</button>
             <button type="button" id="installGuide">Install Report</button>
+            <button type="button" id="runChecks">Run Checks</button>
             <button type="button" data-run="chat">Chat</button>
             <button type="button" data-run="think">Think</button>
             <button type="button" data-run="need">Need</button>
@@ -389,6 +412,8 @@
       const shellQuote = (value) => `'${String(value).replaceAll("'", "'\\''")}'`;
       const defaultBridge = () => location.protocol.startsWith("http") ? location.origin : "http://127.0.0.1:8765";
       let currentPetState = "harness";
+      let currentInstallReport = null;
+      let currentCheckReport = null;
 
       function render(stateName = "harness") {
         currentPetState = stateName;
@@ -405,6 +430,7 @@
           `octopus --state ${shellQuote(state)} init`,
           `octopus --state ${shellQuote(state)} install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json install ${tentacle}`,
+          `octopus --json check ${tentacle}`,
           `octopus --state ${shellQuote(state)} chat ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} think ${tentacle} ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} need ${need} ${shellQuote(target)}`,
@@ -457,10 +483,27 @@
         $("installReport").textContent = "loading...";
         try {
           const report = await runBridgeJson(["--state", state, "--json", "install", tentacle]);
+          currentInstallReport = report;
+          currentCheckReport = null;
           renderInstallReport(report);
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("installReport").textContent = String(error);
+        }
+      }
+
+      async function runChecks() {
+        if (!currentInstallReport || currentInstallReport.id !== $("tentacle").value) {
+          await runInstallReport();
+        }
+        const tentacle = $("tentacle").value;
+        try {
+          const report = await runBridgeJson(["--json", "check", tentacle]);
+          currentCheckReport = report;
+          if (currentInstallReport) renderInstallReport(currentInstallReport);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("output").textContent = String(error);
         }
       }
 
@@ -470,7 +513,7 @@
         root.textContent = "";
         root.appendChild(reportSummary(report));
         root.appendChild(reportList("Grants", report.grants || [], grantItem));
-        root.appendChild(reportList("Checks", report.checks || [], textItem));
+        root.appendChild(reportList("Checks", report.checks || [], checkItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
@@ -507,7 +550,7 @@
           empty.textContent = "none";
           list.appendChild(empty);
         } else {
-          items.forEach((item) => list.appendChild(renderer(item)));
+          items.forEach((item, index) => list.appendChild(renderer(item, index)));
         }
         section.append(heading, list);
         return section;
@@ -516,6 +559,23 @@
       function textItem(value) {
         const item = document.createElement("li");
         item.textContent = value;
+        return item;
+      }
+
+      function checkItem(value, index) {
+        const item = document.createElement("li");
+        const result = currentCheckReport && currentCheckReport.results && currentCheckReport.results[index];
+        if (!result) {
+          const badge = document.createElement("span");
+          badge.className = "badge";
+          badge.textContent = "pending";
+          item.append(badge, document.createTextNode(value));
+          return item;
+        }
+        const badge = document.createElement("span");
+        badge.className = result.status === "satisfied" ? "badge ok" : "badge failed";
+        badge.textContent = result.status === "satisfied" ? "ok" : "failed";
+        item.append(badge, document.createTextNode(result.command || value));
         return item;
       }
 
@@ -615,9 +675,12 @@
         $("output").textContent = "";
         $("installReport").className = "metric";
         $("installReport").innerHTML = "<span>No report yet.</span>";
+        currentInstallReport = null;
+        currentCheckReport = null;
         render();
       });
       $("installGuide").addEventListener("click", runInstallReport);
+      $("runChecks").addEventListener("click", runChecks);
       document.querySelectorAll("[data-state]").forEach((button) => {
         button.addEventListener("click", () => render(button.dataset.state));
       });
@@ -625,7 +688,11 @@
         button.addEventListener("click", () => runBridge(button.dataset.run));
       });
       ["state", "goal", "need", "target", "tentacle", "bridge"].forEach((id) => {
-        $(id).addEventListener("input", () => render(currentPetState));
+        $(id).addEventListener("input", () => {
+          currentInstallReport = null;
+          currentCheckReport = null;
+          render(currentPetState);
+        });
       });
       $("bridge").value = defaultBridge();
       render();

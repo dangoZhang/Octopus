@@ -40,11 +40,13 @@ Context boundary: clean-brain LLM context is `Goal + Mem + Need + Feed`; tentacl
 
 Every executed Feed is also written to a compact harness trace journal. Manifest Feed carries a `tentacle_plan` evidence item, action metadata, and a short `feed_trace`, so tool-side thinking is visible after execution without adding tool burden to clean-brain context. LLM tentacle plans may execute up to two tool actions for one Need. `traces [limit]` reads that journal.
 
-`bridge [addr]` serves the native HTML app and exposes `/api/run` plus `/api/stream` for local Octopus subcommands so the GUI can execute init, install, chat, think, Need, pet, doctor, and beat flows without a shell. The app can read `--json install` reports and grant local `octopus tool:*` scopes; bridge does not allow GitHub OAuth or PR publishing.
+`bridge [addr]` serves the native HTML app and exposes `/api/run` plus `/api/stream` for local Octopus subcommands so the GUI can execute init, install, check, chat, think, Need, pet, doctor, and beat flows without a shell. The app can read `--json install` reports, run seed-tentacle checks, and grant local `octopus tool:*` scopes; bridge does not allow GitHub OAuth or PR publishing.
 
 `skills [root]` lists profile and manifest skills as user-facing capability bundles. It is a catalog view; execution still starts from Need and routes through harness data.
 
 `install <tentacle>` installs a profile or manifest, then reports the tentacle's needs, runtimes, required grants, evolution checks, and next commands from its own metadata. `--json install <tentacle>` exposes the same report to the native HTML app or any outer shell.
+
+`check <tentacle>` runs the manifest or profile evolution checks and returns per-command status. Bridge exposes it only for built-in seed tentacles.
 
 ## Code-As-Harness
 

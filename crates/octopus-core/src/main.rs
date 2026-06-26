@@ -165,6 +165,26 @@ struct InstallGrantReport {
 type InstallGrantGroups = BTreeMap<(String, String), (BTreeSet<String>, BTreeSet<String>)>;
 
 #[derive(serde::Serialize)]
+struct CheckReport {
+    id: String,
+    name: String,
+    source_kind: String,
+    cwd: String,
+    passed: bool,
+    results: Vec<CheckResultReport>,
+}
+
+#[derive(serde::Serialize)]
+struct CheckResultReport {
+    command: String,
+    cwd: String,
+    status: Status,
+    code: Option<i32>,
+    stdout: String,
+    stderr: String,
+}
+
+#[derive(serde::Serialize)]
 struct SkillReport {
     id: String,
     name: String,
@@ -986,6 +1006,21 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
+        Some("check") => {
+            let tentacle_id = rest
+                .get(1)
+                .ok_or_else(|| "check requires a tentacle id".to_string())?;
+            let report = check_report(tentacle_id)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_check_report(&report, language);
+            }
+            Ok(())
+        }
         Some("installed") => {
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             if json {
@@ -1157,6 +1192,48 @@ fn print_install_next(report: &InstallReport, language: Language) {
     }
     for command in &report.next {
         println!("- {command}");
+    }
+}
+
+fn print_check_report(report: &CheckReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus check {}", report.id);
+            println!("source: {}", report.source_kind);
+            println!("cwd: {}", report.cwd);
+            println!("passed: {}", report.passed);
+        }
+        Language::Zh => {
+            println!("章鱼检查 {}", report.id);
+            println!("来源: {}", report.source_kind);
+            println!("目录: {}", report.cwd);
+            println!("通过: {}", report.passed);
+        }
+    }
+    for result in &report.results {
+        let label = match result.status {
+            Status::Satisfied => "ok",
+            Status::Failed => "failed",
+            Status::Partial => "partial",
+            Status::Unsupported => "unsupported",
+        };
+        println!("- {label}: {}", result.command);
+        if !result.stdout.trim().is_empty() {
+            println!("  stdout: {}", compact_output(&result.stdout));
+        }
+        if !result.stderr.trim().is_empty() {
+            println!("  stderr: {}", compact_output(&result.stderr));
+        }
+    }
+}
+
+fn compact_output(value: &str) -> String {
+    let value = value.trim().replace('\n', " ");
+    let compact = value.chars().take(180).collect::<String>();
+    if compact.len() == value.len() {
+        compact
+    } else {
+        format!("{compact}...")
     }
 }
 
@@ -1959,6 +2036,9 @@ fn bridge_command_allowed(args: &[String]) -> bool {
     if command == "oauth" {
         return bridge_oauth_allowed(args);
     }
+    if command == "check" {
+        return bridge_check_allowed(args);
+    }
     if command == "self-iterate" && args.iter().any(|arg| arg == "pr") {
         return false;
     }
@@ -1986,6 +2066,25 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "adapt"
             | "self-iterate"
     )
+}
+
+fn bridge_check_allowed(args: &[String]) -> bool {
+    let Some(index) = bridge_command_index(args) else {
+        return false;
+    };
+    let Some(tentacle) = args.get(index + 1) else {
+        return false;
+    };
+    args.len() == index + 2
+        && matches!(
+            tentacle.as_str(),
+            "swe-agent"
+                | "computer-use-agent"
+                | "bash-only"
+                | "repo-maintainer"
+                | "json-feed"
+                | "visual"
+        )
 }
 
 fn bridge_oauth_allowed(args: &[String]) -> bool {
@@ -3723,6 +3822,102 @@ fn install_next_commands(
     commands
 }
 
+fn check_report(tentacle_id: &str) -> Result<CheckReport, String> {
+    let root = default_tentacles_root();
+    if let Some(loaded) = load_tentacle_manifests(&root)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find(|loaded| loaded.manifest.id == tentacle_id)
+    {
+        let cwd = Path::new(&loaded.path)
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or(root);
+        let results = run_check_commands(&cwd, &loaded.manifest.evolution.checks);
+        let passed = results
+            .iter()
+            .all(|result| result.status == Status::Satisfied);
+        return Ok(CheckReport {
+            id: loaded.manifest.id,
+            name: loaded.manifest.name,
+            source_kind: "manifest".to_string(),
+            cwd: cwd.to_string_lossy().to_string(),
+            passed,
+            results,
+        });
+    }
+
+    let Some(profile) = default_tentacle_profiles()
+        .into_iter()
+        .find(|profile| profile.id == tentacle_id)
+    else {
+        return Err(format!(
+            "unknown profile or tentacle manifest: {tentacle_id}"
+        ));
+    };
+    let cwd = env::current_dir().map_err(|error| error.to_string())?;
+    let results = run_check_commands(&cwd, &profile.evolution.checks);
+    let passed = results
+        .iter()
+        .all(|result| result.status == Status::Satisfied);
+    Ok(CheckReport {
+        id: profile.id,
+        name: profile.name,
+        source_kind: "profile".to_string(),
+        cwd: cwd.to_string_lossy().to_string(),
+        passed,
+        results,
+    })
+}
+
+fn run_check_commands(cwd: &Path, checks: &[String]) -> Vec<CheckResultReport> {
+    checks
+        .iter()
+        .map(|check| run_check_command(cwd, check))
+        .collect()
+}
+
+fn run_check_command(cwd: &Path, check: &str) -> CheckResultReport {
+    let output = shell_check_command(check).current_dir(cwd).output();
+    match output {
+        Ok(output) => CheckResultReport {
+            command: check.to_string(),
+            cwd: cwd.to_string_lossy().to_string(),
+            status: if output.status.success() {
+                Status::Satisfied
+            } else {
+                Status::Failed
+            },
+            code: output.status.code(),
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        },
+        Err(error) => CheckResultReport {
+            command: check.to_string(),
+            cwd: cwd.to_string_lossy().to_string(),
+            status: Status::Failed,
+            code: None,
+            stdout: String::new(),
+            stderr: error.to_string(),
+        },
+    }
+}
+
+fn shell_check_command(check: &str) -> Command {
+    #[cfg(windows)]
+    {
+        let mut command = Command::new("cmd");
+        command.args(["/C", check]);
+        command
+    }
+    #[cfg(not(windows))]
+    {
+        let mut command = Command::new("sh");
+        command.args(["-lc", check]);
+        command
+    }
+}
+
 fn sample_need(needs: &[String]) -> String {
     if needs.iter().any(|need| need == "observe") {
         "observe".to_string()
@@ -3868,7 +4063,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> | installed".to_string()
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -3886,8 +4081,8 @@ fn parse_status(value: &str) -> Result<Status, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bridge_command_allowed, bridge_command_name, http_content_length, install_report,
-        is_broken_pipe_panic, localize_summary, percent_encode_path, pet_report,
+        bridge_command_allowed, bridge_command_name, check_report, http_content_length,
+        install_report, is_broken_pipe_panic, localize_summary, percent_encode_path, pet_report,
         pet_report_for_state, provider_status_report, run, skill_reports, usage, Language,
     };
     use octopus_core::{
@@ -4189,6 +4384,16 @@ mod tests {
             ".".to_string()
         ]));
         assert!(bridge_command_allowed(&[
+            "--json".to_string(),
+            "check".to_string(),
+            "computer-use-agent".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--json".to_string(),
+            "check".to_string(),
+            "custom-feed".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
             "--state".to_string(),
             "state.json".to_string(),
             "oauth".to_string(),
@@ -4242,6 +4447,19 @@ mod tests {
             http_content_length("POST /api/run HTTP/1.1\r\nContent-Length: 42\r\n").unwrap(),
             42
         );
+    }
+
+    #[test]
+    fn check_report_runs_manifest_checks() {
+        let report = check_report("json-feed").unwrap();
+
+        assert_eq!(report.id, "json-feed");
+        assert_eq!(report.source_kind, "manifest");
+        assert!(report.passed);
+        assert!(report
+            .results
+            .iter()
+            .any(|result| result.command.contains("py_compile")));
     }
 
     #[test]
