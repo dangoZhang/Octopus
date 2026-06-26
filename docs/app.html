@@ -227,6 +227,11 @@
         padding-top: 14px;
       }
 
+      .provider-report {
+        border-top: 1px solid var(--line);
+        padding-top: 14px;
+      }
+
       .beat-report {
         border-top: 1px solid var(--line);
         padding-top: 14px;
@@ -402,6 +407,9 @@
           <label>Bridge
             <input id="bridge" value="http://127.0.0.1:8765" />
           </label>
+          <label>Provider prefix
+            <input id="providerPrefix" value="OCTOPUS_LLM" />
+          </label>
           <div class="toolbar">
             <button class="primary" type="button" id="build">Build</button>
             <button type="button" id="copy">Copy</button>
@@ -434,6 +442,7 @@
             <button type="button" data-run="need">Need</button>
             <button type="button" data-run="traces">Trace</button>
             <button type="button" data-run="provider">Provider</button>
+            <button type="button" id="providerCheck">Provider Check</button>
             <button type="button" data-run="pet">Pet</button>
             <button type="button" data-run="doctor">Doctor</button>
             <button type="button" data-run="beat">Beat</button>
@@ -445,6 +454,10 @@
           <div class="install-report stack">
             <h2>Install Report</h2>
             <div id="installReport" class="metric"><span>No report yet.</span></div>
+          </div>
+          <div class="provider-report stack">
+            <h2>Provider</h2>
+            <div id="providerReport" class="metric"><span>No provider status yet.</span></div>
           </div>
           <div class="beat-report stack">
             <h2>Harness Beat</h2>
@@ -462,6 +475,7 @@
       let currentInstallReport = null;
       let currentCheckReport = null;
       let currentBeatReport = null;
+      let currentProviderReport = null;
 
       function render(stateName = "harness") {
         currentPetState = stateName;
@@ -470,10 +484,12 @@
         const need = $("need").value;
         const target = $("target").value.trim() || ".";
         const tentacle = $("tentacle").value;
+        const providerPrefix = $("providerPrefix").value.trim() || "OCTOPUS_LLM";
         $("commands").textContent = [
           "cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus --force",
           "octopus providers",
           "octopus provider status",
+          `octopus provider check ${providerPrefix}`,
           "octopus bridge",
           `octopus --state ${shellQuote(state)} init`,
           `octopus --state ${shellQuote(state)} install ${tentacle}`,
@@ -503,7 +519,7 @@
           think: [...base, "think", tentacle, need, target],
           need: [...base, "need", need, target],
           traces: [...base, "traces"],
-          provider: ["provider", "status"],
+          provider: ["--json", "provider", "status"],
           pet: [...base, "pet", stateName],
           doctor: [...base, "doctor"],
           beat: [...base, "beat", "200"],
@@ -572,6 +588,34 @@
         }
       }
 
+      async function runProviderStatus(updateOutput = true) {
+        $("providerReport").textContent = "loading...";
+        try {
+          const report = await runBridgeJson(["--json", "provider", "status"]);
+          currentProviderReport = report;
+          renderProviderStatusReport(report);
+          if (updateOutput) {
+            $("output").textContent = JSON.stringify(report, null, 2);
+          }
+        } catch (error) {
+          $("providerReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runProviderCheck() {
+        const prefix = $("providerPrefix").value.trim() || "OCTOPUS_LLM";
+        $("providerReport").textContent = "checking...";
+        try {
+          const report = await runBridgeJson(["--json", "provider", "check", prefix]);
+          renderProviderCheckReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("providerReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runSingleCheck(index) {
         if (!currentInstallReport || currentInstallReport.id !== $("tentacle").value) {
           await runInstallReport();
@@ -628,6 +672,66 @@
           empty.append(strong, span);
           root.appendChild(empty);
         }
+      }
+
+      function renderProviderStatusReport(report) {
+        const root = $("providerReport");
+        root.className = "stack";
+        root.textContent = "";
+        root.appendChild(reportList("Layers", report.layers || [], providerLayerItem));
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function renderProviderCheckReport(report) {
+        const root = $("providerReport");
+        root.className = "stack";
+        root.textContent = "";
+        root.appendChild(providerCheckSummary(report));
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function providerLayerItem(layer) {
+        const item = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = layer.enabled && layer.configured && layer.curl_available ? "badge ok" : "badge";
+        badge.textContent = layer.enabled ? "enabled" : "idle";
+        const command = document.createElement("span");
+        command.className = "check-command";
+        command.textContent = `${layer.layer}: ${layer.purpose}`;
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        const model = layer.model || "none";
+        const baseUrl = layer.base_url || "none";
+        const key = layer.api_key_present ? "key present" : "key empty";
+        const curl = layer.curl_available ? `curl ${layer.curl_command}` : `missing ${layer.curl_command}`;
+        meta.textContent = `${layer.prefix} · ${model} · ${baseUrl} · ${key} · ${curl}`;
+        const note = document.createElement("span");
+        note.className = "check-meta";
+        note.textContent = layer.message || layer.check_command || "";
+        item.append(badge, command, meta, note);
+        return item;
+      }
+
+      function providerCheckSummary(report) {
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Prefix", report.prefix || "unknown"],
+          ["Model", report.model || "unknown"],
+          ["Base URL", report.base_url || "unknown"],
+          ["API key", report.api_key_present ? "present" : "empty"],
+          ["Reply", report.content || "none"],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        return grid;
       }
 
       function beatItem(beat) {
@@ -893,6 +997,10 @@
           await runBeat();
           return;
         }
+        if (action === "provider") {
+          await runProviderStatus();
+          return;
+        }
         const args = bridgeArgs(action);
         if (!args) return;
         const base = ($("bridge").value.trim() || defaultBridge()).replace(/\/$/, "");
@@ -954,29 +1062,37 @@
         $("target").value = ".";
         $("tentacle").value = "swe-agent";
         $("bridge").value = defaultBridge();
+        $("providerPrefix").value = "OCTOPUS_LLM";
         $("output").textContent = "";
         $("installReport").className = "metric";
         $("installReport").innerHTML = "<span>No report yet.</span>";
+        $("providerReport").className = "metric";
+        $("providerReport").innerHTML = "<span>No provider status yet.</span>";
         $("beatReport").className = "metric";
         $("beatReport").innerHTML = "<span>No beat yet.</span>";
         currentInstallReport = null;
         currentCheckReport = null;
         currentBeatReport = null;
+        currentProviderReport = null;
         render();
       });
       $("installGuide").addEventListener("click", runInstallReport);
       $("runChecks").addEventListener("click", runChecks);
+      $("providerCheck").addEventListener("click", runProviderCheck);
       document.querySelectorAll("[data-state]").forEach((button) => {
         button.addEventListener("click", () => render(button.dataset.state));
       });
       document.querySelectorAll("[data-run]").forEach((button) => {
         button.addEventListener("click", () => runBridge(button.dataset.run));
       });
-      ["state", "goal", "need", "target", "tentacle", "bridge"].forEach((id) => {
+      ["state", "goal", "need", "target", "tentacle", "bridge", "providerPrefix"].forEach((id) => {
         $(id).addEventListener("input", () => {
           currentInstallReport = null;
           currentCheckReport = null;
           currentBeatReport = null;
+          currentProviderReport = null;
+          $("providerReport").className = "metric";
+          $("providerReport").innerHTML = "<span>No provider status yet.</span>";
           $("beatReport").className = "metric";
           $("beatReport").innerHTML = "<span>No beat yet.</span>";
           render(currentPetState);
