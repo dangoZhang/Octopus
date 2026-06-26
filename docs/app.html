@@ -252,6 +252,11 @@
         padding-top: 14px;
       }
 
+      .preflight-report {
+        border-top: 1px solid var(--line);
+        padding-top: 14px;
+      }
+
       .report-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -478,6 +483,7 @@
             <button type="button" data-run="pet">Pet</button>
             <button type="button" data-run="doctor">Doctor</button>
             <button type="button" id="runReport">Report</button>
+            <button type="button" id="runPreflight">Preflight</button>
             <button type="button" data-run="beat">Beat</button>
           </div>
           <div class="output">
@@ -487,6 +493,10 @@
           <div class="product-report stack">
             <h2>Report</h2>
             <div id="productReport" class="metric"><span>No product report yet.</span></div>
+          </div>
+          <div class="preflight-report stack">
+            <h2>Preflight</h2>
+            <div id="preflightReport" class="metric"><span>No preflight yet.</span></div>
           </div>
           <div class="install-report stack">
             <h2>Install Report</h2>
@@ -532,6 +542,7 @@
       let currentFeedReport = null;
       let currentContextReport = null;
       let currentProductReport = null;
+      let currentPreflightReport = null;
       let currentFeedTrace = null;
       let currentRouteReport = null;
       let currentExploreReport = null;
@@ -570,6 +581,8 @@
           `octopus --state ${shellQuote(state)} pet ${stateName}`,
           `octopus --state ${shellQuote(state)} doctor`,
           `octopus --state ${shellQuote(state)} report`,
+          `octopus --state ${shellQuote(state)} preflight`,
+          `octopus --state ${shellQuote(state)} preflight --live`,
           `octopus --state ${shellQuote(state)} beat 200`,
         ].join("\n");
       }
@@ -596,6 +609,7 @@
           pet: [...base, "pet", stateName],
           doctor: [...base, "doctor"],
           report: [...base, "--json", "report"],
+          preflight: [...base, "--json", "preflight"],
           beat: [...base, "beat", "200"],
         };
         return args[action];
@@ -809,6 +823,20 @@
         }
       }
 
+      async function runPreflightReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        $("preflightReport").textContent = "loading...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "preflight"]);
+          currentPreflightReport = report;
+          renderPreflightReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("preflightReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runSingleCheck(index) {
         if (!currentInstallReport || currentInstallReport.id !== $("tentacle").value) {
           await runInstallReport();
@@ -935,6 +963,15 @@
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
+      function renderPreflightReport(report) {
+        const root = $("preflightReport");
+        root.className = "stack";
+        root.textContent = "";
+        root.appendChild(preflightSummary(report));
+        root.appendChild(reportList("Checks", report.checks || [], preflightItem));
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
       function renderRouteReport(report) {
         const root = $("routeReport");
         root.className = "stack";
@@ -1051,6 +1088,43 @@
           grid.appendChild(metric);
         });
         return grid;
+      }
+
+      function preflightSummary(report) {
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Target", report.target || "0.1.0"],
+          ["Ready", report.release_ready ? "yes" : "no"],
+          ["Live", report.live ? "yes" : "no"],
+          ["Head", report.current_head || "unknown"],
+          ["State", report.state_path || "state"],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        return grid;
+      }
+
+      function preflightItem(check) {
+        const item = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = check.status === "pass" ? "badge ok" : check.status === "fail" ? "badge failed" : "badge";
+        badge.textContent = check.status || "unknown";
+        const command = document.createElement("span");
+        command.className = "check-command";
+        command.textContent = `${check.id || "check"}${check.required ? " · required" : ""}`;
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        meta.textContent = `${check.evidence || ""} · ${check.next || ""}`;
+        item.append(badge, command, meta);
+        return item;
       }
 
       function capabilityItem(capability) {
@@ -1793,6 +1867,8 @@
         $("beatReport").innerHTML = "<span>No beat yet.</span>";
         $("productReport").className = "metric";
         $("productReport").innerHTML = "<span>No product report yet.</span>";
+        $("preflightReport").className = "metric";
+        $("preflightReport").innerHTML = "<span>No preflight yet.</span>";
         currentInstallReport = null;
         currentCheckReport = null;
         currentBeatReport = null;
@@ -1800,6 +1876,7 @@
         currentFeedReport = null;
         currentContextReport = null;
         currentProductReport = null;
+        currentPreflightReport = null;
         currentFeedTrace = null;
         currentRouteReport = null;
         currentExploreReport = null;
@@ -1815,6 +1892,7 @@
       $("providerSave").addEventListener("click", runProviderSave);
       $("providerCheck").addEventListener("click", runProviderCheck);
       $("runReport").addEventListener("click", runProductReport);
+      $("runPreflight").addEventListener("click", runPreflightReport);
       document.querySelectorAll("[data-state]").forEach((button) => {
         button.addEventListener("click", () => render(button.dataset.state));
       });
@@ -1830,6 +1908,7 @@
           currentFeedReport = null;
           currentContextReport = null;
           currentProductReport = null;
+          currentPreflightReport = null;
           currentFeedTrace = null;
           currentRouteReport = null;
           currentExploreReport = null;
@@ -1847,6 +1926,8 @@
           $("beatReport").innerHTML = "<span>No beat yet.</span>";
           $("productReport").className = "metric";
           $("productReport").innerHTML = "<span>No product report yet.</span>";
+          $("preflightReport").className = "metric";
+          $("preflightReport").innerHTML = "<span>No preflight yet.</span>";
           render(currentPetState);
         });
       });

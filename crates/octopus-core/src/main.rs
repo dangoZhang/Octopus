@@ -12,6 +12,7 @@ use octopus_core::{
     OpenAiCompatibleConfig, RouteReport, SelfIterationPlan, Status, StatusReport,
     TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile, TentacleScaffold,
     TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate, ToolPermission,
+    CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -293,6 +294,28 @@ struct ProductReport {
     capabilities: Vec<ProductCapability>,
     gaps: Vec<ProductGap>,
     next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct PreflightReport {
+    version: String,
+    target: String,
+    state_path: String,
+    live: bool,
+    release_ready: bool,
+    current_head: Option<String>,
+    checks: Vec<PreflightCheck>,
+    live_provider: Option<ProviderCheckReport>,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct PreflightCheck {
+    id: String,
+    status: String,
+    required: bool,
+    evidence: String,
+    next: String,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -801,6 +824,20 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_product_report(&report, language);
+            }
+            Ok(())
+        }
+        Some("preflight") => {
+            let live = rest.iter().skip(1).any(|arg| arg == "--live");
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let report = preflight_report(&loaded, &state, live)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_preflight_report(&report, language);
             }
             Ok(())
         }
@@ -2576,6 +2613,7 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "bootstrap"
             | "pet"
             | "doctor"
+            | "preflight"
             | "report"
             | "beat"
             | "status"
@@ -3786,6 +3824,274 @@ fn product_gap(
     }
 }
 
+fn preflight_report(
+    state: &HarnessState,
+    state_path: &Path,
+    live: bool,
+) -> Result<PreflightReport, String> {
+    let product = product_report(state, state_path)?;
+    let doctor = doctor_report(state, state_path.to_path_buf())?;
+    let provider = provider_status_report();
+    let status = &doctor.status;
+    let current_head = git_short_head();
+    let real_machine_doc = repo_root().join("docs/real-machine-test.md");
+    let real_machine_log = fs::read_to_string(&real_machine_doc).unwrap_or_default();
+    let recorded_current_head = current_head
+        .as_ref()
+        .is_some_and(|head| real_machine_log.contains(head));
+    let seed_tentacles = bootstrap_seed_tentacles();
+    let missing_seed_tentacles = seed_tentacles
+        .iter()
+        .filter(|id| {
+            !state
+                .installed_tentacles
+                .iter()
+                .any(|tentacle| tentacle.id == **id)
+        })
+        .map(|id| (*id).to_string())
+        .collect::<Vec<_>>();
+    let provider_layers_ready = provider.layers.iter().all(|layer| {
+        layer.enabled && layer.configured && layer.api_key_present && layer.curl_available
+    });
+    let github_grant = state.active_grant("github", "dangoZhang/Octopus").is_some();
+    let gh_ready = command_ready("gh");
+    let docs_ready = repo_root().join("README.md").exists()
+        && repo_root().join("docs/index.html").exists()
+        && repo_root().join("docs/app.html").exists()
+        && repo_root().join("docs/pet.html").exists();
+    let feedback_ready = status.feed_trace_count > 0
+        && status.check_history_count > 0
+        && !state.evolution_outcomes.is_empty();
+    let mut live_provider = None;
+    let mut live_provider_error = None;
+    if live {
+        match provider_check_report(
+            &doctor.llm.config_prefix,
+            "Reply with 'octopus provider live'.",
+        ) {
+            Ok(report) => live_provider = Some(report),
+            Err(error) => live_provider_error = Some(error),
+        }
+    }
+
+    let mut checks = vec![
+        preflight_check(
+            "state",
+            state_path.exists(),
+            true,
+            format!(
+                "{} ({})",
+                state_path.to_string_lossy(),
+                if state_path.exists() { "exists" } else { "missing" }
+            ),
+            "octopus bootstrap",
+        ),
+        preflight_check(
+            "seed_tentacles",
+            missing_seed_tentacles.is_empty(),
+            true,
+            if missing_seed_tentacles.is_empty() {
+                format!("{} seed tentacles installed", seed_tentacles.len())
+            } else {
+                format!("missing {}", missing_seed_tentacles.join(", "))
+            },
+            "octopus bootstrap",
+        ),
+        preflight_check(
+            "manifest_integrity",
+            doctor.broken_manifests.is_empty() && doctor.manifest_count > 0,
+            true,
+            if doctor.broken_manifests.is_empty() {
+                format!("{} manifests clean", doctor.manifest_count)
+            } else {
+                doctor.broken_manifests.join("; ")
+            },
+            "octopus manifests",
+        ),
+        preflight_check(
+            "clean_brain_boundary",
+            product.context.brain == CLEAN_BRAIN_CONTEXT_POLICY
+                && product.context.tentacle == TENTACLE_CONTEXT_POLICY,
+            true,
+            format!(
+                "brain={}, tentacle={}",
+                product.context.brain, product.context.tentacle
+            ),
+            "octopus context observe .",
+        ),
+        preflight_check(
+            "docs_and_pet",
+            docs_ready,
+            true,
+            "README, docs homepage, app, and pixel pet files",
+            "octopus bridge",
+        ),
+        preflight_check(
+            "provider_layers",
+            provider_layers_ready,
+            true,
+            provider
+                .layers
+                .iter()
+                .map(|layer| {
+                    format!(
+                        "{} enabled={} configured={} key={} curl={}",
+                        layer.layer,
+                        layer.enabled,
+                        layer.configured,
+                        layer.api_key_present,
+                        layer.curl_available
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("; "),
+            "octopus provider save openai; source .octopus/llm.env; octopus provider status",
+        ),
+        preflight_status_check(
+            "live_provider",
+            if live {
+                if live_provider.is_some() {
+                    "pass"
+                } else {
+                    "fail"
+                }
+            } else {
+                "skipped"
+            },
+            true,
+            live_provider
+                .as_ref()
+                .map(|report| report.content.clone())
+                .or(live_provider_error)
+                .unwrap_or_else(|| "not run; pass --live to call the provider".to_string()),
+            format!("octopus --state {} preflight --live", shell_arg(&state_path.to_string_lossy())),
+        ),
+        preflight_check(
+            "feedback_data",
+            feedback_ready,
+            true,
+            format!(
+                "traces={}, checks={}, evolution_scores={}",
+                status.feed_trace_count,
+                status.check_history_count,
+                state.evolution_outcomes.len()
+            ),
+            "octopus need observe .; octopus check swe-agent; octopus evolve score swe-agent 03-runtime-code partial \"reviewed\"",
+        ),
+        preflight_check(
+            "github_pr_path",
+            github_grant && gh_ready,
+            true,
+            format!("gh_cli={}, oauth_grant={}", gh_ready, github_grant),
+            "gh auth login; octopus oauth github dangoZhang/Octopus repo workflow",
+        ),
+        preflight_check(
+            "real_machine_record",
+            recorded_current_head,
+            true,
+            current_head
+                .as_ref()
+                .map(|head| format!("head {head} recorded={recorded_current_head}"))
+                .unwrap_or_else(|| "git head unavailable".to_string()),
+            "record this head in docs/real-machine-test.md after the real-machine gate",
+        ),
+        preflight_check(
+            "desktop_adapters",
+            state
+                .installed_tentacles
+                .iter()
+                .any(|tentacle| tentacle.id == "computer-use-agent"),
+            false,
+            "computer-use-agent installed for desktop/browser probes",
+            "octopus install computer-use-agent",
+        ),
+        preflight_check(
+            "harness_repair",
+            state
+                .installed_tentacles
+                .iter()
+                .any(|tentacle| tentacle.id == "harness-repair-agent"),
+            false,
+            "harness-repair-agent installed for tool-side diagnosis",
+            "octopus install harness-repair-agent",
+        ),
+    ];
+    checks.sort_by(|left, right| left.id.cmp(&right.id));
+    let release_ready = checks
+        .iter()
+        .filter(|check| check.required)
+        .all(|check| check.status == "pass");
+    let mut next = checks
+        .iter()
+        .filter(|check| check.status != "pass")
+        .map(|check| check.next.clone())
+        .collect::<Vec<_>>();
+    next.push("octopus report".to_string());
+    next.sort();
+    next.dedup();
+
+    Ok(PreflightReport {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        target: "0.1.0".to_string(),
+        state_path: state_path.to_string_lossy().to_string(),
+        live,
+        release_ready,
+        current_head,
+        checks,
+        live_provider,
+        next,
+    })
+}
+
+fn preflight_check(
+    id: impl Into<String>,
+    passed: bool,
+    required: bool,
+    evidence: impl Into<String>,
+    next: impl Into<String>,
+) -> PreflightCheck {
+    preflight_status_check(
+        id,
+        if passed {
+            "pass"
+        } else if required {
+            "fail"
+        } else {
+            "warn"
+        },
+        required,
+        evidence,
+        next,
+    )
+}
+
+fn preflight_status_check(
+    id: impl Into<String>,
+    status: impl Into<String>,
+    required: bool,
+    evidence: impl Into<String>,
+    next: impl Into<String>,
+) -> PreflightCheck {
+    PreflightCheck {
+        id: id.into(),
+        status: status.into(),
+        required,
+        evidence: evidence.into(),
+        next: next.into(),
+    }
+}
+
+fn git_short_head() -> Option<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 fn print_product_report(report: &ProductReport, language: Language) {
     match language {
         Language::En => {
@@ -3847,6 +4153,57 @@ fn print_product_report(report: &ProductReport, language: Language) {
             println!("缺口:");
             for gap in &report.gaps {
                 println!("- {}: {}; 下一步={}", gap.id, gap.impact, gap.next);
+            }
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn print_preflight_report(report: &PreflightReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus preflight");
+            println!("target: {}", report.target);
+            println!("version: {}", report.version);
+            println!("state: {}", report.state_path);
+            println!("live: {}", report.live);
+            println!("release_ready: {}", report.release_ready);
+            println!(
+                "head: {}",
+                report.current_head.as_deref().unwrap_or("unknown")
+            );
+            println!("checks:");
+            for check in &report.checks {
+                println!(
+                    "- {} [{} required={}]: {}; next={}",
+                    check.id, check.status, check.required, check.evidence, check.next
+                );
+            }
+            if let Some(provider) = &report.live_provider {
+                println!("live_provider_reply: {}", provider.content);
+            }
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼发布前检查");
+            println!("目标版本: {}", report.target);
+            println!("版本: {}", report.version);
+            println!("状态文件: {}", report.state_path);
+            println!("Live检查: {}", report.live);
+            println!("可发布: {}", report.release_ready);
+            println!(
+                "当前提交: {}",
+                report.current_head.as_deref().unwrap_or("未知")
+            );
+            println!("检查项:");
+            for check in &report.checks {
+                println!(
+                    "- {} [{} 必需={}]: {}; 下一步={}",
+                    check.id, check.status, check.required, check.evidence, check.next
+                );
+            }
+            if let Some(provider) = &report.live_provider {
+                println!("Live Provider 回复: {}", provider.content);
             }
             println!("下一步: {}", join_or_none(&report.next));
         }
@@ -5498,7 +5855,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | explore [prompt] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | explore [prompt] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -5526,7 +5883,7 @@ mod tests {
     use super::{
         bridge_command_allowed, bridge_command_name, check_report, http_content_length,
         install_report, is_broken_pipe_panic, localize_summary, parse_bridge_env_overlay,
-        percent_encode_path, pet_report, pet_report_for_state, product_report,
+        percent_encode_path, pet_report, pet_report_for_state, preflight_report, product_report,
         provider_status_report, run, skill_reports, usage, Language,
     };
     use octopus_core::{
@@ -5873,6 +6230,7 @@ mod tests {
         assert!(usage().contains("provider save <profile>"));
         assert!(usage().contains("provider status"));
         assert!(usage().contains("report"));
+        assert!(usage().contains("preflight [--live]"));
         assert!(usage().contains("traces [limit]"));
         assert!(usage().contains("feedback <trace-index>"));
         assert!(usage().contains("bootstrap [tentacles-root]"));
@@ -6061,6 +6419,19 @@ mod tests {
             "state.json".to_string(),
             "--json".to_string(),
             "report".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "preflight".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "preflight".to_string(),
+            "--live".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),
@@ -6648,9 +7019,22 @@ mod tests {
             "report".to_string(),
         ])
         .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "preflight".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "preflight".to_string(),
+        ])
+        .unwrap();
 
-        let report =
-            product_report(&HarnessState::load(&path).unwrap(), Path::new(&state)).unwrap();
+        let loaded = HarnessState::load(&path).unwrap();
+        let report = product_report(&loaded, Path::new(&state)).unwrap();
         assert!(report
             .capabilities
             .iter()
@@ -6659,6 +7043,16 @@ mod tests {
             .gaps
             .iter()
             .any(|item| item.id == "provider_feedback"));
+        let preflight = preflight_report(&loaded, Path::new(&state), false).unwrap();
+        assert!(!preflight.release_ready);
+        assert!(preflight
+            .checks
+            .iter()
+            .any(|item| item.id == "live_provider" && item.status == "skipped"));
+        assert!(preflight
+            .next
+            .iter()
+            .any(|item| item.contains("preflight --live")));
 
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("swe-agent"));

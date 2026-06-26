@@ -12,6 +12,7 @@ Release checklist:
 - README stays story + Quick Install & Use.
 - `docs/product-gap.md` records current shape, filled gaps, and next fill.
 - CI stays green for Rust, Python, manifests, tentacle runtime checks, pet page, and install path.
+- `octopus preflight --live` is the release-readiness summary before `0.1.0` tags.
 - Pages deploys `index.html`, `app.html`, `pet.html`, quickstart, architecture, research, and self-iteration docs.
 - Version changes land together in `crates/octopus-core/Cargo.toml` and `pyproject.toml`.
 - `0.1.0` is reserved for the first release-ready build after recorded real-machine testing.
@@ -26,6 +27,6 @@ Real-machine test gate for `0.1.0` and later tags:
 
 Last cleanup/version correction: `0.0.6` on 2026-06-26. Scope: Feed-trace harness evolution, app grant/write apply controls, clean-brain context inspection, product capability report, Feed trace feedback scoring, docs/CI alignment; no tag cut.
 
-Product commits toward `0.0.7`: 6/8.
+Product commits toward `0.0.7`: 7/8.
 
 Next planned cleanup/version commit: `0.0.7`.

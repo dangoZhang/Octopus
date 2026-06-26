@@ -36,6 +36,7 @@ octopus --version
 octopus bootstrap
 octopus doctor
 octopus report
+octopus preflight
 ```
 
 Open the local app:
@@ -67,6 +68,7 @@ octopus traces
 octopus feedback 1 satisfied "useful feed"
 octopus beat 200
 octopus pet
+octopus preflight
 ```
 
 ## Built-In Tentacles
