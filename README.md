@@ -58,6 +58,8 @@ Local app:
 octopus bridge
 ```
 
+Open `http://127.0.0.1:8765/app.html` for the native install and command surface.
+
 Update:
 
 ```bash

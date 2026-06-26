@@ -49,6 +49,8 @@ octopus --state "$tmp/state.json" goal
 octopus bridge
 ```
 
+Open `http://127.0.0.1:8765/app.html`. The app can install tentacles, show grant/check/next reports, and grant local Octopus tool scopes.
+
 ## Tentacle Run
 
 ```bash

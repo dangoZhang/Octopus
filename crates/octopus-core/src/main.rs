@@ -1956,6 +1956,9 @@ fn bridge_command_allowed(args: &[String]) -> bool {
     let Some(command) = bridge_command_name(args) else {
         return false;
     };
+    if command == "oauth" {
+        return bridge_oauth_allowed(args);
+    }
     if command == "self-iterate" && args.iter().any(|arg| arg == "pr") {
         return false;
     }
@@ -1985,14 +1988,36 @@ fn bridge_command_allowed(args: &[String]) -> bool {
     )
 }
 
+fn bridge_oauth_allowed(args: &[String]) -> bool {
+    let Some(index) = bridge_command_index(args) else {
+        return false;
+    };
+    args.get(index).is_some_and(|command| command == "oauth")
+        && args
+            .get(index + 1)
+            .is_some_and(|provider| provider == "octopus")
+        && args
+            .get(index + 2)
+            .is_some_and(|scope| scope.starts_with("tool:"))
+        && args.get(index + 3).is_some()
+        && args
+            .iter()
+            .skip(index + 3)
+            .all(|permission| permission.starts_with("tool:"))
+}
+
 fn bridge_command_name(args: &[String]) -> Option<&str> {
+    bridge_command_index(args).and_then(|index| args.get(index).map(String::as_str))
+}
+
+fn bridge_command_index(args: &[String]) -> Option<usize> {
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
             "--state" | "--lang" => index += 2,
             "--json" => index += 1,
             value if value.starts_with('-') => return None,
-            value => return Some(value),
+            _ => return Some(index),
         }
     }
     None
@@ -4163,10 +4188,48 @@ mod tests {
             "observe".to_string(),
             ".".to_string()
         ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "oauth".to_string(),
+            "octopus".to_string(),
+            "tool:computer-use-agent".to_string(),
+            "tool:observe".to_string(),
+            "tool:ui".to_string()
+        ]));
         assert!(!bridge_command_allowed(&[
             "sh".to_string(),
             "-c".to_string(),
             "echo unsafe".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "oauth".to_string(),
+            "github".to_string(),
+            "dangoZhang/Octopus".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "oauth".to_string(),
+            "octopus".to_string(),
+            "tool:computer-use-agent".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "oauth".to_string(),
+            "octopus".to_string(),
+            "tool:computer-use-agent".to_string(),
+            "harness:write".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "oauth".to_string(),
+            "revoke".to_string(),
+            "octopus:tool:computer-use-agent".to_string()
         ]));
         assert!(!bridge_command_allowed(&[
             "--state".to_string(),
