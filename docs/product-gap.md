@@ -24,6 +24,7 @@ Updated: 2026-06-26
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
 - The HTML install guide can expand each check to inspect stdout, stderr, exit code, and recent harness check history.
 - `check <tentacle> [index]` records compact harness history and the HTML install guide can rerun one check at a time.
+- The native HTML app can run a structured Feed test that installs the selected tentacle, sends the selected Need, and renders plan source, tool, action count, summary, and evidence.
 - Context policy is explicit: clean brain sees `Goal + Mem + Need + Feed`; tentacles see `Need + Tool + Action + Tool + Action -> Feed`.
 - `think <tentacle> <kind> <query>` exposes tool-side planning and planned actions without executing tools.
 - LLM-backed tentacle plans can execute up to two tool actions for one Need and return one compact Feed.
@@ -88,6 +89,7 @@ Updated: 2026-06-26
 - Added native HTML provider profile/env generation with a copyable shell env block.
 - Added `provider save` plus bridge-side `.octopus/llm.env` loading so app-generated provider setup can affect later bridge child commands.
 - Added a native HTML Provider Save action and limited provider env saving through bridge to the default path.
+- Added a native HTML Feed Test action that runs `--json need` through bridge and renders structured Feed metadata/evidence for tool-side planning.
 
 ## Remaining Gaps
 
@@ -97,7 +99,7 @@ Updated: 2026-06-26
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, layer diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
 - Release packaging, examples, and docs now have richer install feedback; non-Rust packaging still needs finish.
-- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show harness-beat evolution recommendations with apply-plan previews, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, run structured Feed tests, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show harness-beat evolution recommendations with apply-plan previews, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill

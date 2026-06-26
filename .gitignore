@@ -9,4 +9,5 @@ build/
 *.egg-info/
 target/
 .octopus/
+cowork/
 .DS_Store

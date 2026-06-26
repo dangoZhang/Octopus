@@ -51,7 +51,7 @@ octopus --state "$tmp/state.json" goal
 octopus bridge
 ```
 
-Open `http://127.0.0.1:8765/app.html`. The app can install tentacles, show grant/check/next reports, and grant local Octopus tool scopes.
+Open `http://127.0.0.1:8765/app.html`. The app can install tentacles, run a structured Feed test, show grant/check/next reports, and grant local Octopus tool scopes.
 It can also save provider env to `.octopus/llm.env`; bridge reads that file when it runs child Octopus commands.
 
 ## Tentacle Run

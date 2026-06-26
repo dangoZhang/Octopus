@@ -60,7 +60,7 @@ Local app:
 octopus bridge
 ```
 
-Open `http://127.0.0.1:8765/app.html` for provider env save/readiness, install, checks, beat, and harness evolution review. Bridge reads `.octopus/llm.env` for child commands.
+Open `http://127.0.0.1:8765/app.html` for provider env save/readiness, structured Feed tests, install, checks, beat, and harness evolution review. Bridge reads `.octopus/llm.env` for child commands.
 
 Update:
 

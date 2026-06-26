@@ -232,6 +232,11 @@
         padding-top: 14px;
       }
 
+      .feed-report {
+        border-top: 1px solid var(--line);
+        padding-top: 14px;
+      }
+
       .beat-report {
         border-top: 1px solid var(--line);
         padding-top: 14px;
@@ -448,6 +453,7 @@
             <button type="button" data-run="chat">Chat</button>
             <button type="button" data-run="think">Think</button>
             <button type="button" data-run="need">Need</button>
+            <button type="button" id="runFeed">Feed Test</button>
             <button type="button" data-run="traces">Trace</button>
             <button type="button" data-run="provider">Provider</button>
             <button type="button" id="providerEnv">Provider Env</button>
@@ -469,6 +475,10 @@
             <h2>Provider</h2>
             <div id="providerReport" class="metric"><span>No provider status yet.</span></div>
           </div>
+          <div class="feed-report stack">
+            <h2>Feed</h2>
+            <div id="feedReport" class="metric"><span>No feed yet.</span></div>
+          </div>
           <div class="beat-report stack">
             <h2>Harness Beat</h2>
             <div id="beatReport" class="metric"><span>No beat yet.</span></div>
@@ -486,6 +496,7 @@
       let currentCheckReport = null;
       let currentBeatReport = null;
       let currentProviderReport = null;
+      let currentFeedReport = null;
 
       function render(stateName = "harness") {
         currentPetState = stateName;
@@ -507,6 +518,7 @@
           `octopus --state ${shellQuote(state)} install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json check ${tentacle}`,
+          `octopus --state ${shellQuote(state)} --json need ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} chat ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} think ${tentacle} ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} need ${need} ${shellQuote(target)}`,
@@ -580,6 +592,28 @@
           if (currentInstallReport) renderInstallReport(currentInstallReport);
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runFeedTest() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const tentacle = $("tentacle").value;
+        const need = $("need").value;
+        const target = $("target").value.trim() || ".";
+        $("feedReport").textContent = "feeding...";
+        try {
+          if (!currentInstallReport || currentInstallReport.id !== tentacle) {
+            currentInstallReport = await runBridgeJson(["--state", state, "--json", "install", tentacle]);
+            currentCheckReport = null;
+            renderInstallReport(currentInstallReport);
+          }
+          const report = await runBridgeJson(["--state", state, "--json", "need", need, target]);
+          currentFeedReport = report;
+          renderFeedReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("feedReport").textContent = String(error);
           $("output").textContent = String(error);
         }
       }
@@ -694,6 +728,15 @@
         root.appendChild(reportList("Checks", report.checks || [], checkItem));
         root.appendChild(reportList("History", checkHistory(report), checkHistoryItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function renderFeedReport(report) {
+        const root = $("feedReport");
+        root.className = "stack";
+        root.textContent = "";
+        const feeds = report.feeds || [];
+        root.appendChild(feedSummary(report, feeds[0]));
+        root.appendChild(reportList("Feeds", feeds, feedItem));
       }
 
       function renderBeatReport(report) {
@@ -838,6 +881,61 @@
           grid.appendChild(metric);
         });
         return grid;
+      }
+
+      function feedSummary(report, feed) {
+        const metadata = (feed && feed.metadata) || {};
+        const need = (feed && feed.need) || {};
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Status", report.status || (feed && feed.status) || "unknown"],
+          ["Need", need.kind ? `${need.kind}: ${need.query || ""}` : "none"],
+          ["Tentacle", metadata.tentacle || metadata.tentacle_brain || "none"],
+          ["Tool", metadata.tool || "none"],
+          ["Plan source", metadata.plan_source || "none"],
+          ["Actions", metadata.action_count || "0"],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        return grid;
+      }
+
+      function feedItem(feed) {
+        const item = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = feed.status === "satisfied" ? "badge ok" : "badge failed";
+        badge.textContent = feed.status || "unknown";
+        const command = document.createElement("span");
+        command.className = "check-command";
+        const metadata = feed.metadata || {};
+        command.textContent = `${metadata.tentacle || metadata.tentacle_brain || "feed"} · ${metadata.tool || "no tool"} · ${metadata.plan_source || "no plan"}`;
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        meta.textContent = feed.summary || "no summary";
+        item.append(badge, command, meta);
+        item.appendChild(feedEvidenceDetails(feed));
+        return item;
+      }
+
+      function feedEvidenceDetails(feed) {
+        const details = document.createElement("details");
+        const summary = document.createElement("summary");
+        summary.textContent = `Evidence · ${(feed.evidence || []).length}`;
+        const pre = document.createElement("pre");
+        pre.className = "check-output";
+        const code = document.createElement("code");
+        code.textContent = JSON.stringify(feed.evidence || [], null, 2);
+        pre.appendChild(code);
+        details.append(summary, pre);
+        return details;
       }
 
       function beatItem(beat) {
@@ -1175,16 +1273,20 @@
         $("installReport").innerHTML = "<span>No report yet.</span>";
         $("providerReport").className = "metric";
         $("providerReport").innerHTML = "<span>No provider status yet.</span>";
+        $("feedReport").className = "metric";
+        $("feedReport").innerHTML = "<span>No feed yet.</span>";
         $("beatReport").className = "metric";
         $("beatReport").innerHTML = "<span>No beat yet.</span>";
         currentInstallReport = null;
         currentCheckReport = null;
         currentBeatReport = null;
         currentProviderReport = null;
+        currentFeedReport = null;
         render();
       });
       $("installGuide").addEventListener("click", runInstallReport);
       $("runChecks").addEventListener("click", runChecks);
+      $("runFeed").addEventListener("click", runFeedTest);
       $("providerEnv").addEventListener("click", runProviderEnv);
       $("providerSave").addEventListener("click", runProviderSave);
       $("providerCheck").addEventListener("click", runProviderCheck);
@@ -1200,8 +1302,11 @@
           currentCheckReport = null;
           currentBeatReport = null;
           currentProviderReport = null;
+          currentFeedReport = null;
           $("providerReport").className = "metric";
           $("providerReport").innerHTML = "<span>No provider status yet.</span>";
+          $("feedReport").className = "metric";
+          $("feedReport").innerHTML = "<span>No feed yet.</span>";
           $("beatReport").className = "metric";
           $("beatReport").innerHTML = "<span>No beat yet.</span>";
           render(currentPetState);
