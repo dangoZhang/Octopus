@@ -4,13 +4,14 @@ use octopus_core::{
     propose_tentacle_evolution_with_state, recommend_tentacle_evolution_apply, scaffold_tentacle,
     think_tentacle, write_harness_beat_evolution_artifacts, write_tentacle_apply_artifacts,
     write_tentacle_evolution_artifacts, AdaptReport, CapabilityGrant, ChatClient, ChatMessage,
-    ChatRole, CheckHistoryInput, CheckHistoryRecord, EnvironmentReport, EvolutionApplyArtifact,
-    EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed,
-    FeedTraceRecord, GoalChat, Harness, HarnessBeatEvolution, HarnessState, HeartBeat,
-    HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind,
-    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, SelfIterationPlan, Status, StatusReport,
-    TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile, TentacleScaffold,
-    TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate, ToolPermission,
+    ChatRole, CheckHistoryInput, CheckHistoryRecord, ContextReport, EnvironmentReport,
+    EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome,
+    EvolutionRecommendation, Feed, FeedTraceRecord, GoalChat, Harness, HarnessBeatEvolution,
+    HarnessState, HeartBeat, HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need,
+    NeedKind, OpenAiCompatibleChatClient, OpenAiCompatibleConfig, SelfIterationPlan, Status,
+    StatusReport, TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile,
+    TentacleScaffold, TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate,
+    ToolPermission,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -619,6 +620,20 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
+        Some("context") => {
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let next_need = parse_context_need(&rest)?;
+            let report = loaded.context_report(next_need, 6);
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_context_report(&report, language);
+            }
+            Ok(())
+        }
         Some("status") => {
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             let report = loaded.status_report_with_state(Some(&state));
@@ -1127,6 +1142,18 @@ fn parse_kind(value: &str) -> Result<NeedKind, String> {
         "recall" => Ok(NeedKind::Recall),
         "observe" => Ok(NeedKind::Observe),
         _ => Err(format!("unknown need kind: {value}")),
+    }
+}
+
+fn parse_context_need(rest: &[String]) -> Result<Option<Need>, String> {
+    match rest.len() {
+        1 => Ok(None),
+        2 => Err("context needs both kind and query, or no arguments".to_string()),
+        _ => {
+            let kind = parse_kind(&rest[1])?;
+            let query = rest[2..].join(" ");
+            Ok(Some(Need::new(kind, query)))
+        }
     }
 }
 
@@ -2362,6 +2389,7 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "doctor"
             | "beat"
             | "status"
+            | "context"
             | "goal"
             | "installed"
             | "install"
@@ -3129,6 +3157,110 @@ fn print_status_report(report: &StatusReport, language: Language) {
             }
             println!("警告: {}", join_or_none(&report.warnings));
             println!("下一步: {}", report.next_action);
+        }
+    }
+}
+
+fn print_context_report(report: &ContextReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus context");
+            println!("brain: {}", report.brain.policy);
+            println!(
+                "goal: {}",
+                report
+                    .brain
+                    .goal
+                    .as_ref()
+                    .map(|goal| goal.objective.as_str())
+                    .unwrap_or("none")
+            );
+            println!("mem: {}", report.brain.mem.len());
+            if let Some(need) = &report.brain.next_need {
+                println!("next_need: {} {}", need_label(&need.kind), need.query);
+            }
+            print_context_turns(report, language);
+            print_context_tentacles(report, language);
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼上下文");
+            println!("主脑: {}", report.brain.policy);
+            println!(
+                "目标: {}",
+                report
+                    .brain
+                    .goal
+                    .as_ref()
+                    .map(|goal| goal.objective.as_str())
+                    .unwrap_or("无")
+            );
+            println!("记忆: {}", report.brain.mem.len());
+            if let Some(need) = &report.brain.next_need {
+                println!("下个Need: {} {}", need_label(&need.kind), need.query);
+            }
+            print_context_turns(report, language);
+            print_context_tentacles(report, language);
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn print_context_turns(report: &ContextReport, language: Language) {
+    match language {
+        Language::En => println!("recent Need/Feed:"),
+        Language::Zh => println!("最近Need/Feed:"),
+    }
+    if report.brain.turns.is_empty() {
+        match language {
+            Language::En => println!("- none"),
+            Language::Zh => println!("- 暂无"),
+        }
+        return;
+    }
+    for turn in &report.brain.turns {
+        println!(
+            "- {}:{} -> {:?} :: {}",
+            need_label(&turn.need.kind),
+            turn.need.query,
+            turn.feed.status,
+            turn.feed.summary
+        );
+    }
+}
+
+fn print_context_tentacles(report: &ContextReport, language: Language) {
+    match language {
+        Language::En => println!("tentacles:"),
+        Language::Zh => println!("触手:"),
+    }
+    if report.tentacles.is_empty() {
+        match language {
+            Language::En => println!("- none installed"),
+            Language::Zh => println!("- 暂未安装"),
+        }
+        return;
+    }
+    for tentacle in &report.tentacles {
+        let tools = tentacle
+            .tools
+            .iter()
+            .map(|tool| tool.id.clone())
+            .collect::<Vec<_>>();
+        println!(
+            "- {}: {} | tools={}",
+            tentacle.id,
+            tentacle.policy,
+            join_or_none(&tools)
+        );
+        if let Some(action) = tentacle.recent_actions.last() {
+            println!(
+                "  latest: #{} {} -> {:?} {}",
+                action.index,
+                action.tool.as_deref().unwrap_or("no tool"),
+                action.status,
+                action.summary
+            );
         }
     }
 }
@@ -4556,7 +4688,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | context [kind query] | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -4838,6 +4970,13 @@ mod tests {
         ])
         .unwrap();
         run(vec![
+            "--json".to_string(),
+            "context".to_string(),
+            "observe".to_string(),
+            "README.md".to_string(),
+        ])
+        .unwrap();
+        run(vec![
             "--lang".to_string(),
             "zh".to_string(),
             "env".to_string(),
@@ -4845,6 +4984,7 @@ mod tests {
         .unwrap();
         assert!(usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
+        assert!(usage().contains("context [kind query]"));
         assert!(usage().contains("provider save <profile>"));
         assert!(usage().contains("provider status"));
         assert!(usage().contains("traces [limit]"));
@@ -4969,6 +5109,13 @@ mod tests {
             "--state".to_string(),
             "state.json".to_string(),
             "traces".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "context".to_string(),
+            "observe".to_string(),
+            ".".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),

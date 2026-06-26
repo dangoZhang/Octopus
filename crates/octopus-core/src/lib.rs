@@ -13,6 +13,8 @@ const FEED_TRACE_QUERY_BYTES: usize = 160;
 const FEED_TRACE_SUMMARY_BYTES: usize = 240;
 const CHECK_HISTORY_OUTPUT_BYTES: usize = 480;
 const MAX_TENTACLE_ACTIONS: usize = 2;
+pub const CLEAN_BRAIN_CONTEXT_POLICY: &str = "Goal + Mem + Need + Feed";
+pub const TENTACLE_CONTEXT_POLICY: &str = "Need + Tool + Action + Tool + Action -> Feed";
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -299,6 +301,81 @@ pub struct GoalSnapshot {
     pub objective: String,
     pub refinements: usize,
     pub status: GoalStatus,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ContextReport {
+    pub brain: BrainContextReport,
+    pub tentacles: Vec<TentacleContextReport>,
+    pub hearts: Vec<HeartBeat>,
+    pub next: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainContextReport {
+    pub policy: String,
+    pub slots: Vec<String>,
+    pub goal: Option<Goal>,
+    pub mem: Vec<MemoryContextRecord>,
+    pub turns: Vec<BrainContextTurn>,
+    pub next_need: Option<Need>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct MemoryContextRecord {
+    pub id: String,
+    pub text: String,
+    pub weight: f32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainContextTurn {
+    pub need: NeedContext,
+    pub feed: FeedContext,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct NeedContext {
+    pub kind: NeedKind,
+    pub query: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct FeedContext {
+    pub status: Status,
+    pub summary: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TentacleContextReport {
+    pub id: String,
+    pub brain_kind: String,
+    pub policy: String,
+    pub slots: Vec<String>,
+    pub tools: Vec<ToolContext>,
+    pub recent_actions: Vec<TentacleActionContext>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ToolContext {
+    pub id: String,
+    pub description: String,
+    pub runtime: String,
+    pub entrypoint: String,
+    pub contract: Option<String>,
+    pub permission: Option<String>,
+    pub authorization_required: bool,
+    pub active_grant: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TentacleActionContext {
+    pub index: u64,
+    pub need: NeedContext,
+    pub tool: Option<String>,
+    pub plan_source: Option<String>,
+    pub status: Status,
+    pub summary: String,
 }
 
 impl Need {
@@ -1291,6 +1368,66 @@ impl HarnessState {
         self.status_report_with_state(None)
     }
 
+    pub fn context_report(&self, next_need: Option<Need>, limit: usize) -> ContextReport {
+        let limit = limit.max(1);
+        let turns = self
+            .recent_feed_traces(limit)
+            .into_iter()
+            .map(|trace| BrainContextTurn {
+                need: NeedContext {
+                    kind: trace.need_kind,
+                    query: trace.need_query,
+                },
+                feed: FeedContext {
+                    status: trace.status,
+                    summary: trace.summary,
+                },
+            })
+            .collect::<Vec<_>>();
+        let tentacles = self
+            .installed_tentacles
+            .iter()
+            .map(|tentacle| self.tentacle_context_report(tentacle, limit))
+            .collect::<Vec<_>>();
+        let mut next = vec!["octopus chat \"refine your goal\"".to_string()];
+        if let Some(need) = &next_need {
+            next.push(format!(
+                "octopus need {} {}",
+                kind_key(&need.kind),
+                shell_arg(&need.query)
+            ));
+            if let Some(tentacle) = tentacles.first() {
+                next.push(format!(
+                    "octopus think {} {} {}",
+                    tentacle.id,
+                    kind_key(&need.kind),
+                    shell_arg(&need.query)
+                ));
+            }
+        } else {
+            next.push("octopus context observe .".to_string());
+        }
+        next.push("octopus traces".to_string());
+        ContextReport {
+            brain: BrainContextReport {
+                policy: CLEAN_BRAIN_CONTEXT_POLICY.to_string(),
+                slots: vec![
+                    "Goal".to_string(),
+                    "Mem".to_string(),
+                    "Need".to_string(),
+                    "Feed".to_string(),
+                ],
+                goal: self.goal.clone(),
+                mem: self.memory_context_records(limit),
+                turns,
+                next_need,
+            },
+            tentacles,
+            hearts: self.status_report().hearts,
+            next,
+        }
+    }
+
     pub fn status_report_with_state(&self, state_path: Option<&Path>) -> StatusReport {
         let tentacles = self
             .installed_tentacles
@@ -1376,6 +1513,78 @@ impl HarnessState {
             latest_check: self.check_history.last().cloned(),
             warnings,
             next_action,
+        }
+    }
+
+    fn memory_context_records(&self, limit: usize) -> Vec<MemoryContextRecord> {
+        let mut records = self.memory.records.values().cloned().collect::<Vec<_>>();
+        records.sort_by(|left, right| {
+            right
+                .weight
+                .total_cmp(&left.weight)
+                .then_with(|| memory_id_number(&right.id).cmp(&memory_id_number(&left.id)))
+        });
+        records
+            .into_iter()
+            .take(limit)
+            .map(|record| MemoryContextRecord {
+                id: record.id,
+                text: short_text(&record.text, FEED_TRACE_SUMMARY_BYTES),
+                weight: record.weight,
+            })
+            .collect()
+    }
+
+    fn tentacle_context_report(
+        &self,
+        tentacle: &InstalledTentacle,
+        limit: usize,
+    ) -> TentacleContextReport {
+        let tools = installed_tentacle_tools(tentacle)
+            .into_iter()
+            .map(|tool| self.tool_context(&tool))
+            .collect::<Vec<_>>();
+        let recent_actions = self
+            .recent_feed_traces_for_tentacle(&tentacle.id, limit)
+            .into_iter()
+            .map(|trace| TentacleActionContext {
+                index: trace.index,
+                need: NeedContext {
+                    kind: trace.need_kind,
+                    query: trace.need_query,
+                },
+                tool: trace.tool,
+                plan_source: trace.plan_source,
+                status: trace.status,
+                summary: trace.summary,
+            })
+            .collect::<Vec<_>>();
+        TentacleContextReport {
+            id: tentacle.id.clone(),
+            brain_kind: tentacle.brain_kind.clone(),
+            policy: TENTACLE_CONTEXT_POLICY.to_string(),
+            slots: vec![
+                "Need".to_string(),
+                "Tool".to_string(),
+                "Action".to_string(),
+                "Feed".to_string(),
+            ],
+            tools,
+            recent_actions,
+        }
+    }
+
+    fn tool_context(&self, tool: &InstalledToolRef) -> ToolContext {
+        let active_grant = active_grant_for_tool(tool, &self.grants).map(|grant| grant.id.clone());
+        ToolContext {
+            id: tool.id.clone(),
+            description: tool.description.clone(),
+            runtime: tool.kind.clone(),
+            entrypoint: tool.entrypoint.clone(),
+            contract: tool.contract.clone(),
+            permission: tool.permission.as_ref().map(tool_permission_text),
+            authorization_required: tool.permission.is_some(),
+            active_grant,
         }
     }
 
@@ -1992,6 +2201,30 @@ impl InstalledToolRef {
     }
 }
 
+fn installed_tentacle_tools(tentacle: &InstalledTentacle) -> Vec<InstalledToolRef> {
+    if tentacle.tool_meta.is_empty() {
+        return tentacle
+            .tools
+            .iter()
+            .filter_map(|tool| InstalledToolRef::parse(tool))
+            .collect();
+    }
+    tentacle
+        .tool_meta
+        .iter()
+        .map(InstalledToolRef::from_installed)
+        .collect()
+}
+
+fn tool_permission_text(permission: &ToolPermission) -> String {
+    let permissions = if permission.permissions.is_empty() {
+        "none".to_string()
+    } else {
+        permission.permissions.join(",")
+    };
+    format!("{}:{}:{permissions}", permission.provider, permission.scope)
+}
+
 #[derive(Serialize)]
 struct ToolInvocation<'a> {
     schema_version: &'static str,
@@ -2155,7 +2388,7 @@ impl ManifestTentacle {
             brain_kind: self.installed.brain_kind.clone(),
             brain_prompt: self.installed.brain_prompt.clone(),
             feedback_contract: self.installed.feedback_contract.clone(),
-            context_policy: "Need + Tool + Action + Tool + Action -> Feed".to_string(),
+            context_policy: TENTACLE_CONTEXT_POLICY.to_string(),
             need: need.clone(),
             selected_tool: self.thinking_candidate(&plan.tool),
             plan_source: plan.source,
@@ -2640,7 +2873,7 @@ impl ManifestTentacle {
         evidence.confidence = if plan.source == "llm" { 0.9 } else { 0.7 };
         evidence.metadata.insert(
             "context_policy".to_string(),
-            "Need + Tool + Action + Tool + Action -> Feed".to_string(),
+            TENTACLE_CONTEXT_POLICY.to_string(),
         );
         evidence
             .metadata
@@ -2805,7 +3038,7 @@ impl Tentacle for ManifestTentacle {
         metadata.insert("available_tools".to_string(), plan.candidates.join(","));
         metadata.insert(
             "context_policy".to_string(),
-            "Need + Tool + Action + Tool + Action -> Feed".to_string(),
+            TENTACLE_CONTEXT_POLICY.to_string(),
         );
         metadata.insert("runtime".to_string(), tool.kind.clone());
         metadata.insert("tentacle_brain".to_string(), self.route_id.clone());
@@ -6429,6 +6662,83 @@ mod tests {
         harness.feed_one(&Need::new(NeedKind::Verify, "claim"));
 
         assert!(harness.state.routes.score(&NeedKind::Verify, "verifier") > 1.0);
+    }
+
+    #[test]
+    fn context_report_keeps_brain_slots_clean() {
+        let mut state = HarnessState {
+            goal: Some(Goal::new("ship Octopus")),
+            ..HarnessState::default()
+        };
+        state.memory.remember("clean brain keeps tools outside");
+        let need = Need::new(NeedKind::Observe, "README.md");
+        let mut feed = Feed::satisfied(&need, "observed README", "swe-agent");
+        feed.metadata
+            .insert("tentacle".to_string(), "swe-agent".to_string());
+        feed.metadata.insert("tool".to_string(), "read".to_string());
+        state.record_feed_trace_from_feed(&feed);
+
+        let report = state.context_report(Some(Need::new(NeedKind::Verify, "claim")), 5);
+
+        assert_eq!(report.brain.policy, CLEAN_BRAIN_CONTEXT_POLICY);
+        assert_eq!(report.brain.slots, vec!["Goal", "Mem", "Need", "Feed"]);
+        assert!(!report.brain.slots.iter().any(|slot| slot == "Tool"));
+        assert_eq!(report.brain.mem[0].text, "clean brain keeps tools outside");
+        assert_eq!(report.brain.turns[0].need.kind, NeedKind::Observe);
+        assert_eq!(report.brain.turns[0].feed.summary, "observed README");
+    }
+
+    #[test]
+    fn context_report_exposes_tentacle_tool_context() {
+        let mut state = HarnessState::default();
+        let permission = ToolPermission {
+            provider: "octopus".to_string(),
+            scope: "tool:swe-agent".to_string(),
+            permissions: vec!["tool:observe".to_string()],
+            reason: Some("repo observation".to_string()),
+        };
+        state.installed_tentacles.push(InstalledTentacle {
+            id: "swe-agent".to_string(),
+            name: "SWE Agent".to_string(),
+            source: "test".to_string(),
+            brain_kind: "llm".to_string(),
+            brain_prompt: "turn needs into tool actions".to_string(),
+            feedback_contract: None,
+            runtime_kinds: vec!["shell".to_string()],
+            needs: vec!["observe".to_string()],
+            tools: Vec::new(),
+            tool_meta: vec![InstalledTool {
+                id: "read".to_string(),
+                description: "Read files".to_string(),
+                input: "path".to_string(),
+                output: "lines".to_string(),
+                kind: "shell".to_string(),
+                entrypoint: "tools/read.sh".to_string(),
+                contract: None,
+                permission: Some(permission),
+            }],
+            editable: vec!["tools/*".to_string()],
+            evolution_surfaces: vec!["runtime_code".to_string()],
+        });
+        let grant = state.grant_oauth(
+            "octopus",
+            "tool:swe-agent",
+            vec!["tool:observe".to_string()],
+        );
+
+        let report = state.context_report(None, 5);
+
+        assert_eq!(report.tentacles[0].policy, TENTACLE_CONTEXT_POLICY);
+        assert_eq!(
+            report.tentacles[0].slots,
+            vec!["Need", "Tool", "Action", "Feed"]
+        );
+        assert_eq!(report.tentacles[0].tools[0].id, "read");
+        assert!(report.tentacles[0].tools[0].authorization_required);
+        assert_eq!(
+            report.tentacles[0].tools[0].active_grant.as_deref(),
+            Some(grant.id.as_str())
+        );
     }
 
     #[test]

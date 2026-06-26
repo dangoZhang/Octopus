@@ -131,6 +131,11 @@ jobs:
       - run: grep -q "Feed Test" docs/app.html
       - run: grep -q "runFeedTest" docs/app.html
       - run: grep -q "renderFeedReport" docs/app.html
+      - run: grep -q "Context" docs/app.html
+      - run: grep -q "runContextReport" docs/app.html
+      - run: grep -q "renderContextReport" docs/app.html
+      - run: grep -q "octopus context" README.md
+      - run: grep -q "context \\[kind query\\]" crates/octopus-core/src/main.rs
       - run: grep -q "feedEvidenceDetails" docs/app.html
       - run: grep -q "checkOutputDetails" docs/app.html
       - run: grep -q "check-output" docs/app.html

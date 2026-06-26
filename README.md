@@ -40,6 +40,7 @@ octopus --json check computer-use-agent
 octopus --json check computer-use-agent 1
 octopus install bash-only
 octopus chat "build a clean-brain agent"
+octopus context observe .
 octopus think swe-agent observe README.md
 octopus need observe .
 octopus traces
@@ -79,6 +80,7 @@ checks:
 next:
 json-feed observe
 Octopus think
+Octopus context
 plan_source: rule
 actions: 1:read
 feed_trace: json-feed/feed via rule

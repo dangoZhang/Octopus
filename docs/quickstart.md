@@ -32,6 +32,7 @@ octopus --state "$tmp/state.json" --json check computer-use-agent 1
 octopus --state "$tmp/state.json" install bash-only
 octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
+octopus --state "$tmp/state.json" context observe .
 octopus --state "$tmp/state.json" think swe-agent observe README.md
 octopus --state "$tmp/state.json" need observe .
 octopus --state "$tmp/state.json" traces
@@ -51,7 +52,7 @@ octopus --state "$tmp/state.json" goal
 octopus bridge
 ```
 
-Open `http://127.0.0.1:8765/app.html`. The app can install tentacles, run a structured Feed test, show grant/check/next reports, and grant local Octopus tool scopes.
+Open `http://127.0.0.1:8765/app.html`. The app can install tentacles, inspect context, run a structured Feed test, show grant/check/next reports, and grant local Octopus tool scopes.
 It can also save provider env to `.octopus/llm.env`; bridge reads that file when it runs child Octopus commands.
 
 ## Tentacle Run
@@ -131,6 +132,7 @@ grants:
 checks:
 next:
 json-feed observe
+Octopus context
 Octopus think
 plan_source: rule
 feed_trace: json-feed/feed via rule
