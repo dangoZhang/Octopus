@@ -112,6 +112,7 @@ Updated: 2026-06-27
 - Added `bootstrap` so a new local state can install seed tentacles and get a report in one command.
 - Added native HTML Bootstrap access through the local bridge.
 - Added `harness-repair-agent` as a seed tentacle for tool-side diagnosis of the harness feedback and adapter loop.
+- Fixed the GitHub install command and passed `OCTOPUS_STATE_PATH` into tool runtimes so harness diagnostics can read temporary or custom state paths.
 
 ## Remaining Gaps
 
@@ -122,7 +123,7 @@ Updated: 2026-06-27
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, layer diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
-- Release packaging, examples, and docs now have richer install/bootstrap feedback; non-Rust packaging still needs finish.
+- GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
 - The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context, run structured Feed tests, score Feed traces, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 

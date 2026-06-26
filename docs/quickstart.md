@@ -3,7 +3,7 @@
 ## Source Run
 
 ```bash
-cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus --force
+cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
 octopus --version
 octopus doctor
 ```

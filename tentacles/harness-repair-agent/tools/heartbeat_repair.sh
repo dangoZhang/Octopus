@@ -41,7 +41,10 @@ def resolve_workspace(argument, payload):
     path = Path(token).expanduser()
     if not path.is_absolute():
         path = Path.cwd() / path
-    return path.resolve()
+    path = path.resolve()
+    if path.is_file():
+        return path.parent
+    return path
 
 
 def newest(paths):

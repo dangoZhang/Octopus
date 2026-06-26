@@ -17,7 +17,7 @@ Required before `0.1.0` and every later version tag.
 ## Install And Update
 
 ```bash
-cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus --force
+cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
 octopus --version
 octopus doctor
 ```

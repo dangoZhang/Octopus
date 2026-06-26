@@ -393,6 +393,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         index += 1;
     }
+    env::set_var("OCTOPUS_STATE_PATH", &state);
 
     match rest.first().map(String::as_str) {
         Some("need") => {

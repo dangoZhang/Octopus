@@ -43,11 +43,15 @@ def resolve_workspace(argument, payload):
     path = Path(token).expanduser()
     if not path.is_absolute():
         path = Path.cwd() / path
-    return path.resolve()
+    path = path.resolve()
+    if path.is_file():
+        return path.parent
+    return path
 
 
 payload = read_payload()
 root = resolve_workspace(sys.argv[1] if len(sys.argv) > 1 else ".", payload)
+state_path = Path(os.environ["OCTOPUS_STATE_PATH"]).expanduser() if os.environ.get("OCTOPUS_STATE_PATH") else None
 commands = [
     "bash",
     "python3",
@@ -89,6 +93,7 @@ output = (
 )
 metadata = {
     "workspace": str(root),
+    "state_path": str(state_path) if state_path else "",
     "available": ",".join(available_labels),
     "missing_core": ",".join(missing_core),
     "provider_env": "present" if provider_env.exists() else "missing",

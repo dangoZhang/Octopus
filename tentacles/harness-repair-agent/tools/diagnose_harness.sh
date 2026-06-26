@@ -43,7 +43,10 @@ def resolve_workspace(argument, payload):
     path = Path(token).expanduser()
     if not path.is_absolute():
         path = Path.cwd() / path
-    return path.resolve()
+    path = path.resolve()
+    if path.is_file():
+        return path.parent
+    return path
 
 
 def load_json(path):
@@ -79,7 +82,10 @@ def ids(items):
 
 payload = read_payload()
 root = resolve_workspace(sys.argv[1] if len(sys.argv) > 1 else ".", payload)
-state_candidates = [root / ".octopus/state.json", root / "state.json"]
+state_candidates = []
+if os.environ.get("OCTOPUS_STATE_PATH"):
+    state_candidates.append(Path(os.environ["OCTOPUS_STATE_PATH"]).expanduser())
+state_candidates.extend([root / ".octopus/state.json", root / "state.json"])
 state_path = next((path for path in state_candidates if path.exists()), None)
 state = load_json(state_path) if state_path else None
 

@@ -31,7 +31,7 @@ Octopus is still pre-`0.1`, but the local MVP already runs:
 ## Install & Start
 
 ```bash
-cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus
+cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus
 octopus --version
 octopus bootstrap
 octopus doctor
