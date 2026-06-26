@@ -1,6 +1,6 @@
 # Real-Machine Test Gate
 
-Required before every version tag after `0.1.0`.
+Required before `0.1.0` and every later version tag.
 
 ## Machine
 
