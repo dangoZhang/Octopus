@@ -117,6 +117,7 @@ installed swe-agent
 json-feed observe
 Octopus think
 plan_source: rule
+feed_trace: json-feed/feed via rule
 Octopus doctor
 Octopus bridge: http://127.0.0.1:8765
 pixel: 🟥

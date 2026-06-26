@@ -274,7 +274,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     serde_json::to_string_pretty(&feedback).map_err(|error| error.to_string())?
                 );
             } else {
-                println!("{}", localize_summary(&feedback.summary, language));
+                print_feedback(&feedback, language);
             }
             Ok(())
         }
@@ -967,6 +967,18 @@ fn localize_summary(summary: &str, language: Language) -> String {
         "nothing recalled" => "没有召回内容".to_string(),
         "no tentacle supports this need" => "没有触手支持这个需求".to_string(),
         _ => summary.to_string(),
+    }
+}
+
+fn print_feedback(feedback: &octopus_core::Feedback, language: Language) {
+    println!("{}", localize_summary(&feedback.summary, language));
+    for feed in &feedback.feeds {
+        if let Some(trace) = feed_trace(feed) {
+            match language {
+                Language::En => println!("feed_trace: {trace}"),
+                Language::Zh => println!("Feed轨迹: {trace}"),
+            }
+        }
     }
 }
 
@@ -3016,12 +3028,18 @@ fn print_probe_feed(feed: &Feed, language: Language) {
         Language::En => {
             println!("status: {:?}", feed.status);
             println!("summary: {}", feed.summary);
+            if let Some(trace) = feed_trace(feed) {
+                println!("feed_trace: {trace}");
+            }
             println!("evidence: {}", feed.evidence.len());
             println!("metadata: {}", probe_metadata(feed));
         }
         Language::Zh => {
             println!("状态: {:?}", feed.status);
             println!("摘要: {}", localize_summary(&feed.summary, language));
+            if let Some(trace) = feed_trace(feed) {
+                println!("Feed轨迹: {trace}");
+            }
             println!("证据: {}", feed.evidence.len());
             println!("元数据: {}", probe_metadata(feed));
         }
@@ -3115,6 +3133,17 @@ fn probe_metadata(feed: &Feed) -> String {
         })
         .collect::<Vec<_>>();
     join_or_none(&values)
+}
+
+fn feed_trace(feed: &Feed) -> Option<String> {
+    let tentacle = feed.metadata.get("tentacle_brain")?;
+    let tool = feed.metadata.get("tool")?;
+    let source = feed
+        .metadata
+        .get("plan_source")
+        .map(String::as_str)
+        .unwrap_or("unknown");
+    Some(format!("{tentacle}/{tool} via {source}"))
 }
 
 fn print_environment(report: &EnvironmentReport, language: Language) {

@@ -2339,6 +2339,37 @@ impl ManifestTentacle {
         })
         .map_err(|error| error.to_string())
     }
+
+    fn plan_evidence(&self, tool: &InstalledToolRef, plan: &ManifestToolPlan) -> Evidence {
+        let mut evidence = Evidence::new(
+            "tentacle_plan",
+            format!(
+                "{} selected {} with {} planning",
+                self.route_id, tool.id, plan.source
+            ),
+        );
+        evidence.confidence = if plan.source == "llm" { 0.9 } else { 0.7 };
+        evidence.metadata.insert(
+            "context_policy".to_string(),
+            "Need + Tool + Action + Tool + Action -> Feed".to_string(),
+        );
+        evidence
+            .metadata
+            .insert("tentacle".to_string(), self.route_id.clone());
+        evidence
+            .metadata
+            .insert("tool".to_string(), tool.id.clone());
+        evidence
+            .metadata
+            .insert("plan_source".to_string(), plan.source.clone());
+        evidence
+            .metadata
+            .insert("reason".to_string(), plan.reason.clone());
+        evidence
+            .metadata
+            .insert("available_tools".to_string(), plan.candidates.join(","));
+        evidence
+    }
 }
 
 impl Tentacle for ManifestTentacle {
@@ -2360,15 +2391,19 @@ impl Tentacle for ManifestTentacle {
         let Some(plan) = self.plan_tool(need) else {
             return Feed::unsupported(need, "no manifest tool supports this need");
         };
-        let tool = plan.tool;
+        let tool = plan.tool.clone();
         let result = self.run_tool(&tool, need);
         let status = result.status.clone();
         let mut metadata = result.metadata.clone();
         metadata.insert("tool".to_string(), tool.id.clone());
         metadata.insert("tool_description".to_string(), tool.description.clone());
-        metadata.insert("plan".to_string(), plan.reason);
-        metadata.insert("plan_source".to_string(), plan.source);
+        metadata.insert("plan".to_string(), plan.reason.clone());
+        metadata.insert("plan_source".to_string(), plan.source.clone());
         metadata.insert("available_tools".to_string(), plan.candidates.join(","));
+        metadata.insert(
+            "context_policy".to_string(),
+            "Need + Tool + Action + Tool + Action -> Feed".to_string(),
+        );
         metadata.insert("runtime".to_string(), tool.kind.clone());
         metadata.insert("tentacle_brain".to_string(), self.route_id.clone());
         metadata.insert(
@@ -2378,10 +2413,12 @@ impl Tentacle for ManifestTentacle {
         if let Some(contract) = &self.installed.feedback_contract {
             metadata.insert("feedback_contract".to_string(), contract.clone());
         }
+        let mut evidence = result.evidence;
+        evidence.insert(0, self.plan_evidence(&tool, &plan));
         Feed {
             need: need.clone(),
             status,
-            evidence: result.evidence,
+            evidence,
             summary: result.output,
             metadata,
         }
@@ -6475,6 +6512,15 @@ print(json.dumps({
             .metadata
             .get("brain_prompt")
             .is_some_and(|prompt| prompt.contains("select tools from metadata")));
+        assert!(feedback.feeds[0]
+            .metadata
+            .get("context_policy")
+            .is_some_and(|context| context == "Need + Tool + Action + Tool + Action -> Feed"));
+        assert!(feedback.feeds[0].evidence.iter().any(|evidence| {
+            evidence.source == "tentacle_plan"
+                && evidence.metadata.get("tool") == Some(&"inspect_repo".to_string())
+                && evidence.metadata.get("plan_source") == Some(&"rule".to_string())
+        }));
         assert!(harness.state.routes.score(&NeedKind::Observe, "swe-agent") > 1.0);
     }
 
@@ -6526,6 +6572,11 @@ print(json.dumps({
             .metadata
             .get("plan")
             .is_some_and(|plan| plan.contains("inspect requested file")));
+        assert!(feedback.feeds[0].evidence.iter().any(|evidence| {
+            evidence.source == "tentacle_plan"
+                && evidence.metadata.get("tool") == Some(&"read".to_string())
+                && evidence.metadata.get("plan_source") == Some(&"llm".to_string())
+        }));
         let _ = fs::remove_dir_all(fake);
     }
 

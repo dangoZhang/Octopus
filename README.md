@@ -71,6 +71,7 @@ Provider status
 json-feed observe
 Octopus think
 plan_source: rule
+feed_trace: json-feed/feed via rule
 Octopus doctor
 pixel: 🟥
 event: harness beat

@@ -19,6 +19,7 @@ Updated: 2026-06-26
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, and a configurable MCP JSON-RPC adapter.
 - Context policy is explicit: clean brain sees `Goal + Mem + Need + Feed`; tentacles see `Need + Tool + Action + Tool + Action -> Feed`.
 - `think <tentacle> <kind> <query>` exposes tool-side planning without executing tools.
+- Executed manifest Feed now includes `tentacle_plan` evidence and a CLI `feed_trace`.
 
 ## Filled This Iteration
 
@@ -47,6 +48,7 @@ Updated: 2026-06-26
 - Added `think` so users and the HTML app can inspect tentacle brain planning, LLM/rule source, candidates, and grant state before execution.
 - Added `provider status` so users can diagnose all LLM layers before running chat, tool-side thinking, or harness evolution.
 - Added a computer-use `window_status` tool and made `mcp.sh` invoke a configured JSON-RPC MCP client command.
+- Added execution-time `tentacle_plan` evidence and concise `feed_trace` output for manifest Feed.
 
 ## Remaining Gaps
 
@@ -55,7 +57,7 @@ Updated: 2026-06-26
 - Computer-use now has browser/window diagnostics, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include static layer diagnostics and live validation; provider-specific edge cases still need real-machine feedback.
 - Release packaging, examples, and docs need enough finish for non-Rust users.
-- The HTML app can run, stream, and inspect tentacle thinking through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, and inspect tentacle thinking through a local bridge; richer execution traces and desktop UX still need work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
