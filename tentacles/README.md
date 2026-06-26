@@ -11,7 +11,7 @@ Every manifest declares four evolution surfaces:
 - `runtime_code`: executable adapter code in any runtime.
 - `evolution_policy`: checks, constraints, and safe edit boundaries.
 
-The core treats runtime as metadata plus an entrypoint contract. Seed implementations use shell where auditability helps; the tentacle model can move to Python, TypeScript, Rust, MCP, HTTP, native tools, or mixed runtimes.
+The core treats runtime as metadata plus an entrypoint contract. A product tentacle usually starts as an agent tool combination, then evolves prompt, meta, code, and policy together.
 
 Inspect installable manifests:
 
@@ -23,12 +23,22 @@ tmp=$(mktemp -d)
 (cd "$tmp" && octopus scaffold native-feed rust)
 ```
 
+Agent tool-combo tentacles:
+
 - `swe-agent`: repo work through `read`, `edit`, inspection, patch, and test tools.
-- `repo-maintainer`: OAuth-bounded self-iteration with repo inspection and PR draft data.
-- `json-feed`: Python runtime that consumes `octopus-json-v1` and returns structured feedback.
 - `computer-use-agent`: local UI work through MCP, local commands, screenshots, URLs, and desktop probes.
-- `bash-only`: transparent script-writing runner for audit and replay.
+- `repo-maintainer`: OAuth-bounded self-iteration with repo inspection and PR draft data.
+- `bash-only`: transparent write-and-run harness for audit and replay.
+
+Runtime seeds:
+
+- `json-feed`: Python runtime that consumes `octopus-json-v1` and returns structured feedback.
+
+Visual layer:
+
 - `visual`: color-changing status pet for heartbeat, memory, harness, blocked, and success states.
+
+Memory lives in `HarnessState` as a heart/beat. It is exposed in catalogs for installation and status, but it is not an agent tool-combo tentacle.
 
 Shell is only one seed runtime. A tentacle can evolve prompt, metadata, runtime code, or policy into Python, TypeScript, Rust, MCP, HTTP, native tools, or mixed runtimes while the kernel contract stays stable. Unknown runtimes scaffold as manifest-only and become installable after the tentacle adds its executable adapter.
 

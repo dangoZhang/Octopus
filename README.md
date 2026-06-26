@@ -1,20 +1,22 @@
-# Octopus
+# Octopus 🐙
 
 > Independent-thinking tools, clean agent brain.
 
+🐙 clean brain · 🟢🐙 heartbeat · 🟣🐙 memory beat · 🟠🐙 harness beat
+
 ## Insight
 
-Most agents make the brain carry tools, memory, skills, and execution flow. Octopus keeps the brain clean: it only says what cognition it needs.
+Most agents make the brain carry tools, memory, skills, and execution flow. Octopus keeps the brain clean: chat refines the `Goal`, then the model only says what cognition it needs.
 
-Tentacles think during execution. A tentacle is an LLM brain prompt, tool metadata, code implementation, and evolution policy. Its evolution surfaces are explicit: `brain_prompt`, `tool_meta`, `runtime_code`, and `evolution_policy`.
+Tentacle brains give tools LLM intelligence. A tentacle is `LLM prompt + tool meta + code implementation + evolution policy`, and those surfaces can evolve as code-as-harness.
 
-Seed tentacles are selectable behaviors: SWE repo tools, computer-use tools, a Python JSON feed, and one transparent script-writing runner.
+Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools, repo-maintainer tools, and a transparent write-and-run harness. Runtime seeds such as `json-feed` prove the same contract can run beyond shell.
 
-Shell is only a seed runtime. A tentacle can declare `contract: octopus-json-v1` and run Python, Node, MCP, HTTP, native code, or any custom adapter.
+Shell is only one runtime. A tentacle can declare `contract: octopus-json-v1` and run Python, Node, MCP, HTTP, native code, or any custom adapter.
 
 Set `OCTOPUS_CHAT_LLM=1` for LLM goal refinement; set `OCTOPUS_LLM_MANIFEST=1` for LLM tool planning inside tentacles. Use `OCTOPUS_CHAT_LLM_PREFIX` or `OCTOPUS_MANIFEST_LLM_PREFIX` when each layer should use a different provider env.
 
-Three hearts keep it alive: heartbeat, memory evolution, and harness route evolution. Color change is a visual pet/status layer outside the kernel.
+Three hearts keep it alive: heartbeat, memory evolution, and harness route evolution. Color change is a visual pet/status layer.
 
 The mechanism is `Need -> Feed -> Feedback`. The outcome is less tool burden and stronger tools.
 
@@ -26,6 +28,8 @@ octopus demo dangoZhang/Octopus
 octopus init
 octopus skills
 octopus install swe-agent
+octopus install computer-use-agent
+octopus install bash-only
 octopus chat "build a clean-brain agent"
 octopus need observe .
 octopus pet

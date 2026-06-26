@@ -2,8 +2,8 @@
   "$schema": "../tentacle.schema.json",
   "schema_version": "0.1.0",
   "id": "bash-only",
-  "name": "Bash Only Tentacle",
-  "description": "LLM-guided execution through a transparent script-writing runner.",
+  "name": "Write-and-Run Tentacle",
+  "description": "LLM-guided execution through a transparent write-and-run harness.",
   "brain": {
     "kind": "llm",
     "model": null,

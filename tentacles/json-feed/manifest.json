@@ -2,7 +2,7 @@
   "$schema": "../tentacle.schema.json",
   "schema_version": "0.1.0",
   "id": "json-feed",
-  "name": "JSON Feed Tentacle",
+  "name": "JSON Feed Runtime Seed",
   "description": "Python runtime seed that consumes octopus-json-v1 and returns structured feedback.",
   "brain": {
     "kind": "llm",

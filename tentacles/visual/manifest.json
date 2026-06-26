@@ -2,12 +2,12 @@
   "$schema": "../tentacle.schema.json",
   "schema_version": "0.1.0",
   "id": "visual",
-  "name": "Color Pet Tentacle",
-  "description": "A color-changing Octopus status pet for heartbeat, memory, harness, blocked, and success states.",
+  "name": "Color Pet Layer",
+  "description": "A color-changing Octopus status pet layer for heartbeat, memory, harness, blocked, and success states.",
   "brain": {
-    "kind": "llm",
+    "kind": "rule",
     "model": null,
-    "prompt": "Map Feedback and harness state into a small visible pet state. Keep the UI outside the kernel and return compact state labels.",
+    "prompt": "Map Feedback and harness state into a small visible pet state without using an LLM. Keep the UI outside the kernel and return compact state labels.",
     "feedback_contract": "Return pet state, color, short label, and whether user attention is needed."
   },
   "skills": [

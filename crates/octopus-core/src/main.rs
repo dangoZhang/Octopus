@@ -738,8 +738,8 @@ fn localize_summary(summary: &str, language: Language) -> String {
 
 fn print_catalog(profiles: &[octopus_core::TentacleProfile], language: Language) {
     match language {
-        Language::En => println!("Installable tentacles:"),
-        Language::Zh => println!("可安装触手:"),
+        Language::En => println!("Installable profiles:"),
+        Language::Zh => println!("可安装配置:"),
     }
     for profile in profiles {
         println!("- {}: {}", profile.id, profile.description);

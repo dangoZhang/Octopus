@@ -37,7 +37,7 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 ## Code-As-Harness
 
-`tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Each manifest declares evolution surfaces: `brain_prompt`, `tool_meta`, `runtime_code`, and `evolution_policy`. Current seeds cover SWE repo tools, computer-use tools, a Python JSON feed, and one transparent script-writing runner; the contract is runtime-neutral.
+`tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Each manifest declares evolution surfaces: `brain_prompt`, `tool_meta`, `runtime_code`, and `evolution_policy`. Agent tool-combo seeds cover SWE repo tools, computer-use tools, repo-maintainer tools, and one transparent write-and-run harness. Runtime seeds such as `json-feed` prove the same contract can run beyond shell.
 
 `contract: octopus-json-v1` lets any runtime receive the same Need/tool/tentacle JSON envelope through stdin and return compact text or structured JSON feedback. Legacy executable entrypoints still work.
 

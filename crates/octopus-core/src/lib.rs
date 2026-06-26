@@ -3306,8 +3306,8 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
         },
         TentacleProfile {
             id: "memory".to_string(),
-            name: "Memory Tentacle".to_string(),
-            description: "Remembers, recalls, forgets, and compacts context.".to_string(),
+            name: "Memory Heart".to_string(),
+            description: "Memory beat for remember, recall, forget, and compaction.".to_string(),
             brain: rule_brain(
                 "Memory policy",
                 "Store, recall, forget, and compact context outside the main brain.",
@@ -3330,11 +3330,11 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
         },
         TentacleProfile {
             id: "visual".to_string(),
-            name: "Color Pet Tentacle".to_string(),
-            description: "Shows heartbeat, memory, harness, blocked, and success state as a color-changing pet.".to_string(),
-            brain: llm_brain(
+            name: "Color Pet Layer".to_string(),
+            description: "Shows heartbeat, memory, harness, blocked, and success state as a color-changing pet layer.".to_string(),
+            brain: rule_brain(
                 "Visual state translator",
-                "Convert Feedback into user-visible pet state without changing the kernel contract.",
+                "Convert Feedback and harness status into user-visible pet state without changing the kernel contract.",
             ),
             skills: vec![SkillManifest {
                 id: "color-change".to_string(),
@@ -3354,7 +3354,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 &["grep -q data-state docs/pet.html"],
                 &["Keep visual state outside Need, Feed, and Feedback."],
             ),
-            llm_ready: true,
+            llm_ready: false,
         },
         TentacleProfile {
             id: "repo-maintainer".to_string(),
@@ -3418,7 +3418,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
         },
         TentacleProfile {
             id: "json-feed".to_string(),
-            name: "JSON Feed Tentacle".to_string(),
+            name: "JSON Feed Runtime Seed".to_string(),
             description: "Python octopus-json-v1 seed runtime for structured non-shell feedback."
                 .to_string(),
             brain: llm_brain(
@@ -3523,8 +3523,8 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
         },
         TentacleProfile {
             id: "bash-only".to_string(),
-            name: "Bash Only Tentacle".to_string(),
-            description: "Transparent seed runtime that stores generated actions as auditable scripts.".to_string(),
+            name: "Write-and-Run Tentacle".to_string(),
+            description: "Agent tool-combo seed that stores generated actions as auditable scripts.".to_string(),
             brain: llm_brain(
                 "Shell-only planner",
                 "Represent each action as a transparent script before execution.",
@@ -4758,7 +4758,18 @@ mod tests {
         let reports = inspect_tentacle_manifests(&root).unwrap();
 
         assert!(reports.iter().any(|report| report.id == "swe-agent"));
-        assert!(reports.iter().all(|report| report.brain_kind == "llm"));
+        assert!(reports
+            .iter()
+            .filter(|report| report.id != "visual")
+            .all(|report| report.brain_kind == "llm"));
+        assert_eq!(
+            reports
+                .iter()
+                .find(|report| report.id == "visual")
+                .unwrap()
+                .brain_kind,
+            "rule"
+        );
         assert!(reports
             .iter()
             .all(|report| report.missing_entrypoints.is_empty()));
