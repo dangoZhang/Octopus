@@ -45,6 +45,7 @@ octopus context observe .
 octopus think swe-agent observe README.md
 octopus need observe .
 octopus traces
+octopus feedback 1 satisfied "feed worked"
 octopus oauth octopus tool:bash-only tool:execute
 octopus need execute "echo octopus"
 octopus pet
@@ -86,6 +87,7 @@ plan_source: rule
 actions: 1:read
 feed_trace: json-feed/feed via rule
 Feed traces
+trace_index: 1
 Octopus doctor
 Octopus report
 pixel: 🟥

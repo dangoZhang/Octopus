@@ -10,7 +10,7 @@ Octopus keeps the non-evolvable base small.
 - `Need`: cognitive demand with no tool name.
 - `Feed`: supplied evidence from harness or tentacles.
 - `Feedback`: compact result for the brain.
-- `RouteBook`: data-driven routing that learns from feed quality.
+- `RouteBook`: data-driven routing that learns from feed quality and scored Feed traces.
 - `HarnessState`: persistent memory and routes.
 - `HeartbeatReport`: three-heart pulse for liveness, memory compaction, and route evolution.
 - `StatusReport`: read-only doctor view for hearts, installed tentacles, grants, goal, warnings, and next action.
@@ -40,9 +40,9 @@ Context boundary: clean-brain LLM context is `Goal + Mem + Need + Feed`; tentacl
 
 `context [kind query]` prints the clean-brain context slots, memory summary, recent Need/Feed turns, and installed tentacle tool/action context so the separation is inspectable without running tools.
 
-Every executed Feed is also written to a compact harness trace journal. Manifest Feed carries a `tentacle_plan` evidence item, action metadata, and a short `feed_trace`, so tool-side thinking is visible after execution without adding tool burden to clean-brain context. LLM tentacle plans may execute up to two tool actions for one Need. `traces [limit]` reads that journal.
+Every executed Feed is also written to a compact harness trace journal and returned with `feed_trace_index`. Manifest Feed carries a `tentacle_plan` evidence item, action metadata, and a short `feed_trace`, so tool-side thinking is visible after execution without adding tool burden to clean-brain context. LLM tentacle plans may execute up to two tool actions for one Need. `traces [limit]` reads that journal. `feedback <trace-index> <status> [summary]` scores a trace, updates route data, and changes pet state.
 
-`bridge [addr]` serves the native HTML app and exposes `/api/run` plus `/api/stream` for local Octopus subcommands so the GUI can execute init, provider env/status/check, install, check, chat, think, context, Need, pet, doctor, and beat flows without a shell. Bridge overlays `.octopus/llm.env` onto child Octopus commands. The app can generate or save provider env, read `--json provider status`, run live provider checks, read `--json install` reports, run seed-tentacle checks, inspect clean-brain context, run a structured `--json need` Feed test, show plan source/tool/action/evidence for the resulting Feed, show harness-beat evolution recommendations with an apply-plan preview, grant `octopus:evolve:<seed>` `harness:write`, write reviewable apply artifacts, score the recommendation after review, and grant local `octopus tool:*` scopes; bridge does not allow GitHub OAuth, direct source patch application, provider env writes outside the default path, or PR publishing.
+`bridge [addr]` serves the native HTML app and exposes `/api/run` plus `/api/stream` for local Octopus subcommands so the GUI can execute init, provider env/status/check, install, check, chat, think, context, Need, Feed feedback, pet, doctor, and beat flows without a shell. Bridge overlays `.octopus/llm.env` onto child Octopus commands. The app can generate or save provider env, read `--json provider status`, run live provider checks, read `--json install` reports, run seed-tentacle checks, inspect clean-brain context, run a structured `--json need` Feed test, show plan source/tool/action/evidence for the resulting Feed, score that Feed trace, show harness-beat evolution recommendations with an apply-plan preview, grant `octopus:evolve:<seed>` `harness:write`, write reviewable apply artifacts, score the recommendation after review, and grant local `octopus tool:*` scopes; bridge does not allow GitHub OAuth, direct source patch application, provider env writes outside the default path, or PR publishing.
 
 `skills [root]` lists profile and manifest skills as user-facing capability bundles. It is a catalog view; execution still starts from Need and routes through harness data.
 
@@ -68,7 +68,7 @@ Every executed Feed is also written to a compact harness trace journal. Manifest
 
 Color change is a pixel pet layer. It can show heartbeat, memory beat, harness beat, blocked state, or success without changing `Need`, `Feed`, or `Feedback`.
 
-`need`, `chat`, `beat`, and `evolve score` write the latest pet event into harness state. `pet` auto-selects a color from that event plus goal status. `pet [state]` can force `heartbeat`, `memory`, `harness`, `blocked`, or `success`; `--json pet` returns the chat fallback square, event source, event summary, and local `pet.html` URL for other UI shells.
+`need`, `chat`, `feedback`, `beat`, and `evolve score` write the latest pet event into harness state. `pet` auto-selects a color from that event plus goal status. `pet [state]` can force `heartbeat`, `memory`, `harness`, `blocked`, or `success`; `--json pet` returns the chat fallback square, event source, event summary, and local `pet.html` URL for other UI shells.
 
 ## Boundary
 

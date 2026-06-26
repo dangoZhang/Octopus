@@ -37,6 +37,7 @@ octopus --state "$tmp/state.json" think swe-agent observe README.md
 octopus --state "$tmp/state.json" need observe .
 octopus --state "$tmp/state.json" traces
 octopus --state "$tmp/state.json" report
+octopus --state "$tmp/state.json" feedback 1 satisfied "feed worked"
 octopus --state "$tmp/state.json" oauth octopus tool:bash-only tool:execute
 octopus --state "$tmp/state.json" need execute "echo octopus"
 octopus --state "$tmp/state.json" pet
@@ -54,6 +55,7 @@ octopus bridge
 ```
 
 Open `http://127.0.0.1:8765/app.html`. The app can install tentacles, inspect context, run a structured Feed test, show grant/check/next reports, and grant local Octopus tool scopes.
+The Feed panel can score the latest trace as satisfied, partial, or failed; that feedback updates harness route data and pet color.
 It can also save provider env to `.octopus/llm.env`; bridge reads that file when it runs child Octopus commands.
 
 ## Tentacle Run
@@ -138,6 +140,7 @@ Octopus think
 plan_source: rule
 feed_trace: json-feed/feed via rule
 Feed traces
+trace_index: 1
 Octopus doctor
 Octopus report
 Octopus bridge: http://127.0.0.1:8765

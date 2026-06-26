@@ -24,7 +24,7 @@ Real-machine test gate for `0.1.0` and later tags:
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
-Last cleanup/version correction: `0.0.6` on 2026-06-26. Scope: Feed-trace harness evolution, app grant/write apply controls, clean-brain context inspection, product capability report, docs/CI alignment; no tag cut.
+Last cleanup/version correction: `0.0.6` on 2026-06-26. Scope: Feed-trace harness evolution, app grant/write apply controls, clean-brain context inspection, product capability report, Feed trace feedback scoring, docs/CI alignment; no tag cut.
 
 Product commits toward `0.0.7`: 0/8.
 
