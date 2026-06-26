@@ -45,7 +45,7 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 `probe <tentacle> <kind> <query>` runs one tentacle without saving state, making runtime contracts debuggable.
 
-`evolve <tentacle> <objective>` writes an auditable draft under `.octopus/evolution/` listing the surfaces, prompt, metadata, code files, patch candidates, per-candidate patch drafts, checks, and constraints that can change safely. `evolve apply <tentacle> <candidate>` writes an apply plan; with `harness:write`, it also emits a reviewable `.patch` file without applying it.
+`evolve <tentacle> <objective>` writes an auditable draft under `.octopus/evolution/` listing the surfaces, prompt, metadata, code files, patch candidates, per-candidate patch drafts, checks, and constraints that can change safely. `evolve apply <tentacle> <candidate>` writes an apply plan; with `harness:write`, it also emits a reviewable `.patch` file without applying it. `evolve score <tentacle> <candidate> <status>` stores the outcome in harness state so later proposals can see what worked.
 
 ## Color Pet
 

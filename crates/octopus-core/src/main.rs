@@ -1,11 +1,11 @@
 use octopus_core::{
     default_permissions, default_tentacle_profiles, inspect_tentacle_manifests,
-    load_tentacle_manifests, plan_tentacle_evolution_apply, propose_tentacle_evolution,
+    load_tentacle_manifests, plan_tentacle_evolution_apply, propose_tentacle_evolution_with_state,
     scaffold_tentacle, write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts,
     AdaptReport, CapabilityGrant, ChatClient, ChatMessage, ChatRole, EnvironmentReport,
-    EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, Feed, GoalChat, Harness,
-    HarnessState, HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient,
-    OpenAiCompatibleConfig, SelfIterationPlan, StatusReport, TentacleEvolutionProposal,
+    EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome, Feed,
+    GoalChat, Harness, HarnessState, HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient,
+    OpenAiCompatibleConfig, SelfIterationPlan, Status, StatusReport, TentacleEvolutionProposal,
     TentacleManifestReport, TentacleScaffold,
 };
 use std::env;
@@ -427,8 +427,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     .map(|values| values.join(" "))
                     .unwrap_or_else(|| "apply evolution candidate".to_string());
                 let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-                let proposal =
-                    propose_tentacle_evolution(default_tentacles_root(), tentacle_id, &objective)?;
+                let proposal = propose_tentacle_evolution_with_state(
+                    default_tentacles_root(),
+                    tentacle_id,
+                    &objective,
+                    &loaded,
+                )?;
                 let cwd = env::current_dir().map_err(|error| error.to_string())?;
                 let artifact = write_tentacle_evolution_artifacts(&cwd, &proposal)?;
                 let plan = plan_tentacle_evolution_apply(&proposal, &loaded, candidate_id)?;
@@ -448,6 +452,40 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 }
                 return Ok(());
             }
+            if rest.get(1).map(String::as_str) == Some("score") {
+                let tentacle_id = rest
+                    .get(2)
+                    .ok_or_else(|| "evolve score requires a tentacle id".to_string())?;
+                let candidate_id = rest
+                    .get(3)
+                    .ok_or_else(|| "evolve score requires a candidate id".to_string())?;
+                let status = rest
+                    .get(4)
+                    .ok_or_else(|| "evolve score requires a status".to_string())
+                    .and_then(|value| parse_status(value))?;
+                let summary = rest
+                    .get(5..)
+                    .filter(|values| !values.is_empty())
+                    .map(|values| values.join(" "))
+                    .unwrap_or_else(|| "recorded evolution outcome".to_string());
+                let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                let outcome = loaded.record_evolution_outcome(
+                    tentacle_id.as_str(),
+                    candidate_id.as_str(),
+                    status,
+                    summary,
+                );
+                loaded.save(&state).map_err(|error| error.to_string())?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&outcome).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_evolution_outcome(&outcome, language);
+                }
+                return Ok(());
+            }
             let tentacle_id = rest
                 .get(1)
                 .ok_or_else(|| "evolve requires a tentacle id".to_string())?;
@@ -456,8 +494,13 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .filter(|values| !values.is_empty())
                 .map(|values| values.join(" "))
                 .unwrap_or_else(|| "improve feed quality".to_string());
-            let proposal =
-                propose_tentacle_evolution(default_tentacles_root(), tentacle_id, &objective)?;
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let proposal = propose_tentacle_evolution_with_state(
+                default_tentacles_root(),
+                tentacle_id,
+                &objective,
+                &loaded,
+            )?;
             let cwd = env::current_dir().map_err(|error| error.to_string())?;
             let artifact = write_tentacle_evolution_artifacts(cwd, &proposal)?;
             if json {
@@ -1777,6 +1820,25 @@ fn print_evolution_apply_plan(
     }
 }
 
+fn print_evolution_outcome(outcome: &EvolutionOutcome, language: Language) {
+    match language {
+        Language::En => {
+            println!("tentacle: {}", outcome.tentacle_id);
+            println!("candidate: {}", outcome.candidate_id);
+            println!("status: {:?}", outcome.status);
+            println!("score: {:.2}", outcome.score);
+            println!("summary: {}", outcome.summary);
+        }
+        Language::Zh => {
+            println!("触手: {}", outcome.tentacle_id);
+            println!("候选: {}", outcome.candidate_id);
+            println!("状态: {:?}", outcome.status);
+            println!("分数: {:.2}", outcome.score);
+            println!("摘要: {}", outcome.summary);
+        }
+    }
+}
+
 fn print_tentacle_scaffold(scaffold: &TentacleScaffold, language: Language) {
     match language {
         Language::En => {
@@ -1987,7 +2049,19 @@ fn chat_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | evolve apply <tentacle> <candidate> [objective] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+}
+
+fn parse_status(value: &str) -> Result<Status, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "satisfied" | "success" | "ok" => Ok(Status::Satisfied),
+        "partial" => Ok(Status::Partial),
+        "failed" | "fail" | "error" => Ok(Status::Failed),
+        "unsupported" | "skip" => Ok(Status::Unsupported),
+        _ => Err(format!(
+            "unknown status: {value}; expected satisfied, partial, failed, or unsupported"
+        )),
+    }
 }
 
 #[cfg(test)]
@@ -2671,7 +2745,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
         .unwrap();
         run(vec![
             "--state".to_string(),
-            state,
+            state.clone(),
             "evolve".to_string(),
             "apply".to_string(),
             "swe-agent".to_string(),
@@ -2684,6 +2758,40 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
         let patch = fs::read_to_string(apply_patch).unwrap();
         assert!(patch.contains("diff --git"));
         assert!(patch.contains("Octopus evolution candidate 03-runtime-code"));
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "evolve".to_string(),
+            "score".to_string(),
+            "swe-agent".to_string(),
+            "03-runtime-code".to_string(),
+            "satisfied".to_string(),
+            "patch".to_string(),
+            "improved".to_string(),
+            "feed".to_string(),
+        ])
+        .unwrap();
+        let state_content = fs::read_to_string(&state_path).unwrap();
+        assert!(state_content.contains("evolution_outcomes"));
+        assert!(state_content.contains("patch improved feed"));
+        run(vec![
+            "--state".to_string(),
+            state,
+            "evolve".to_string(),
+            "swe-agent".to_string(),
+            "next".to_string(),
+        ])
+        .unwrap();
+        let updated_markdown = fs::read_to_string(
+            dir.join(".octopus")
+                .join("evolution")
+                .join("swe-agent")
+                .join("PROPOSAL.md"),
+        )
+        .unwrap();
+        assert!(updated_markdown.contains("Previous Outcomes"));
+        assert!(updated_markdown.contains("patch improved feed"));
         let _ = fs::remove_dir_all(dir);
     }
 

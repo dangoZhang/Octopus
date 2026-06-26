@@ -39,6 +39,8 @@ jobs:
           grep -q "ready_for_authorized_patch" .octopus/apply-output.txt
           grep -q "patch:" .octopus/apply-output.txt
           grep -q "diff --git" .octopus/evolution/swe-agent/apply/03-runtime-code.patch
+          cargo run -q -p octopus-core -- --state .octopus/apply-state.json evolve score swe-agent 03-runtime-code satisfied "patch improved feed"
+          grep -q "evolution_outcomes" .octopus/apply-state.json
       - run: |
           cargo run -q -p octopus-core -- --json pet success | grep -q '"state": "success"'
       - run: |

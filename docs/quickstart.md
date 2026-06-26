@@ -61,6 +61,7 @@ octopus --state "$tmp/state.json" oauth github dangoZhang/Octopus
 octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 octopus evolve swe-agent "improve repository observation feed quality"
 octopus evolve apply swe-agent runtime_code
+octopus evolve score swe-agent 03-runtime-code satisfied "patch improved feed"
 tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build a clean-brain agent"
 ```
 

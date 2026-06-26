@@ -192,6 +192,16 @@ pub struct HeartbeatReport {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EvolutionOutcome {
+    pub index: u64,
+    pub tentacle_id: String,
+    pub candidate_id: String,
+    pub status: Status,
+    pub score: f32,
+    pub summary: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct AdaptReport {
     pub environment: EnvironmentReport,
     pub installed_profiles: Vec<String>,
@@ -1070,6 +1080,8 @@ pub struct HarnessState {
     pub goal_turns: Vec<GoalTurn>,
     #[serde(default)]
     pub grants: Vec<CapabilityGrant>,
+    #[serde(default)]
+    pub evolution_outcomes: Vec<EvolutionOutcome>,
 }
 
 impl HarnessState {
@@ -1329,6 +1341,60 @@ impl HarnessState {
                 && grant.scope == scope
                 && grant.status == GrantStatus::Active
         })
+    }
+
+    pub fn record_evolution_outcome(
+        &mut self,
+        tentacle_id: impl Into<String>,
+        candidate_id: impl Into<String>,
+        status: Status,
+        summary: impl Into<String>,
+    ) -> EvolutionOutcome {
+        let tentacle_id = tentacle_id.into();
+        let candidate_id = candidate_id.into();
+        let summary = summary.into();
+        let score = evolution_status_score(&status);
+        let outcome = EvolutionOutcome {
+            index: self.evolution_outcomes.len() as u64 + 1,
+            tentacle_id: tentacle_id.clone(),
+            candidate_id: candidate_id.clone(),
+            status: status.clone(),
+            score,
+            summary: summary.clone(),
+        };
+        let feed = Feed {
+            need: Need::new(
+                NeedKind::Execute,
+                format!("evolution outcome {tentacle_id} {candidate_id}"),
+            ),
+            status,
+            evidence: vec![Evidence::new("evolution", summary)],
+            summary: outcome.summary.clone(),
+            metadata: BTreeMap::from([(
+                "tentacle".to_string(),
+                format!("evolve:{tentacle_id}:{candidate_id}"),
+            )]),
+        };
+        self.routes.learn(&feed);
+        self.evolution_outcomes.push(outcome.clone());
+        outcome
+    }
+
+    pub fn recent_evolution_outcomes(
+        &self,
+        tentacle_id: &str,
+        limit: usize,
+    ) -> Vec<EvolutionOutcome> {
+        let mut outcomes = self
+            .evolution_outcomes
+            .iter()
+            .rev()
+            .filter(|outcome| outcome.tentacle_id == tentacle_id)
+            .take(limit)
+            .cloned()
+            .collect::<Vec<_>>();
+        outcomes.reverse();
+        outcomes
     }
 
     pub fn self_iteration_plan(
@@ -2247,6 +2313,8 @@ pub struct TentacleEvolutionProposal {
     pub surfaces: Vec<EvolutionSurface>,
     pub checks: Vec<String>,
     pub constraints: Vec<String>,
+    #[serde(default)]
+    pub previous_outcomes: Vec<EvolutionOutcome>,
     pub files: Vec<EvolutionFileTarget>,
     pub patch_candidates: Vec<EvolutionPatchCandidate>,
     pub next_steps: Vec<String>,
@@ -2369,6 +2437,25 @@ pub fn propose_tentacle_evolution(
     tentacle_id: &str,
     objective: &str,
 ) -> Result<TentacleEvolutionProposal, String> {
+    propose_tentacle_evolution_with_outcomes(root, tentacle_id, objective, &[])
+}
+
+pub fn propose_tentacle_evolution_with_state(
+    root: impl AsRef<Path>,
+    tentacle_id: &str,
+    objective: &str,
+    state: &HarnessState,
+) -> Result<TentacleEvolutionProposal, String> {
+    let outcomes = state.recent_evolution_outcomes(tentacle_id, 5);
+    propose_tentacle_evolution_with_outcomes(root, tentacle_id, objective, &outcomes)
+}
+
+fn propose_tentacle_evolution_with_outcomes(
+    root: impl AsRef<Path>,
+    tentacle_id: &str,
+    objective: &str,
+    previous_outcomes: &[EvolutionOutcome],
+) -> Result<TentacleEvolutionProposal, String> {
     let root = root.as_ref();
     let loaded = load_tentacle_manifests(root)
         .map_err(|error| error.to_string())?
@@ -2431,6 +2518,7 @@ pub fn propose_tentacle_evolution(
         surfaces: loaded.manifest.evolution.surfaces,
         checks: loaded.manifest.evolution.checks,
         constraints: loaded.manifest.evolution.constraints,
+        previous_outcomes: previous_outcomes.to_vec(),
         files,
         patch_candidates,
         next_steps,
@@ -2785,6 +2873,15 @@ pub fn render_tentacle_evolution_proposal(proposal: &TentacleEvolutionProposal) 
     markdown.push_str("\n## Checks\n\n");
     for check in &proposal.checks {
         markdown.push_str(&format!("- `{check}`\n"));
+    }
+    if !proposal.previous_outcomes.is_empty() {
+        markdown.push_str("\n## Previous Outcomes\n\n");
+        for outcome in &proposal.previous_outcomes {
+            markdown.push_str(&format!(
+                "- `{}`: {:?} score={:.2} {}\n",
+                outcome.candidate_id, outcome.status, outcome.score, outcome.summary
+            ));
+        }
     }
     markdown.push_str("\n## Patch Candidates\n\n");
     for candidate in &proposal.patch_candidates {
@@ -4001,6 +4098,15 @@ fn kind_key(kind: &NeedKind) -> &'static str {
     }
 }
 
+fn evolution_status_score(status: &Status) -> f32 {
+    match status {
+        Status::Satisfied => 1.0,
+        Status::Partial => 0.4,
+        Status::Unsupported => -0.3,
+        Status::Failed => -1.0,
+    }
+}
+
 fn memory_id_number(id: &str) -> u64 {
     id.strip_prefix('m')
         .and_then(|value| value.parse::<u64>().ok())
@@ -4247,6 +4353,31 @@ mod tests {
         harness.feed_one(&Need::new(NeedKind::Verify, "claim"));
 
         assert!(harness.state.routes.score(&NeedKind::Verify, "verifier") > 1.0);
+    }
+
+    #[test]
+    fn evolution_outcomes_feed_harness_scores() {
+        let mut state = HarnessState::default();
+
+        let outcome = state.record_evolution_outcome(
+            "swe-agent",
+            "03-runtime-code",
+            Status::Satisfied,
+            "patch improved feed evidence",
+        );
+
+        assert_eq!(outcome.index, 1);
+        assert_eq!(outcome.score, 1.0);
+        assert_eq!(
+            state.recent_evolution_outcomes("swe-agent", 1)[0].candidate_id,
+            "03-runtime-code"
+        );
+        assert!(
+            state
+                .routes
+                .score(&NeedKind::Execute, "evolve:swe-agent:03-runtime-code")
+                > 1.0
+        );
     }
 
     #[test]
@@ -4822,6 +4953,33 @@ mod tests {
         assert!(json.contains("\"tentacle_id\": \"swe-agent\""));
         assert!(json.contains("\"patch_candidates\""));
         let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn tentacle_evolution_proposal_carries_previous_outcomes() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        state.record_evolution_outcome(
+            "swe-agent",
+            "03-runtime-code",
+            Status::Satisfied,
+            "patch improved feed evidence",
+        );
+
+        let proposal = propose_tentacle_evolution_with_state(
+            &root,
+            "swe-agent",
+            "improve repository observation feed quality",
+            &state,
+        )
+        .unwrap();
+        let markdown = render_tentacle_evolution_proposal(&proposal);
+
+        assert_eq!(proposal.previous_outcomes.len(), 1);
+        assert!(markdown.contains("Previous Outcomes"));
+        assert!(markdown.contains("patch improved feed evidence"));
     }
 
     #[test]
