@@ -8938,19 +8938,17 @@ print(json.dumps({
 
     #[test]
     fn manifest_tool_permission_blocks_until_granted() {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-
+        if command_available("python3") {
             let dir = std::env::temp_dir()
                 .join(format!("octopus-tool-permission-{}", std::process::id()));
             let _ = fs::remove_dir_all(&dir);
             fs::create_dir_all(dir.join("tools")).unwrap();
-            let script = dir.join("tools").join("guarded.sh");
-            fs::write(&script, "#!/bin/sh\nprintf 'guarded:%s\\n' \"$1\"\n").unwrap();
-            let mut permissions = fs::metadata(&script).unwrap().permissions();
-            permissions.set_mode(0o755);
-            fs::set_permissions(&script, permissions).unwrap();
+            let script = dir.join("tools").join("guarded.py");
+            fs::write(
+                &script,
+                "import sys\nprint(f\"guarded:{sys.argv[1] if len(sys.argv) > 1 else ''}\")\n",
+            )
+            .unwrap();
 
             let permission = ToolPermission {
                 provider: "octopus".to_string(),
@@ -8965,16 +8963,16 @@ print(json.dumps({
                 brain_kind: "llm".to_string(),
                 brain_prompt: "Execute only after permission.".to_string(),
                 feedback_contract: Some("Return guarded output.".to_string()),
-                runtime_kinds: vec!["shell".to_string()],
+                runtime_kinds: vec!["python".to_string()],
                 needs: vec!["execute".to_string()],
-                tools: vec!["guarded:shell:tools/guarded.sh".to_string()],
+                tools: vec!["guarded:python:tools/guarded.py".to_string()],
                 tool_meta: vec![InstalledTool {
                     id: "guarded".to_string(),
                     description: "Guarded local execution.".to_string(),
                     input: "query arg".to_string(),
                     output: "guarded output".to_string(),
-                    kind: "shell".to_string(),
-                    entrypoint: "tools/guarded.sh".to_string(),
+                    kind: "python".to_string(),
+                    entrypoint: "tools/guarded.py".to_string(),
                     contract: None,
                     permission: Some(permission.clone()),
                 }],
