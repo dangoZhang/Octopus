@@ -319,6 +319,7 @@
         const tentacle = $("tentacle").value;
         $("commands").textContent = [
           "cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus --force",
+          "octopus providers",
           `octopus --state ${shellQuote(state)} init`,
           `octopus --state ${shellQuote(state)} install ${tentacle}`,
           `octopus --state ${shellQuote(state)} chat ${shellQuote(goal)}`,

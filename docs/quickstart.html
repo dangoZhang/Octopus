@@ -86,6 +86,7 @@ octopus demo dangoZhang/Octopus
 octopus catalog
 octopus skills
 octopus manifests
+octopus providers
 octopus --lang zh env
 octopus --state "$tmp/state.json" init
 octopus --state "$tmp/state.json" install research
@@ -112,19 +113,18 @@ octopus --state "$tmp/state.json" goal</code></pre>
       <p><code>json-feed</code> is the built-in non-shell seed: Python receives the full <code>octopus-json-v1</code> envelope and returns structured feedback.</p>
 
       <h2>Optional LLM</h2>
-      <pre><code>OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" \
-  octopus llm "provider check"
+      <pre><code>octopus providers
+octopus provider openai &gt; "$tmp/llm.env"
+# set OPENAI_API_KEY first, then:
+. "$tmp/llm.env"
+octopus llm "provider check"
 
-OCTOPUS_CHAT_LLM=1 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" \
-  octopus --state "$tmp/state.json" chat "make the harness self-evolve"
+octopus --state "$tmp/state.json" chat "make the harness self-evolve"
+octopus --state "$tmp/state.json" --json need observe README.md 1 1
+octopus --state "$tmp/state.json" evolve swe-agent "improve observe feed"
 
-OCTOPUS_LLM_MANIFEST=1 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" \
-  octopus --state "$tmp/state.json" --json need observe README.md 1 1
-
-OCTOPUS_LLM_EVOLVE=1 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" \
-  octopus --state "$tmp/state.json" evolve swe-agent "improve observe feed"
-
-OCTOPUS_CHAT_LLM_PREFIX=OCTOPUS_LLM OCTOPUS_MANIFEST_LLM_PREFIX=OCTOPUS_LLM octopus doctor</code></pre>
+octopus provider local OCTOPUS_LOCAL
+octopus doctor</code></pre>
 
       <h2>Self-Iteration</h2>
       <pre><code>octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus

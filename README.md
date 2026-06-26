@@ -14,7 +14,7 @@ Initial agent tentacles are common tool combinations: SWE repo tools, computer-u
 
 Shell is only one runtime. A tentacle can declare `contract: octopus-json-v1` and run Python, Node, MCP, HTTP, native code, or any custom adapter.
 
-Set `OCTOPUS_CHAT_LLM=1` for goal refinement, `OCTOPUS_LLM_MANIFEST=1` for tentacle tool planning, and `OCTOPUS_LLM_EVOLVE=1` for LLM-generated harness evolution candidates.
+Run `octopus providers` to generate OpenAI-compatible profiles for chat, tentacle tool planning, and harness evolution.
 
 Three hearts keep it alive: heartbeat, memory evolution, and harness route evolution. Color change is a pixel pet layer.
 
@@ -25,6 +25,7 @@ The mechanism is `Need -> Feed -> Feedback`. The outcome is less tool burden and
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus
 octopus --version
+octopus providers
 octopus doctor
 octopus demo dangoZhang/Octopus
 octopus init

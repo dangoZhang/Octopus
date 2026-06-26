@@ -115,6 +115,25 @@ struct SkillReport {
     llm_ready: bool,
 }
 
+#[derive(Clone, Debug, serde::Serialize)]
+struct ProviderProfile {
+    id: String,
+    name: String,
+    description: String,
+    base_url: String,
+    model: String,
+    key_env: String,
+    notes: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ProviderEnvReport {
+    profile: ProviderProfile,
+    prefix: String,
+    exports: Vec<String>,
+    shell: String,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Language {
     En,
@@ -251,6 +270,34 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 println!("{}", response.content);
+            }
+            Ok(())
+        }
+        Some("providers") => {
+            let profiles = provider_profiles();
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&profiles).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_provider_profiles(&profiles, language);
+            }
+            Ok(())
+        }
+        Some("provider") => {
+            let profile_id = rest
+                .get(1)
+                .ok_or_else(|| "provider requires a profile id".to_string())?;
+            let prefix = rest.get(2).map(String::as_str).unwrap_or("OCTOPUS_LLM");
+            let report = provider_env_report(profile_id, prefix)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_provider_env(&report, language);
             }
             Ok(())
         }
@@ -891,6 +938,161 @@ fn print_pet_report(report: &PetReport, language: Language) {
     }
 }
 
+fn provider_profiles() -> Vec<ProviderProfile> {
+    vec![
+        ProviderProfile {
+            id: "openai".to_string(),
+            name: "OpenAI-compatible cloud".to_string(),
+            description: "Default hosted chat-completions provider.".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4.1-mini".to_string(),
+            key_env: "OPENAI_API_KEY".to_string(),
+            notes: vec![
+                "Set OPENAI_API_KEY before sourcing the generated env.".to_string(),
+                "Works for chat, manifest tool planning, and harness evolution.".to_string(),
+            ],
+        },
+        ProviderProfile {
+            id: "local".to_string(),
+            name: "Local OpenAI-compatible server".to_string(),
+            description: "For Ollama, LM Studio, llama.cpp server, or another local adapter."
+                .to_string(),
+            base_url: "http://localhost:11434/v1".to_string(),
+            model: "llama3.1".to_string(),
+            key_env: "".to_string(),
+            notes: vec![
+                "Change the model to whatever your local server exposes.".to_string(),
+                "API key is intentionally empty for most local adapters.".to_string(),
+            ],
+        },
+        ProviderProfile {
+            id: "openrouter".to_string(),
+            name: "OpenRouter-compatible cloud".to_string(),
+            description: "Hosted router using the OpenAI-compatible chat API.".to_string(),
+            base_url: "https://openrouter.ai/api/v1".to_string(),
+            model: "openai/gpt-4.1-mini".to_string(),
+            key_env: "OPENROUTER_API_KEY".to_string(),
+            notes: vec![
+                "Set OPENROUTER_API_KEY before sourcing the generated env.".to_string(),
+                "Change the model id to any enabled router model.".to_string(),
+            ],
+        },
+        ProviderProfile {
+            id: "custom".to_string(),
+            name: "Custom OpenAI-compatible endpoint".to_string(),
+            description: "Template for any provider that speaks chat completions.".to_string(),
+            base_url: "https://example.com/v1".to_string(),
+            model: "your-model".to_string(),
+            key_env: "OCTOPUS_PROVIDER_API_KEY".to_string(),
+            notes: vec![
+                "Edit base URL, model, and key env to match your provider.".to_string(),
+                "Use a different prefix for chat, manifest, or evolution if needed.".to_string(),
+            ],
+        },
+    ]
+}
+
+fn provider_profile(id: &str) -> Result<ProviderProfile, String> {
+    provider_profiles()
+        .into_iter()
+        .find(|profile| profile.id == id)
+        .ok_or_else(|| {
+            format!(
+                "unknown provider profile: {id}; expected {}",
+                provider_profiles()
+                    .iter()
+                    .map(|profile| profile.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
+}
+
+fn provider_env_report(profile_id: &str, prefix: &str) -> Result<ProviderEnvReport, String> {
+    if !valid_env_prefix(prefix) {
+        return Err(format!(
+            "invalid provider env prefix: {prefix}; use letters, digits, and underscore"
+        ));
+    }
+    let profile = provider_profile(profile_id)?;
+    let mut exports = vec![
+        format!("export {prefix}_MODEL={}", shell_value(&profile.model)),
+        format!(
+            "export {prefix}_BASE_URL={}",
+            shell_value(&profile.base_url)
+        ),
+    ];
+    if profile.key_env.is_empty() {
+        exports.push(format!("export {prefix}_API_KEY="));
+    } else {
+        exports.push(format!(
+            "export {prefix}_API_KEY=\"${{{}:-}}\"",
+            profile.key_env
+        ));
+    }
+    exports.extend([
+        "export OCTOPUS_CHAT_LLM=1".to_string(),
+        "export OCTOPUS_LLM_MANIFEST=1".to_string(),
+        "export OCTOPUS_LLM_EVOLVE=1".to_string(),
+        format!("export OCTOPUS_CHAT_LLM_PREFIX={prefix}"),
+        format!("export OCTOPUS_MANIFEST_LLM_PREFIX={prefix}"),
+        format!("export OCTOPUS_EVOLVE_LLM_PREFIX={prefix}"),
+    ]);
+    let shell = exports.join("\n");
+    Ok(ProviderEnvReport {
+        profile,
+        prefix: prefix.to_string(),
+        exports,
+        shell,
+    })
+}
+
+fn valid_env_prefix(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first.is_ascii_uppercase() || first == '_')
+        && chars.all(|item| item.is_ascii_uppercase() || item.is_ascii_digit() || item == '_')
+}
+
+fn shell_value(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn print_provider_profiles(profiles: &[ProviderProfile], language: Language) {
+    match language {
+        Language::En => println!("Provider profiles:"),
+        Language::Zh => println!("Provider 配置:"),
+    }
+    for profile in profiles {
+        match language {
+            Language::En => println!(
+                "- {}: {} ({}, {})",
+                profile.id, profile.description, profile.model, profile.base_url
+            ),
+            Language::Zh => println!(
+                "- {}: {} ({}, {})",
+                profile.id, profile.description, profile.model, profile.base_url
+            ),
+        }
+    }
+}
+
+fn print_provider_env(report: &ProviderEnvReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("# Octopus provider: {}", report.profile.id);
+            println!("# source this output before running octopus llm/chat/need/evolve");
+        }
+        Language::Zh => {
+            println!("# Octopus provider: {}", report.profile.id);
+            println!("# 先 source 这些变量，再运行 octopus llm/chat/need/evolve");
+        }
+    }
+    println!("{}", report.shell);
+}
+
 fn run_demo(repository: &str) -> Result<DemoReport, String> {
     let workspace = env::temp_dir().join(format!("octopus-demo-{}", unique_suffix()));
     let _ = fs::remove_dir_all(&workspace);
@@ -1047,14 +1249,17 @@ fn init_files(state_path: &Path) -> Result<Vec<InitFileReport>, String> {
 }
 
 const LLM_ENV_EXAMPLE: &str = r#"# Copy to llm.env, fill the key, then source that file.
+# You can also generate this file with: octopus provider openai > llm.env
 export OCTOPUS_LLM_MODEL=gpt-4.1-mini
 export OCTOPUS_LLM_BASE_URL=https://api.openai.com/v1
 export OCTOPUS_LLM_API_KEY=
 export OCTOPUS_CHAT_LLM=1
 export OCTOPUS_LLM_MANIFEST=1
-# Optional: point chat or tentacle planning at another OpenAI-compatible env prefix.
+export OCTOPUS_LLM_EVOLVE=1
+# Optional: point chat, tentacle planning, or evolution at another OpenAI-compatible env prefix.
 # export OCTOPUS_CHAT_LLM_PREFIX=OCTOPUS_LLM
 # export OCTOPUS_MANIFEST_LLM_PREFIX=OCTOPUS_LLM
+# export OCTOPUS_EVOLVE_LLM_PREFIX=OCTOPUS_LLM
 "#;
 
 fn write_init_file(path: &Path, content: &str) -> Result<InitFileReport, String> {
@@ -1524,7 +1729,8 @@ fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorRepo
 
     let mut next = vec![status.next_action.clone()];
     if !llm.configured {
-        next.push("set OCTOPUS_LLM_MODEL and OCTOPUS_LLM_API_KEY".to_string());
+        next.push("octopus providers".to_string());
+        next.push("octopus provider openai > .octopus/llm.env".to_string());
     }
     next.push("octopus demo dangoZhang/Octopus".to_string());
     next.push(format!("open {}", pet.path));
@@ -2145,7 +2351,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -2309,6 +2515,22 @@ mod tests {
     fn cli_catalog_and_env_commands_run() {
         let _env = env_guard();
         run(vec!["catalog".to_string()]).unwrap();
+        run(vec!["providers".to_string()]).unwrap();
+        run(vec!["--json".to_string(), "providers".to_string()]).unwrap();
+        run(vec!["provider".to_string(), "openai".to_string()]).unwrap();
+        run(vec![
+            "--json".to_string(),
+            "provider".to_string(),
+            "local".to_string(),
+            "OCTOPUS_LOCAL".to_string(),
+        ])
+        .unwrap();
+        assert!(run(vec![
+            "provider".to_string(),
+            "openai".to_string(),
+            "octopus-local".to_string(),
+        ])
+        .is_err());
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
             .join("tentacles")

@@ -18,6 +18,7 @@ octopus demo dangoZhang/Octopus
 octopus catalog
 octopus skills
 octopus manifests
+octopus providers
 octopus --lang zh env
 octopus --state "$tmp/state.json" init
 octopus --state "$tmp/state.json" install research
@@ -52,19 +53,20 @@ Known runtimes get starter code. Any other runtime gets a manifest and `tools/fe
 ## Optional LLM
 
 ```bash
-OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" \
-  octopus llm "provider check"
+octopus providers
+octopus provider openai > "$tmp/llm.env"
+# set OPENAI_API_KEY first, then:
+. "$tmp/llm.env"
+octopus llm "provider check"
 
-OCTOPUS_CHAT_LLM=1 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" \
-  octopus --state "$tmp/state.json" chat "make the harness self-evolve"
+octopus --state "$tmp/state.json" chat "make the harness self-evolve"
 
-OCTOPUS_LLM_MANIFEST=1 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" \
-  octopus --state "$tmp/state.json" --json need observe README.md 1 1
+octopus --state "$tmp/state.json" --json need observe README.md 1 1
 
-OCTOPUS_LLM_EVOLVE=1 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" \
-  octopus --state "$tmp/state.json" evolve swe-agent "improve observe feed"
+octopus --state "$tmp/state.json" evolve swe-agent "improve observe feed"
 
-OCTOPUS_CHAT_LLM_PREFIX=OCTOPUS_LLM OCTOPUS_MANIFEST_LLM_PREFIX=OCTOPUS_LLM octopus doctor
+octopus provider local OCTOPUS_LOCAL
+octopus doctor
 ```
 
 ## Self-Iteration
