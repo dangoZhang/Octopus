@@ -31,6 +31,7 @@ octopus bootstrap
 octopus doctor
 octopus preflight
 octopus preflight script
+octopus preflight record
 ```
 
 Open the local control surface:
@@ -76,12 +77,12 @@ live: false
 release_ready: false
 checks:
 - clean_brain_boundary [pass required=true]: brain=Goal + Mem + Need + Feed
-next: octopus preflight script, octopus report
+next: octopus preflight record, octopus preflight script, octopus report
 ```
 
 ## What Works Today
 
-- Local bootstrap, doctor, report, preflight, and generated release-gate script.
+- Local bootstrap, doctor, report, preflight, release-gate script, and real-machine record template.
 - Goal refinement, clean-brain exploration, context inspection, Feed traces, and feedback scoring.
 - Seed tentacles for SWE work, computer-use diagnostics, repo maintenance, harness repair, bash-only execution, and structured JSON Feed.
 - OpenAI-compatible chat, tool-side planning, and harness evolution candidates.
@@ -99,8 +100,8 @@ next: octopus preflight script, octopus report
 
 ## Proof
 
-- CI covers Rust tests, Clippy, Python tests, manifests, install path, seed tool checks, app strings, and preflight script generation.
-- Release readiness is exposed by `octopus preflight` and a generated reviewable script.
+- CI covers Rust tests, Clippy, Python tests, manifests, install path, seed tool checks, app strings, and preflight artifact generation.
+- Release readiness is exposed by `octopus preflight`, a reviewable script, and a real-machine record template.
 - License: MIT.
 - Status: pre-`0.1`; `0.1.0` is reserved for recorded real-machine release testing.
 
@@ -110,4 +111,5 @@ next: octopus preflight script, octopus report
 - Pixel pet: [docs/pet.html](docs/pet.html)
 - Quick install guide: [docs/quickstart.md](docs/quickstart.md)
 - Architecture: [docs/architecture.md](docs/architecture.md)
+- Real-machine gate: [docs/real-machine-test.md](docs/real-machine-test.md)
 - Tentacle contract: [tentacles/README.md](tentacles/README.md)

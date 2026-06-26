@@ -328,6 +328,16 @@ struct PreflightScriptReport {
 }
 
 #[derive(Debug, serde::Serialize)]
+struct PreflightRecordReport {
+    path: String,
+    state_path: String,
+    version: String,
+    current_head: Option<String>,
+    commands: Vec<String>,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
 struct ProductContextPolicy {
     brain: String,
     tentacle: String,
@@ -940,6 +950,22 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     );
                 } else {
                     print_preflight_script_report(&report, language);
+                }
+                return Ok(());
+            }
+            if rest.get(1).map(String::as_str) == Some("record") {
+                let path = rest
+                    .get(2)
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from(".octopus/real-machine-record.md"));
+                let report = write_preflight_record(&state, &path)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_preflight_record_report(&report, language);
                 }
                 return Ok(());
             }
@@ -2758,7 +2784,8 @@ fn bridge_preflight_allowed(args: &[String]) -> bool {
         return false;
     };
     let rest = &args[index + 1..];
-    rest.is_empty() || (rest.len() == 1 && matches!(rest[0].as_str(), "--live" | "script"))
+    rest.is_empty()
+        || (rest.len() == 1 && matches!(rest[0].as_str(), "--live" | "script" | "record"))
 }
 
 fn bridge_feedback_allowed(args: &[String]) -> bool {
@@ -4143,7 +4170,7 @@ fn preflight_report(
                 .as_ref()
                 .map(|head| format!("head {head} recorded={recorded_current_head}"))
                 .unwrap_or_else(|| "git head unavailable".to_string()),
-            "record this head in docs/real-machine-test.md after the real-machine gate",
+            "octopus preflight record",
         ),
         preflight_check(
             "desktop_adapters",
@@ -4177,6 +4204,7 @@ fn preflight_report(
         .map(|check| check.next.clone())
         .collect::<Vec<_>>();
     next.push("octopus preflight script".to_string());
+    next.push("octopus preflight record".to_string());
     next.push("octopus report".to_string());
     next.sort();
     next.dedup();
@@ -4290,6 +4318,78 @@ fi
     })
 }
 
+fn write_preflight_record(
+    state_path: &Path,
+    output_path: &Path,
+) -> Result<PreflightRecordReport, String> {
+    if let Some(parent) = output_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let current_head = git_short_head();
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    let commands = preflight_record_commands(state_path, current_head.as_deref());
+    let head_for_record = current_head.as_deref().unwrap_or("unknown");
+    let content = format!(
+        r#"# Real-Machine Record
+
+Append the completed result to `docs/real-machine-test.md` after the run.
+
+## Machine
+
+- Date:
+- Tester:
+- Machine:
+- OS:
+- Shell:
+- Rust:
+- Python:
+- Git commit: `{head}`
+- Package version: `{version}`
+- State: `{state}`
+
+## Commands
+
+```bash
+{commands}
+```
+
+## Results
+
+- Install and doctor:
+- Core loop:
+- Bridge/app:
+- Live provider:
+- PR dry run:
+
+## Decision
+
+- Pass or fail:
+- Follow-up:
+"#,
+        head = head_for_record,
+        version = version,
+        state = state_path.to_string_lossy(),
+        commands = commands.join("\n")
+    );
+    fs::write(output_path, content).map_err(|error| error.to_string())?;
+    Ok(PreflightRecordReport {
+        path: output_path.to_string_lossy().to_string(),
+        state_path: state_path.to_string_lossy().to_string(),
+        version,
+        current_head,
+        commands,
+        next: vec![
+            format!("review {}", shell_arg(&output_path.to_string_lossy())),
+            "run the commands on a clean real machine".to_string(),
+            "append the completed result to docs/real-machine-test.md".to_string(),
+            "octopus preflight".to_string(),
+        ],
+    })
+}
+
 fn preflight_script_commands() -> Vec<String> {
     [
         "octopus --version",
@@ -4315,6 +4415,45 @@ fn preflight_script_commands() -> Vec<String> {
     .into_iter()
     .map(str::to_string)
     .collect()
+}
+
+fn preflight_record_commands(state_path: &Path, current_head: Option<&str>) -> Vec<String> {
+    let rev = current_head.unwrap_or("HEAD");
+    let state_default = shell_arg(&state_path.to_string_lossy());
+    let mut commands = vec![
+        "tmp=$(mktemp -d)".to_string(),
+        format!(
+            "cargo install --git https://github.com/dangoZhang/Octopus --rev {} octopus-core --locked --bin octopus --force --root \"$tmp/root\"",
+            shell_arg(rev)
+        ),
+        "OCTOPUS=\"$tmp/root/bin/octopus\"".to_string(),
+        format!("STATE=${{OCTOPUS_PREFLIGHT_STATE:-{state_default}}}"),
+    ];
+    commands.extend(preflight_script_commands().into_iter().map(|command| {
+        command
+            .replace("octopus --version", "\"$OCTOPUS\" --version")
+            .replace(
+                "octopus --state \"$STATE\"",
+                "\"$OCTOPUS\" --state \"$STATE\"",
+            )
+    }));
+    commands.extend([
+        "\"$OCTOPUS\" --state \"$STATE\" preflight".to_string(),
+        "\"$OCTOPUS\" provider status".to_string(),
+        "\"$OCTOPUS\" provider check \"${OCTOPUS_LLM_PREFIX:-OCTOPUS_LLM}\"".to_string(),
+        "\"$OCTOPUS\" --state \"$STATE\" preflight --live".to_string(),
+        "\"$OCTOPUS\" bridge 127.0.0.1:18765 &".to_string(),
+        "BRIDGE_PID=$!".to_string(),
+        "trap 'kill \"$BRIDGE_PID\" 2>/dev/null || true' EXIT".to_string(),
+        "sleep 1".to_string(),
+        "curl -fsS http://127.0.0.1:18765/app.html >/dev/null".to_string(),
+        "curl -fsS 'http://127.0.0.1:18765/pet.html?state=harness' >/dev/null".to_string(),
+        "curl -fsS -X POST http://127.0.0.1:18765/api/run -H 'content-type: application/json' --data-binary \"{\\\"args\\\":[\\\"--state\\\",\\\"$STATE\\\",\\\"--json\\\",\\\"doctor\\\"]}\"".to_string(),
+        "kill \"$BRIDGE_PID\"".to_string(),
+        "\"$OCTOPUS\" --state \"$STATE\" self-iterate dangoZhang/Octopus".to_string(),
+        "OCTOPUS_PR_DRY_RUN=1 \"$OCTOPUS\" --state \"$STATE\" self-iterate pr dangoZhang/Octopus \"preflight dry run\"".to_string(),
+    ]);
+    commands
 }
 
 fn git_short_head() -> Option<String> {
@@ -4459,6 +4598,33 @@ fn print_preflight_script_report(report: &PreflightScriptReport, language: Langu
             println!("章鱼发布前检查脚本");
             println!("路径: {}", report.path);
             println!("状态文件: {}", report.state_path);
+            println!("命令数: {}", report.commands.len());
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn print_preflight_record_report(report: &PreflightRecordReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus preflight record");
+            println!("path: {}", report.path);
+            println!("version: {}", report.version);
+            println!(
+                "head: {}",
+                report.current_head.as_deref().unwrap_or("unknown")
+            );
+            println!("commands: {}", report.commands.len());
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼实机记录模板");
+            println!("路径: {}", report.path);
+            println!("版本: {}", report.version);
+            println!(
+                "当前提交: {}",
+                report.current_head.as_deref().unwrap_or("未知")
+            );
             println!("命令数: {}", report.commands.len());
             println!("下一步: {}", join_or_none(&report.next));
         }
@@ -6261,7 +6427,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [prompt] | explore [--save] [prompt] | needs [take|drop index] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [prompt] | explore [--save] [prompt] | needs [take|drop index] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -6739,6 +6905,7 @@ mod tests {
         assert!(usage().contains("report"));
         assert!(usage().contains("preflight [--live]"));
         assert!(usage().contains("preflight script [path]"));
+        assert!(usage().contains("preflight record [path]"));
         assert!(usage().contains("traces [limit]"));
         assert!(usage().contains("feedback <trace-index>"));
         assert!(usage().contains("bootstrap [tentacles-root]"));
@@ -6964,6 +7131,13 @@ mod tests {
             "preflight".to_string(),
             "script".to_string()
         ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "preflight".to_string(),
+            "record".to_string()
+        ]));
         assert!(!bridge_command_allowed(&[
             "--state".to_string(),
             "state.json".to_string(),
@@ -6971,6 +7145,14 @@ mod tests {
             "preflight".to_string(),
             "script".to_string(),
             "/tmp/preflight.sh".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "preflight".to_string(),
+            "record".to_string(),
+            "/tmp/record.md".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),
@@ -7581,6 +7763,16 @@ mod tests {
             script_path.to_string_lossy().to_string(),
         ])
         .unwrap();
+        let record_path = path.with_file_name("real-machine-record.md");
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "preflight".to_string(),
+            "record".to_string(),
+            record_path.to_string_lossy().to_string(),
+        ])
+        .unwrap();
 
         let loaded = HarnessState::load(&path).unwrap();
         let report = product_report(&loaded, Path::new(&state)).unwrap();
@@ -7605,6 +7797,11 @@ mod tests {
         let script = fs::read_to_string(&script_path).unwrap();
         assert!(script.contains("octopus --state \"$STATE\" bootstrap"));
         assert!(script.contains("OCTOPUS_PREFLIGHT_LIVE"));
+        let record = fs::read_to_string(&record_path).unwrap();
+        assert!(record.contains("# Real-Machine Record"));
+        assert!(record.contains("Package version"));
+        assert!(record.contains("preflight --live"));
+        assert!(record.contains("self-iterate pr"));
 
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("swe-agent"));
