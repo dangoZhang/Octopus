@@ -26,6 +26,6 @@ Real-machine test gate for `0.1.0` and later tags:
 
 Last cleanup/version correction: `0.0.5` on 2026-06-26. Scope: harness-beat evolution recommendations, apply-plan previews, recommendation scoring feedback, bridge allowlist, docs/CI alignment; no tag cut.
 
-Product commits toward `0.0.6`: 7/8.
+Product commits toward `0.0.6`: 8/8.
 
 Next planned cleanup/version commit: `0.0.6`.

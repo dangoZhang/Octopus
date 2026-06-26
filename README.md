@@ -38,6 +38,7 @@ octopus install computer-use-agent
 octopus --json install computer-use-agent
 octopus --json check computer-use-agent
 octopus --json check computer-use-agent 1
+octopus report
 octopus install bash-only
 octopus chat "build a clean-brain agent"
 octopus context observe .
@@ -61,7 +62,7 @@ Local app:
 octopus bridge
 ```
 
-Open `http://127.0.0.1:8765/app.html` for provider env save/readiness, structured Feed tests, install, checks, beat, and grant-bound harness evolution apply artifacts. Bridge reads `.octopus/llm.env` for child commands.
+Open `http://127.0.0.1:8765/app.html` for provider env save/readiness, context, product report, structured Feed tests, install, checks, beat, and grant-bound harness evolution apply artifacts. Bridge reads `.octopus/llm.env` for child commands.
 
 Update:
 
@@ -86,6 +87,7 @@ actions: 1:read
 feed_trace: json-feed/feed via rule
 Feed traces
 Octopus doctor
+Octopus report
 pixel: 🟥
 event: harness beat
 heartbeat: alive

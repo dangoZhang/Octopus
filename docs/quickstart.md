@@ -36,6 +36,7 @@ octopus --state "$tmp/state.json" context observe .
 octopus --state "$tmp/state.json" think swe-agent observe README.md
 octopus --state "$tmp/state.json" need observe .
 octopus --state "$tmp/state.json" traces
+octopus --state "$tmp/state.json" report
 octopus --state "$tmp/state.json" oauth octopus tool:bash-only tool:execute
 octopus --state "$tmp/state.json" need execute "echo octopus"
 octopus --state "$tmp/state.json" pet
@@ -101,7 +102,7 @@ octopus provider save local OCTOPUS_LOCAL "$tmp/local-llm.env"
 octopus doctor
 ```
 
-The native app can generate or save provider env, show the same provider layers, and run an explicit provider check from the Provider panel.
+The native app can generate or save provider env, show the same provider layers, run an explicit provider check, and render `octopus report`.
 
 ## Self-Iteration
 
@@ -138,6 +139,7 @@ plan_source: rule
 feed_trace: json-feed/feed via rule
 Feed traces
 Octopus doctor
+Octopus report
 Octopus bridge: http://127.0.0.1:8765
 pixel: 🟥
 event: harness beat

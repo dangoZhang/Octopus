@@ -48,6 +48,8 @@ jobs:
           grep -q '"check_history"' "$tmp/state.json"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" pet harness | grep -q "Octopus pet"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" doctor | grep -q "Octopus doctor"
+          "$tmp/root/bin/octopus" --state "$tmp/state.json" report | grep -q "Octopus report"
+          "$tmp/root/bin/octopus" --state "$tmp/state.json" --json report | grep -q '"capabilities"'
       - run: cargo run -q -p octopus-core -- catalog
       - run: cargo run -q -p octopus-core -- skills | grep -q "computer-use"
       - run: |
@@ -108,6 +110,7 @@ jobs:
       - run: grep -q "pixel-pet" docs/pet.html
       - run: grep -q "octopus think" docs/index.html
       - run: grep -q "octopus traces" docs/index.html
+      - run: grep -q "octopus report" docs/index.html
       - run: grep -q "Command Surface" docs/app.html
       - run: grep -q "data-run=\"think\"" docs/app.html
       - run: grep -q "data-run=\"traces\"" docs/app.html
@@ -136,6 +139,9 @@ jobs:
       - run: grep -q "renderContextReport" docs/app.html
       - run: grep -q "octopus context" README.md
       - run: grep -q "context \\[kind query\\]" crates/octopus-core/src/main.rs
+      - run: grep -q "Report" docs/app.html
+      - run: grep -q "runProductReport" docs/app.html
+      - run: grep -q "renderProductReport" docs/app.html
       - run: grep -q "feedEvidenceDetails" docs/app.html
       - run: grep -q "checkOutputDetails" docs/app.html
       - run: grep -q "check-output" docs/app.html
@@ -232,6 +238,8 @@ jobs:
           cargo run -q -p octopus-core -- --state "$tmp/state.json" pet | grep -q "state: success"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" doctor | grep -q "Octopus doctor"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json doctor | grep -q '"llm"'
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" report | grep -q "Octopus report"
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" --json report | grep -q '"gaps"'
           cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build octopus"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" beat 200

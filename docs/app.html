@@ -247,6 +247,11 @@
         padding-top: 14px;
       }
 
+      .product-report {
+        border-top: 1px solid var(--line);
+        padding-top: 14px;
+      }
+
       .report-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -467,11 +472,16 @@
             <button type="button" id="providerCheck">Provider Check</button>
             <button type="button" data-run="pet">Pet</button>
             <button type="button" data-run="doctor">Doctor</button>
+            <button type="button" id="runReport">Report</button>
             <button type="button" data-run="beat">Beat</button>
           </div>
           <div class="output">
             <h2>Output</h2>
             <pre><code id="output"></code></pre>
+          </div>
+          <div class="product-report stack">
+            <h2>Report</h2>
+            <div id="productReport" class="metric"><span>No product report yet.</span></div>
           </div>
           <div class="install-report stack">
             <h2>Install Report</h2>
@@ -508,6 +518,7 @@
       let currentProviderReport = null;
       let currentFeedReport = null;
       let currentContextReport = null;
+      let currentProductReport = null;
 
       function render(stateName = "harness") {
         currentPetState = stateName;
@@ -537,6 +548,7 @@
           `octopus --state ${shellQuote(state)} traces`,
           `octopus --state ${shellQuote(state)} pet ${stateName}`,
           `octopus --state ${shellQuote(state)} doctor`,
+          `octopus --state ${shellQuote(state)} report`,
           `octopus --state ${shellQuote(state)} beat 200`,
         ].join("\n");
       }
@@ -559,6 +571,7 @@
           provider: ["--json", "provider", "status"],
           pet: [...base, "pet", stateName],
           doctor: [...base, "doctor"],
+          report: [...base, "--json", "report"],
           beat: [...base, "beat", "200"],
         };
         return args[action];
@@ -722,6 +735,20 @@
         }
       }
 
+      async function runProductReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        $("productReport").textContent = "loading...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "report"]);
+          currentProductReport = report;
+          renderProductReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("productReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runSingleCheck(index) {
         if (!currentInstallReport || currentInstallReport.id !== $("tentacle").value) {
           await runInstallReport();
@@ -834,6 +861,69 @@
         root.appendChild(reportList("Saved", [report.path || ".octopus/llm.env"], textItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
         root.appendChild(providerEnvShellDetails(env));
+      }
+
+      function renderProductReport(report) {
+        const root = $("productReport");
+        root.className = "stack";
+        root.textContent = "";
+        root.appendChild(productSummary(report));
+        root.appendChild(reportList("Capabilities", report.capabilities || [], capabilityItem));
+        root.appendChild(reportList("Gaps", report.gaps || [], gapItem));
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function productSummary(report) {
+        const context = report.context || {};
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Version", report.version || "unknown"],
+          ["State", `${report.state_path || "state"} · ${report.state_exists ? "exists" : "new"}`],
+          ["Brain", context.brain || "Goal + Mem + Need + Feed"],
+          ["Tentacle", context.tentacle || "Need + Tool + Action + Tool + Action -> Feed"],
+          ["Loop", context.feedback_loop || "Need -> Feed -> Feedback"],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        return grid;
+      }
+
+      function capabilityItem(capability) {
+        const item = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = capability.status === "ready" || capability.status === "pr_ready" ? "badge ok" : "badge";
+        badge.textContent = capability.status || "unknown";
+        const command = document.createElement("span");
+        command.className = "check-command";
+        command.textContent = capability.id || "capability";
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        meta.textContent = capability.command ? `${capability.evidence || ""} · ${capability.command}` : capability.evidence || "";
+        item.append(badge, command, meta);
+        return item;
+      }
+
+      function gapItem(gap) {
+        const item = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = "badge failed";
+        badge.textContent = "gap";
+        const command = document.createElement("span");
+        command.className = "check-command";
+        command.textContent = gap.id || "gap";
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        meta.textContent = `${gap.impact || ""} · ${gap.next || ""}`;
+        item.append(badge, command, meta);
+        return item;
       }
 
       function providerEnvShellDetails(report) {
@@ -1382,6 +1472,10 @@
           await runProviderStatus();
           return;
         }
+        if (action === "report") {
+          await runProductReport();
+          return;
+        }
         const args = bridgeArgs(action);
         if (!args) return;
         const base = ($("bridge").value.trim() || defaultBridge()).replace(/\/$/, "");
@@ -1456,12 +1550,15 @@
         $("contextReport").innerHTML = "<span>No context yet.</span>";
         $("beatReport").className = "metric";
         $("beatReport").innerHTML = "<span>No beat yet.</span>";
+        $("productReport").className = "metric";
+        $("productReport").innerHTML = "<span>No product report yet.</span>";
         currentInstallReport = null;
         currentCheckReport = null;
         currentBeatReport = null;
         currentProviderReport = null;
         currentFeedReport = null;
         currentContextReport = null;
+        currentProductReport = null;
         render();
       });
       $("installGuide").addEventListener("click", runInstallReport);
@@ -1471,6 +1568,7 @@
       $("providerEnv").addEventListener("click", runProviderEnv);
       $("providerSave").addEventListener("click", runProviderSave);
       $("providerCheck").addEventListener("click", runProviderCheck);
+      $("runReport").addEventListener("click", runProductReport);
       document.querySelectorAll("[data-state]").forEach((button) => {
         button.addEventListener("click", () => render(button.dataset.state));
       });
@@ -1485,6 +1583,7 @@
           currentProviderReport = null;
           currentFeedReport = null;
           currentContextReport = null;
+          currentProductReport = null;
           $("providerReport").className = "metric";
           $("providerReport").innerHTML = "<span>No provider status yet.</span>";
           $("feedReport").className = "metric";
@@ -1493,6 +1592,8 @@
           $("contextReport").innerHTML = "<span>No context yet.</span>";
           $("beatReport").className = "metric";
           $("beatReport").innerHTML = "<span>No beat yet.</span>";
+          $("productReport").className = "metric";
+          $("productReport").innerHTML = "<span>No product report yet.</span>";
           render(currentPetState);
         });
       });

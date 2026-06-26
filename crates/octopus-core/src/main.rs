@@ -271,6 +271,40 @@ struct ProviderLayerStatus {
     message: String,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct ProductReport {
+    version: String,
+    state_path: String,
+    state_exists: bool,
+    context: ProductContextPolicy,
+    capabilities: Vec<ProductCapability>,
+    gaps: Vec<ProductGap>,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ProductContextPolicy {
+    brain: String,
+    tentacle: String,
+    feedback_loop: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ProductCapability {
+    id: String,
+    status: String,
+    evidence: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    command: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ProductGap {
+    id: String,
+    impact: String,
+    next: String,
+}
+
 const DEFAULT_PROVIDER_ENV_PATH: &str = ".octopus/llm.env";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -644,6 +678,19 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_status_report(&report, language);
+            }
+            Ok(())
+        }
+        Some("report") => {
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let report = product_report(&loaded, &state)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_product_report(&report, language);
             }
             Ok(())
         }
@@ -2387,6 +2434,7 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "need"
             | "pet"
             | "doctor"
+            | "report"
             | "beat"
             | "status"
             | "context"
@@ -3201,6 +3249,339 @@ fn print_context_report(report: &ContextReport, language: Language) {
             }
             print_context_turns(report, language);
             print_context_tentacles(report, language);
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductReport, String> {
+    let status = state.status_report_with_state(Some(state_path));
+    let cwd = env::current_dir().map_err(|error| error.to_string())?;
+    let environment = EnvironmentReport::detect(&cwd);
+    let manifests =
+        inspect_tentacle_manifests(default_tentacles_root()).map_err(|error| error.to_string())?;
+    let provider = provider_status_report();
+    let pet_exists = repo_root().join("docs/pet.html").exists();
+    let app_exists = repo_root().join("docs/app.html").exists();
+    let docs_exists = repo_root().join("docs/index.html").exists();
+    let broken_manifests = manifests
+        .iter()
+        .filter(|manifest| !manifest.missing_entrypoints.is_empty())
+        .map(|manifest| manifest.id.clone())
+        .collect::<Vec<_>>();
+    let runtime_kinds = manifests
+        .iter()
+        .flat_map(|manifest| manifest.runtime_kinds.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    let required_surfaces = [
+        "brain_prompt",
+        "tool_meta",
+        "runtime_code",
+        "evolution_policy",
+    ];
+    let harness_surfaces_ready = manifests.iter().any(|manifest| {
+        required_surfaces.iter().all(|surface| {
+            manifest
+                .evolution_surfaces
+                .iter()
+                .any(|item| item == surface)
+        })
+    });
+    let provider_configured = provider.layers.iter().any(|layer| layer.configured);
+    let provider_ready = provider
+        .layers
+        .iter()
+        .all(|layer| layer.enabled && layer.configured && layer.curl_available);
+    let github_ready = state.active_grant("github", "dangoZhang/Octopus").is_some();
+
+    let mut capabilities = vec![
+        product_capability(
+            "clean_brain",
+            "ready",
+            "brain context is Goal + Mem + Need + Feed",
+            Some("octopus chat \"describe your goal\""),
+        ),
+        product_capability(
+            "tentacle_brains",
+            if status.tentacles.is_empty() {
+                "available"
+            } else {
+                "ready"
+            },
+            format!(
+                "{} installed, {} manifests",
+                status.tentacles.len(),
+                manifests.len()
+            ),
+            Some("octopus install swe-agent"),
+        ),
+        product_capability(
+            "runtime_neutral_harness",
+            if harness_surfaces_ready {
+                "ready"
+            } else {
+                "needs_manifest"
+            },
+            format!(
+                "runtimes: {}; surfaces: {}",
+                join_or_none(&runtime_kinds.iter().cloned().collect::<Vec<_>>()),
+                required_surfaces.join(", ")
+            ),
+            Some("octopus manifests"),
+        ),
+        product_capability(
+            "three_hearts",
+            if status.hearts.len() >= 3 {
+                "ready"
+            } else {
+                "missing"
+            },
+            status
+                .hearts
+                .iter()
+                .map(|beat| format!("{}={}", beat.name, beat.summary))
+                .collect::<Vec<_>>()
+                .join(", "),
+            Some("octopus beat 200"),
+        ),
+        product_capability(
+            "color_pet",
+            if pet_exists { "ready" } else { "missing" },
+            repo_root()
+                .join("docs/pet.html")
+                .to_string_lossy()
+                .to_string(),
+            Some("octopus pet"),
+        ),
+        product_capability(
+            "native_html_app",
+            if app_exists { "ready" } else { "missing" },
+            repo_root()
+                .join("docs/app.html")
+                .to_string_lossy()
+                .to_string(),
+            Some("octopus bridge"),
+        ),
+        product_capability(
+            "provider_layers",
+            if provider_ready {
+                "ready"
+            } else if provider_configured {
+                "configured"
+            } else {
+                "setup_needed"
+            },
+            provider
+                .layers
+                .iter()
+                .map(|layer| {
+                    format!(
+                        "{} enabled={} configured={}",
+                        layer.layer, layer.enabled, layer.configured
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("; "),
+            Some("octopus provider status"),
+        ),
+        product_capability(
+            "self_iteration",
+            if github_ready {
+                "pr_ready"
+            } else {
+                "oauth_required"
+            },
+            state.self_iteration_plan("dangoZhang/Octopus", None).mode,
+            Some("octopus self-iterate dangoZhang/Octopus"),
+        ),
+        product_capability(
+            "docs_home",
+            if docs_exists { "ready" } else { "missing" },
+            "README story plus native docs homepage".to_string(),
+            Some("open docs/index.html"),
+        ),
+    ];
+    capabilities.sort_by(|left, right| left.id.cmp(&right.id));
+
+    let mut gaps = Vec::new();
+    let state_args = format!(" --state {}", shell_arg(&state_path.to_string_lossy()));
+    if status.goal.is_none() {
+        gaps.push(product_gap(
+            "goal_loop_empty",
+            "chat has not refined a user goal in this state",
+            format!("octopus{state_args} chat \"describe your goal\""),
+        ));
+    }
+    if status.tentacles.is_empty() {
+        gaps.push(product_gap(
+            "no_installed_tentacles",
+            "Needs cannot reach tool-side brains yet",
+            "octopus adapt",
+        ));
+    }
+    if !broken_manifests.is_empty() {
+        gaps.push(product_gap(
+            "broken_manifests",
+            format!("missing entrypoints: {}", broken_manifests.join(", ")),
+            "octopus manifests",
+        ));
+    }
+    if !provider_ready {
+        let next = if provider_configured {
+            "octopus provider check"
+        } else {
+            "octopus provider save openai"
+        };
+        gaps.push(product_gap(
+            "provider_feedback",
+            "LLM-backed chat, tentacle planning, or evolution is not fully live",
+            next,
+        ));
+    }
+    if status.feed_trace_count == 0 {
+        gaps.push(product_gap(
+            "feed_trace_empty",
+            "harness evolution has no Feed data to learn from",
+            "octopus need observe .",
+        ));
+    }
+    if status.check_history_count == 0 {
+        gaps.push(product_gap(
+            "check_history_empty",
+            "harness beat cannot target failing runtime checks yet",
+            "octopus check swe-agent",
+        ));
+    }
+    if state.evolution_outcomes.is_empty() {
+        gaps.push(product_gap(
+            "evolution_scores_empty",
+            "recommendations have not received outcome feedback",
+            "octopus evolve score swe-agent 03-runtime-code partial \"reviewed\"",
+        ));
+    }
+    if environment.recommended_profiles.is_empty() {
+        gaps.push(product_gap(
+            "environment_signal_sparse",
+            "adapter selection has little local project evidence",
+            "octopus env",
+        ));
+    }
+    gaps.push(product_gap(
+        "real_machine_gate",
+        "0.1.0 and later tags need recorded real-machine testing",
+        "update docs/real-machine-test.md before a 0.1.0 tag",
+    ));
+    gaps.sort_by(|left, right| left.id.cmp(&right.id));
+
+    let mut next = gaps.iter().map(|gap| gap.next.clone()).collect::<Vec<_>>();
+    next.push(status.next_action);
+    next.extend(provider.next);
+    next.sort();
+    next.dedup();
+
+    Ok(ProductReport {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        state_path: state_path.to_string_lossy().to_string(),
+        state_exists: state_path.exists(),
+        context: ProductContextPolicy {
+            brain: "Goal + Mem + Need + Feed".to_string(),
+            tentacle: "Need + Tool + Action + Tool + Action -> Feed".to_string(),
+            feedback_loop: "Need -> Feed -> Feedback".to_string(),
+        },
+        capabilities,
+        gaps,
+        next,
+    })
+}
+
+fn product_capability(
+    id: impl Into<String>,
+    status: impl Into<String>,
+    evidence: impl Into<String>,
+    command: Option<&str>,
+) -> ProductCapability {
+    ProductCapability {
+        id: id.into(),
+        status: status.into(),
+        evidence: evidence.into(),
+        command: command.map(str::to_string),
+    }
+}
+
+fn product_gap(
+    id: impl Into<String>,
+    impact: impl Into<String>,
+    next: impl Into<String>,
+) -> ProductGap {
+    ProductGap {
+        id: id.into(),
+        impact: impact.into(),
+        next: next.into(),
+    }
+}
+
+fn print_product_report(report: &ProductReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus report");
+            println!("version: {}", report.version);
+            println!(
+                "state: {} ({})",
+                report.state_path,
+                if report.state_exists { "exists" } else { "new" }
+            );
+            println!("brain: {}", report.context.brain);
+            println!("tentacle: {}", report.context.tentacle);
+            println!("loop: {}", report.context.feedback_loop);
+            println!("capabilities:");
+            for capability in &report.capabilities {
+                let command = capability
+                    .command
+                    .as_ref()
+                    .map(|command| format!(" next={command}"))
+                    .unwrap_or_default();
+                println!(
+                    "- {} [{}]: {}{}",
+                    capability.id, capability.status, capability.evidence, command
+                );
+            }
+            println!("gaps:");
+            for gap in &report.gaps {
+                println!("- {}: {}; next={}", gap.id, gap.impact, gap.next);
+            }
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼报告");
+            println!("版本: {}", report.version);
+            println!(
+                "状态文件: {} ({})",
+                report.state_path,
+                if report.state_exists {
+                    "存在"
+                } else {
+                    "新建"
+                }
+            );
+            println!("主脑上下文: {}", report.context.brain);
+            println!("触手上下文: {}", report.context.tentacle);
+            println!("循环: {}", report.context.feedback_loop);
+            println!("能力:");
+            for capability in &report.capabilities {
+                let command = capability
+                    .command
+                    .as_ref()
+                    .map(|command| format!(" 下一步={command}"))
+                    .unwrap_or_default();
+                println!(
+                    "- {} [{}]: {}{}",
+                    capability.id, capability.status, capability.evidence, command
+                );
+            }
+            println!("缺口:");
+            for gap in &report.gaps {
+                println!("- {}: {}; 下一步={}", gap.id, gap.impact, gap.next);
+            }
             println!("下一步: {}", join_or_none(&report.next));
         }
     }
@@ -4688,7 +5069,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | context [kind query] | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | context [kind query] | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | report | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -4708,8 +5089,8 @@ mod tests {
     use super::{
         bridge_command_allowed, bridge_command_name, check_report, http_content_length,
         install_report, is_broken_pipe_panic, localize_summary, parse_bridge_env_overlay,
-        percent_encode_path, pet_report, pet_report_for_state, provider_status_report, run,
-        skill_reports, usage, Language,
+        percent_encode_path, pet_report, pet_report_for_state, product_report,
+        provider_status_report, run, skill_reports, usage, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
@@ -4987,6 +5368,7 @@ mod tests {
         assert!(usage().contains("context [kind query]"));
         assert!(usage().contains("provider save <profile>"));
         assert!(usage().contains("provider status"));
+        assert!(usage().contains("report"));
         assert!(usage().contains("traces [limit]"));
     }
 
@@ -5116,6 +5498,12 @@ mod tests {
             "context".to_string(),
             "observe".to_string(),
             ".".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "report".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),
@@ -5652,6 +6040,30 @@ mod tests {
             "status".to_string(),
         ])
         .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "report".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "report".to_string(),
+        ])
+        .unwrap();
+
+        let report =
+            product_report(&HarnessState::load(&path).unwrap(), Path::new(&state)).unwrap();
+        assert!(report
+            .capabilities
+            .iter()
+            .any(|item| item.id == "clean_brain"));
+        assert!(report
+            .gaps
+            .iter()
+            .any(|item| item.id == "provider_feedback"));
 
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("swe-agent"));
