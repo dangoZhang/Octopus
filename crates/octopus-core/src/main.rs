@@ -3,16 +3,17 @@ use octopus_core::{
     load_tentacle_manifests, plan_tentacle_evolution_apply, propose_tentacle_evolution_with_client,
     propose_tentacle_evolution_with_state, recommend_tentacle_evolution_apply, scaffold_tentacle,
     think_tentacle, write_harness_beat_evolution_artifacts, write_tentacle_apply_artifacts,
-    write_tentacle_evolution_artifacts, AdaptReport, BrainExploreReport, CapabilityGrant,
-    ChatClient, ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord, ContextReport,
-    EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact,
-    EvolutionOutcome, EvolutionRecommendation, Feed, FeedFeedbackOutcome, FeedTraceRecord, Goal,
-    GoalChat, Harness, HarnessBeatEvolution, HarnessState, HeartBeat, HeartbeatReport,
-    InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, OpenAiCompatibleChatClient,
-    OpenAiCompatibleConfig, RouteReport, SelfIterationPlan, Status, StatusReport,
-    TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile, TentacleScaffold,
-    TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate, ToolPermission,
-    CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
+    write_tentacle_evolution_artifacts, AdaptReport, BrainExploreReport, BrainPromptReport,
+    CapabilityGrant, ChatClient, ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord,
+    ContextReport, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan,
+    EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed, FeedFeedbackOutcome,
+    FeedTraceRecord, Goal, GoalChat, Harness, HarnessBeatEvolution, HarnessState, HeartBeat,
+    HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem,
+    NeedQueueReport, NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport,
+    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, RouteReport, SelfIterationPlan, Status,
+    StatusReport, TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile,
+    TentacleScaffold, TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate,
+    ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -595,7 +596,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
-        Some("explore") => {
+        Some("brain") => {
             let prompt = rest
                 .get(1..)
                 .filter(|values| !values.is_empty())
@@ -603,13 +604,48 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             let prompt = prompt
                 .or_else(|| loaded.goal.as_ref().map(|goal| goal.objective.clone()))
+                .unwrap_or_else(|| "what should the brain ask next?".to_string());
+            let report = loaded.clean_brain_prompt(prompt, 6);
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_brain_prompt(&report, language);
+            }
+            Ok(())
+        }
+        Some("explore") => {
+            let save = rest.get(1).map(String::as_str) == Some("--save");
+            let prompt_start = if save { 2 } else { 1 };
+            let prompt = rest
+                .get(prompt_start..)
+                .filter(|values| !values.is_empty())
+                .map(|values| values.join(" "));
+            let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let prompt = prompt
+                .or_else(|| loaded.goal.as_ref().map(|goal| goal.objective.clone()))
                 .unwrap_or_else(|| "next useful Need".to_string());
             let report = if chat_llm_enabled() {
                 let mut client = chat_llm_client()?;
-                loaded.clean_brain_explore_with_client(prompt, 6, &mut client)?
+                loaded.clean_brain_explore_with_client(prompt.clone(), 6, &mut client)?
             } else {
-                loaded.clean_brain_explore(prompt, 6)
+                loaded.clean_brain_explore(prompt.clone(), 6)
             };
+            if save {
+                let saved = loaded.queue_exploration_report(&report);
+                loaded.save(&state).map_err(|error| error.to_string())?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&saved).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_need_queue_save(&saved, language);
+                }
+                return Ok(());
+            }
             if json {
                 println!(
                     "{}",
@@ -619,6 +655,61 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 print_brain_explore(&report, language);
             }
             Ok(())
+        }
+        Some("needs") => {
+            let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            match rest.get(1).map(String::as_str) {
+                Some("take") => {
+                    let index = rest
+                        .get(2)
+                        .ok_or_else(|| "needs take requires a queue index".to_string())
+                        .and_then(|value| parse_queue_index(value))?;
+                    let taken = loaded.take_queued_need(index)?;
+                    loaded.save(&state).map_err(|error| error.to_string())?;
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&taken)
+                                .map_err(|error| error.to_string())?
+                        );
+                    } else {
+                        print_need_queue_take(&taken, language);
+                    }
+                    Ok(())
+                }
+                Some("drop") => {
+                    let index = rest
+                        .get(2)
+                        .ok_or_else(|| "needs drop requires a queue index".to_string())
+                        .and_then(|value| parse_queue_index(value))?;
+                    let item = loaded.drop_queued_need(index)?;
+                    loaded.save(&state).map_err(|error| error.to_string())?;
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&item)
+                                .map_err(|error| error.to_string())?
+                        );
+                    } else {
+                        print_need_queue_item(&item, language);
+                    }
+                    Ok(())
+                }
+                Some(other) => Err(format!("unknown needs command: {other}")),
+                None => {
+                    let report = loaded.need_queue_report(12);
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&report)
+                                .map_err(|error| error.to_string())?
+                        );
+                    } else {
+                        print_need_queue(&report, language);
+                    }
+                    Ok(())
+                }
+            }
         }
         Some("llm") => {
             let message = rest
@@ -2634,7 +2725,9 @@ fn bridge_command_allowed(args: &[String]) -> bool {
         command,
         "init"
             | "chat"
+            | "brain"
             | "explore"
+            | "needs"
             | "think"
             | "need"
             | "bootstrap"
@@ -3468,6 +3561,10 @@ fn print_status_report(report: &StatusReport, language: Language) {
             println!("tentacles: {}", status_tentacles(report));
             println!("goal: {}", status_goal(report));
             println!("grants: {}", join_or_none(&report.active_grants));
+            println!("need_queue: {}", report.need_queue_count);
+            if let Some(item) = &report.latest_need_queue_item {
+                println!("latest_need: {}", need_queue_line(item));
+            }
             println!("feed_traces: {}", report.feed_trace_count);
             if let Some(trace) = &report.latest_feed_trace {
                 println!("latest_trace: {}", trace_line(trace));
@@ -3494,6 +3591,10 @@ fn print_status_report(report: &StatusReport, language: Language) {
             println!("触手: {}", status_tentacles(report));
             println!("目标: {}", status_goal(report));
             println!("授权: {}", join_or_none(&report.active_grants));
+            println!("Need队列: {}", report.need_queue_count);
+            if let Some(item) = &report.latest_need_queue_item {
+                println!("最近Need: {}", need_queue_line(item));
+            }
             println!("Feed轨迹数: {}", report.feed_trace_count);
             if let Some(trace) = &report.latest_feed_trace {
                 println!("最近轨迹: {}", trace_line(trace));
@@ -3611,6 +3712,21 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             "ready",
             "Goal/Mem/Need/Feed exploration returns Need suggestions without tool execution",
             Some("octopus explore"),
+        ),
+        product_capability(
+            "need_queue",
+            "ready",
+            format!(
+                "{} pending clean-brain Need suggestions",
+                status.need_queue_count
+            ),
+            Some("octopus explore --save"),
+        ),
+        product_capability(
+            "clean_brain_prompt",
+            "ready",
+            "exports pasteable Goal/Mem/Need/Feed messages for any chat model",
+            Some("octopus brain"),
         ),
         product_capability(
             "tentacle_brains",
@@ -4394,6 +4510,147 @@ fn print_brain_explore(report: &BrainExploreReport, language: Language) {
     }
 }
 
+fn print_need_queue_save(report: &NeedQueueSaveReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus Need queue");
+            println!("saved: {}", report.queued.len());
+        }
+        Language::Zh => {
+            println!("章鱼 Need 队列");
+            println!("已保存: {}", report.queued.len());
+        }
+    }
+    print_need_queue(&report.queue, language);
+}
+
+fn print_need_queue(report: &NeedQueueReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Need queue");
+            println!("brain: {}", report.policy);
+            if report.pending.is_empty() {
+                println!("pending: none");
+            } else {
+                println!("pending:");
+            }
+        }
+        Language::Zh => {
+            println!("Need 队列");
+            println!("主脑: {}", report.policy);
+            if report.pending.is_empty() {
+                println!("待处理: 无");
+            } else {
+                println!("待处理:");
+            }
+        }
+    }
+    for item in &report.pending {
+        print_need_queue_item(item, language);
+    }
+    if !report.history.is_empty() {
+        match language {
+            Language::En => println!("history:"),
+            Language::Zh => println!("历史:"),
+        }
+        for item in &report.history {
+            print_need_queue_item(item, language);
+        }
+    }
+    for next in &report.next {
+        match language {
+            Language::En => println!("next: {next}"),
+            Language::Zh => println!("下一步: {next}"),
+        }
+    }
+}
+
+fn print_need_queue_take(report: &NeedQueueTakeReport, language: Language) {
+    print_need_queue_item(&report.item, language);
+    match language {
+        Language::En => println!("command: {}", report.command),
+        Language::Zh => println!("命令: {}", report.command),
+    }
+    for next in &report.next {
+        match language {
+            Language::En => println!("next: {next}"),
+            Language::Zh => println!("下一步: {next}"),
+        }
+    }
+}
+
+fn print_need_queue_item(item: &NeedQueueItem, language: Language) {
+    let status = match &item.status {
+        NeedQueueStatus::Pending => match language {
+            Language::En => "pending",
+            Language::Zh => "待处理",
+        },
+        NeedQueueStatus::Taken => match language {
+            Language::En => "taken",
+            Language::Zh => "已取用",
+        },
+        NeedQueueStatus::Dropped => match language {
+            Language::En => "dropped",
+            Language::Zh => "已丢弃",
+        },
+    };
+    match language {
+        Language::En => println!(
+            "#{} [{}] {} {}",
+            item.index,
+            status,
+            need_label(&item.need.kind),
+            item.need.query
+        ),
+        Language::Zh => println!(
+            "#{} [{}] {} {}",
+            item.index,
+            status,
+            need_label(&item.need.kind),
+            item.need.query
+        ),
+    }
+}
+
+fn print_brain_prompt(report: &BrainPromptReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus brain prompt");
+            println!("brain: {}", report.policy);
+            println!(
+                "goal: {}",
+                report
+                    .goal
+                    .as_ref()
+                    .map(|goal| goal.objective.as_str())
+                    .unwrap_or("none")
+            );
+            println!("messages: {}", report.messages.len());
+            println!("{}", report.prompt_text);
+            for next in &report.next {
+                println!("next: {next}");
+            }
+        }
+        Language::Zh => {
+            println!("章鱼主脑提示词");
+            println!("主脑: {}", report.policy);
+            println!(
+                "目标: {}",
+                report
+                    .goal
+                    .as_ref()
+                    .map(|goal| goal.objective.as_str())
+                    .unwrap_or("无")
+            );
+            println!("消息: {}", report.messages.len());
+            println!("{}", report.prompt_text);
+            for next in &report.next {
+                println!("下一步: {next}");
+            }
+        }
+    }
+}
+
 fn print_context_turns(report: &ContextReport, language: Language) {
     match language {
         Language::En => println!("recent Need/Feed:"),
@@ -4554,6 +4811,16 @@ fn trace_line(trace: &FeedTraceRecord) -> String {
         plan,
         trace.evidence_count,
         trace.summary
+    )
+}
+
+fn need_queue_line(item: &NeedQueueItem) -> String {
+    format!(
+        "#{} {:?} {}:{}",
+        item.index,
+        item.status,
+        need_label(&item.need.kind),
+        item.need.query
     )
 }
 
@@ -5994,7 +6261,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | explore [prompt] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [prompt] | explore [--save] [prompt] | needs [take|drop index] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -6003,6 +6270,14 @@ fn parse_trace_index(value: &str) -> Result<u64, String> {
         .ok()
         .filter(|index| *index > 0)
         .ok_or_else(|| format!("invalid feed trace index: {value}"))
+}
+
+fn parse_queue_index(value: &str) -> Result<u64, String> {
+    value
+        .parse::<u64>()
+        .ok()
+        .filter(|index| *index > 0)
+        .ok_or_else(|| format!("invalid Need queue index: {value}"))
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -6027,7 +6302,7 @@ mod tests {
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
-        GoalStatus, HarnessState, Need, NeedKind, Status,
+        GoalStatus, HarnessState, Need, NeedKind, NeedQueueStatus, Status,
     };
     use std::fs;
     use std::path::Path;
@@ -6139,6 +6414,97 @@ mod tests {
 
         let restored = HarnessState::load(&path).unwrap();
         assert_eq!(restored.goal.as_ref().unwrap().objective, "clean brain");
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_brain_prompt_keeps_state_read_only() {
+        let _env = env_guard();
+        let path =
+            std::env::temp_dir().join(format!("octopus-brain-state-{}.json", std::process::id()));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "goal".to_string(),
+            "set".to_string(),
+            "clean".to_string(),
+            "brain".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "next".to_string(),
+            "need".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&path).unwrap();
+        assert_eq!(restored.goal.as_ref().unwrap().objective, "clean brain");
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_explore_save_and_needs_take_keep_feed_read_only() {
+        let _env = env_guard();
+        let path = std::env::temp_dir().join(format!(
+            "octopus-need-queue-state-{}.json",
+            std::process::id()
+        ));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "goal".to_string(),
+            "set".to_string(),
+            "clean".to_string(),
+            "brain".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "explore".to_string(),
+            "--save".to_string(),
+            "next".to_string(),
+            "need".to_string(),
+        ])
+        .unwrap();
+
+        let queued = HarnessState::load(&path).unwrap();
+        assert!(queued.pending_need_queue_count() > 0);
+        assert!(queued.feed_traces.is_empty());
+        let index = queued
+            .need_queue
+            .iter()
+            .find(|item| item.status == NeedQueueStatus::Pending)
+            .unwrap()
+            .index;
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "needs".to_string(),
+            "take".to_string(),
+            index.to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&path).unwrap();
+        assert!(restored.pending_need_queue_count() < queued.pending_need_queue_count());
         assert!(restored.feed_traces.is_empty());
         assert!(restored.routes.scores.is_empty());
         let _ = fs::remove_file(path);
@@ -6364,7 +6730,9 @@ mod tests {
         .unwrap();
         assert!(usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
-        assert!(usage().contains("explore [prompt]"));
+        assert!(usage().contains("brain [prompt]"));
+        assert!(usage().contains("explore [--save] [prompt]"));
+        assert!(usage().contains("needs [take|drop index]"));
         assert!(usage().contains("context [kind query]"));
         assert!(usage().contains("provider save <profile>"));
         assert!(usage().contains("provider status"));
@@ -6550,9 +6918,25 @@ mod tests {
             "--state".to_string(),
             "state.json".to_string(),
             "--json".to_string(),
+            "brain".to_string(),
+            "what".to_string(),
+            "next".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
             "explore".to_string(),
             "what".to_string(),
             "next".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "needs".to_string(),
+            "take".to_string(),
+            "1".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),

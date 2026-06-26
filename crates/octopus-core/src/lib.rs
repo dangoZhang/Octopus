@@ -115,6 +115,46 @@ pub struct GoalNeedSuggestion {
     pub query: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NeedQueueStatus {
+    Pending,
+    Taken,
+    Dropped,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct NeedQueueItem {
+    pub index: u64,
+    pub need: GoalNeedSuggestion,
+    pub source: String,
+    pub prompt: String,
+    pub summary: String,
+    pub status: NeedQueueStatus,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct NeedQueueReport {
+    pub policy: String,
+    pub pending: Vec<NeedQueueItem>,
+    pub history: Vec<NeedQueueItem>,
+    pub next: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct NeedQueueSaveReport {
+    pub explore: BrainExploreReport,
+    pub queued: Vec<NeedQueueItem>,
+    pub queue: NeedQueueReport,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct NeedQueueTakeReport {
+    pub item: NeedQueueItem,
+    pub command: String,
+    pub next: Vec<String>,
+}
+
 impl GoalRefinement {
     pub fn local() -> Self {
         Self {
@@ -281,6 +321,7 @@ pub struct StatusReport {
     pub hearts: Vec<HeartBeat>,
     pub memory_count: usize,
     pub route_count: usize,
+    pub need_queue_count: usize,
     pub feed_trace_count: usize,
     pub check_history_count: usize,
     pub installed_profiles: Vec<String>,
@@ -289,6 +330,7 @@ pub struct StatusReport {
     pub active_grants: Vec<String>,
     pub last_pet_event: Option<PetEvent>,
     pub latest_feed_trace: Option<FeedTraceRecord>,
+    pub latest_need_queue_item: Option<NeedQueueItem>,
     pub latest_check: Option<CheckHistoryRecord>,
     pub warnings: Vec<String>,
     pub next_action: String,
@@ -331,6 +373,18 @@ pub struct BrainExploreReport {
     pub recent: Vec<BrainContextTurn>,
     pub summary: String,
     pub needs: Vec<GoalNeedSuggestion>,
+    pub next: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainPromptReport {
+    pub policy: String,
+    pub prompt: String,
+    pub goal: Option<Goal>,
+    pub mem: Vec<MemoryContextRecord>,
+    pub recent: Vec<BrainContextTurn>,
+    pub messages: Vec<ChatMessage>,
+    pub prompt_text: String,
     pub next: Vec<String>,
 }
 
@@ -1296,6 +1350,10 @@ pub struct HarnessState {
     #[serde(default)]
     pub goal_turns: Vec<GoalTurn>,
     #[serde(default)]
+    pub need_queue: Vec<NeedQueueItem>,
+    #[serde(default)]
+    pub next_need_queue_index: u64,
+    #[serde(default)]
     pub grants: Vec<CapabilityGrant>,
     #[serde(default)]
     pub evolution_outcomes: Vec<EvolutionOutcome>,
@@ -1540,6 +1598,48 @@ impl HarnessState {
         Ok(self.brain_explore_report(brain, prompt, "llm", draft.summary, draft.needs))
     }
 
+    pub fn clean_brain_prompt(&self, prompt: impl Into<String>, limit: usize) -> BrainPromptReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let context = serde_json::json!({
+            "policy": brain.policy,
+            "slots": brain.slots,
+            "goal": brain.goal,
+            "mem": brain.mem,
+            "recent_need_feed": brain.turns,
+        });
+        let context_text = serde_json::to_string_pretty(&context)
+            .unwrap_or_else(|_| "{\"policy\":\"Goal + Mem + Need + Feed\"}".to_string());
+        let system = "You are the Octopus clean brain. Use only Goal, Mem, Need, and Feed. Express cognitive Needs only. Return JSON with {\"summary\":\"short\",\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}."
+            .to_string();
+        let user =
+            format!("Clean brain prompt: {prompt}\nClean brain context JSON:\n{context_text}");
+        let messages = vec![
+            ChatMessage::new(ChatRole::System, system),
+            ChatMessage::new(ChatRole::User, user),
+        ];
+        let prompt_text = messages
+            .iter()
+            .map(|message| format!("{:?}:\n{}", message.role, message.content))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let next = vec![
+            "paste messages into any chat-completions-compatible model".to_string(),
+            format!("octopus explore {}", shell_arg(&prompt)),
+            "octopus context observe .".to_string(),
+        ];
+        BrainPromptReport {
+            policy: brain.policy,
+            prompt,
+            goal: brain.goal,
+            mem: brain.mem,
+            recent: brain.turns,
+            messages,
+            prompt_text,
+            next,
+        }
+    }
+
     fn brain_explore_report(
         &self,
         brain: BrainContextReport,
@@ -1573,6 +1673,118 @@ impl HarnessState {
             needs,
             next,
         }
+    }
+
+    pub fn queue_exploration_report(&mut self, report: &BrainExploreReport) -> NeedQueueSaveReport {
+        let mut queued = Vec::new();
+        for need in &report.needs {
+            if let Some(existing) = self
+                .need_queue
+                .iter()
+                .find(|item| item.status == NeedQueueStatus::Pending && item.need == *need)
+            {
+                queued.push(existing.clone());
+                continue;
+            }
+            self.next_need_queue_index += 1;
+            let item = NeedQueueItem {
+                index: self.next_need_queue_index,
+                need: need.clone(),
+                source: report.source.clone(),
+                prompt: report.prompt.clone(),
+                summary: report.summary.clone(),
+                status: NeedQueueStatus::Pending,
+            };
+            self.need_queue.push(item.clone());
+            queued.push(item);
+        }
+        NeedQueueSaveReport {
+            explore: report.clone(),
+            queued,
+            queue: self.need_queue_report(8),
+        }
+    }
+
+    pub fn need_queue_report(&self, limit: usize) -> NeedQueueReport {
+        let limit = limit.max(1);
+        let pending = self
+            .need_queue
+            .iter()
+            .filter(|item| item.status == NeedQueueStatus::Pending)
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut history = self
+            .need_queue
+            .iter()
+            .filter(|item| item.status != NeedQueueStatus::Pending)
+            .rev()
+            .take(limit)
+            .cloned()
+            .collect::<Vec<_>>();
+        history.reverse();
+        let next = if let Some(item) = pending.first() {
+            vec![
+                format!("octopus needs take {}", item.index),
+                format!("octopus needs drop {}", item.index),
+                format!("octopus {}", need_command(&item.need)),
+            ]
+        } else {
+            vec![
+                "octopus explore --save \"what should the brain ask next?\"".to_string(),
+                "octopus goal set \"describe your goal\"".to_string(),
+            ]
+        };
+        NeedQueueReport {
+            policy: CLEAN_BRAIN_CONTEXT_POLICY.to_string(),
+            pending,
+            history,
+            next,
+        }
+    }
+
+    pub fn take_queued_need(&mut self, index: u64) -> Result<NeedQueueTakeReport, String> {
+        let item = self
+            .need_queue
+            .iter_mut()
+            .find(|item| item.index == index)
+            .ok_or_else(|| format!("unknown queued Need: {index}"))?;
+        if item.status != NeedQueueStatus::Pending {
+            return Err(format!(
+                "queued Need is already {}",
+                need_queue_status_key(&item.status)
+            ));
+        }
+        item.status = NeedQueueStatus::Taken;
+        let item = item.clone();
+        let command = format!("octopus {}", need_command(&item.need));
+        Ok(NeedQueueTakeReport {
+            item,
+            command: command.clone(),
+            next: vec![command, "octopus needs".to_string()],
+        })
+    }
+
+    pub fn drop_queued_need(&mut self, index: u64) -> Result<NeedQueueItem, String> {
+        let item = self
+            .need_queue
+            .iter_mut()
+            .find(|item| item.index == index)
+            .ok_or_else(|| format!("unknown queued Need: {index}"))?;
+        if item.status != NeedQueueStatus::Pending {
+            return Err(format!(
+                "queued Need is already {}",
+                need_queue_status_key(&item.status)
+            ));
+        }
+        item.status = NeedQueueStatus::Dropped;
+        Ok(item.clone())
+    }
+
+    pub fn pending_need_queue_count(&self) -> usize {
+        self.need_queue
+            .iter()
+            .filter(|item| item.status == NeedQueueStatus::Pending)
+            .count()
     }
 
     pub fn status_report_with_state(&self, state_path: Option<&Path>) -> StatusReport {
@@ -1611,6 +1823,7 @@ impl HarnessState {
         if active_grants.is_empty() {
             warnings.push("no active OAuth grants".to_string());
         }
+        let pending_need_queue_count = self.pending_need_queue_count();
         let state_args = state_path
             .map(|path| format!(" --state {}", shell_arg(&path.to_string_lossy())))
             .unwrap_or_default();
@@ -1618,6 +1831,12 @@ impl HarnessState {
             format!("octopus{state_args} adapt")
         } else if self.goal.is_none() {
             format!("octopus{state_args} chat \"describe your goal\"")
+        } else if let Some(item) = self
+            .need_queue
+            .iter()
+            .find(|item| item.status == NeedQueueStatus::Pending)
+        {
+            format!("octopus{state_args} needs take {}", item.index)
         } else if self.routes.scores.is_empty() {
             format!("octopus{state_args} need observe .")
         } else {
@@ -1649,6 +1868,7 @@ impl HarnessState {
             ],
             memory_count: self.memory.len(),
             route_count: self.routes.scores.len(),
+            need_queue_count: pending_need_queue_count,
             feed_trace_count: self.feed_traces.len(),
             check_history_count: self.check_history.len(),
             installed_profiles: self.installed_profiles.clone(),
@@ -1657,6 +1877,7 @@ impl HarnessState {
             active_grants,
             last_pet_event: self.last_pet_event.clone(),
             latest_feed_trace: self.feed_traces.last().cloned(),
+            latest_need_queue_item: self.need_queue.last().cloned(),
             latest_check: self.check_history.last().cloned(),
             warnings,
             next_action,
@@ -6564,6 +6785,18 @@ fn kind_key(kind: &NeedKind) -> &'static str {
     }
 }
 
+fn need_command(need: &GoalNeedSuggestion) -> String {
+    format!("need {} {}", kind_key(&need.kind), shell_arg(&need.query))
+}
+
+fn need_queue_status_key(status: &NeedQueueStatus) -> &'static str {
+    match status {
+        NeedQueueStatus::Pending => "pending",
+        NeedQueueStatus::Taken => "taken",
+        NeedQueueStatus::Dropped => "dropped",
+    }
+}
+
 fn local_brain_explore_needs(brain: &BrainContextReport, prompt: &str) -> Vec<GoalNeedSuggestion> {
     let focus = clean_optional(Some(prompt))
         .map(str::to_string)
@@ -7597,6 +7830,68 @@ mod tests {
         assert_eq!(report.source, "llm");
         assert_eq!(report.summary, "clean exploration");
         assert_eq!(report.needs[0].kind, NeedKind::Compare);
+    }
+
+    #[test]
+    fn need_queue_saves_exploration_without_feed() {
+        let mut state = HarnessState {
+            goal: Some(Goal::new("keep main brain clean")),
+            ..HarnessState::default()
+        };
+        let report = state.clean_brain_explore("next cognition", 5);
+
+        let saved = state.queue_exploration_report(&report);
+
+        assert_eq!(saved.queued.len(), report.needs.len());
+        assert_eq!(state.pending_need_queue_count(), report.needs.len());
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
+
+        let saved_again = state.queue_exploration_report(&report);
+        assert_eq!(saved_again.queued.len(), report.needs.len());
+        assert_eq!(state.pending_need_queue_count(), report.needs.len());
+    }
+
+    #[test]
+    fn need_queue_take_returns_command_without_execution() {
+        let mut state = HarnessState {
+            goal: Some(Goal::new("review Needs before Feed")),
+            ..HarnessState::default()
+        };
+        let report = state.clean_brain_explore("review next", 5);
+        let saved = state.queue_exploration_report(&report);
+        let index = saved.queued[0].index;
+
+        let taken = state.take_queued_need(index).unwrap();
+
+        assert_eq!(taken.item.status, NeedQueueStatus::Taken);
+        assert!(taken.command.starts_with("octopus need "));
+        assert_eq!(state.pending_need_queue_count(), report.needs.len() - 1);
+        assert!(state.feed_traces.is_empty());
+    }
+
+    #[test]
+    fn clean_brain_prompt_exports_messages_without_feed() {
+        let mut state = HarnessState {
+            goal: Some(Goal::new("let the brain ask clean Needs")),
+            ..HarnessState::default()
+        };
+        state
+            .memory
+            .remember("keep tool details outside the main brain");
+
+        let report = state.clean_brain_prompt("what should I ask next", 5);
+
+        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
+        assert_eq!(report.messages.len(), 2);
+        assert!(report.prompt_text.contains("Goal + Mem + Need + Feed"));
+        assert!(report.prompt_text.contains("what should I ask next"));
+        assert!(report
+            .messages
+            .iter()
+            .all(|message| !message.content.contains("ToolSpec")));
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
     }
 
     #[test]

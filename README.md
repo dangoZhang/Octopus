@@ -39,13 +39,17 @@ Open the local control surface:
 octopus bridge
 ```
 
-Then visit `http://127.0.0.1:8765/app.html`.
+Then visit `http://127.0.0.1:8765/app.html` for brain prompts, exploration, Need Queue, preflight, and the pixel pet.
 
 Try the core flow:
 
 ```bash
 octopus goal set "make this repo easier to use"
+octopus brain "what should the brain ask next?"
 octopus explore "what should the brain ask next?"
+octopus explore --save "what should the brain ask next?"
+octopus needs
+octopus needs take 1
 octopus context observe .
 octopus need observe README.md
 octopus traces

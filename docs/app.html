@@ -469,7 +469,10 @@
             <button type="button" id="runChecks">Run Checks</button>
             <button type="button" data-run="goalset">Set Goal</button>
             <button type="button" data-run="chat">Chat</button>
+            <button type="button" id="runBrainPrompt">Brain Prompt</button>
             <button type="button" id="runExplore">Explore</button>
+            <button type="button" id="saveExplore">Save Explore</button>
+            <button type="button" id="runNeedQueue">Need Queue</button>
             <button type="button" data-run="think">Think</button>
             <button type="button" id="runContext">Context</button>
             <button type="button" data-run="need">Need</button>
@@ -515,9 +518,17 @@
             <h2>Route</h2>
             <div id="routeReport" class="metric"><span>No route yet.</span></div>
           </div>
+          <div class="brain-prompt-report stack">
+            <h2>Brain Prompt</h2>
+            <div id="brainPromptReport" class="metric"><span>No brain prompt yet.</span></div>
+          </div>
           <div class="explore-report stack">
             <h2>Explore</h2>
             <div id="exploreReport" class="metric"><span>No exploration yet.</span></div>
+          </div>
+          <div class="need-queue-report stack">
+            <h2>Need Queue</h2>
+            <div id="needQueueReport" class="metric"><span>No queued Need yet.</span></div>
           </div>
           <div class="context-report stack">
             <h2>Context</h2>
@@ -544,9 +555,11 @@
       let currentContextReport = null;
       let currentProductReport = null;
       let currentPreflightReport = null;
+      let currentBrainPromptReport = null;
       let currentFeedTrace = null;
       let currentRouteReport = null;
       let currentExploreReport = null;
+      let currentNeedQueueReport = null;
 
       function render(stateName = "harness") {
         currentPetState = stateName;
@@ -570,7 +583,10 @@
           `octopus --state ${shellQuote(state)} --json install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json check ${tentacle}`,
           `octopus --state ${shellQuote(state)} goal set ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json explore ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json explore --save ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json needs`,
           `octopus --state ${shellQuote(state)} --json need ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} --json context ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} feedback 1 satisfied ${shellQuote("feed worked")}`,
@@ -721,17 +737,54 @@
         }
       }
 
-      async function runExploreReport() {
+      async function runBrainPromptReport() {
         const state = $("state").value.trim() || ".octopus/state.json";
         const goal = $("goal").value.trim() || "build a clean-brain agent";
-        $("exploreReport").textContent = "exploring...";
+        $("brainPromptReport").textContent = "loading...";
         try {
-          const report = await runBridgeJson(["--state", state, "--json", "explore", goal]);
-          currentExploreReport = report;
-          renderExploreReport(report);
+          const report = await runBridgeJson(["--state", state, "--json", "brain", goal]);
+          currentBrainPromptReport = report;
+          renderBrainPromptReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("brainPromptReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runExploreReport(save = false) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        $("exploreReport").textContent = save ? "saving..." : "exploring...";
+        try {
+          const args = save ? ["--state", state, "--json", "explore", "--save", goal] : ["--state", state, "--json", "explore", goal];
+          const report = await runBridgeJson(args);
+          if (save) {
+            currentExploreReport = report.explore || null;
+            currentNeedQueueReport = report.queue || null;
+            renderExploreReport(report.explore || {});
+            renderNeedQueueReport(report.queue || {});
+          } else {
+            currentExploreReport = report;
+            renderExploreReport(report);
+          }
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("exploreReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runNeedQueueReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        $("needQueueReport").textContent = "loading...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "needs"]);
+          currentNeedQueueReport = report;
+          renderNeedQueueReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("needQueueReport").textContent = String(error);
           $("output").textContent = String(error);
         }
       }
@@ -1009,6 +1062,36 @@
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
+      function renderBrainPromptReport(report) {
+        const root = $("brainPromptReport");
+        root.className = "stack";
+        root.textContent = "";
+        const goal = report.goal || {};
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Brain", report.policy || "Goal + Mem + Need + Feed"],
+          ["Goal", goal.objective || "none"],
+          ["Messages", String((report.messages || []).length)],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        const pre = document.createElement("pre");
+        const code = document.createElement("code");
+        code.textContent = report.prompt_text || "";
+        pre.appendChild(code);
+        root.appendChild(grid);
+        root.appendChild(pre);
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
       function renderExploreReport(report) {
         const root = $("exploreReport");
         root.className = "stack";
@@ -1016,6 +1099,48 @@
         root.appendChild(exploreSummary(report));
         root.appendChild(reportList("Needs", report.needs || [], exploreNeedItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function renderNeedQueueReport(report) {
+        const root = $("needQueueReport");
+        root.className = "stack";
+        root.textContent = "";
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Brain", report.policy || "Goal + Mem + Need + Feed"],
+          ["Pending", String((report.pending || []).length)],
+          ["History", String((report.history || []).length)],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        root.appendChild(grid);
+        root.appendChild(reportList("Pending", report.pending || [], needQueueItem));
+        root.appendChild(reportList("History", report.history || [], needQueueItem));
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function needQueueItem(item) {
+        const need = item.need || {};
+        const element = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = item.status === "pending" ? "badge ok" : "badge";
+        badge.textContent = `#${item.index || "?"} ${item.status || "pending"}`;
+        const command = document.createElement("span");
+        command.className = "check-command";
+        command.textContent = `${need.kind || "need"} · ${need.query || ""}`;
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        meta.textContent = item.source ? `source=${item.source}` : "clean-brain queue";
+        element.append(badge, command, meta);
+        return element;
       }
 
       function exploreSummary(report) {
@@ -1887,8 +2012,12 @@
         $("feedReport").innerHTML = "<span>No feed yet.</span>";
         $("routeReport").className = "metric";
         $("routeReport").innerHTML = "<span>No route yet.</span>";
+        $("brainPromptReport").className = "metric";
+        $("brainPromptReport").innerHTML = "<span>No brain prompt yet.</span>";
         $("exploreReport").className = "metric";
         $("exploreReport").innerHTML = "<span>No exploration yet.</span>";
+        $("needQueueReport").className = "metric";
+        $("needQueueReport").innerHTML = "<span>No queued Need yet.</span>";
         $("contextReport").className = "metric";
         $("contextReport").innerHTML = "<span>No context yet.</span>";
         $("beatReport").className = "metric";
@@ -1905,16 +2034,21 @@
         currentContextReport = null;
         currentProductReport = null;
         currentPreflightReport = null;
+        currentBrainPromptReport = null;
         currentFeedTrace = null;
         currentRouteReport = null;
         currentExploreReport = null;
+        currentNeedQueueReport = null;
         render();
       });
       $("installGuide").addEventListener("click", runInstallReport);
       $("runChecks").addEventListener("click", runChecks);
       $("runFeed").addEventListener("click", runFeedTest);
       $("runRoutes").addEventListener("click", runRouteReport);
-      $("runExplore").addEventListener("click", runExploreReport);
+      $("runBrainPrompt").addEventListener("click", runBrainPromptReport);
+      $("runExplore").addEventListener("click", () => runExploreReport(false));
+      $("saveExplore").addEventListener("click", () => runExploreReport(true));
+      $("runNeedQueue").addEventListener("click", runNeedQueueReport);
       $("runContext").addEventListener("click", runContextReport);
       $("providerEnv").addEventListener("click", runProviderEnv);
       $("providerSave").addEventListener("click", runProviderSave);
@@ -1938,17 +2072,23 @@
           currentContextReport = null;
           currentProductReport = null;
           currentPreflightReport = null;
+          currentBrainPromptReport = null;
           currentFeedTrace = null;
           currentRouteReport = null;
           currentExploreReport = null;
+          currentNeedQueueReport = null;
           $("providerReport").className = "metric";
           $("providerReport").innerHTML = "<span>No provider status yet.</span>";
           $("feedReport").className = "metric";
           $("feedReport").innerHTML = "<span>No feed yet.</span>";
           $("routeReport").className = "metric";
           $("routeReport").innerHTML = "<span>No route yet.</span>";
+          $("brainPromptReport").className = "metric";
+          $("brainPromptReport").innerHTML = "<span>No brain prompt yet.</span>";
           $("exploreReport").className = "metric";
           $("exploreReport").innerHTML = "<span>No exploration yet.</span>";
+          $("needQueueReport").className = "metric";
+          $("needQueueReport").innerHTML = "<span>No queued Need yet.</span>";
           $("contextReport").className = "metric";
           $("contextReport").innerHTML = "<span>No context yet.</span>";
           $("beatReport").className = "metric";
