@@ -1396,6 +1396,23 @@ impl HarnessState {
         self.feed_traces[start..].to_vec()
     }
 
+    pub fn recent_feed_traces_for_tentacle(
+        &self,
+        tentacle_id: &str,
+        limit: usize,
+    ) -> Vec<FeedTraceRecord> {
+        let mut traces = self
+            .feed_traces
+            .iter()
+            .rev()
+            .filter(|trace| trace.tentacle.as_deref() == Some(tentacle_id))
+            .take(limit)
+            .cloned()
+            .collect::<Vec<_>>();
+        traces.reverse();
+        traces
+    }
+
     pub fn compact_feed_traces(&mut self, keep: usize) -> usize {
         if self.feed_traces.len() <= keep {
             return 0;
@@ -2684,6 +2701,8 @@ pub struct TentacleEvolutionProposal {
     pub constraints: Vec<String>,
     #[serde(default)]
     pub previous_outcomes: Vec<EvolutionOutcome>,
+    #[serde(default)]
+    pub recent_feed_traces: Vec<FeedTraceRecord>,
     pub files: Vec<EvolutionFileTarget>,
     pub patch_candidates: Vec<EvolutionPatchCandidate>,
     pub next_steps: Vec<String>,
@@ -2877,7 +2896,8 @@ pub fn propose_tentacle_evolution_with_state(
     state: &HarnessState,
 ) -> Result<TentacleEvolutionProposal, String> {
     let outcomes = state.recent_evolution_outcomes(tentacle_id, 5);
-    propose_tentacle_evolution_with_outcomes(root, tentacle_id, objective, &outcomes)
+    let feed_traces = state.recent_feed_traces_for_tentacle(tentacle_id, 8);
+    propose_tentacle_evolution_with_feedback(root, tentacle_id, objective, &outcomes, &feed_traces)
 }
 
 pub fn propose_tentacle_evolution_with_client<C>(
@@ -2955,6 +2975,7 @@ fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Result<String, 
         "checks": proposal.checks,
         "constraints": proposal.constraints,
         "previous_outcomes": proposal.previous_outcomes,
+        "recent_feed_traces": proposal.recent_feed_traces,
         "files": proposal.files,
         "context_policy": {
             "clean_brain": ["Goal", "Mem", "Need", "Feed"],
@@ -3088,6 +3109,16 @@ fn propose_tentacle_evolution_with_outcomes(
     objective: &str,
     previous_outcomes: &[EvolutionOutcome],
 ) -> Result<TentacleEvolutionProposal, String> {
+    propose_tentacle_evolution_with_feedback(root, tentacle_id, objective, previous_outcomes, &[])
+}
+
+fn propose_tentacle_evolution_with_feedback(
+    root: impl AsRef<Path>,
+    tentacle_id: &str,
+    objective: &str,
+    previous_outcomes: &[EvolutionOutcome],
+    recent_feed_traces: &[FeedTraceRecord],
+) -> Result<TentacleEvolutionProposal, String> {
     let root = root.as_ref();
     let loaded = load_tentacle_manifests(root)
         .map_err(|error| error.to_string())?
@@ -3153,6 +3184,7 @@ fn propose_tentacle_evolution_with_outcomes(
         checks: loaded.manifest.evolution.checks,
         constraints: loaded.manifest.evolution.constraints,
         previous_outcomes: previous_outcomes.to_vec(),
+        recent_feed_traces: recent_feed_traces.to_vec(),
         files,
         patch_candidates,
         next_steps,
@@ -3583,6 +3615,26 @@ pub fn render_tentacle_evolution_proposal(proposal: &TentacleEvolutionProposal) 
             markdown.push_str(&format!(
                 "- `{}`: {:?} score={:.2} {}\n",
                 outcome.candidate_id, outcome.status, outcome.score, outcome.summary
+            ));
+        }
+    }
+    if !proposal.recent_feed_traces.is_empty() {
+        markdown.push_str("\n## Recent Feed Traces\n\n");
+        for trace in &proposal.recent_feed_traces {
+            let tentacle = trace.tentacle.as_deref().unwrap_or("unknown");
+            let tool = trace.tool.as_deref().unwrap_or("unknown");
+            let plan = trace.plan_source.as_deref().unwrap_or("unknown");
+            markdown.push_str(&format!(
+                "- #{} {}:{} -> {:?} via `{}/{}` plan={} evidence={} :: {}\n",
+                trace.index,
+                kind_key(&trace.need_kind),
+                trace.need_query,
+                trace.status,
+                tentacle,
+                tool,
+                plan,
+                trace.evidence_count,
+                trace.summary
             ));
         }
     }
@@ -5999,6 +6051,49 @@ mod tests {
         assert!(markdown.contains("patch improved feed evidence"));
     }
 
+    #[test]
+    fn tentacle_evolution_proposal_carries_recent_feed_traces() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        let feed = Feed {
+            need: Need::new(NeedKind::Observe, "README.md"),
+            status: Status::Satisfied,
+            evidence: vec![Evidence::new("read", "README evidence")],
+            summary: "observed README through read tool".to_string(),
+            metadata: BTreeMap::from([
+                ("tentacle".to_string(), "swe-agent".to_string()),
+                ("tool".to_string(), "read".to_string()),
+                ("plan_source".to_string(), "llm".to_string()),
+            ]),
+        };
+        state.record_feed_trace_from_feed(&feed);
+        let other_feed = Feed {
+            need: Need::new(NeedKind::Observe, "current browser tab"),
+            status: Status::Satisfied,
+            evidence: vec![Evidence::new("browser_status", "tab evidence")],
+            summary: "browser trace".to_string(),
+            metadata: BTreeMap::from([("tentacle".to_string(), "computer-use-agent".to_string())]),
+        };
+        state.record_feed_trace_from_feed(&other_feed);
+
+        let proposal = propose_tentacle_evolution_with_state(
+            &root,
+            "swe-agent",
+            "improve repository observation feed quality",
+            &state,
+        )
+        .unwrap();
+        let markdown = render_tentacle_evolution_proposal(&proposal);
+
+        assert_eq!(proposal.recent_feed_traces.len(), 1);
+        assert_eq!(proposal.recent_feed_traces[0].tool.as_deref(), Some("read"));
+        assert!(markdown.contains("Recent Feed Traces"));
+        assert!(markdown.contains("observed README through read tool"));
+        assert!(!markdown.contains("browser trace"));
+    }
+
     struct EvolutionFakeChat {
         response: String,
         prompt: String,
@@ -6030,6 +6125,17 @@ mod tests {
             Status::Satisfied,
             "runtime patch improved evidence",
         );
+        state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Observe, "README.md"),
+            status: Status::Satisfied,
+            evidence: vec![Evidence::new("read", "README evidence")],
+            summary: "observed README before evolution".to_string(),
+            metadata: BTreeMap::from([
+                ("tentacle".to_string(), "swe-agent".to_string()),
+                ("tool".to_string(), "read".to_string()),
+                ("plan_source".to_string(), "rule".to_string()),
+            ]),
+        });
         let mut fake = EvolutionFakeChat {
             response: r#"{
               "summary": "select runtime code because previous runtime changes worked",
@@ -6072,6 +6178,8 @@ mod tests {
         assert!(fake.prompt.contains("Need"));
         assert!(fake.prompt.contains("Tool"));
         assert!(fake.prompt.contains("harness_evolution"));
+        assert!(fake.prompt.contains("recent_feed_traces"));
+        assert!(fake.prompt.contains("observed README before evolution"));
     }
 
     #[test]

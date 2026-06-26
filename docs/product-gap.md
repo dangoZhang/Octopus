@@ -20,6 +20,7 @@ Updated: 2026-06-26
 - Context policy is explicit: clean brain sees `Goal + Mem + Need + Feed`; tentacles see `Need + Tool + Action + Tool + Action -> Feed`.
 - `think <tentacle> <kind> <query>` exposes tool-side planning without executing tools.
 - Executed Feed now writes a compact harness trace journal; manifest Feed includes `tentacle_plan` evidence and a CLI `feed_trace`.
+- Harness evolution proposals now carry recent Feed traces for the selected tentacle and expose them to the LLM evolution planner.
 
 ## Filled So Far
 
@@ -50,11 +51,12 @@ Updated: 2026-06-26
 - Added a computer-use `window_status` tool and made `mcp.sh` invoke a configured JSON-RPC MCP client command.
 - Added execution-time `tentacle_plan` evidence and concise `feed_trace` output for manifest Feed.
 - Added a persistent Feed trace journal, `octopus traces`, status exposure, HTML Trace button, and beat compaction for old traces.
+- Added recent Feed traces to evolution proposals, Markdown artifacts, JSON artifacts, and LLM evolution prompt payloads.
 
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
-- LLM evolution can generate candidates and recommend apply plans from scored outcomes; patch writes stay review/grant-bound, and trace journal data is not yet fed directly into candidate generation.
+- LLM evolution can generate candidates from manifest surfaces, scored outcomes, and recent Feed traces; patch writes stay review/grant-bound.
 - Computer-use now has browser/window diagnostics, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include static layer diagnostics and live validation; provider-specific edge cases still need real-machine feedback.
 - Release packaging, examples, and docs need enough finish for non-Rust users.
@@ -64,7 +66,7 @@ Updated: 2026-06-26
 ## Next Fill
 
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
-- Feed the harness trace journal into the next LLM evolution proposal.
+- Use trace-aware evolution proposals to improve one seed tentacle's runtime behavior.
 - Turn window/browser diagnostics into richer native control adapters.
 - Add provider-specific fixes from real-machine feedback.
 - Run and record the first real-machine test before the `0.1.0` tag.

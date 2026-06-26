@@ -50,6 +50,13 @@ jobs:
           cargo run -q -p octopus-core -- --json think swe-agent observe README.md | grep -q '"plan_source": "rule"'
       - run: |
           rm -rf .octopus/evolution/swe-agent
+          tmp=$(mktemp -d)
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" install swe-agent
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe . > /dev/null
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" evolve swe-agent improve | grep -q "feed traces: 1"
+          grep -q "Recent Feed Traces" .octopus/evolution/swe-agent/PROPOSAL.md
+          grep -q '"recent_feed_traces"' .octopus/evolution/swe-agent/proposal.json
+          rm -rf .octopus/evolution/swe-agent
           cargo run -q -p octopus-core -- evolve swe-agent improve | grep -q "patch drafts:"
           grep -q runtime_code .octopus/evolution/swe-agent/PATCH_CANDIDATES.md
           grep -q "Patch Drafts" .octopus/evolution/swe-agent/PATCH_DRAFTS.md

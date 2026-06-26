@@ -2977,6 +2977,7 @@ fn print_evolution_proposal(
             println!("patch drafts: {}", artifact.drafts_path);
             println!("json: {}", artifact.json_path);
             println!("candidate count: {}", proposal.patch_candidates.len());
+            println!("feed traces: {}", proposal.recent_feed_traces.len());
             println!("editable: {}", join_or_none(&proposal.editable));
             println!("surfaces: {}", join_or_none(&surfaces));
             println!("checks: {}", join_or_none(&proposal.checks));
@@ -2993,6 +2994,7 @@ fn print_evolution_proposal(
             println!("补丁草案: {}", artifact.drafts_path);
             println!("JSON: {}", artifact.json_path);
             println!("候选数量: {}", proposal.patch_candidates.len());
+            println!("Feed轨迹: {}", proposal.recent_feed_traces.len());
             println!("可编辑: {}", join_or_none(&proposal.editable));
             println!("可进化面: {}", join_or_none(&surfaces));
             println!("检查: {}", join_or_none(&proposal.checks));
