@@ -35,10 +35,11 @@ Updated: 2026-06-26
 - Corrected the pre-release baseline to `0.0.1`; `0.1.0` is reserved for release-ready real-machine testing.
 - Added provider profiles so users can generate env for chat, tentacle planning, and harness evolution without hand-writing every variable.
 - Added `octopus provider check` for live OpenAI-compatible endpoint validation using the same adapter as chat and tool-side LLM planning.
+- Added `self-iterate pr` plus a repo-maintainer `publish_pr` adapter with dry-run and explicit `gh` publishing.
 
 ## Remaining Gaps
 
-- Self-iteration still prepares local draft data; direct GitHub PR creation needs a stronger OAuth adapter.
+- Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
 - LLM evolution can generate candidates, but automatic patch application still requires a stronger feedback-scored loop.
 - Computer-use has seed adapters; it needs richer MCP/native/browser bridges.
 - Provider profiles now include live validation through `octopus provider check`; broader provider-specific diagnostics still need real-machine feedback.
@@ -48,7 +49,7 @@ Updated: 2026-06-26
 
 ## Next Fill
 
-- Turn repo-maintainer from draft artifacts into an OAuth-scoped PR adapter.
+- Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
 - Let the LLM evolution planner turn scored outcomes into reviewed patch application candidates.
 - Add richer non-shell adapters beyond the JSON feed seed.
 - Add local GUI bridge and provider-specific diagnostics from real-machine feedback.

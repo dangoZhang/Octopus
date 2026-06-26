@@ -145,14 +145,16 @@
         <pre><code>tmp=$(mktemp -d)
 octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 octopus --state "$tmp/state.json" oauth github dangoZhang/Octopus
-octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus</code></pre>
-        <p>The first plan is <code>report-only</code>. After the grant, the repo-maintainer plan becomes <code>pr-ready</code> while keeping guardrails.</p>
+octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus
+OCTOPUS_PR_DRY_RUN=1 octopus --state "$tmp/state.json" self-iterate pr dangoZhang/Octopus "improve usability"</code></pre>
+        <p>The first plan is <code>report-only</code>. After the grant, the repo-maintainer plan becomes <code>pr-ready</code>. The PR command uses the grant boundary; remove <code>OCTOPUS_PR_DRY_RUN=1</code> only when the local branch and <code>gh</code> auth are ready.</p>
         <pre><code>tentacles/repo-maintainer/tools/inspect_repo.sh .
 tentacles/repo-maintainer/tools/github_status.sh dangoZhang/Octopus
 tmp=$(mktemp -d)
 tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "improve usability"
-tentacles/repo-maintainer/tools/draft_pr.sh "$tmp" dangoZhang/Octopus "improve usability"</code></pre>
-        <p>GitHub status, patch queue, and draft data land under <code>.octopus/self-iteration/</code> in the selected workspace.</p>
+tentacles/repo-maintainer/tools/draft_pr.sh "$tmp" dangoZhang/Octopus "improve usability"
+OCTOPUS_PR_DRY_RUN=1 tentacles/repo-maintainer/tools/publish_pr.sh "$tmp" dangoZhang/Octopus octopus/improve-usability "Improve usability" "$tmp/.octopus/self-iteration/PR_DRAFT.md"</code></pre>
+        <p>GitHub status, patch queue, draft data, and publish reports land under <code>.octopus/self-iteration/</code> in the selected workspace.</p>
       </section>
 
       <section>

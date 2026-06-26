@@ -3696,6 +3696,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "tentacles/repo-maintainer/tools/github_status.sh".to_string(),
                     "tentacles/repo-maintainer/tools/patch_queue.sh".to_string(),
                     "tentacles/repo-maintainer/tools/draft_pr.sh".to_string(),
+                    "tentacles/repo-maintainer/tools/publish_pr.sh".to_string(),
                 ],
             }],
             tools: vec![
@@ -3723,6 +3724,12 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "shell",
                     "tentacles/repo-maintainer/tools/draft_pr.sh",
                 ),
+                tool_meta(
+                    "publish_pr",
+                    "Publish a draft pull request through gh after an explicit OAuth grant.",
+                    "shell",
+                    "tentacles/repo-maintainer/tools/publish_pr.sh",
+                ),
             ],
             evolution: evolution_policy(
                 &[
@@ -3730,8 +3737,9 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "tentacles/repo-maintainer/tools/github_status.sh dangoZhang/Octopus",
                     "tentacles/repo-maintainer/tools/patch_queue.sh $(mktemp -d) dangoZhang/Octopus improve-usability",
                     "tentacles/repo-maintainer/tools/draft_pr.sh $(mktemp -d) dangoZhang/Octopus improve-usability",
+                    "OCTOPUS_PR_DRY_RUN=1 tentacles/repo-maintainer/tools/publish_pr.sh $(mktemp -d) dangoZhang/Octopus octopus/improve-usability 'Improve usability' README.md",
                 ],
-                &["Wait for explicit OAuth/user grant before preparing branch or PR work."],
+                &["Wait for explicit OAuth/user grant before publishing branch or PR work."],
             ),
             llm_ready: true,
         },
@@ -4224,6 +4232,7 @@ pub fn default_permissions(provider: &str) -> Vec<String> {
         "github" => vec![
             "repo:read".to_string(),
             "checks:read".to_string(),
+            "branch:write".to_string(),
             "pull_request:write".to_string(),
         ],
         "octopus" => vec!["harness:read".to_string(), "harness:write".to_string()],

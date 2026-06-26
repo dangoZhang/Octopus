@@ -29,11 +29,12 @@ tmp=$(mktemp -d)
 octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 octopus --state "$tmp/state.json" oauth github dangoZhang/Octopus
 octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus
+OCTOPUS_PR_DRY_RUN=1 octopus --state "$tmp/state.json" self-iterate pr dangoZhang/Octopus "improve usability"
 ```
 
-The first plan is `report-only`. After the grant, the repo-maintainer plan becomes `pr-ready` while keeping guardrails such as never pushing to `main`.
+The first plan is `report-only`. After the grant, the repo-maintainer plan becomes `pr-ready`. The PR command uses the grant boundary; remove `OCTOPUS_PR_DRY_RUN=1` only when the local branch and `gh` auth are ready.
 
-The repo-maintainer tentacle can also write local draft artifacts:
+The repo-maintainer tentacle can also write local artifacts:
 
 ```bash
 tentacles/repo-maintainer/tools/inspect_repo.sh .
@@ -41,9 +42,10 @@ tentacles/repo-maintainer/tools/github_status.sh dangoZhang/Octopus
 tmp=$(mktemp -d)
 tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "improve usability"
 tentacles/repo-maintainer/tools/draft_pr.sh "$tmp" dangoZhang/Octopus "improve usability"
+OCTOPUS_PR_DRY_RUN=1 tentacles/repo-maintainer/tools/publish_pr.sh "$tmp" dangoZhang/Octopus octopus/improve-usability "Improve usability" "$tmp/.octopus/self-iteration/PR_DRAFT.md"
 ```
 
-GitHub status, patch queue, and draft data land under `.octopus/self-iteration/` in the selected workspace.
+GitHub status, patch queue, draft data, and publish reports land under `.octopus/self-iteration/` in the selected workspace.
 
 Harness evolution drafts stay local and auditable:
 

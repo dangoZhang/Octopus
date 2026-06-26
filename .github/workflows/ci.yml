@@ -84,6 +84,8 @@ jobs:
           grep -q "Patch Queue" "$tmp/.octopus/self-iteration/PATCH_QUEUE.md"
           tentacles/repo-maintainer/tools/draft_pr.sh "$tmp" dangoZhang/Octopus "improve usability"
           grep -q "Draft PR" "$tmp/.octopus/self-iteration/PR_DRAFT.md"
+          OCTOPUS_PR_DRY_RUN=1 tentacles/repo-maintainer/tools/publish_pr.sh "$tmp" dangoZhang/Octopus octopus/improve-usability "Improve usability" "$tmp/.octopus/self-iteration/PR_DRAFT.md"
+          grep -q '"mode": "dry-run"' "$tmp/.octopus/self-iteration/PR_PUBLISH.json"
       - run: |
           tmp=$(mktemp -d)
           printf 'echo bash-only-ok\n' | tentacles/bash-only/tools/write_and_run.sh "$tmp"

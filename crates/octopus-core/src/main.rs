@@ -68,6 +68,19 @@ struct DoctorPetReport {
     exists: bool,
 }
 
+#[derive(serde::Serialize)]
+struct SelfIterationPrReport {
+    repository: String,
+    mode: String,
+    grant_id: String,
+    branch: String,
+    title: String,
+    body_path: String,
+    publish_path: Option<String>,
+    output: String,
+    next: Vec<String>,
+}
+
 #[derive(Debug, serde::Serialize)]
 struct PetReport {
     state: String,
@@ -481,6 +494,27 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("self-iterate") => {
+            if rest.get(1).map(String::as_str) == Some("pr") {
+                let repository = rest
+                    .get(2)
+                    .ok_or_else(|| "self-iterate pr requires a repository".to_string())?;
+                let objective = rest
+                    .get(3..)
+                    .filter(|values| !values.is_empty())
+                    .map(|values| values.join(" "));
+                let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                let plan = loaded.self_iteration_plan(repository.as_str(), objective.as_deref());
+                let report = publish_self_iteration_pr(&plan)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_self_iteration_pr_report(&report, language);
+                }
+                return Ok(());
+            }
             let repository = rest
                 .get(1)
                 .ok_or_else(|| "self-iterate requires a repository".to_string())?;
@@ -2118,6 +2152,121 @@ fn print_self_iteration_plan(plan: &SelfIterationPlan, language: Language) {
     }
 }
 
+fn publish_self_iteration_pr(plan: &SelfIterationPlan) -> Result<SelfIterationPrReport, String> {
+    if !plan.authorized {
+        return Err(format!(
+            "self-iterate pr requires github grant for {}; run: octopus oauth github {}",
+            plan.repository, plan.repository
+        ));
+    }
+    let grant_id = plan
+        .grant_id
+        .clone()
+        .ok_or_else(|| "self-iterate pr missing grant id".to_string())?;
+    let draft = plan
+        .draft
+        .as_ref()
+        .ok_or_else(|| "self-iterate pr missing draft".to_string())?;
+    let root = env::current_dir().map_err(|error| error.to_string())?;
+    let out_dir = root.join(".octopus/self-iteration");
+    fs::create_dir_all(&out_dir).map_err(|error| error.to_string())?;
+    let body_path = out_dir.join("PR_BODY.md");
+    fs::write(&body_path, &draft.body).map_err(|error| error.to_string())?;
+    let script = repo_root().join("tentacles/repo-maintainer/tools/publish_pr.sh");
+    if !script.exists() {
+        return Err(format!("publish_pr tool missing: {}", script.display()));
+    }
+
+    let output = Command::new(&script)
+        .arg(&root)
+        .arg(&plan.repository)
+        .arg(&draft.branch)
+        .arg(&draft.title)
+        .arg(&body_path)
+        .output()
+        .map_err(|error| format!("publish_pr failed to start: {error}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if !output.status.success() {
+        let message = if stderr.trim().is_empty() {
+            stdout
+        } else {
+            stderr
+        };
+        return Err(trim_cli_output(&message));
+    }
+    Ok(SelfIterationPrReport {
+        repository: plan.repository.clone(),
+        mode: if env_flag("OCTOPUS_PR_DRY_RUN") {
+            "dry-run".to_string()
+        } else {
+            "published".to_string()
+        },
+        grant_id,
+        branch: draft.branch.clone(),
+        title: draft.title.clone(),
+        body_path: body_path.to_string_lossy().to_string(),
+        publish_path: extract_key(&stdout, "publish").or_else(|| extract_key(&stdout, "pr_url")),
+        output: trim_cli_output(&stdout),
+        next: vec![
+            "watch GitHub checks".to_string(),
+            "score the result with evolve score after review".to_string(),
+        ],
+    })
+}
+
+fn print_self_iteration_pr_report(report: &SelfIterationPrReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("self-iteration pr: {}", report.mode);
+            println!("repo: {}", report.repository);
+            println!("grant: {}", report.grant_id);
+            println!("branch: {}", report.branch);
+            println!("title: {}", report.title);
+            if let Some(path) = &report.publish_path {
+                println!("publish: {path}");
+            }
+            println!("body: {}", report.body_path);
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("自迭代 PR: {}", report.mode);
+            println!("仓库: {}", report.repository);
+            println!("授权: {}", report.grant_id);
+            println!("分支: {}", report.branch);
+            println!("标题: {}", report.title);
+            if let Some(path) = &report.publish_path {
+                println!("发布: {path}");
+            }
+            println!("正文: {}", report.body_path);
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn extract_key(output: &str, key: &str) -> Option<String> {
+    output.lines().find_map(|line| {
+        line.strip_prefix(&format!("{key}="))
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    })
+}
+
+fn env_flag(key: &str) -> bool {
+    env::var(key)
+        .map(|value| matches!(value.as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false)
+}
+
+fn trim_cli_output(output: &str) -> String {
+    let output = output.trim();
+    if output.len() <= 500 {
+        output.to_string()
+    } else {
+        format!("{}...", output.chars().take(500).collect::<String>())
+    }
+}
+
 fn print_evolution_proposal(
     proposal: &TentacleEvolutionProposal,
     artifact: &EvolutionArtifact,
@@ -2460,7 +2609,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider check [prefix] [message] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider check [prefix] [message] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -3509,6 +3658,15 @@ JSON
             "dangoZhang/Octopus".to_string(),
         ])
         .unwrap();
+        let error = run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "self-iterate".to_string(),
+            "pr".to_string(),
+            "dangoZhang/Octopus".to_string(),
+        ])
+        .unwrap_err();
+        assert!(error.contains("requires github grant"));
         run(vec![
             "--state".to_string(),
             state.clone(),

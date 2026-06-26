@@ -75,6 +75,7 @@ octopus doctor
 octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 octopus --state "$tmp/state.json" oauth github dangoZhang/Octopus
 octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus
+OCTOPUS_PR_DRY_RUN=1 octopus --state "$tmp/state.json" self-iterate pr dangoZhang/Octopus "build a clean-brain agent"
 octopus evolve swe-agent "improve repository observation feed quality"
 octopus evolve apply swe-agent runtime_code
 octopus evolve score swe-agent 03-runtime-code satisfied "patch improved feed"
