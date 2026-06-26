@@ -508,6 +508,7 @@
       let currentProviderReport = null;
       let currentFeedReport = null;
       let currentContextReport = null;
+      let currentFeedTrace = null;
 
       function render(stateName = "harness") {
         currentPetState = stateName;
@@ -531,6 +532,7 @@
           `octopus --state ${shellQuote(state)} --json check ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json need ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} --json context ${need} ${shellQuote(target)}`,
+          `octopus --state ${shellQuote(state)} feedback 1 satisfied ${shellQuote("feed worked")}`,
           `octopus --state ${shellQuote(state)} chat ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} think ${tentacle} ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} need ${need} ${shellQuote(target)}`,
@@ -623,6 +625,11 @@
           }
           const report = await runBridgeJson(["--state", state, "--json", "need", need, target]);
           currentFeedReport = report;
+          currentFeedTrace = feedTraceFromFeedback(report);
+          if (!currentFeedTrace) {
+            const traces = await runBridgeJson(["--state", state, "--json", "traces", "1"]);
+            currentFeedTrace = (traces || [])[0] || null;
+          }
           renderFeedReport(report);
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
@@ -766,6 +773,8 @@
         const feeds = report.feeds || [];
         root.appendChild(feedSummary(report, feeds[0]));
         root.appendChild(reportList("Feeds", feeds, feedItem));
+        const controls = feedFeedbackControls(report, feeds[0]);
+        if (controls) root.appendChild(controls);
       }
 
       function renderContextReport(report) {
@@ -926,10 +935,12 @@
       function feedSummary(report, feed) {
         const metadata = (feed && feed.metadata) || {};
         const need = (feed && feed.need) || {};
+        const trace = traceIndexForFeed(feed) || (currentFeedTrace && currentFeedTrace.index);
         const grid = document.createElement("div");
         grid.className = "report-grid";
         [
           ["Status", report.status || (feed && feed.status) || "unknown"],
+          ["Trace", trace ? `#${trace}` : "none"],
           ["Need", need.kind ? `${need.kind}: ${need.query || ""}` : "none"],
           ["Tentacle", metadata.tentacle || metadata.tentacle_brain || "none"],
           ["Tool", metadata.tool || "none"],
@@ -1030,7 +1041,8 @@
         const command = document.createElement("span");
         command.className = "check-command";
         const metadata = feed.metadata || {};
-        command.textContent = `${metadata.tentacle || metadata.tentacle_brain || "feed"} · ${metadata.tool || "no tool"} · ${metadata.plan_source || "no plan"}`;
+        const trace = traceIndexForFeed(feed);
+        command.textContent = `${trace ? `#${trace} · ` : ""}${metadata.tentacle || metadata.tentacle_brain || "feed"} · ${metadata.tool || "no tool"} · ${metadata.plan_source || "no plan"}`;
         const meta = document.createElement("span");
         meta.className = "check-meta";
         meta.textContent = feed.summary || "no summary";
@@ -1050,6 +1062,80 @@
         pre.appendChild(code);
         details.append(summary, pre);
         return details;
+      }
+
+      function traceIndexForFeed(feed) {
+        const metadata = (feed && feed.metadata) || {};
+        const value = metadata.feed_trace_index;
+        return value ? Number(value) : null;
+      }
+
+      function feedTraceFromFeedback(report) {
+        const feed = ((report && report.feeds) || [])[0];
+        const index = traceIndexForFeed(feed);
+        if (!index) return null;
+        return {
+          index,
+          status: feed.status || report.status,
+          summary: feed.summary || report.summary,
+        };
+      }
+
+      function feedFeedbackControls(report, feed) {
+        const trace = traceIndexForFeed(feed) || (currentFeedTrace && currentFeedTrace.index);
+        if (!trace) return null;
+        const wrap = document.createElement("div");
+        wrap.className = "feedback-controls";
+        const noteLabel = document.createElement("label");
+        noteLabel.textContent = "Feedback note";
+        const note = document.createElement("input");
+        note.value = `reviewed feed #${trace}`;
+        noteLabel.appendChild(note);
+        const buttons = document.createElement("div");
+        buttons.className = "toolbar";
+        [
+          ["satisfied", "Satisfied"],
+          ["partial", "Partial"],
+          ["failed", "Failed"],
+        ].forEach(([status, label]) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = label;
+          button.addEventListener("click", () => scoreFeed(trace, status, note.value));
+          buttons.appendChild(button);
+        });
+        wrap.append(noteLabel, buttons);
+        return wrap;
+      }
+
+      async function scoreFeed(trace, status, summary) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        try {
+          const outcome = await runBridgeJson([
+            "--state",
+            state,
+            "--json",
+            "feedback",
+            String(trace),
+            status,
+            summary || "reviewed from feed panel",
+          ]);
+          currentFeedTrace = outcome.trace || currentFeedTrace;
+          if (currentFeedReport) {
+            currentFeedReport.status = outcome.status || currentFeedReport.status;
+            const feed = (currentFeedReport.feeds || [])[0];
+            if (feed) {
+              feed.status = outcome.status || feed.status;
+              feed.summary = outcome.summary || feed.summary;
+              feed.metadata = feed.metadata || {};
+              feed.metadata.feed_trace_index = String(trace);
+            }
+            renderFeedReport(currentFeedReport);
+          }
+          $("output").textContent = JSON.stringify(outcome, null, 2);
+        } catch (error) {
+          $("output").textContent = String(error);
+        }
       }
 
       function beatItem(beat) {

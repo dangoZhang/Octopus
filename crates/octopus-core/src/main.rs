@@ -6,12 +6,12 @@ use octopus_core::{
     write_tentacle_evolution_artifacts, AdaptReport, CapabilityGrant, ChatClient, ChatMessage,
     ChatRole, CheckHistoryInput, CheckHistoryRecord, ContextReport, EnvironmentReport,
     EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome,
-    EvolutionRecommendation, Feed, FeedTraceRecord, GoalChat, Harness, HarnessBeatEvolution,
-    HarnessState, HeartBeat, HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need,
-    NeedKind, OpenAiCompatibleChatClient, OpenAiCompatibleConfig, SelfIterationPlan, Status,
-    StatusReport, TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile,
-    TentacleScaffold, TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate,
-    ToolPermission,
+    EvolutionRecommendation, Feed, FeedFeedbackOutcome, FeedTraceRecord, GoalChat, Harness,
+    HarnessBeatEvolution, HarnessState, HeartBeat, HeartbeatReport, InstalledTentacle,
+    LoadedTentacleManifest, Need, NeedKind, OpenAiCompatibleChatClient, OpenAiCompatibleConfig,
+    SelfIterationPlan, Status, StatusReport, TentacleEvolutionProposal, TentacleManifestReport,
+    TentacleProfile, TentacleScaffold, TentacleThinkingPlan, TentacleToolAction,
+    TentacleToolCandidate, ToolPermission,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -439,6 +439,33 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_feed_traces(&traces, language);
+            }
+            Ok(())
+        }
+        Some("feedback") => {
+            let trace_index = rest
+                .get(1)
+                .ok_or_else(|| "feedback requires a feed trace index".to_string())
+                .and_then(|value| parse_trace_index(value))?;
+            let status = rest
+                .get(2)
+                .ok_or_else(|| "feedback requires a status".to_string())
+                .and_then(|value| parse_status(value))?;
+            let summary = rest
+                .get(3..)
+                .filter(|values| !values.is_empty())
+                .map(|values| values.join(" "))
+                .unwrap_or_else(|| "recorded feed feedback".to_string());
+            let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let outcome = loaded.record_feed_feedback(trace_index, status, summary)?;
+            loaded.save(&state).map_err(|error| error.to_string())?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&outcome).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_feed_feedback_outcome(&outcome, language);
             }
             Ok(())
         }
@@ -1180,11 +1207,38 @@ fn localize_summary(summary: &str, language: Language) -> String {
 fn print_feedback(feedback: &octopus_core::Feedback, language: Language) {
     println!("{}", localize_summary(&feedback.summary, language));
     for feed in &feedback.feeds {
+        if let Some(index) = feed.metadata.get("feed_trace_index") {
+            match language {
+                Language::En => println!("trace_index: {index}"),
+                Language::Zh => println!("Feed轨迹编号: {index}"),
+            }
+        }
         if let Some(trace) = feed_trace(feed) {
             match language {
                 Language::En => println!("feed_trace: {trace}"),
                 Language::Zh => println!("Feed轨迹: {trace}"),
             }
+        }
+    }
+}
+
+fn print_feed_feedback_outcome(outcome: &FeedFeedbackOutcome, language: Language) {
+    match language {
+        Language::En => {
+            println!("recorded feed feedback #{}", outcome.trace.index);
+            println!("status: {:?}", outcome.status);
+            if let Some(score) = outcome.route_score {
+                println!("route_score: {score:.2}");
+            }
+            println!("pet: {}", outcome.pet_event.state);
+        }
+        Language::Zh => {
+            println!("已记录 Feed 反馈 #{}", outcome.trace.index);
+            println!("状态: {:?}", outcome.status);
+            if let Some(score) = outcome.route_score {
+                println!("路由分数: {score:.2}");
+            }
+            println!("章鱼状态: {}", outcome.pet_event.state);
         }
     }
 }
@@ -2373,6 +2427,9 @@ fn bridge_command_allowed(args: &[String]) -> bool {
     if command == "evolve" {
         return bridge_evolve_allowed(args);
     }
+    if command == "feedback" {
+        return bridge_feedback_allowed(args);
+    }
     if command == "provider" {
         return bridge_provider_allowed(args);
     }
@@ -2399,10 +2456,27 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "providers"
             | "routes"
             | "traces"
+            | "feedback"
             | "env"
             | "adapt"
             | "self-iterate"
     )
+}
+
+fn bridge_feedback_allowed(args: &[String]) -> bool {
+    let Some(index) = bridge_command_index(args) else {
+        return false;
+    };
+    let Some(trace_index) = args.get(index + 1) else {
+        return false;
+    };
+    let Some(status) = args.get(index + 2) else {
+        return false;
+    };
+    parse_trace_index(trace_index).is_ok()
+        && parse_status(status).is_ok_and(|status| {
+            matches!(status, Status::Satisfied | Status::Partial | Status::Failed)
+        })
 }
 
 fn bridge_evolve_allowed(args: &[String]) -> bool {
@@ -4688,7 +4762,15 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | context [kind query] | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+}
+
+fn parse_trace_index(value: &str) -> Result<u64, String> {
+    value
+        .parse::<u64>()
+        .ok()
+        .filter(|index| *index > 0)
+        .ok_or_else(|| format!("invalid feed trace index: {value}"))
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -4988,6 +5070,7 @@ mod tests {
         assert!(usage().contains("provider save <profile>"));
         assert!(usage().contains("provider status"));
         assert!(usage().contains("traces [limit]"));
+        assert!(usage().contains("feedback <trace-index>"));
     }
 
     #[test]
@@ -5116,6 +5199,29 @@ mod tests {
             "context".to_string(),
             "observe".to_string(),
             ".".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "feedback".to_string(),
+            "1".to_string(),
+            "partial".to_string(),
+            "reviewed from app".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "feedback".to_string(),
+            "0".to_string(),
+            "partial".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "feedback".to_string(),
+            "1".to_string(),
+            "unsupported".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),
@@ -6283,6 +6389,45 @@ JSON
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("observe:swe-agent"));
         assert!(content.contains("feed_traces"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_feedback_scores_existing_feed_trace() {
+        let _env = env_guard();
+        let path = std::env::temp_dir().join(format!(
+            "octopus-feed-feedback-state-{}.json",
+            std::process::id()
+        ));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "need".to_string(),
+            "remember".to_string(),
+            "feedback loop".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "feedback".to_string(),
+            "1".to_string(),
+            "failed".to_string(),
+            "too noisy".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&path).unwrap();
+        assert_eq!(restored.feed_traces[0].status, Status::Failed);
+        assert_eq!(
+            restored.last_pet_event.as_ref().unwrap().source,
+            "feed feedback"
+        );
+        assert_eq!(restored.last_pet_event.as_ref().unwrap().state, "blocked");
         let _ = fs::remove_file(path);
     }
 
