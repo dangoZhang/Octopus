@@ -44,6 +44,7 @@ jobs:
           "$tmp/root/bin/octopus" --state "$tmp/state.json" --json install computer-use-agent | grep -q '"grants"'
           "$tmp/root/bin/octopus" --state "$tmp/state.json" install computer-use-agent | grep -q "octopus --state"
           "$tmp/root/bin/octopus" --json check computer-use-agent | grep -q '"passed": true'
+          "$tmp/root/bin/octopus" --json check computer-use-agent 1 | grep -q '"results"'
           "$tmp/root/bin/octopus" --state "$tmp/state.json" pet harness | grep -q "Octopus pet"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" doctor | grep -q "Octopus doctor"
       - run: cargo run -q -p octopus-core -- catalog
@@ -110,6 +111,8 @@ jobs:
       - run: grep -q "runChecks" docs/app.html
       - run: grep -q "checkOutputDetails" docs/app.html
       - run: grep -q "check-output" docs/app.html
+      - run: grep -q "runSingleCheck" docs/app.html
+      - run: grep -q "checkRunButton" docs/app.html
       - run: grep -q "/api/stream" docs/app.html
       - run: grep -q "/api/run" docs/architecture.md
       - run: cargo run -q -p octopus-core -- 2>&1 | grep -q "bridge \\[addr\\]"
@@ -163,6 +166,7 @@ jobs:
           cargo run -q -p octopus-core -- --state "$tmp/state.json" install research
           cargo run -q -p octopus-core -- --state "$tmp/state.json" install swe-agent | grep -q "checks:"
           cargo run -q -p octopus-core -- --json check json-feed | grep -q '"passed": true'
+          cargo run -q -p octopus-core -- --json check json-feed 1 | grep -q 'py_compile'
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json install bash-only | grep -q '"command": "octopus --state'
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json skills | grep -q '"installed": true'
           cargo run -q -p octopus-core -- --state "$tmp/state.json" installed

@@ -46,7 +46,7 @@ Every executed Feed is also written to a compact harness trace journal. Manifest
 
 `install <tentacle>` installs a profile or manifest, then reports the tentacle's needs, runtimes, required grants, evolution checks, and next commands from its own metadata. `--json install <tentacle>` exposes the same report to the native HTML app or any outer shell.
 
-`check <tentacle>` runs the manifest or profile evolution checks and returns per-command status. Bridge exposes it only for built-in seed tentacles.
+`check <tentacle> [index]` runs all manifest/profile evolution checks or one 1-based check and returns per-command status. Bridge exposes it only for built-in seed tentacles.
 
 ## Code-As-Harness
 

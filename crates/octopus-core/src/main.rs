@@ -164,7 +164,7 @@ struct InstallGrantReport {
 
 type InstallGrantGroups = BTreeMap<(String, String), (BTreeSet<String>, BTreeSet<String>)>;
 
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 struct CheckReport {
     id: String,
     name: String,
@@ -174,7 +174,7 @@ struct CheckReport {
     results: Vec<CheckResultReport>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 struct CheckResultReport {
     command: String,
     cwd: String,
@@ -1010,7 +1010,11 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let tentacle_id = rest
                 .get(1)
                 .ok_or_else(|| "check requires a tentacle id".to_string())?;
-            let report = check_report(tentacle_id)?;
+            let selected = rest
+                .get(2)
+                .map(|value| parse_check_index(value))
+                .transpose()?;
+            let report = check_report(tentacle_id, selected)?;
             if json {
                 println!(
                     "{}",
@@ -2075,7 +2079,11 @@ fn bridge_check_allowed(args: &[String]) -> bool {
     let Some(tentacle) = args.get(index + 1) else {
         return false;
     };
-    args.len() == index + 2
+    (args.len() == index + 2
+        || (args.len() == index + 3
+            && args
+                .get(index + 2)
+                .is_some_and(|value| parse_check_index(value).is_ok())))
         && matches!(
             tentacle.as_str(),
             "swe-agent"
@@ -3822,7 +3830,7 @@ fn install_next_commands(
     commands
 }
 
-fn check_report(tentacle_id: &str) -> Result<CheckReport, String> {
+fn check_report(tentacle_id: &str, selected: Option<usize>) -> Result<CheckReport, String> {
     let root = default_tentacles_root();
     if let Some(loaded) = load_tentacle_manifests(&root)
         .map_err(|error| error.to_string())?
@@ -3833,7 +3841,8 @@ fn check_report(tentacle_id: &str) -> Result<CheckReport, String> {
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or(root);
-        let results = run_check_commands(&cwd, &loaded.manifest.evolution.checks);
+        let checks = selected_checks(&loaded.manifest.evolution.checks, selected)?;
+        let results = run_check_commands(&cwd, &checks);
         let passed = results
             .iter()
             .all(|result| result.status == Status::Satisfied);
@@ -3856,7 +3865,8 @@ fn check_report(tentacle_id: &str) -> Result<CheckReport, String> {
         ));
     };
     let cwd = env::current_dir().map_err(|error| error.to_string())?;
-    let results = run_check_commands(&cwd, &profile.evolution.checks);
+    let checks = selected_checks(&profile.evolution.checks, selected)?;
+    let results = run_check_commands(&cwd, &checks);
     let passed = results
         .iter()
         .all(|result| result.status == Status::Satisfied);
@@ -3868,6 +3878,29 @@ fn check_report(tentacle_id: &str) -> Result<CheckReport, String> {
         passed,
         results,
     })
+}
+
+fn parse_check_index(value: &str) -> Result<usize, String> {
+    let index = value
+        .parse::<usize>()
+        .map_err(|_| format!("invalid check index: {value}"))?;
+    if index == 0 {
+        return Err("check index starts at 1".to_string());
+    }
+    Ok(index)
+}
+
+fn selected_checks(checks: &[String], selected: Option<usize>) -> Result<Vec<String>, String> {
+    let Some(index) = selected else {
+        return Ok(checks.to_vec());
+    };
+    let Some(check) = checks.get(index - 1) else {
+        return Err(format!(
+            "check index {index} out of range; available checks: {}",
+            checks.len()
+        ));
+    };
+    Ok(vec![check.clone()])
 }
 
 fn run_check_commands(cwd: &Path, checks: &[String]) -> Vec<CheckResultReport> {
@@ -4063,7 +4096,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -4388,10 +4421,28 @@ mod tests {
             "check".to_string(),
             "computer-use-agent".to_string()
         ]));
+        assert!(bridge_command_allowed(&[
+            "--json".to_string(),
+            "check".to_string(),
+            "computer-use-agent".to_string(),
+            "1".to_string()
+        ]));
         assert!(!bridge_command_allowed(&[
             "--json".to_string(),
             "check".to_string(),
             "custom-feed".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--json".to_string(),
+            "check".to_string(),
+            "computer-use-agent".to_string(),
+            "0".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--json".to_string(),
+            "check".to_string(),
+            "computer-use-agent".to_string(),
+            "one".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),
@@ -4451,7 +4502,7 @@ mod tests {
 
     #[test]
     fn check_report_runs_manifest_checks() {
-        let report = check_report("json-feed").unwrap();
+        let report = check_report("json-feed", None).unwrap();
 
         assert_eq!(report.id, "json-feed");
         assert_eq!(report.source_kind, "manifest");
@@ -4460,6 +4511,13 @@ mod tests {
             .results
             .iter()
             .any(|result| result.command.contains("py_compile")));
+
+        let selected = check_report("computer-use-agent", Some(1)).unwrap();
+        assert_eq!(selected.results.len(), 1);
+        assert!(selected.results[0].command.contains("window_status"));
+        assert!(check_report("json-feed", Some(99))
+            .unwrap_err()
+            .contains("out of range"));
     }
 
     #[test]

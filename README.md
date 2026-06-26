@@ -37,6 +37,7 @@ octopus install swe-agent
 octopus install computer-use-agent
 octopus --json install computer-use-agent
 octopus --json check computer-use-agent
+octopus --json check computer-use-agent 1
 octopus install bash-only
 octopus chat "build a clean-brain agent"
 octopus think swe-agent observe README.md

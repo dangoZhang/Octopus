@@ -528,6 +528,27 @@
         }
       }
 
+      async function runSingleCheck(index) {
+        if (!currentInstallReport || currentInstallReport.id !== $("tentacle").value) {
+          await runInstallReport();
+        }
+        const tentacle = $("tentacle").value;
+        try {
+          const report = await runBridgeJson(["--json", "check", tentacle, String(index + 1)]);
+          if (!currentCheckReport || currentCheckReport.id !== tentacle) {
+            currentCheckReport = {
+              id: tentacle,
+              results: new Array((currentInstallReport.checks || []).length),
+            };
+          }
+          currentCheckReport.results[index] = (report.results || [])[0];
+          renderInstallReport(currentInstallReport);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("output").textContent = String(error);
+        }
+      }
+
       function renderInstallReport(report) {
         const root = $("installReport");
         root.className = "stack";
@@ -590,7 +611,10 @@
           const badge = document.createElement("span");
           badge.className = "badge";
           badge.textContent = "pending";
-          item.append(badge, document.createTextNode(value));
+          const command = document.createElement("span");
+          command.className = "check-command";
+          command.textContent = value;
+          item.append(badge, command, checkRunButton(index, "Run"));
           return item;
         }
         const badge = document.createElement("span");
@@ -599,9 +623,17 @@
         const command = document.createElement("span");
         command.className = "check-command";
         command.textContent = result.command || value;
-        item.append(badge, command);
+        item.append(badge, command, checkRunButton(index, "Rerun"));
         item.appendChild(checkOutputDetails(result));
         return item;
+      }
+
+      function checkRunButton(index, label) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.addEventListener("click", () => runSingleCheck(index));
+        return button;
       }
 
       function checkOutputDetails(result) {
