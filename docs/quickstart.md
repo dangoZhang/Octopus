@@ -51,6 +51,7 @@ octopus --state "$tmp/state.json" routes observe .
 octopus --state "$tmp/state.json" report
 octopus --state "$tmp/state.json" preflight
 octopus --state "$tmp/state.json" preflight script "$tmp/preflight.sh"
+octopus --state "$tmp/state.json" preflight record "$tmp/real-machine-record.md"
 octopus --state "$tmp/state.json" feedback 1 satisfied "feed worked"
 octopus --state "$tmp/state.json" oauth octopus tool:bash-only tool:execute
 octopus --state "$tmp/state.json" need execute "echo octopus"
@@ -121,7 +122,7 @@ octopus provider save gemini OCTOPUS_GEMINI "$tmp/gemini.env"
 octopus doctor
 ```
 
-The native app can generate or save provider env, show the same provider layers, run an explicit provider check, render `octopus report`, render `octopus preflight`, and write a local preflight script.
+The native app can generate or save provider env, show the same provider layers, run an explicit provider check, render `octopus report`, render `octopus preflight`, and write local preflight script/record artifacts.
 
 ## Self-Iteration
 
@@ -163,6 +164,7 @@ Octopus doctor
 Octopus report
 Octopus preflight
 Octopus preflight script
+Octopus preflight record
 Octopus bridge: http://127.0.0.1:8765
 pixel: 🟥
 event: harness beat
