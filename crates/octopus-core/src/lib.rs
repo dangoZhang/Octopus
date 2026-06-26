@@ -3037,6 +3037,8 @@ pub struct EvolutionPatchCandidate {
     pub rationale: String,
     #[serde(default)]
     pub feedback: Vec<EvolutionPatchFeedback>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_patch: Option<String>,
     pub change_plan: Vec<String>,
     pub checks: Vec<String>,
     pub draft: EvolutionPatchDraft,
@@ -3087,6 +3089,8 @@ struct LlmEvolutionCandidate {
     change_plan: Vec<String>,
     #[serde(default)]
     checks: Vec<String>,
+    #[serde(default)]
+    suggested_patch: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -3113,6 +3117,8 @@ pub struct EvolutionApplyPlan {
     pub checks: Vec<String>,
     #[serde(default)]
     pub feedback: Vec<EvolutionPatchFeedback>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_patch: Option<String>,
     pub guardrails: Vec<String>,
     pub next_steps: Vec<String>,
 }
@@ -3335,7 +3341,8 @@ fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Result<String, 
                     "target": "relative manifest/tool target inside this tentacle",
                     "rationale": "why this improves Need-to-Feed",
                     "change_plan": ["concrete harness edit step"],
-                    "checks": ["command to verify"]
+                    "checks": ["command to verify"],
+                    "suggested_patch": "optional unified diff for the declared target only; omit if uncertain"
                 }
             ]
         }
@@ -3395,6 +3402,7 @@ fn llm_candidate_to_evolution(
             candidate.rationale
         },
         feedback: Vec::new(),
+        suggested_patch: clean_suggested_patch(candidate.suggested_patch),
         change_plan,
         checks,
         draft: evolution_patch_draft(surface_index, surface),
@@ -3647,6 +3655,7 @@ pub fn plan_tentacle_evolution_apply(
         draft_path: candidate.draft.path.clone(),
         checks: candidate.checks.clone(),
         feedback: candidate.feedback.clone(),
+        suggested_patch: candidate.suggested_patch.clone(),
         guardrails: vec![
             "do not modify kernel code from an evolution draft".to_string(),
             "patch only declared harness targets".to_string(),
@@ -3771,6 +3780,12 @@ pub fn render_tentacle_apply_plan(plan: &EvolutionApplyPlan) -> String {
         }
         markdown.push('\n');
     }
+    if let Some(patch) = &plan.suggested_patch {
+        markdown.push_str("provider patch draft:\n");
+        markdown.push_str("```diff\n");
+        markdown.push_str(patch.trim());
+        markdown.push_str("\n```\n\n");
+    }
     markdown.push_str("guardrails:\n");
     for guardrail in &plan.guardrails {
         markdown.push_str(&format!("- {guardrail}\n"));
@@ -3787,6 +3802,13 @@ pub fn render_tentacle_apply_plan(plan: &EvolutionApplyPlan) -> String {
 }
 
 pub fn render_authorized_apply_patch(plan: &EvolutionApplyPlan, apply_dir: &Path) -> String {
+    if let Some(patch) = plan
+        .suggested_patch
+        .as_deref()
+        .and_then(|patch| provider_patch_for_plan(plan, patch))
+    {
+        return patch;
+    }
     if let Some(target) = resolve_existing_patch_target(&plan.target) {
         if let Some(patch) = render_existing_file_patch(plan, &target) {
             return patch;
@@ -3876,6 +3898,12 @@ fn evolution_candidate_feedback_from_proposal(
         feedback.push(feedback_from_feed_trace(trace, None));
     }
     feedback
+}
+
+fn clean_suggested_patch(patch: Option<String>) -> Option<String> {
+    let patch = patch?;
+    let patch = patch.trim();
+    (!patch.is_empty()).then(|| format!("{patch}\n"))
 }
 
 fn candidate_matches_check_history(
@@ -4029,6 +4057,65 @@ fn render_existing_file_patch(plan: &EvolutionApplyPlan, target: &Path) -> Optio
         patch.push_str(&format!("+{comment}\n"));
     }
     Some(patch)
+}
+
+fn provider_patch_for_plan(plan: &EvolutionApplyPlan, patch: &str) -> Option<String> {
+    if plan
+        .target
+        .split('#')
+        .next()
+        .unwrap_or(&plan.target)
+        .contains('*')
+    {
+        return None;
+    }
+    let target = resolve_existing_patch_target(&plan.target)?;
+    let target = patch_display_path(&target);
+    let paths = diff_paths(patch);
+    if paths.is_empty() || paths.iter().any(|path| path != &target) {
+        return None;
+    }
+    let patch = patch.trim();
+    (!patch.is_empty()).then(|| format!("{patch}\n"))
+}
+
+fn diff_paths(patch: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    for line in patch.lines() {
+        if let Some(value) = line.strip_prefix("diff --git ") {
+            for part in value.split_whitespace().take(2) {
+                if let Some(path) = normalize_diff_path(part) {
+                    push_unique(&mut paths, path);
+                }
+            }
+        } else if let Some(value) = line.strip_prefix("--- ") {
+            if let Some(path) = normalize_diff_path(value) {
+                push_unique(&mut paths, path);
+            }
+        } else if let Some(value) = line.strip_prefix("+++ ") {
+            if let Some(path) = normalize_diff_path(value) {
+                push_unique(&mut paths, path);
+            }
+        }
+    }
+    paths
+}
+
+fn normalize_diff_path(value: &str) -> Option<String> {
+    let value = value.trim().trim_matches('"');
+    if value == "/dev/null" {
+        return None;
+    }
+    value
+        .strip_prefix("a/")
+        .or_else(|| value.strip_prefix("b/"))
+        .map(|path| path.to_string())
+}
+
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.iter().any(|existing| existing == &value) {
+        values.push(value);
+    }
 }
 
 fn patch_comment_for(target: &Path, plan: &EvolutionApplyPlan) -> Option<String> {
@@ -4230,6 +4317,9 @@ pub fn render_tentacle_patch_candidates(proposal: &TentacleEvolutionProposal) ->
             markdown.push('\n');
         }
         markdown.push_str(&format!("draft: `{}`\n", candidate.draft.path));
+        if candidate.suggested_patch.is_some() {
+            markdown.push_str("provider patch: attached\n");
+        }
         markdown.push_str(&format!("status: `{}`\n", candidate.draft.status));
         markdown.push_str(&format!(
             "authorization required: {}\n\n",
@@ -4283,6 +4373,12 @@ pub fn render_single_patch_draft(
             markdown.push_str(&format!("- {}\n", evolution_feedback_line(feedback)));
         }
         markdown.push('\n');
+    }
+    if let Some(patch) = &candidate.suggested_patch {
+        markdown.push_str("provider patch draft:\n");
+        markdown.push_str("```diff\n");
+        markdown.push_str(patch.trim());
+        markdown.push_str("\n```\n\n");
     }
     markdown.push_str("diff intent:\n");
     for step in &candidate.change_plan {
@@ -5140,6 +5236,7 @@ fn evolution_patch_candidates(
                     objective, surface, trace_tool, check_tool,
                 ),
                 feedback: evolution_candidate_feedback(trace_tool, check_tool),
+                suggested_patch: None,
                 change_plan: evolution_candidate_plan_with_feedback(
                     surface, trace_tool, check_tool,
                 ),
@@ -7161,7 +7258,8 @@ mod tests {
                   "target": "tools/read.sh",
                   "rationale": "Need-to-Feed improves when the tool returns compact file evidence",
                   "change_plan": ["keep clean brain context limited", "change only the read adapter"],
-                  "checks": ["tentacles/swe-agent/tools/read.sh README.md 1 2"]
+                  "checks": ["tentacles/swe-agent/tools/read.sh README.md 1 2"],
+                  "suggested_patch": "diff --git a/tentacles/swe-agent/tools/read.sh b/tentacles/swe-agent/tools/read.sh\n--- a/tentacles/swe-agent/tools/read.sh\n+++ b/tentacles/swe-agent/tools/read.sh\n@@ -1,2 +1,3 @@\n #!/bin/sh\n+# provider-assisted draft\n set -eu\n"
                 }
               ]
             }"#
@@ -7192,6 +7290,34 @@ mod tests {
             .feedback
             .iter()
             .any(|feedback| feedback.kind == "check_history"));
+        assert!(proposal.patch_candidates[0]
+            .suggested_patch
+            .as_deref()
+            .is_some_and(|patch| patch.contains("provider-assisted draft")));
+        let workspace =
+            std::env::temp_dir().join(format!("octopus-llm-evolve-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&workspace);
+        let artifact = write_tentacle_evolution_artifacts(&workspace, &proposal).unwrap();
+        let draft = fs::read_to_string(
+            artifact
+                .patch_draft_paths
+                .iter()
+                .find(|path| path.contains("03-runtime-code"))
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(draft.contains("provider patch draft:"));
+        assert!(draft.contains("provider-assisted draft"));
+        state.grant_oauth(
+            "octopus",
+            "evolve:swe-agent",
+            default_permissions("octopus"),
+        );
+        let plan = plan_tentacle_evolution_apply(&proposal, &state, "runtime_code").unwrap();
+        let apply_artifact = write_tentacle_apply_artifacts(&workspace, &plan).unwrap();
+        let patch = fs::read_to_string(apply_artifact.patch_path.as_ref().unwrap()).unwrap();
+        assert!(patch.contains("provider-assisted draft"));
+        assert!(patch.contains("b/tentacles/swe-agent/tools/read.sh"));
         assert!(markdown.contains("generator: `llm`"));
         assert!(fake.prompt.contains("Goal"));
         assert!(fake.prompt.contains("Need"));
@@ -7201,6 +7327,7 @@ mod tests {
         assert!(fake.prompt.contains("recent_check_history"));
         assert!(fake.prompt.contains("observed README before evolution"));
         assert!(fake.prompt.contains("read check failed before evolution"));
+        let _ = fs::remove_dir_all(workspace);
     }
 
     #[test]
@@ -7251,6 +7378,16 @@ mod tests {
         assert!(patch.contains("diff --git"));
         assert!(patch.contains("Octopus evolution candidate 03-runtime-code"));
         assert!(json.contains("\"authorized\": true"));
+        let mut off_target = ready.clone();
+        off_target.suggested_patch = Some(
+            "diff --git a/tentacles/swe-agent/tools/edit.sh b/tentacles/swe-agent/tools/edit.sh\n--- a/tentacles/swe-agent/tools/edit.sh\n+++ b/tentacles/swe-agent/tools/edit.sh\n@@ -1,2 +1,3 @@\n #!/bin/sh\n+# off-target provider draft\n set -eu\n"
+                .to_string(),
+        );
+        let off_target_artifact = write_tentacle_apply_artifacts(&workspace, &off_target).unwrap();
+        let off_target_patch =
+            fs::read_to_string(off_target_artifact.patch_path.as_ref().unwrap()).unwrap();
+        assert!(!off_target_patch.contains("off-target provider draft"));
+        assert!(off_target_patch.contains("Octopus evolution candidate 03-runtime-code"));
         let blocked_again = write_tentacle_apply_artifacts(&workspace, &blocked).unwrap();
         assert!(blocked_again.patch_path.is_none());
         assert!(!expected_patch.exists());

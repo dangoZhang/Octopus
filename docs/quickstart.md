@@ -113,7 +113,7 @@ octopus evolve recommend swe-agent "improve repository observation feed quality"
 tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build a clean-brain agent"
 ```
 
-`evolve` writes `PROPOSAL.md`, `PATCH_CANDIDATES.md`, `PATCH_DRAFTS.md`, `patches/`, `apply/`, optional `.patch` files, and `proposal.json` under `.octopus/evolution/<tentacle>/`. `evolve recommend` uses previous `evolve score` outcomes to pick the next apply plan.
+`evolve` writes `PROPOSAL.md`, `PATCH_CANDIDATES.md`, `PATCH_DRAFTS.md`, `patches/`, `apply/`, optional `.patch` files, and `proposal.json` under `.octopus/evolution/<tentacle>/`. With `OCTOPUS_LLM_EVOLVE=1`, LLM candidates may include a provider-assisted patch draft for review. `evolve recommend` uses previous `evolve score` outcomes to pick the next apply plan.
 
 ## Expected Signals
 

@@ -5156,7 +5156,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
             &curl,
             r#"#!/bin/sh
 cat <<'JSON'
-{"choices":[{"message":{"content":"{\"summary\":\"llm evolve selected runtime\",\"candidates\":[{\"surface_id\":\"runtime_code\",\"title\":\"LLM runtime patch\",\"target\":\"tools/read.sh\",\"rationale\":\"tool-side action feed\",\"change_plan\":[\"preserve Goal Mem Need Feed boundary\",\"edit runtime adapter\"],\"checks\":[\"tentacles/swe-agent/tools/read.sh README.md 1 2\"]}]}"}}]}
+{"choices":[{"message":{"content":"{\"summary\":\"llm evolve selected runtime\",\"candidates\":[{\"surface_id\":\"runtime_code\",\"title\":\"LLM runtime patch\",\"target\":\"tools/read.sh\",\"rationale\":\"tool-side action feed\",\"change_plan\":[\"preserve Goal Mem Need Feed boundary\",\"edit runtime adapter\"],\"checks\":[\"tentacles/swe-agent/tools/read.sh README.md 1 2\"],\"suggested_patch\":\"diff --git a/tentacles/swe-agent/tools/read.sh b/tentacles/swe-agent/tools/read.sh\\n--- a/tentacles/swe-agent/tools/read.sh\\n+++ b/tentacles/swe-agent/tools/read.sh\\n@@ -1,2 +1,3 @@\\n #!/bin/sh\\n+# provider-assisted draft\\n set -eu\\n\"}]}"}}]}
 JSON
 "#,
         )
@@ -5208,8 +5208,18 @@ JSON
                 .join("PATCH_CANDIDATES.md"),
         )
         .unwrap();
+        let draft = fs::read_to_string(
+            dir.join(".octopus")
+                .join("evolution")
+                .join("swe-agent")
+                .join("patches")
+                .join("03-runtime-code.patch.md"),
+        )
+        .unwrap();
         assert!(proposal.contains("generator: `llm`"));
         assert!(candidates.contains("LLM runtime patch"));
+        assert!(candidates.contains("provider patch: attached"));
+        assert!(draft.contains("provider-assisted draft"));
         let _ = fs::remove_dir_all(dir);
     }
 
