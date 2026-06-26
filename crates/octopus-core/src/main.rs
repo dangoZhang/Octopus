@@ -3,13 +3,14 @@ use octopus_core::{
     load_tentacle_manifests, plan_tentacle_evolution_apply, propose_tentacle_evolution_with_client,
     propose_tentacle_evolution_with_state, recommend_tentacle_evolution_apply, scaffold_tentacle,
     think_tentacle, write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts,
-    AdaptReport, CapabilityGrant, ChatClient, ChatMessage, ChatRole, EnvironmentReport,
-    EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome,
-    EvolutionRecommendation, Feed, FeedTraceRecord, GoalChat, Harness, HarnessState,
-    HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind,
-    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, SelfIterationPlan, Status, StatusReport,
-    TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile, TentacleScaffold,
-    TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate, ToolPermission,
+    AdaptReport, CapabilityGrant, ChatClient, ChatMessage, ChatRole, CheckHistoryInput,
+    CheckHistoryRecord, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan,
+    EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed, FeedTraceRecord, GoalChat,
+    Harness, HarnessState, HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need,
+    NeedKind, OpenAiCompatibleChatClient, OpenAiCompatibleConfig, SelfIterationPlan, Status,
+    StatusReport, TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile,
+    TentacleScaffold, TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate,
+    ToolPermission,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -149,6 +150,7 @@ struct InstallReport {
     evolution_surfaces: Vec<String>,
     grants: Vec<InstallGrantReport>,
     checks: Vec<String>,
+    check_history: Vec<CheckHistoryRecord>,
     next: Vec<String>,
 }
 
@@ -172,16 +174,24 @@ struct CheckReport {
     cwd: String,
     passed: bool,
     results: Vec<CheckResultReport>,
+    history: Vec<CheckHistoryRecord>,
 }
 
 #[derive(Debug, serde::Serialize)]
 struct CheckResultReport {
+    index: usize,
     command: String,
     cwd: String,
     status: Status,
     code: Option<i32>,
     stdout: String,
     stderr: String,
+}
+
+#[derive(Clone, Debug)]
+struct SelectedCheck {
+    index: usize,
+    command: String,
 }
 
 #[derive(serde::Serialize)]
@@ -1014,7 +1024,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .get(2)
                 .map(|value| parse_check_index(value))
                 .transpose()?;
-            let report = check_report(tentacle_id, selected)?;
+            let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let mut report = check_report(tentacle_id, selected)?;
+            record_check_report(&mut loaded, &mut report);
+            loaded.save(&state).map_err(|error| error.to_string())?;
             if json {
                 println!(
                     "{}",
@@ -1128,6 +1141,7 @@ fn print_install_report(report: &InstallReport, language: Language) {
             println!("surfaces: {}", join_or_none(&report.evolution_surfaces));
             print_install_grants(report, language);
             print_install_checks(report, language);
+            print_install_check_history(report, language);
             print_install_next(report, language);
         }
         Language::Zh => {
@@ -1141,6 +1155,7 @@ fn print_install_report(report: &InstallReport, language: Language) {
             println!("进化面: {}", join_or_none(&report.evolution_surfaces));
             print_install_grants(report, language);
             print_install_checks(report, language);
+            print_install_check_history(report, language);
             print_install_next(report, language);
         }
     }
@@ -1183,6 +1198,19 @@ fn print_install_checks(report: &InstallReport, language: Language) {
     }
     for check in &report.checks {
         println!("- {check}");
+    }
+}
+
+fn print_install_check_history(report: &InstallReport, language: Language) {
+    if report.check_history.is_empty() {
+        return;
+    }
+    match language {
+        Language::En => println!("check history:"),
+        Language::Zh => println!("检查历史:"),
+    }
+    for record in &report.check_history {
+        println!("- {}", check_history_line(record));
     }
 }
 
@@ -1229,6 +1257,33 @@ fn print_check_report(report: &CheckReport, language: Language) {
             println!("  stderr: {}", compact_output(&result.stderr));
         }
     }
+    if !report.history.is_empty() {
+        match language {
+            Language::En => println!("recent history:"),
+            Language::Zh => println!("最近历史:"),
+        }
+        for record in &report.history {
+            println!("- {}", check_history_line(record));
+        }
+    }
+}
+
+fn check_history_line(record: &CheckHistoryRecord) -> String {
+    let label = match record.status {
+        Status::Satisfied => "ok",
+        Status::Failed => "failed",
+        Status::Partial => "partial",
+        Status::Unsupported => "unsupported",
+    };
+    let check = record
+        .command_index
+        .map(|index| format!("check {index}"))
+        .unwrap_or_else(|| "check".to_string());
+    format!(
+        "#{} {label} {check}: {}",
+        record.index,
+        compact_output(&record.command)
+    )
 }
 
 fn compact_output(value: &str) -> String {
@@ -2704,6 +2759,10 @@ fn print_status_report(report: &StatusReport, language: Language) {
             if let Some(trace) = &report.latest_feed_trace {
                 println!("latest_trace: {}", trace_line(trace));
             }
+            println!("check_history: {}", report.check_history_count);
+            if let Some(record) = &report.latest_check {
+                println!("latest_check: {}", check_history_line(record));
+            }
             println!("warnings: {}", join_or_none(&report.warnings));
             println!("next: {}", report.next_action);
         }
@@ -2725,6 +2784,10 @@ fn print_status_report(report: &StatusReport, language: Language) {
             println!("Feed轨迹数: {}", report.feed_trace_count);
             if let Some(trace) = &report.latest_feed_trace {
                 println!("最近轨迹: {}", trace_line(trace));
+            }
+            println!("检查历史数: {}", report.check_history_count);
+            if let Some(record) = &report.latest_check {
+                println!("最近检查: {}", check_history_line(record));
             }
             println!("警告: {}", join_or_none(&report.warnings));
             println!("下一步: {}", report.next_action);
@@ -3617,6 +3680,7 @@ fn install_report(
         .unwrap_or_default();
     let grants = install_grants(state_path, state, manifest_installed, profile);
     let checks = install_checks(manifest, profile);
+    let check_history = state.recent_check_history_for_tentacle(id, 8);
     let next = install_next_commands(
         id,
         state_path,
@@ -3639,6 +3703,7 @@ fn install_report(
         evolution_surfaces,
         grants,
         checks,
+        check_history,
         next,
     }
 }
@@ -3853,6 +3918,7 @@ fn check_report(tentacle_id: &str, selected: Option<usize>) -> Result<CheckRepor
             cwd: cwd.to_string_lossy().to_string(),
             passed,
             results,
+            history: Vec::new(),
         });
     }
 
@@ -3877,7 +3943,40 @@ fn check_report(tentacle_id: &str, selected: Option<usize>) -> Result<CheckRepor
         cwd: cwd.to_string_lossy().to_string(),
         passed,
         results,
+        history: Vec::new(),
     })
+}
+
+fn record_check_report(state: &mut HarnessState, report: &mut CheckReport) {
+    for result in &report.results {
+        state.record_check_history(CheckHistoryInput {
+            tentacle_id: report.id.clone(),
+            source_kind: report.source_kind.clone(),
+            command_index: Some(result.index),
+            command: result.command.clone(),
+            cwd: result.cwd.clone(),
+            status: result.status.clone(),
+            code: result.code,
+            stdout: result.stdout.clone(),
+            stderr: result.stderr.clone(),
+        });
+    }
+    let summary = if report.passed {
+        format!("check {} passed", report.id)
+    } else {
+        format!("check {} failed", report.id)
+    };
+    state.record_pet_event(
+        if report.passed { "success" } else { "blocked" },
+        format!("check:{}", report.id),
+        summary,
+        if report.passed {
+            Status::Satisfied
+        } else {
+            Status::Failed
+        },
+    );
+    report.history = state.recent_check_history_for_tentacle(&report.id, 8);
 }
 
 fn parse_check_index(value: &str) -> Result<usize, String> {
@@ -3890,9 +3989,19 @@ fn parse_check_index(value: &str) -> Result<usize, String> {
     Ok(index)
 }
 
-fn selected_checks(checks: &[String], selected: Option<usize>) -> Result<Vec<String>, String> {
+fn selected_checks(
+    checks: &[String],
+    selected: Option<usize>,
+) -> Result<Vec<SelectedCheck>, String> {
     let Some(index) = selected else {
-        return Ok(checks.to_vec());
+        return Ok(checks
+            .iter()
+            .enumerate()
+            .map(|(offset, command)| SelectedCheck {
+                index: offset + 1,
+                command: command.clone(),
+            })
+            .collect());
     };
     let Some(check) = checks.get(index - 1) else {
         return Err(format!(
@@ -3900,21 +4009,27 @@ fn selected_checks(checks: &[String], selected: Option<usize>) -> Result<Vec<Str
             checks.len()
         ));
     };
-    Ok(vec![check.clone()])
+    Ok(vec![SelectedCheck {
+        index,
+        command: check.clone(),
+    }])
 }
 
-fn run_check_commands(cwd: &Path, checks: &[String]) -> Vec<CheckResultReport> {
+fn run_check_commands(cwd: &Path, checks: &[SelectedCheck]) -> Vec<CheckResultReport> {
     checks
         .iter()
         .map(|check| run_check_command(cwd, check))
         .collect()
 }
 
-fn run_check_command(cwd: &Path, check: &str) -> CheckResultReport {
-    let output = shell_check_command(check).current_dir(cwd).output();
+fn run_check_command(cwd: &Path, check: &SelectedCheck) -> CheckResultReport {
+    let output = shell_check_command(&check.command)
+        .current_dir(cwd)
+        .output();
     match output {
         Ok(output) => CheckResultReport {
-            command: check.to_string(),
+            index: check.index,
+            command: check.command.clone(),
             cwd: cwd.to_string_lossy().to_string(),
             status: if output.status.success() {
                 Status::Satisfied
@@ -3926,7 +4041,8 @@ fn run_check_command(cwd: &Path, check: &str) -> CheckResultReport {
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         },
         Err(error) => CheckResultReport {
-            command: check.to_string(),
+            index: check.index,
+            command: check.command.clone(),
             cwd: cwd.to_string_lossy().to_string(),
             status: Status::Failed,
             code: None,
@@ -4427,6 +4543,14 @@ mod tests {
             "computer-use-agent".to_string(),
             "1".to_string()
         ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "check".to_string(),
+            "computer-use-agent".to_string(),
+            "1".to_string()
+        ]));
         assert!(!bridge_command_allowed(&[
             "--json".to_string(),
             "check".to_string(),
@@ -4518,6 +4642,32 @@ mod tests {
         assert!(check_report("json-feed", Some(99))
             .unwrap_err()
             .contains("out of range"));
+    }
+
+    #[test]
+    fn cli_check_persists_history_in_state() {
+        let _env = env_guard();
+        let path =
+            std::env::temp_dir().join(format!("octopus-check-state-{}.json", std::process::id()));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "check".to_string(),
+            "json-feed".to_string(),
+            "1".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&path).unwrap();
+        assert_eq!(restored.check_history.len(), 1);
+        assert_eq!(restored.check_history[0].tentacle_id, "json-feed");
+        assert_eq!(restored.check_history[0].command_index, Some(1));
+        assert_eq!(restored.last_pet_event.as_ref().unwrap().state, "success");
+        let _ = fs::remove_file(path);
     }
 
     #[test]

@@ -6,7 +6,7 @@ Updated: 2026-06-26
 
 - Clean brain emits cognitive `Need`; it does not choose tools.
 - Tentacles own LLM prompt, tool metadata, runtime code, and evolution policy.
-- Harness stores memory, route scores, OAuth grants, installed tentacles, and goal state.
+- Harness stores memory, route scores, OAuth grants, installed tentacles, goal state, Feed traces, and check history.
 - Three beats exist: heartbeat, memory compaction, and harness route evolution.
 - Pixel pet exposes heartbeat, memory, harness, blocked, and success states through deterministic state mapping.
 - Pet auto-color now follows the latest persisted Need/Feed/beat/evolve-score event plus goal status.
@@ -20,8 +20,8 @@ Updated: 2026-06-26
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
-- The HTML install guide can expand each check to inspect stdout, stderr, and exit code.
-- `check <tentacle> [index]` and the HTML install guide can rerun one check at a time.
+- The HTML install guide can expand each check to inspect stdout, stderr, exit code, and recent harness check history.
+- `check <tentacle> [index]` records compact harness history and the HTML install guide can rerun one check at a time.
 - Context policy is explicit: clean brain sees `Goal + Mem + Need + Feed`; tentacles see `Need + Tool + Action + Tool + Action -> Feed`.
 - `think <tentacle> <kind> <query>` exposes tool-side planning and planned actions without executing tools.
 - LLM-backed tentacle plans can execute up to two tool actions for one Need and return one compact Feed.
@@ -70,6 +70,7 @@ Updated: 2026-06-26
 - Added per-check stdout/stderr drilldown in the native HTML install guide.
 - Added single-check rerun support in CLI, bridge, and the HTML install guide.
 - Rolled the cleanup/version cadence to `0.0.4` after the install-guide product cycle.
+- Added persistent harness check history for install checks and surfaced it in the HTML install guide.
 
 ## Remaining Gaps
 
@@ -79,7 +80,7 @@ Updated: 2026-06-26
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include static layer diagnostics and live validation; provider-specific edge cases still need real-machine feedback.
 - Release packaging, examples, and docs now have richer install feedback; non-Rust packaging still needs finish.
-- The HTML app can run, stream, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status, expose check output, and rerun one check through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, and rerun one check through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
@@ -88,7 +89,7 @@ Updated: 2026-06-26
 - Exercise multi-action tentacle planning with a real LLM provider and record provider-specific failures.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Use traced runtime targets to apply and score the next seed-tentacle improvement through the review/grant loop.
-- Add real-machine check history to the guided HTML install flow.
+- Use real-machine check history to score harness evolution and recommend next fixes.
 - Turn window/browser diagnostics into richer native control adapters.
 - Add provider-specific fixes from real-machine feedback.
 - Run and record the first real-machine test before the `0.1.0` tag.

@@ -275,6 +275,13 @@
         color: var(--ink);
       }
 
+      .check-meta {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
       details {
         margin-top: 8px;
       }
@@ -451,7 +458,7 @@
           `octopus --state ${shellQuote(state)} init`,
           `octopus --state ${shellQuote(state)} install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json install ${tentacle}`,
-          `octopus --json check ${tentacle}`,
+          `octopus --state ${shellQuote(state)} --json check ${tentacle}`,
           `octopus --state ${shellQuote(state)} chat ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} think ${tentacle} ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} need ${need} ${shellQuote(target)}`,
@@ -517,9 +524,10 @@
         if (!currentInstallReport || currentInstallReport.id !== $("tentacle").value) {
           await runInstallReport();
         }
+        const state = $("state").value.trim() || ".octopus/state.json";
         const tentacle = $("tentacle").value;
         try {
-          const report = await runBridgeJson(["--json", "check", tentacle]);
+          const report = await runBridgeJson(["--state", state, "--json", "check", tentacle]);
           currentCheckReport = report;
           if (currentInstallReport) renderInstallReport(currentInstallReport);
           $("output").textContent = JSON.stringify(report, null, 2);
@@ -532,16 +540,21 @@
         if (!currentInstallReport || currentInstallReport.id !== $("tentacle").value) {
           await runInstallReport();
         }
+        const state = $("state").value.trim() || ".octopus/state.json";
         const tentacle = $("tentacle").value;
         try {
-          const report = await runBridgeJson(["--json", "check", tentacle, String(index + 1)]);
+          const report = await runBridgeJson(["--state", state, "--json", "check", tentacle, String(index + 1)]);
           if (!currentCheckReport || currentCheckReport.id !== tentacle) {
             currentCheckReport = {
               id: tentacle,
               results: new Array((currentInstallReport.checks || []).length),
+              history: [],
             };
           }
-          currentCheckReport.results[index] = (report.results || [])[0];
+          const result = (report.results || [])[0];
+          const resultIndex = result && result.index ? result.index - 1 : index;
+          currentCheckReport.results[resultIndex] = result;
+          currentCheckReport.history = report.history || currentCheckReport.history;
           renderInstallReport(currentInstallReport);
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
@@ -556,6 +569,7 @@
         root.appendChild(reportSummary(report));
         root.appendChild(reportList("Grants", report.grants || [], grantItem));
         root.appendChild(reportList("Checks", report.checks || [], checkItem));
+        root.appendChild(reportList("History", checkHistory(report), checkHistoryItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
@@ -634,6 +648,30 @@
         button.textContent = label;
         button.addEventListener("click", () => runSingleCheck(index));
         return button;
+      }
+
+      function checkHistory(report) {
+        if (currentCheckReport && currentCheckReport.id === report.id && currentCheckReport.history) {
+          return currentCheckReport.history;
+        }
+        return report.check_history || [];
+      }
+
+      function checkHistoryItem(record) {
+        const item = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = record.status === "satisfied" ? "badge ok" : "badge failed";
+        badge.textContent = record.status === "satisfied" ? "ok" : "failed";
+        const command = document.createElement("span");
+        command.className = "check-command";
+        const checkIndex = record.command_index ? `check ${record.command_index}` : "check";
+        command.textContent = `#${record.index} · ${checkIndex} · ${record.command}`;
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        meta.textContent = `${record.source_kind} · ${record.cwd}`;
+        item.append(badge, command, meta);
+        item.appendChild(checkOutputDetails(record));
+        return item;
       }
 
       function checkOutputDetails(result) {

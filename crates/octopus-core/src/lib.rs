@@ -5,11 +5,13 @@ use std::fs;
 use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const OCTOPUS_JSON_CONTRACT: &str = "octopus-json-v1";
 const OCTOPUS_TOOL_CALL_SCHEMA: &str = "octopus-tool-call-v1";
 const FEED_TRACE_QUERY_BYTES: usize = 160;
 const FEED_TRACE_SUMMARY_BYTES: usize = 240;
+const CHECK_HISTORY_OUTPUT_BYTES: usize = 480;
 const MAX_TENTACLE_ACTIONS: usize = 2;
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -226,6 +228,34 @@ pub struct FeedTraceRecord {
     pub summary: String,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct CheckHistoryInput {
+    pub tentacle_id: String,
+    pub source_kind: String,
+    pub command_index: Option<usize>,
+    pub command: String,
+    pub cwd: String,
+    pub status: Status,
+    pub code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct CheckHistoryRecord {
+    pub index: u64,
+    pub timestamp_secs: u64,
+    pub tentacle_id: String,
+    pub source_kind: String,
+    pub command_index: Option<usize>,
+    pub command: String,
+    pub cwd: String,
+    pub status: Status,
+    pub code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct AdaptReport {
     pub environment: EnvironmentReport,
@@ -240,12 +270,14 @@ pub struct StatusReport {
     pub memory_count: usize,
     pub route_count: usize,
     pub feed_trace_count: usize,
+    pub check_history_count: usize,
     pub installed_profiles: Vec<String>,
     pub tentacles: Vec<TentacleStatus>,
     pub goal: Option<GoalSnapshot>,
     pub active_grants: Vec<String>,
     pub last_pet_event: Option<PetEvent>,
     pub latest_feed_trace: Option<FeedTraceRecord>,
+    pub latest_check: Option<CheckHistoryRecord>,
     pub warnings: Vec<String>,
     pub next_action: String,
 }
@@ -1116,6 +1148,10 @@ pub struct HarnessState {
     pub feed_traces: Vec<FeedTraceRecord>,
     #[serde(default)]
     pub next_feed_trace_index: u64,
+    #[serde(default)]
+    pub check_history: Vec<CheckHistoryRecord>,
+    #[serde(default)]
+    pub next_check_history_index: u64,
 }
 
 impl HarnessState {
@@ -1182,10 +1218,12 @@ impl HarnessState {
         let dropped = self.memory.compact(memory_keep);
         let routes_changed = self.routes.decay(0.995);
         let trace_dropped = self.compact_feed_traces(memory_keep);
-        let harness_summary = if routes_changed > 0 && trace_dropped > 0 {
-            format!("evolved {routes_changed} routes, compacted {trace_dropped} traces")
-        } else if trace_dropped > 0 {
-            format!("compacted {trace_dropped} traces")
+        let check_dropped = self.compact_check_history(memory_keep);
+        let compacted = trace_dropped + check_dropped;
+        let harness_summary = if routes_changed > 0 && compacted > 0 {
+            format!("evolved {routes_changed} routes, compacted {compacted} harness records")
+        } else if compacted > 0 {
+            format!("compacted {compacted} harness records")
         } else {
             format!("evolved {routes_changed} routes")
         };
@@ -1208,7 +1246,7 @@ impl HarnessState {
                 },
                 HeartBeat {
                     name: "harness".to_string(),
-                    changed: routes_changed > 0 || trace_dropped > 0,
+                    changed: routes_changed > 0 || compacted > 0,
                     summary: harness_summary.clone(),
                     data: BTreeMap::from([
                         ("routes".to_string(), self.routes.scores.len().to_string()),
@@ -1217,6 +1255,14 @@ impl HarnessState {
                             self.feed_traces.len().to_string(),
                         ),
                         ("feed_traces_dropped".to_string(), trace_dropped.to_string()),
+                        (
+                            "check_history".to_string(),
+                            self.check_history.len().to_string(),
+                        ),
+                        (
+                            "check_history_dropped".to_string(),
+                            check_dropped.to_string(),
+                        ),
                     ]),
                 },
             ],
@@ -1228,7 +1274,7 @@ impl HarnessState {
                 format!("compacted {dropped} memories"),
                 Status::Satisfied,
             );
-        } else if routes_changed > 0 || trace_dropped > 0 {
+        } else if routes_changed > 0 || compacted > 0 {
             self.record_pet_event(
                 "harness",
                 "harness beat",
@@ -1320,12 +1366,14 @@ impl HarnessState {
             memory_count: self.memory.len(),
             route_count: self.routes.scores.len(),
             feed_trace_count: self.feed_traces.len(),
+            check_history_count: self.check_history.len(),
             installed_profiles: self.installed_profiles.clone(),
             tentacles,
             goal,
             active_grants,
             last_pet_event: self.last_pet_event.clone(),
             latest_feed_trace: self.feed_traces.last().cloned(),
+            latest_check: self.check_history.last().cloned(),
             warnings,
             next_action,
         }
@@ -1420,6 +1468,51 @@ impl HarnessState {
         }
         let dropped = self.feed_traces.len() - keep;
         self.feed_traces.drain(0..dropped);
+        dropped
+    }
+
+    pub fn record_check_history(&mut self, input: CheckHistoryInput) -> CheckHistoryRecord {
+        self.next_check_history_index += 1;
+        let record = CheckHistoryRecord {
+            index: self.next_check_history_index,
+            timestamp_secs: unix_timestamp_secs(),
+            tentacle_id: input.tentacle_id,
+            source_kind: input.source_kind,
+            command_index: input.command_index,
+            command: input.command,
+            cwd: input.cwd,
+            status: input.status,
+            code: input.code,
+            stdout: short_text(&input.stdout, CHECK_HISTORY_OUTPUT_BYTES),
+            stderr: short_text(&input.stderr, CHECK_HISTORY_OUTPUT_BYTES),
+        };
+        self.check_history.push(record.clone());
+        record
+    }
+
+    pub fn recent_check_history_for_tentacle(
+        &self,
+        tentacle_id: &str,
+        limit: usize,
+    ) -> Vec<CheckHistoryRecord> {
+        let mut history = self
+            .check_history
+            .iter()
+            .rev()
+            .filter(|record| record.tentacle_id == tentacle_id)
+            .take(limit)
+            .cloned()
+            .collect::<Vec<_>>();
+        history.reverse();
+        history
+    }
+
+    pub fn compact_check_history(&mut self, keep: usize) -> usize {
+        if self.check_history.len() <= keep {
+            return 0;
+        }
+        let dropped = self.check_history.len() - keep;
+        self.check_history.drain(0..dropped);
         dropped
     }
 
@@ -5598,6 +5691,13 @@ fn short_text(value: &str, max_bytes: usize) -> String {
     format!("{}...", value[..end].trim())
 }
 
+fn unix_timestamp_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default()
+}
+
 fn exit_code(status: &std::process::ExitStatus) -> i32 {
     status.code().unwrap_or(-1)
 }
@@ -5821,6 +5921,50 @@ mod tests {
                 .unwrap()
                 .changed
         );
+    }
+
+    #[test]
+    fn harness_records_and_compacts_check_history() {
+        let mut state = HarnessState::default();
+        state.record_check_history(CheckHistoryInput {
+            tentacle_id: "swe-agent".to_string(),
+            source_kind: "manifest".to_string(),
+            command_index: Some(1),
+            command: "python -m pytest".to_string(),
+            cwd: "/repo".to_string(),
+            status: Status::Failed,
+            code: Some(1),
+            stdout: "stdout".to_string(),
+            stderr: "stderr".to_string(),
+        });
+        state.record_check_history(CheckHistoryInput {
+            tentacle_id: "computer-use-agent".to_string(),
+            source_kind: "manifest".to_string(),
+            command_index: Some(1),
+            command: "window_status".to_string(),
+            cwd: "/repo/tentacles/computer-use-agent".to_string(),
+            status: Status::Satisfied,
+            code: Some(0),
+            stdout: "{}".to_string(),
+            stderr: String::new(),
+        });
+
+        let swe_history = state.recent_check_history_for_tentacle("swe-agent", 5);
+        assert_eq!(swe_history.len(), 1);
+        assert_eq!(swe_history[0].command_index, Some(1));
+        assert_eq!(swe_history[0].stderr, "stderr");
+        let status = state.status_report();
+        assert_eq!(status.check_history_count, 2);
+        assert_eq!(
+            status.latest_check.as_ref().unwrap().tentacle_id,
+            "computer-use-agent"
+        );
+
+        let dropped = state.compact_check_history(1);
+
+        assert_eq!(dropped, 1);
+        assert_eq!(state.check_history.len(), 1);
+        assert_eq!(state.check_history[0].tentacle_id, "computer-use-agent");
     }
 
     #[test]

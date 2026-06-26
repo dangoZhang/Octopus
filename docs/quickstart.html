@@ -95,8 +95,8 @@ octopus --state "$tmp/state.json" install json-feed
 octopus --state "$tmp/state.json" install swe-agent
 octopus --state "$tmp/state.json" install computer-use-agent
 octopus --state "$tmp/state.json" --json install computer-use-agent
-octopus --json check computer-use-agent
-octopus --json check computer-use-agent 1
+octopus --state "$tmp/state.json" --json check computer-use-agent
+octopus --state "$tmp/state.json" --json check computer-use-agent 1
 octopus --state "$tmp/state.json" install bash-only
 octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"

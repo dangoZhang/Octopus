@@ -44,9 +44,9 @@ Every executed Feed is also written to a compact harness trace journal. Manifest
 
 `skills [root]` lists profile and manifest skills as user-facing capability bundles. It is a catalog view; execution still starts from Need and routes through harness data.
 
-`install <tentacle>` installs a profile or manifest, then reports the tentacle's needs, runtimes, required grants, evolution checks, and next commands from its own metadata. `--json install <tentacle>` exposes the same report to the native HTML app or any outer shell.
+`install <tentacle>` installs a profile or manifest, then reports the tentacle's needs, runtimes, required grants, evolution checks, recent check history, and next commands from its own metadata. `--json install <tentacle>` exposes the same report to the native HTML app or any outer shell.
 
-`check <tentacle> [index]` runs all manifest/profile evolution checks or one 1-based check and returns per-command status. Bridge exposes it only for built-in seed tentacles.
+`check <tentacle> [index]` runs all manifest/profile evolution checks or one 1-based check, returns per-command status, records compact check history in harness state, and updates pet state from the result. Bridge exposes it only for built-in seed tentacles.
 
 ## Code-As-Harness
 
