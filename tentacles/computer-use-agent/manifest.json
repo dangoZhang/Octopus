@@ -20,9 +20,9 @@
   "tools": [
     {
       "id": "mcp",
-      "description": "Call an MCP tool through a client adapter.",
-      "input": "server id, tool id, JSON args",
-      "output": "MCP call result",
+      "description": "Call an MCP tool through a configured JSON-RPC client adapter.",
+      "input": "server id, tool id, JSON args; set OCTOPUS_MCP_<SERVER>_COMMAND or OCTOPUS_MCP_COMMAND",
+      "output": "MCP client result or a configuration diagnostic",
       "permission": {
         "provider": "octopus",
         "scope": "tool:computer-use-agent",
@@ -84,6 +84,19 @@
       "implementation": { "kind": "shell", "entrypoint": "tools/browser_status.sh" }
     },
     {
+      "id": "window_status",
+      "description": "Inspect front application, active window title, display session, and desktop process hints.",
+      "input": "none",
+      "output": "JSON window and desktop status",
+      "permission": {
+        "provider": "octopus",
+        "scope": "tool:computer-use-agent",
+        "permissions": ["tool:observe"],
+        "reason": "front window metadata"
+      },
+      "implementation": { "kind": "shell", "entrypoint": "tools/window_status.sh" }
+    },
+    {
       "id": "describe_screen",
       "description": "Return lightweight desktop context.",
       "input": "none",
@@ -116,6 +129,7 @@
       }
     ],
     "checks": [
+      "tools/window_status.sh | python3 -m json.tool > /dev/null",
       "tools/describe_screen.sh",
       "tools/browser_status.sh | python3 -m json.tool > /dev/null"
     ],

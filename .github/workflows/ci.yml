@@ -95,6 +95,8 @@ jobs:
       - run: grep -q "every later version tag" docs/real-machine-test.md
       - run: tentacles/swe-agent/tools/read.sh README.md 1 2
       - run: tentacles/computer-use-agent/tools/browser_status.sh | python3 -m json.tool > /dev/null
+      - run: tentacles/computer-use-agent/tools/window_status.sh | python3 -m json.tool > /dev/null
+      - run: OCTOPUS_MCP_COMMAND=cat tentacles/computer-use-agent/tools/mcp.sh default echo '{"ok":true}' | python3 -m json.tool > /dev/null
       - run: tentacles/repo-maintainer/tools/inspect_repo.sh .
       - run: tentacles/repo-maintainer/tools/github_status.sh dangoZhang/Octopus | python -m json.tool > /dev/null
       - run: |

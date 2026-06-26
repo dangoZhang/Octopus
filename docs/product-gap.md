@@ -16,6 +16,7 @@ Updated: 2026-06-26
 - LLM adapters support OpenAI-compatible providers for chat goal refinement, manifest tool planning, and harness evolution candidate generation.
 - `providers` and `provider <name> [prefix]` expose reusable LLM profile setup for cloud, local, router, and custom endpoints.
 - `provider status` reports chat, tentacle-planning, and harness-evolution LLM layer readiness without a network call.
+- `computer-use-agent` has browser diagnostics, front-window diagnostics, and a configurable MCP JSON-RPC adapter.
 - Context policy is explicit: clean brain sees `Goal + Mem + Need + Feed`; tentacles see `Need + Tool + Action + Tool + Action -> Feed`.
 - `think <tentacle> <kind> <query>` exposes tool-side planning without executing tools.
 
@@ -45,12 +46,13 @@ Updated: 2026-06-26
 - Added `evolve recommend` so scored evolution outcomes can select the next reviewed apply plan.
 - Added `think` so users and the HTML app can inspect tentacle brain planning, LLM/rule source, candidates, and grant state before execution.
 - Added `provider status` so users can diagnose all LLM layers before running chat, tool-side thinking, or harness evolution.
+- Added a computer-use `window_status` tool and made `mcp.sh` invoke a configured JSON-RPC MCP client command.
 
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
 - LLM evolution can generate candidates and recommend apply plans from scored outcomes; patch writes still stay review/grant-bound.
-- Computer-use now has browser diagnostics and explicit tool grants; richer MCP/native control adapters still need real-machine feedback.
+- Computer-use now has browser/window diagnostics, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include static layer diagnostics and live validation; provider-specific edge cases still need real-machine feedback.
 - Release packaging, examples, and docs need enough finish for non-Rust users.
 - The HTML app can run, stream, and inspect tentacle thinking through a local bridge; richer desktop UX still needs work.
@@ -60,6 +62,6 @@ Updated: 2026-06-26
 
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
 - Use real scored self-iteration outcomes to tune the next harness evolution step.
-- Turn granted browser diagnostics into richer MCP/native control adapters.
+- Turn window/browser diagnostics into richer native control adapters.
 - Add provider-specific fixes from real-machine feedback.
 - Run and record the first real-machine test before the `0.1.0` tag.

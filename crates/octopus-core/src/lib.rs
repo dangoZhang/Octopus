@@ -1985,10 +1985,18 @@ impl ManifestTentacle {
             NeedKind::Observe
                 if self.route_id == "computer-use-agent" && is_browser_observe(&need.query) =>
             {
-                ["browser_status", "describe_screen", "screenshot", "mcp"].as_slice()
+                [
+                    "browser_status",
+                    "window_status",
+                    "describe_screen",
+                    "screenshot",
+                    "mcp",
+                ]
+                .as_slice()
             }
             NeedKind::Observe => [
                 "inspect_repo",
+                "window_status",
                 "describe_screen",
                 "browser_status",
                 "status_pet",
@@ -4098,19 +4106,22 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "tentacles/computer-use-agent/tools/screenshot.sh".to_string(),
                     "tentacles/computer-use-agent/tools/open_url.sh".to_string(),
                     "tentacles/computer-use-agent/tools/browser_status.sh".to_string(),
+                    "tentacles/computer-use-agent/tools/window_status.sh".to_string(),
                     "tentacles/computer-use-agent/tools/describe_screen.sh".to_string(),
                 ],
             }],
             tools: vec![
-                tool_meta_with_permission("mcp", "Call an MCP tool through a client adapter.", "mcp", "tentacles/computer-use-agent/tools/mcp.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:mcp"], "external tool bridge")),
+                tool_meta_with_permission("mcp", "Call an MCP tool through a configured JSON-RPC client adapter.", "mcp", "tentacles/computer-use-agent/tools/mcp.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:mcp"], "external tool bridge")),
                 tool_meta_with_permission("bash", "Write and run a local shell script.", "shell", "tentacles/computer-use-agent/tools/bash.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:execute"], "local command execution")),
                 tool_meta_with_permission("screenshot", "Capture the current screen.", "shell", "tentacles/computer-use-agent/tools/screenshot.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:observe"], "screen capture")),
                 tool_meta_with_permission("open_url", "Open a URL in the local desktop.", "shell", "tentacles/computer-use-agent/tools/open_url.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:ui"], "user-visible desktop action")),
                 tool_meta_with_permission("browser_status", "Inspect local browser availability and current tab metadata.", "shell", "tentacles/computer-use-agent/tools/browser_status.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:observe"], "browser tab metadata")),
+                tool_meta_with_permission("window_status", "Inspect front application, active window title, display session, and desktop process hints.", "shell", "tentacles/computer-use-agent/tools/window_status.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:observe"], "front window metadata")),
                 tool_meta("describe_screen", "Return lightweight desktop context.", "shell", "tentacles/computer-use-agent/tools/describe_screen.sh"),
             ],
             evolution: evolution_policy(
                 &[
+                    "tentacles/computer-use-agent/tools/window_status.sh | python3 -m json.tool > /dev/null",
                     "tentacles/computer-use-agent/tools/describe_screen.sh",
                     "tentacles/computer-use-agent/tools/browser_status.sh | python3 -m json.tool > /dev/null",
                 ],
@@ -6529,6 +6540,7 @@ print(json.dumps({
 
         assert!(!tentacle.supports(&Need::new(NeedKind::Observe, ".")));
         assert!(tentacle.supports(&Need::new(NeedKind::Observe, "describe screen")));
+        assert!(tentacle.supports(&Need::new(NeedKind::Observe, "current window")));
         assert!(tentacle.supports(&Need::new(NeedKind::Observe, "current browser tab")));
         assert!(!tentacle.supports(&Need::new(NeedKind::Execute, "echo ok")));
         assert!(tentacle.supports(&Need::new(NeedKind::Execute, "open browser url")));
@@ -6548,5 +6560,21 @@ print(json.dumps({
             .expect("browser observe need should plan a tool");
 
         assert_eq!(plan.tool.id, "browser_status");
+    }
+
+    #[test]
+    fn computer_use_window_need_prefers_window_status() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        let installed = state.install_manifest(&root, "computer-use-agent").unwrap();
+        let mut tentacle = ManifestTentacle::new(installed);
+
+        let plan = tentacle
+            .plan_tool(&Need::new(NeedKind::Observe, "current window"))
+            .expect("window observe need should plan a tool");
+
+        assert_eq!(plan.tool.id, "window_status");
     }
 }
