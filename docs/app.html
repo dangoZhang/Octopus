@@ -270,6 +270,27 @@
         padding: 0 10px;
       }
 
+      .check-command {
+        display: inline;
+        color: var(--ink);
+      }
+
+      details {
+        margin-top: 8px;
+      }
+
+      summary {
+        cursor: pointer;
+        color: var(--muted);
+      }
+
+      .check-output {
+        min-height: 0;
+        max-height: 180px;
+        margin-top: 8px;
+        padding: 10px;
+      }
+
       .badge {
         display: inline-block;
         min-width: 58px;
@@ -575,8 +596,30 @@
         const badge = document.createElement("span");
         badge.className = result.status === "satisfied" ? "badge ok" : "badge failed";
         badge.textContent = result.status === "satisfied" ? "ok" : "failed";
-        item.append(badge, document.createTextNode(result.command || value));
+        const command = document.createElement("span");
+        command.className = "check-command";
+        command.textContent = result.command || value;
+        item.append(badge, command);
+        item.appendChild(checkOutputDetails(result));
         return item;
+      }
+
+      function checkOutputDetails(result) {
+        const details = document.createElement("details");
+        const summary = document.createElement("summary");
+        summary.textContent = result.code === null ? "Output" : `Output · exit ${result.code}`;
+        const pre = document.createElement("pre");
+        pre.className = "check-output";
+        const code = document.createElement("code");
+        const stdout = (result.stdout || "").trim();
+        const stderr = (result.stderr || "").trim();
+        code.textContent = [
+          stdout ? `stdout:\n${stdout}` : "",
+          stderr ? `stderr:\n${stderr}` : "",
+        ].filter(Boolean).join("\n\n") || "no output";
+        pre.appendChild(code);
+        details.append(summary, pre);
+        return details;
       }
 
       function grantItem(grant) {
