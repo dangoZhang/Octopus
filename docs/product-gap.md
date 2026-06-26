@@ -121,6 +121,7 @@ Updated: 2026-06-27
 - Polished README and docs homepages into product-page copy with the value story first and runnable install commands kept visible.
 - Added `preflight [--live]` so release readiness can check state, seed tentacles, manifests, context boundary, docs/pet, LLM layers, live provider, feedback data, GitHub PR path, current-head real-machine record, desktop adapters, and harness repair.
 - Added `preflight script [path]` plus native HTML access so release-gate commands can be generated, reviewed, and run on a real machine.
+- Rolled the cleanup/version cadence to `0.0.7` after bootstrap, clean-brain exploration, harness-repair state paths, preflight gates, product README polish, and remote deployment cleanup.
 
 ## Remaining Gaps
 

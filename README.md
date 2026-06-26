@@ -1,91 +1,109 @@
 # Octopus 🐙
 
-> Tools that think on their own, with a brain that stays clean.
+> Build agents whose tools plan, execute, and improve outside the main model's context.
 
-Octopus starts from a small bet: an agent should not carry every tool, memory rule, and execution detail inside its main thought loop. The model should ask for the cognition it needs. The environment should learn how to supply it.
+Octopus is a local-first agent harness for builders who want powerful tools without flooding model context. The main brain keeps the objective, memory, a clean cognitive request, and the compact evidence that comes back. Tentacles carry prompt, metadata, code, permissions, and runtime adapters, so they can plan, execute, ask for grants, and improve from scored traces.
 
-That gives Octopus a different shape from the usual agent loop. The main brain stays focused on the goal and the next cognitive demand. The tentacles own the messy part: tool metadata, executable code, local permissions, runtime adapters, and feedback. When a tool runs, a tentacle can plan, act, inspect evidence, and return a compact result.
+The bet is simple: give tools their own intelligence, and the main model gets room to think.
 
-The result is a lighter brain and smarter tools.
+## Why
 
-## Why It Feels Different
+- Tool plumbing should not crowd out judgment.
+- Tool behavior should be inspectable code, not hidden prompt drift.
+- Self-improvement should leave reviewable artifacts.
+- Local power needs explicit permission boundaries.
 
-- The main context stays small: goal, memory, request, result.
-- Tools are productized as editable tentacles: prompt, metadata, code, policy.
-- The harness learns from scored traces, checks, and route outcomes.
-- Local actions are permissioned before high-risk tools run.
-- The pixel Octopus changes color from real runtime state.
-- Rust keeps the kernel fast and stable; tentacles can evolve around it.
+## What It Does
 
-## Run It Today
+- Keeps the brain context to goal, memory, request, evidence.
+- Runs editable tentacles with prompt, metadata, runtime code, and policy.
+- Learns from Feed traces, check history, route outcomes, and feedback scores.
+- Gates risky local actions through explicit grants.
+- Shows runtime state through a pixel Octopus that changes color.
+- Uses a Rust kernel with shell, Python, MCP, and native tentacle runtimes.
 
-Octopus is still pre-`0.1`, but the local build already runs:
-
-- clean-brain chat, goal refinement, and Need exploration
-- seed tentacles for SWE work, computer-use diagnostics, repo maintenance, harness repair, bash-only execution, and structured JSON Feed
-- OpenAI-compatible provider setup for chat, tentacle planning, and harness evolution
-- local memory, route learning, Feed traces, feedback scoring, and three-heart heartbeat
-- native HTML app for bootstrap, provider setup, exploration, context, traces, checks, grants, pet state, and harness review
-- reviewable harness evolution artifacts instead of silent self-patching
-
-## Install & Start
+## Quick Install & Use
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus
 octopus --version
 octopus bootstrap
 octopus doctor
-octopus report
 octopus preflight
 octopus preflight script
 ```
 
-Open the local app:
+Open the local control surface:
 
 ```bash
 octopus bridge
 ```
 
-Then visit `http://127.0.0.1:8765/app.html` for bootstrap, provider setup, exploration, context, traces, checks, grants, and the pixel pet.
+Then visit `http://127.0.0.1:8765/app.html`.
 
-Use an LLM provider:
-
-```bash
-octopus provider save openai
-# set OPENAI_API_KEY, then:
-source .octopus/llm.env
-octopus provider check
-```
-
-Try the core loop:
+Try the core flow:
 
 ```bash
 octopus goal set "make this repo easier to use"
 octopus explore "what should the brain ask next?"
 octopus context observe .
-octopus think swe-agent observe README.md
 octopus need observe README.md
 octopus traces
-octopus feedback 1 satisfied "useful feed"
+octopus feedback 1 satisfied "useful evidence"
 octopus beat 200
 octopus pet
-octopus preflight
 ```
 
-## Built-In Tentacles
+Add an OpenAI-compatible provider when you want live LLM planning:
 
-- `swe-agent`: read, edit, patch, inspect, test
-- `computer-use-agent`: browser/window diagnostics, clipboard, MCP, local desktop probes
-- `repo-maintainer`: repo inspection, PR drafts, grant-bound publishing
-- `harness-repair-agent`: diagnoses state, traces, checks, evolution artifacts, and adapters
-- `bash-only`: transparent write-and-run execution
-- `json-feed`: Python `octopus-json-v1` runtime seed
-- `visual`: pixel Octopus state layer
+```bash
+octopus provider save openai
+source .octopus/llm.env
+octopus provider check
+```
+
+## Example Output
+
+```text
+Octopus preflight
+target: 0.1.0
+version: 0.0.7
+live: false
+release_ready: false
+checks:
+- clean_brain_boundary [pass required=true]: brain=Goal + Mem + Need + Feed
+next: octopus preflight script, octopus report
+```
+
+## What Works Today
+
+- Local bootstrap, doctor, report, preflight, and generated release-gate script.
+- Goal refinement, clean-brain exploration, context inspection, Feed traces, and feedback scoring.
+- Seed tentacles for SWE work, computer-use diagnostics, repo maintenance, harness repair, bash-only execution, and structured JSON Feed.
+- OpenAI-compatible chat, tool-side planning, and harness evolution candidates.
+- Native HTML app for setup, providers, traces, checks, grants, pet state, and harness review.
+- Reviewable evolution artifacts instead of silent self-patching.
+
+## Seed Tentacles
+
+- `swe-agent`: read, edit, patch, inspect, test.
+- `computer-use-agent`: browser/window diagnostics, clipboard, MCP, local desktop probes.
+- `repo-maintainer`: repo inspection, PR drafts, grant-bound publishing.
+- `harness-repair-agent`: state, traces, checks, adapters, and evolution diagnosis.
+- `bash-only`: transparent write-and-run execution.
+- `json-feed`: `octopus-json-v1` runtime seed.
+
+## Proof
+
+- CI covers Rust tests, Clippy, Python tests, manifests, install path, seed tool checks, app strings, and preflight script generation.
+- Release readiness is exposed by `octopus preflight` and a generated reviewable script.
+- License: MIT.
+- Status: pre-`0.1`; `0.1.0` is reserved for recorded real-machine release testing.
 
 ## Links
 
 - Product app: [docs/app.html](docs/app.html)
 - Pixel pet: [docs/pet.html](docs/pet.html)
+- Quick install guide: [docs/quickstart.md](docs/quickstart.md)
 - Architecture: [docs/architecture.md](docs/architecture.md)
-- Quick walkthrough: [docs/quickstart.md](docs/quickstart.md)
 - Tentacle contract: [tentacles/README.md](tentacles/README.md)
