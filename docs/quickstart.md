@@ -28,6 +28,7 @@ octopus --state "$tmp/state.json" install computer-use-agent
 octopus --state "$tmp/state.json" install bash-only
 octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
+octopus --state "$tmp/state.json" think swe-agent observe README.md
 octopus --state "$tmp/state.json" need observe .
 octopus --state "$tmp/state.json" oauth octopus tool:bash-only tool:execute
 octopus --state "$tmp/state.json" need execute "echo octopus"
@@ -78,6 +79,8 @@ octopus provider check
 
 octopus --state "$tmp/state.json" chat "make the harness self-evolve"
 
+octopus --state "$tmp/state.json" think swe-agent observe README.md
+
 octopus --state "$tmp/state.json" --json need observe README.md 1 1
 
 octopus --state "$tmp/state.json" evolve swe-agent "improve observe feed"
@@ -109,6 +112,8 @@ Octopus demo
 Octopus init
 installed swe-agent
 json-feed observe
+Octopus think
+plan_source: rule
 Octopus doctor
 Octopus bridge: http://127.0.0.1:8765
 pixel: 🟥

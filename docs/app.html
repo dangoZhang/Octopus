@@ -314,6 +314,7 @@
             <button type="button" data-run="init">Init</button>
             <button type="button" data-run="install">Install</button>
             <button type="button" data-run="chat">Chat</button>
+            <button type="button" data-run="think">Think</button>
             <button type="button" data-run="need">Need</button>
             <button type="button" data-run="pet">Pet</button>
             <button type="button" data-run="doctor">Doctor</button>
@@ -345,6 +346,7 @@
           `octopus --state ${shellQuote(state)} init`,
           `octopus --state ${shellQuote(state)} install ${tentacle}`,
           `octopus --state ${shellQuote(state)} chat ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} think ${tentacle} ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} need ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} pet ${stateName}`,
           `octopus --state ${shellQuote(state)} doctor`,
@@ -363,6 +365,7 @@
           init: [...base, "init"],
           install: [...base, "install", tentacle],
           chat: [...base, "chat", goal],
+          think: [...base, "think", tentacle, need, target],
           need: [...base, "need", need, target],
           pet: [...base, "pet", stateName],
           doctor: [...base, "doctor"],

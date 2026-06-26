@@ -36,6 +36,7 @@ octopus install swe-agent
 octopus install computer-use-agent
 octopus install bash-only
 octopus chat "build a clean-brain agent"
+octopus think swe-agent observe README.md
 octopus need observe .
 octopus oauth octopus tool:bash-only tool:execute
 octopus need execute "echo octopus"
@@ -66,6 +67,8 @@ Output includes:
 Octopus demo
 Octopus init
 json-feed observe
+Octopus think
+plan_source: rule
 Octopus doctor
 pixel: 🟥
 event: harness beat

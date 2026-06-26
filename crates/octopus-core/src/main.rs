@@ -2,12 +2,13 @@ use octopus_core::{
     default_permissions, default_tentacle_profiles, inspect_tentacle_manifests,
     load_tentacle_manifests, plan_tentacle_evolution_apply, propose_tentacle_evolution_with_client,
     propose_tentacle_evolution_with_state, recommend_tentacle_evolution_apply, scaffold_tentacle,
-    write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts, AdaptReport,
-    CapabilityGrant, ChatClient, ChatMessage, ChatRole, EnvironmentReport, EvolutionApplyArtifact,
-    EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed,
-    GoalChat, Harness, HarnessState, HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient,
-    OpenAiCompatibleConfig, SelfIterationPlan, Status, StatusReport, TentacleEvolutionProposal,
-    TentacleManifestReport, TentacleScaffold,
+    think_tentacle, write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts,
+    AdaptReport, CapabilityGrant, ChatClient, ChatMessage, ChatRole, EnvironmentReport,
+    EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome,
+    EvolutionRecommendation, Feed, GoalChat, Harness, HarnessState, HeartbeatReport, Need,
+    NeedKind, OpenAiCompatibleChatClient, OpenAiCompatibleConfig, SelfIterationPlan, Status,
+    StatusReport, TentacleEvolutionProposal, TentacleManifestReport, TentacleScaffold,
+    TentacleThinkingPlan, TentacleToolCandidate,
 };
 use std::env;
 use std::fs;
@@ -252,6 +253,42 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 println!("{}", localize_summary(&feedback.summary, language));
+            }
+            Ok(())
+        }
+        Some("think") => {
+            let tentacle_id = rest
+                .get(1)
+                .ok_or_else(|| "think requires a tentacle id".to_string())?;
+            let kind = rest
+                .get(2)
+                .ok_or_else(|| "think requires a need kind".to_string())
+                .and_then(|value| parse_kind(value))?;
+            let query = rest
+                .get(3..)
+                .filter(|values| !values.is_empty())
+                .map(|values| values.join(" "))
+                .ok_or_else(|| "think requires a query".to_string())?;
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let llm_config = if manifest_llm_enabled() {
+                Some(manifest_llm_config()?)
+            } else {
+                None
+            };
+            let plan = think_tentacle(
+                default_tentacles_root(),
+                tentacle_id,
+                &Need::new(kind, query),
+                llm_config,
+                &loaded.grants,
+            )?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&plan).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_thinking_plan(&plan, language);
             }
             Ok(())
         }
@@ -1579,6 +1616,7 @@ fn bridge_command_allowed(args: &[String]) -> bool {
         command,
         "init"
             | "chat"
+            | "think"
             | "need"
             | "pet"
             | "doctor"
@@ -2822,6 +2860,75 @@ fn print_probe_feed(feed: &Feed, language: Language) {
     }
 }
 
+fn print_thinking_plan(plan: &TentacleThinkingPlan, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus think");
+            println!("tentacle: {}", plan.tentacle_id);
+            println!("brain: {}", plan.brain_kind);
+            println!(
+                "need: {} {}",
+                need_kind_label(&plan.need.kind),
+                plan.need.query
+            );
+            println!("selected_tool: {}", plan.selected_tool.id);
+            println!("plan_source: {}", plan.plan_source);
+            println!("reason: {}", plan.reason);
+            println!(
+                "authorization: {}",
+                thinking_authorization(&plan.selected_tool)
+            );
+            println!("candidates: {}", thinking_candidates(&plan.candidates));
+            println!("context: {}", plan.context_policy);
+        }
+        Language::Zh => {
+            println!("章鱼触手思考");
+            println!("触手: {}", plan.tentacle_id);
+            println!("大脑: {}", plan.brain_kind);
+            println!(
+                "需求: {} {}",
+                need_kind_label(&plan.need.kind),
+                plan.need.query
+            );
+            println!("选择工具: {}", plan.selected_tool.id);
+            println!("规划来源: {}", plan.plan_source);
+            println!("原因: {}", plan.reason);
+            println!("授权: {}", thinking_authorization(&plan.selected_tool));
+            println!("候选工具: {}", thinking_candidates(&plan.candidates));
+            println!("上下文: {}", plan.context_policy);
+        }
+    }
+}
+
+fn thinking_candidates(candidates: &[TentacleToolCandidate]) -> String {
+    if candidates.is_empty() {
+        return "none".to_string();
+    }
+    candidates
+        .iter()
+        .map(|candidate| candidate.id.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn thinking_authorization(candidate: &TentacleToolCandidate) -> String {
+    if let Some(grant) = &candidate.active_grant {
+        return format!("active {grant}");
+    }
+    if candidate.authorization_required {
+        return candidate
+            .permission
+            .as_ref()
+            .map(|permission| format!("required {permission}"))
+            .unwrap_or_else(|| "required".to_string());
+    }
+    "not_required".to_string()
+}
+
+fn need_kind_label(kind: &NeedKind) -> String {
+    format!("{kind:?}").to_ascii_lowercase()
+}
+
 fn probe_metadata(feed: &Feed) -> String {
     let keys = [
         "tentacle_brain",
@@ -3024,7 +3131,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -3218,12 +3325,30 @@ mod tests {
         .unwrap();
         run(vec!["manifests".to_string(), root]).unwrap();
         run(vec![
+            "think".to_string(),
+            "computer-use-agent".to_string(),
+            "observe".to_string(),
+            "current".to_string(),
+            "browser".to_string(),
+            "tab".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--json".to_string(),
+            "think".to_string(),
+            "swe-agent".to_string(),
+            "observe".to_string(),
+            "README.md".to_string(),
+        ])
+        .unwrap();
+        run(vec![
             "--lang".to_string(),
             "zh".to_string(),
             "env".to_string(),
         ])
         .unwrap();
         assert!(usage().contains("bridge [addr]"));
+        assert!(usage().contains("think <tentacle> <kind> <query>"));
     }
 
     #[test]
@@ -3237,6 +3362,14 @@ mod tests {
             ]),
             Some("doctor")
         );
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "think".to_string(),
+            "swe-agent".to_string(),
+            "observe".to_string(),
+            "README.md".to_string()
+        ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),
             "state.json".to_string(),

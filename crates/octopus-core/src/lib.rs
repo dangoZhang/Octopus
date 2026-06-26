@@ -1852,6 +1852,32 @@ struct ManifestToolPlan {
     source: String,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TentacleToolCandidate {
+    pub id: String,
+    pub description: String,
+    pub runtime: String,
+    pub entrypoint: String,
+    pub contract: Option<String>,
+    pub permission: Option<String>,
+    pub authorization_required: bool,
+    pub active_grant: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TentacleThinkingPlan {
+    pub tentacle_id: String,
+    pub brain_kind: String,
+    pub brain_prompt: String,
+    pub feedback_contract: Option<String>,
+    pub context_policy: String,
+    pub need: Need,
+    pub selected_tool: TentacleToolCandidate,
+    pub plan_source: String,
+    pub reason: String,
+    pub candidates: Vec<TentacleToolCandidate>,
+}
+
 pub struct ManifestTentacle {
     route_id: String,
     installed: InstalledTentacle,
@@ -1904,6 +1930,28 @@ impl ManifestTentacle {
         let tools = self.available_tools(need);
         self.llm_plan_tool(need, &tools)
             .or_else(|| self.rule_plan_tool(need, &tools))
+    }
+
+    fn thinking_plan(&mut self, need: &Need) -> Option<TentacleThinkingPlan> {
+        let plan = self.plan_tool(need)?;
+        let candidate_ids = plan.candidates.clone();
+        let candidates = candidate_ids
+            .iter()
+            .filter_map(|id| self.tools.iter().find(|tool| &tool.id == id))
+            .map(|tool| self.thinking_candidate(tool))
+            .collect::<Vec<_>>();
+        Some(TentacleThinkingPlan {
+            tentacle_id: self.route_id.clone(),
+            brain_kind: self.installed.brain_kind.clone(),
+            brain_prompt: self.installed.brain_prompt.clone(),
+            feedback_contract: self.installed.feedback_contract.clone(),
+            context_policy: "Need + Tool + Action + Tool + Action -> Feed".to_string(),
+            need: need.clone(),
+            selected_tool: self.thinking_candidate(&plan.tool),
+            plan_source: plan.source,
+            reason: plan.reason,
+            candidates,
+        })
     }
 
     fn available_tools(&self, need: &Need) -> Vec<InstalledToolRef> {
@@ -2202,16 +2250,7 @@ impl ManifestTentacle {
         let Some(permission) = &tool.permission else {
             return Ok(None);
         };
-        let grant = self.grants.iter().find(|grant| {
-            grant.status == GrantStatus::Active
-                && grant.provider == permission.provider
-                && grant.scope == permission.scope
-                && permission
-                    .permissions
-                    .iter()
-                    .all(|required| grant.permissions.iter().any(|owned| owned == required))
-        });
-        match grant {
+        match active_grant_for_tool(tool, &self.grants) {
             Some(grant) => Ok(Some(grant)),
             None => Err(tool_authorization_result(tool, permission)),
         }
@@ -2249,6 +2288,23 @@ impl ManifestTentacle {
             result
                 .metadata
                 .insert("active_grant".to_string(), grant.to_string());
+        }
+    }
+
+    fn thinking_candidate(&self, tool: &InstalledToolRef) -> TentacleToolCandidate {
+        let active_grant = active_grant_for_tool(tool, &self.grants).map(|grant| grant.id.clone());
+        TentacleToolCandidate {
+            id: tool.id.clone(),
+            description: tool.description.clone(),
+            runtime: tool.kind.clone(),
+            entrypoint: tool.entrypoint.clone(),
+            contract: tool.contract.clone(),
+            permission: tool
+                .permission
+                .as_ref()
+                .map(|permission| tool_permission_label(Some(permission))),
+            authorization_required: tool.permission.is_some(),
+            active_grant,
         }
     }
 
@@ -2652,6 +2708,27 @@ pub fn load_tentacle_manifests(
     }
     manifests.sort_by(|left, right| left.manifest.id.cmp(&right.manifest.id));
     Ok(manifests)
+}
+
+pub fn think_tentacle(
+    root: impl AsRef<Path>,
+    tentacle_id: &str,
+    need: &Need,
+    llm_config: Option<OpenAiCompatibleConfig>,
+    grants: &[CapabilityGrant],
+) -> Result<TentacleThinkingPlan, String> {
+    let root = root.as_ref();
+    let loaded = load_tentacle_manifests(root)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find(|loaded| loaded.manifest.id == tentacle_id)
+        .ok_or_else(|| format!("unknown tentacle: {tentacle_id}"))?;
+    let installed = installed_tentacle_from_manifest(root, loaded)?;
+    let mut tentacle =
+        ManifestTentacle::new_with_llm_and_grants(installed, llm_config, grants.to_vec());
+    tentacle
+        .thinking_plan(need)
+        .ok_or_else(|| format!("{tentacle_id} cannot feed {}", kind_key(&need.kind)))
 }
 
 pub fn inspect_tentacle_manifests(
@@ -4812,6 +4889,22 @@ fn tool_permission_label(permission: Option<&ToolPermission>) -> String {
     }
 }
 
+fn active_grant_for_tool<'a>(
+    tool: &InstalledToolRef,
+    grants: &'a [CapabilityGrant],
+) -> Option<&'a CapabilityGrant> {
+    let permission = tool.permission.as_ref()?;
+    grants.iter().find(|grant| {
+        grant.status == GrantStatus::Active
+            && grant.provider == permission.provider
+            && grant.scope == permission.scope
+            && permission
+                .permissions
+                .iter()
+                .all(|required| grant.permissions.iter().any(|owned| owned == required))
+    })
+}
+
 fn read_args(query: &str) -> Vec<String> {
     let mut args = query
         .split_whitespace()
@@ -6257,6 +6350,86 @@ print(json.dumps({
             .evolution_surfaces
             .contains(&"runtime_code".to_string()));
         assert!(state.install_manifest(&root, "missing").is_err());
+    }
+
+    #[test]
+    fn think_tentacle_exposes_tool_side_plan_without_execution() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let need = Need::new(NeedKind::Observe, "current browser tab");
+
+        let blocked = think_tentacle(&root, "computer-use-agent", &need, None, &[]).unwrap();
+
+        assert_eq!(blocked.tentacle_id, "computer-use-agent");
+        assert_eq!(blocked.selected_tool.id, "browser_status");
+        assert_eq!(blocked.plan_source, "rule");
+        assert!(blocked.selected_tool.authorization_required);
+        assert!(blocked.selected_tool.active_grant.is_none());
+        assert!(blocked
+            .context_policy
+            .contains("Need + Tool + Action + Tool + Action"));
+        assert!(blocked
+            .candidates
+            .iter()
+            .any(|candidate| candidate.id == "browser_status"));
+
+        let grants = vec![CapabilityGrant {
+            id: "octopus:tool:computer-use-agent".to_string(),
+            provider: "octopus".to_string(),
+            scope: "tool:computer-use-agent".to_string(),
+            permissions: vec!["tool:observe".to_string()],
+            status: GrantStatus::Active,
+        }];
+        let active = think_tentacle(&root, "computer-use-agent", &need, None, &grants).unwrap();
+
+        assert_eq!(
+            active.selected_tool.active_grant.as_deref(),
+            Some("octopus:tool:computer-use-agent")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn think_tentacle_can_use_llm_plan_without_execution() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let fake = std::env::temp_dir().join(format!("octopus-think-llm-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&fake);
+        fs::create_dir_all(&fake).unwrap();
+        let curl = fake.join("fake-curl.sh");
+        fs::write(
+            &curl,
+            "#!/bin/sh\nprintf '%s' '{\"choices\":[{\"message\":{\"content\":\"{\\\"calls\\\":[{\\\"tool\\\":\\\"read\\\",\\\"reason\\\":\\\"inspect source without running tests\\\"}],\\\"summary\\\":\\\"planned by llm\\\"}\"}}]}'\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+        let config = OpenAiCompatibleConfig {
+            model: "test-model".to_string(),
+            api_key: None,
+            base_url: "https://llm.example/v1".to_string(),
+            timeout_seconds: 1,
+            curl_command: curl.to_string_lossy().to_string(),
+        };
+
+        let plan = think_tentacle(
+            &root,
+            "swe-agent",
+            &Need::new(NeedKind::Observe, "Cargo.toml 1 1"),
+            Some(config),
+            &[],
+        )
+        .unwrap();
+
+        assert_eq!(plan.plan_source, "llm");
+        assert_eq!(plan.selected_tool.id, "read");
+        assert!(plan.reason.contains("inspect source"));
+        let _ = fs::remove_dir_all(fake);
     }
 
     #[test]

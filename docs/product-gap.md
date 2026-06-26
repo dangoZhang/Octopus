@@ -16,6 +16,7 @@ Updated: 2026-06-26
 - LLM adapters support OpenAI-compatible providers for chat goal refinement, manifest tool planning, and harness evolution candidate generation.
 - `providers` and `provider <name> [prefix]` expose reusable LLM profile setup for cloud, local, router, and custom endpoints.
 - Context policy is explicit: clean brain sees `Goal + Mem + Need + Feed`; tentacles see `Need + Tool + Action + Tool + Action -> Feed`.
+- `think <tentacle> <kind> <query>` exposes tool-side planning without executing tools.
 
 ## Filled This Iteration
 
@@ -41,6 +42,7 @@ Updated: 2026-06-26
 - Added a computer-use `browser_status` tool for local browser availability and current-tab diagnostics.
 - Added manifest-level tool `permission` metadata and execution-time grant checks before high-risk tentacle tools run.
 - Added `evolve recommend` so scored evolution outcomes can select the next reviewed apply plan.
+- Added `think` so users and the HTML app can inspect tentacle brain planning, LLM/rule source, candidates, and grant state before execution.
 
 ## Remaining Gaps
 
@@ -49,7 +51,7 @@ Updated: 2026-06-26
 - Computer-use now has browser diagnostics and explicit tool grants; richer MCP/native control adapters still need real-machine feedback.
 - Provider profiles now include live validation through `octopus provider check`; broader provider-specific diagnostics still need real-machine feedback.
 - Release packaging, examples, and docs need enough finish for non-Rust users.
-- The HTML app can run and stream through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, and inspect tentacle thinking through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
@@ -57,5 +59,5 @@ Updated: 2026-06-26
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
 - Use real scored self-iteration outcomes to tune the next harness evolution step.
 - Turn granted browser diagnostics into richer MCP/native control adapters.
-- Add richer desktop UX and provider-specific diagnostics from real-machine feedback.
+- Add richer provider-specific diagnostics from real-machine feedback.
 - Run and record the first real-machine test before the `0.1.0` tag.

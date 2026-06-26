@@ -36,7 +36,9 @@ Context boundary: clean-brain LLM context is `Goal + Mem + Need + Feed`; tentacl
 
 `doctor` reports local readiness: state, environment, manifests, installed tentacles, optional LLM config, pet page, self-iteration mode, warnings, and next actions.
 
-`bridge [addr]` serves the native HTML app and exposes `/api/run` plus `/api/stream` for local Octopus subcommands so the GUI can execute init, install, chat, Need, pet, doctor, and beat flows without a shell.
+`think <tentacle> <kind> <query>` asks one tentacle brain to plan from its prompt, tool metadata, grants, and optional LLM provider, then returns the selected tool without executing it.
+
+`bridge [addr]` serves the native HTML app and exposes `/api/run` plus `/api/stream` for local Octopus subcommands so the GUI can execute init, install, chat, think, Need, pet, doctor, and beat flows without a shell.
 
 `skills [root]` lists profile and manifest skills as user-facing capability bundles. It is a catalog view; execution still starts from Need and routes through harness data.
 
