@@ -19,6 +19,7 @@ octopus catalog
 octopus skills
 octopus manifests
 octopus providers
+octopus provider status
 octopus --lang zh env
 octopus --state "$tmp/state.json" init
 octopus --state "$tmp/state.json" install research
@@ -72,6 +73,7 @@ Tools can declare `permission` in their manifest. Without a matching grant, Octo
 
 ```bash
 octopus providers
+octopus provider status
 octopus provider openai > "$tmp/llm.env"
 # set OPENAI_API_KEY first, then:
 . "$tmp/llm.env"
@@ -110,6 +112,7 @@ tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build 
 ```text
 Octopus demo
 Octopus init
+Provider status
 installed swe-agent
 json-feed observe
 Octopus think

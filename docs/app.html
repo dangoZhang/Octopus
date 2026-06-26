@@ -316,6 +316,7 @@
             <button type="button" data-run="chat">Chat</button>
             <button type="button" data-run="think">Think</button>
             <button type="button" data-run="need">Need</button>
+            <button type="button" data-run="provider">Provider</button>
             <button type="button" data-run="pet">Pet</button>
             <button type="button" data-run="doctor">Doctor</button>
             <button type="button" data-run="beat">Beat</button>
@@ -342,6 +343,7 @@
         $("commands").textContent = [
           "cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus --force",
           "octopus providers",
+          "octopus provider status",
           "octopus bridge",
           `octopus --state ${shellQuote(state)} init`,
           `octopus --state ${shellQuote(state)} install ${tentacle}`,
@@ -367,6 +369,7 @@
           chat: [...base, "chat", goal],
           think: [...base, "think", tentacle, need, target],
           need: [...base, "need", need, target],
+          provider: ["provider", "status"],
           pet: [...base, "pet", stateName],
           doctor: [...base, "doctor"],
           beat: [...base, "beat", "200"],

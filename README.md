@@ -26,6 +26,7 @@ The mechanism is `Need -> Feed -> Feedback`. The outcome is less tool burden and
 cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus
 octopus --version
 octopus providers
+octopus provider status
 octopus doctor
 octopus demo dangoZhang/Octopus
 octopus init
@@ -66,6 +67,7 @@ Output includes:
 ```text
 Octopus demo
 Octopus init
+Provider status
 json-feed observe
 Octopus think
 plan_source: rule

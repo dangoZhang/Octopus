@@ -178,6 +178,28 @@ struct ProviderCheckReport {
     next: Vec<String>,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct ProviderStatusReport {
+    layers: Vec<ProviderLayerStatus>,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ProviderLayerStatus {
+    layer: String,
+    purpose: String,
+    enabled: bool,
+    prefix: String,
+    configured: bool,
+    model: Option<String>,
+    base_url: Option<String>,
+    api_key_present: bool,
+    curl_command: String,
+    curl_available: bool,
+    check_command: String,
+    message: String,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Language {
     En,
@@ -366,6 +388,18 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("provider") => {
+            if rest.get(1).map(String::as_str) == Some("status") {
+                let report = provider_status_report();
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_provider_status(&report, language);
+                }
+                return Ok(());
+            }
             if rest.get(1).map(String::as_str) == Some("check") {
                 let prefix = rest.get(2).map(String::as_str).unwrap_or("OCTOPUS_LLM");
                 let message = rest
@@ -1240,6 +1274,94 @@ fn provider_check_error(prefix: &str, error: &str) -> String {
     )
 }
 
+fn provider_status_report() -> ProviderStatusReport {
+    let layers = vec![
+        provider_layer_status(
+            "chat_goal",
+            "chat refines Goal before Needs",
+            chat_llm_enabled(),
+            chat_llm_prefix(),
+            "export OCTOPUS_CHAT_LLM=1",
+        ),
+        provider_layer_status(
+            "tentacle_planning",
+            "tentacle brain chooses tool metadata before Feed",
+            manifest_llm_enabled(),
+            manifest_llm_prefix(),
+            "export OCTOPUS_LLM_MANIFEST=1",
+        ),
+        provider_layer_status(
+            "harness_evolution",
+            "LLM proposes prompt/meta/code/policy evolution candidates",
+            evolve_llm_enabled(),
+            evolve_llm_prefix(),
+            "export OCTOPUS_LLM_EVOLVE=1",
+        ),
+    ];
+    let mut next = vec!["octopus providers".to_string()];
+    if layers.iter().any(|layer| !layer.configured) {
+        next.push("octopus provider openai > .octopus/llm.env".to_string());
+        next.push("source .octopus/llm.env".to_string());
+    }
+    for layer in &layers {
+        if layer.configured && layer.curl_available {
+            next.push(layer.check_command.clone());
+        } else if !layer.enabled {
+            next.push(layer.message.clone());
+        }
+    }
+    next.sort();
+    next.dedup();
+    ProviderStatusReport { layers, next }
+}
+
+fn provider_layer_status(
+    layer: &str,
+    purpose: &str,
+    enabled: bool,
+    prefix: String,
+    enable_hint: &str,
+) -> ProviderLayerStatus {
+    match OpenAiCompatibleConfig::from_env_prefix(&prefix) {
+        Ok(config) => ProviderLayerStatus {
+            layer: layer.to_string(),
+            purpose: purpose.to_string(),
+            enabled,
+            prefix: prefix.clone(),
+            configured: true,
+            model: Some(config.model),
+            base_url: Some(config.base_url),
+            api_key_present: config.api_key.is_some(),
+            curl_available: command_ready(&config.curl_command),
+            curl_command: config.curl_command,
+            check_command: format!("octopus provider check {prefix}"),
+            message: if enabled {
+                "configured".to_string()
+            } else {
+                format!("configured but disabled; run `{enable_hint}`")
+            },
+        },
+        Err(error) => {
+            let curl_command =
+                env::var(format!("{prefix}_CURL")).unwrap_or_else(|_| "curl".to_string());
+            ProviderLayerStatus {
+                layer: layer.to_string(),
+                purpose: purpose.to_string(),
+                enabled,
+                prefix: prefix.clone(),
+                configured: false,
+                model: None,
+                base_url: None,
+                api_key_present: false,
+                curl_available: command_ready(&curl_command),
+                curl_command,
+                check_command: format!("octopus provider check {prefix}"),
+                message: error,
+            }
+        }
+    }
+}
+
 fn valid_env_prefix(value: &str) -> bool {
     let mut chars = value.chars();
     let Some(first) = chars.next() else {
@@ -1320,6 +1442,51 @@ fn print_provider_check(report: &ProviderCheckReport, language: Language) {
             println!("回复: {}", report.content);
             println!("下一步: {}", join_or_none(&report.next));
         }
+    }
+}
+
+fn print_provider_status(report: &ProviderStatusReport, language: Language) {
+    match language {
+        Language::En => println!("Provider status"),
+        Language::Zh => println!("Provider 状态"),
+    }
+    for layer in &report.layers {
+        let model = layer.model.as_deref().unwrap_or("none");
+        let base_url = layer.base_url.as_deref().unwrap_or("none");
+        match language {
+            Language::En => println!(
+                "- {}: enabled={} configured={} prefix={} model={} base_url={} api_key={} curl={}({}) check=\"{}\" message={}",
+                layer.layer,
+                layer.enabled,
+                layer.configured,
+                layer.prefix,
+                model,
+                base_url,
+                if layer.api_key_present { "present" } else { "empty" },
+                layer.curl_command,
+                if layer.curl_available { "ok" } else { "missing" },
+                layer.check_command,
+                layer.message,
+            ),
+            Language::Zh => println!(
+                "- {}: 启用={} 已配置={} 前缀={} 模型={} 地址={} 密钥={} curl={}({}) 检查=\"{}\" 说明={}",
+                layer.layer,
+                layer.enabled,
+                layer.configured,
+                layer.prefix,
+                model,
+                base_url,
+                if layer.api_key_present { "已设置" } else { "空" },
+                layer.curl_command,
+                if layer.curl_available { "可用" } else { "缺失" },
+                layer.check_command,
+                layer.message,
+            ),
+        }
+    }
+    match language {
+        Language::En => println!("next: {}", join_or_none(&report.next)),
+        Language::Zh => println!("下一步: {}", join_or_none(&report.next)),
     }
 }
 
@@ -2285,6 +2452,7 @@ fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorRepo
     warnings.dedup();
 
     let mut next = vec![status.next_action.clone()];
+    next.push("octopus provider status".to_string());
     if !llm.configured {
         next.push("octopus providers".to_string());
         next.push("octopus provider openai > .octopus/llm.env".to_string());
@@ -3131,7 +3299,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -3150,7 +3318,8 @@ fn parse_status(value: &str) -> Result<Status, String> {
 mod tests {
     use super::{
         bridge_command_allowed, bridge_command_name, http_content_length, localize_summary,
-        percent_encode_path, pet_report, pet_report_for_state, run, skill_reports, usage, Language,
+        percent_encode_path, pet_report, pet_report_for_state, provider_status_report, run,
+        skill_reports, usage, Language,
     };
     use octopus_core::{Feed, Goal, GoalStatus, HarnessState, Need, NeedKind, Status};
     use std::fs;
@@ -3297,6 +3466,13 @@ mod tests {
         run(vec!["catalog".to_string()]).unwrap();
         run(vec!["providers".to_string()]).unwrap();
         run(vec!["--json".to_string(), "providers".to_string()]).unwrap();
+        run(vec!["provider".to_string(), "status".to_string()]).unwrap();
+        run(vec![
+            "--json".to_string(),
+            "provider".to_string(),
+            "status".to_string(),
+        ])
+        .unwrap();
         run(vec!["provider".to_string(), "openai".to_string()]).unwrap();
         run(vec![
             "--json".to_string(),
@@ -3349,6 +3525,56 @@ mod tests {
         .unwrap();
         assert!(usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
+        assert!(usage().contains("provider status"));
+    }
+
+    #[test]
+    fn provider_status_reports_all_llm_layers() {
+        let _env = env_guard();
+        let old_chat = std::env::var("OCTOPUS_CHAT_LLM").ok();
+        let old_manifest = std::env::var("OCTOPUS_LLM_MANIFEST").ok();
+        let old_evolve = std::env::var("OCTOPUS_LLM_EVOLVE").ok();
+        let old_chat_prefix = std::env::var("OCTOPUS_CHAT_LLM_PREFIX").ok();
+        let old_manifest_prefix = std::env::var("OCTOPUS_MANIFEST_LLM_PREFIX").ok();
+        let old_evolve_prefix = std::env::var("OCTOPUS_EVOLVE_LLM_PREFIX").ok();
+        let old_model = std::env::var("OCTOPUS_STATUS_TEST_MODEL").ok();
+        let old_base_url = std::env::var("OCTOPUS_STATUS_TEST_BASE_URL").ok();
+        let old_api_key = std::env::var("OCTOPUS_STATUS_TEST_API_KEY").ok();
+        std::env::set_var("OCTOPUS_CHAT_LLM", "1");
+        std::env::set_var("OCTOPUS_LLM_MANIFEST", "1");
+        std::env::set_var("OCTOPUS_LLM_EVOLVE", "1");
+        std::env::set_var("OCTOPUS_CHAT_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
+        std::env::set_var("OCTOPUS_MANIFEST_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
+        std::env::set_var("OCTOPUS_EVOLVE_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
+        std::env::set_var("OCTOPUS_STATUS_TEST_MODEL", "test-model");
+        std::env::set_var("OCTOPUS_STATUS_TEST_BASE_URL", "https://llm.example/v1");
+        std::env::remove_var("OCTOPUS_STATUS_TEST_API_KEY");
+
+        let report = provider_status_report();
+
+        assert_eq!(report.layers.len(), 3);
+        assert!(report
+            .layers
+            .iter()
+            .all(|layer| layer.enabled && layer.configured));
+        assert!(report.layers.iter().any(|layer| {
+            layer.layer == "tentacle_planning"
+                && layer.prefix == "OCTOPUS_STATUS_TEST"
+                && layer.model.as_deref() == Some("test-model")
+        }));
+        assert!(report
+            .next
+            .contains(&"octopus provider check OCTOPUS_STATUS_TEST".to_string()));
+
+        restore_env("OCTOPUS_CHAT_LLM", old_chat);
+        restore_env("OCTOPUS_LLM_MANIFEST", old_manifest);
+        restore_env("OCTOPUS_LLM_EVOLVE", old_evolve);
+        restore_env("OCTOPUS_CHAT_LLM_PREFIX", old_chat_prefix);
+        restore_env("OCTOPUS_MANIFEST_LLM_PREFIX", old_manifest_prefix);
+        restore_env("OCTOPUS_EVOLVE_LLM_PREFIX", old_evolve_prefix);
+        restore_env("OCTOPUS_STATUS_TEST_MODEL", old_model);
+        restore_env("OCTOPUS_STATUS_TEST_BASE_URL", old_base_url);
+        restore_env("OCTOPUS_STATUS_TEST_API_KEY", old_api_key);
     }
 
     #[test]

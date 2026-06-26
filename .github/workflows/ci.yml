@@ -17,6 +17,11 @@ jobs:
       - run: cargo run -q -p octopus-core -- demo dangoZhang/Octopus | grep -q "Octopus demo"
       - run: cargo run -q -p octopus-core -- --json demo dangoZhang/Octopus | grep -q '"probe_summary"'
       - run: cargo run -q -p octopus-core -- providers | grep -q "openai"
+      - run: |
+          cargo run -q -p octopus-core -- provider status > .octopus/provider-status.txt
+          grep -q "Provider status" .octopus/provider-status.txt
+          cargo run -q -p octopus-core -- --json provider status > .octopus/provider-status.json
+          grep -q '"layer": "tentacle_planning"' .octopus/provider-status.json
       - run: cargo run -q -p octopus-core -- provider local OCTOPUS_LOCAL | grep -q "OCTOPUS_LOCAL_BASE_URL"
       - run: |
           tmp=$(mktemp -d)
@@ -81,6 +86,7 @@ jobs:
       - run: grep -q "octopus think" docs/index.html
       - run: grep -q "Command Surface" docs/app.html
       - run: grep -q "data-run=\"think\"" docs/app.html
+      - run: grep -q "data-run=\"provider\"" docs/app.html
       - run: grep -q "/api/stream" docs/app.html
       - run: grep -q "/api/run" docs/architecture.md
       - run: cargo run -q -p octopus-core -- 2>&1 | grep -q "bridge \\[addr\\]"
