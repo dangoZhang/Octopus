@@ -228,6 +228,16 @@ pub struct FeedTraceRecord {
     pub summary: String,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct FeedFeedbackOutcome {
+    pub trace: FeedTraceRecord,
+    pub status: Status,
+    pub route_key: Option<String>,
+    pub route_score: Option<f32>,
+    pub summary: String,
+    pub pet_event: PetEvent,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct CheckHistoryInput {
     pub tentacle_id: String,
@@ -1440,6 +1450,75 @@ impl HarnessState {
         trace
     }
 
+    pub fn record_feed_feedback(
+        &mut self,
+        trace_index: u64,
+        status: Status,
+        summary: impl Into<String>,
+    ) -> Result<FeedFeedbackOutcome, String> {
+        let summary = summary.into();
+        let Some(position) = self
+            .feed_traces
+            .iter()
+            .position(|trace| trace.index == trace_index)
+        else {
+            return Err(format!("unknown feed trace: {trace_index}"));
+        };
+        let original = self.feed_traces[position].clone();
+        let mut metadata =
+            BTreeMap::from([("feedback_trace".to_string(), trace_index.to_string())]);
+        if let Some(tentacle) = &original.tentacle {
+            metadata.insert("tentacle".to_string(), tentacle.clone());
+        }
+        if let Some(tool) = &original.tool {
+            metadata.insert("tool".to_string(), tool.clone());
+        }
+        if let Some(plan_source) = &original.plan_source {
+            metadata.insert("plan_source".to_string(), plan_source.clone());
+        }
+        let feed = Feed {
+            need: Need::new(original.need_kind.clone(), original.need_query.clone()),
+            status: status.clone(),
+            evidence: vec![Evidence::new("user_feedback", summary.clone())],
+            summary: summary.clone(),
+            metadata,
+        };
+        if original.tentacle.is_some() {
+            self.routes.learn(&feed);
+        }
+        let route_key = original
+            .tentacle
+            .as_ref()
+            .map(|tentacle| route_key(&original.need_kind, tentacle));
+        let route_score = original
+            .tentacle
+            .as_ref()
+            .map(|tentacle| self.routes.score(&original.need_kind, tentacle));
+        let event_state = match status {
+            Status::Satisfied => "success",
+            Status::Partial => "harness",
+            Status::Failed | Status::Unsupported => "blocked",
+        };
+        let pet_event = self.record_pet_event(
+            event_state,
+            "feed feedback",
+            format!("#{trace_index} {summary}"),
+            status.clone(),
+        );
+        let trace = &mut self.feed_traces[position];
+        trace.status = status.clone();
+        trace.summary = short_text(&format!("feedback: {summary}"), FEED_TRACE_SUMMARY_BYTES);
+        let trace = trace.clone();
+        Ok(FeedFeedbackOutcome {
+            trace,
+            status,
+            route_key,
+            route_score,
+            summary,
+            pet_event,
+        })
+    }
+
     pub fn recent_feed_traces(&self, limit: usize) -> Vec<FeedTraceRecord> {
         let start = self.feed_traces.len().saturating_sub(limit);
         self.feed_traces[start..].to_vec()
@@ -1768,8 +1847,11 @@ impl Harness {
 
     pub fn feed_one(&mut self, need: &Need) -> Feed {
         if let Some(feed) = self.memory_feed(need) {
+            let mut feed = feed;
             self.state.record_pet_event_from_feed(&feed);
-            self.state.record_feed_trace_from_feed(&feed);
+            let trace = self.state.record_feed_trace_from_feed(&feed);
+            feed.metadata
+                .insert("feed_trace_index".to_string(), trace.index.to_string());
             return feed;
         }
         let candidates = self
@@ -1780,9 +1862,11 @@ impl Harness {
             .map(|(index, tentacle)| (index, tentacle.name().to_string()))
             .collect::<Vec<_>>();
         if candidates.is_empty() {
-            let feed = Feed::unsupported(need, "no tentacle supports this need");
+            let mut feed = Feed::unsupported(need, "no tentacle supports this need");
             self.state.record_pet_event_from_feed(&feed);
-            self.state.record_feed_trace_from_feed(&feed);
+            let trace = self.state.record_feed_trace_from_feed(&feed);
+            feed.metadata
+                .insert("feed_trace_index".to_string(), trace.index.to_string());
             return feed;
         }
 
@@ -1808,7 +1892,9 @@ impl Harness {
             self.state.routes.learn(&feed);
         }
         self.state.record_pet_event_from_feed(&feed);
-        self.state.record_feed_trace_from_feed(&feed);
+        let trace = self.state.record_feed_trace_from_feed(&feed);
+        feed.metadata
+            .insert("feed_trace_index".to_string(), trace.index.to_string());
         feed
     }
 
@@ -6429,6 +6515,41 @@ mod tests {
         harness.feed_one(&Need::new(NeedKind::Verify, "claim"));
 
         assert!(harness.state.routes.score(&NeedKind::Verify, "verifier") > 1.0);
+    }
+
+    #[test]
+    fn feed_feedback_updates_trace_route_and_pet_state() {
+        let mut harness = Harness::new();
+        harness.add_tentacle(Box::new(FunctionTentacle::new(
+            "verifier",
+            vec![NeedKind::Verify],
+            |need| Feed::satisfied(need, "verified", "verifier"),
+        )));
+        let feed = harness.feed_one(&Need::new(NeedKind::Verify, "claim"));
+        let trace_index = feed
+            .metadata
+            .get("feed_trace_index")
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+        let route_before = harness.state.routes.score(&NeedKind::Verify, "verifier");
+
+        let outcome = harness
+            .state
+            .record_feed_feedback(trace_index, Status::Failed, "missing evidence")
+            .unwrap();
+
+        assert_eq!(outcome.trace.status, Status::Failed);
+        assert_eq!(outcome.trace.summary, "feedback: missing evidence");
+        assert!(harness.state.routes.score(&NeedKind::Verify, "verifier") < route_before);
+        assert_eq!(
+            harness.state.last_pet_event.as_ref().unwrap().source,
+            "feed feedback"
+        );
+        assert_eq!(
+            harness.state.last_pet_event.as_ref().unwrap().state,
+            "blocked"
+        );
     }
 
     #[test]

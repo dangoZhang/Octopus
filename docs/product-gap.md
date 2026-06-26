@@ -29,6 +29,7 @@ Updated: 2026-06-26
 - `think <tentacle> <kind> <query>` exposes tool-side planning and planned actions without executing tools.
 - LLM-backed tentacle plans can execute up to two tool actions for one Need and return one compact Feed.
 - Executed Feed now writes a compact harness trace journal; manifest Feed includes `tentacle_plan` evidence and a CLI `feed_trace`.
+- Executed Feed returns `feed_trace_index`; users and the HTML app can score that trace as satisfied, partial, or failed.
 - Harness evolution proposals now carry recent Feed traces and check history for the selected tentacle and expose them to the LLM evolution planner.
 - Runtime-code evolution candidates use recent Feed traces and failed checks to target the exact tool entrypoint that produced or broke Feed.
 - Patch candidates, patch drafts, and apply plans carry a feedback focus block from matching traces/checks.
@@ -91,6 +92,8 @@ Updated: 2026-06-26
 - Added a native HTML Provider Save action and limited provider env saving through bridge to the default path.
 - Added a native HTML Feed Test action that runs `--json need` through bridge and renders structured Feed metadata/evidence for tool-side planning.
 - Added Feed-trace-driven harness beat evolution so failed or partial Feed can produce the next reviewed apply plan without waiting for a manifest check failure.
+- Added `feedback <trace-index> <status> [summary]` so human review can score a Feed trace, update route learning, and change pet color.
+- Added native HTML Feed feedback buttons so the Feed Test panel can write that harness feedback without shell use.
 
 ## Remaining Gaps
 
@@ -100,13 +103,14 @@ Updated: 2026-06-26
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, layer diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
 - Release packaging, examples, and docs now have richer install feedback; non-Rust packaging still needs finish.
-- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, run structured Feed tests, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show harness-beat evolution recommendations with apply-plan previews, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, run structured Feed tests, score Feed traces, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show harness-beat evolution recommendations with apply-plan previews, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
 
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
 - Exercise multi-action tentacle planning with a real LLM provider and record provider-specific failures.
+- Use Feed feedback outcomes from real tasks to tune route choices and evolution recommendations.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Apply and score the next Feed-trace- or check-driven seed-tentacle improvement through the review/grant loop.
 - Exercise provider-assisted patch drafts with a real LLM provider and score the result through the review/grant loop.

@@ -8,6 +8,7 @@ dist/
 build/
 *.egg-info/
 target/
+report_output/
 .octopus/
 cowork/
 .DS_Store
