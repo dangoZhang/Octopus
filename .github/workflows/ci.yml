@@ -232,6 +232,7 @@ jobs:
           cargo run -q --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" -p octopus-core -- manifests tentacles | grep -q "native-feed"
           cargo run -q --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" -p octopus-core -- manifests tentacles | grep -q "tools/feed"
       - run: |
+          set -euxo pipefail
           tmp=$(mktemp -d)
           cargo run -q -p octopus-core -- --state "$tmp/state.json" init
           grep -q OCTOPUS_LLM_MANIFEST "$tmp/llm.env.example"
