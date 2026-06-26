@@ -40,6 +40,7 @@ octopus --json check computer-use-agent
 octopus --json check computer-use-agent 1
 octopus report
 octopus install bash-only
+octopus goal set "build a clean-brain agent"
 octopus chat "build a clean-brain agent"
 octopus context observe .
 octopus think swe-agent observe README.md
@@ -48,6 +49,7 @@ octopus traces
 octopus feedback 1 satisfied "feed worked"
 octopus oauth octopus tool:bash-only tool:execute
 octopus need execute "echo octopus"
+octopus routes observe .
 octopus pet
 octopus doctor
 octopus beat 200
@@ -63,7 +65,7 @@ Local app:
 octopus bridge
 ```
 
-Open `http://127.0.0.1:8765/app.html` for provider env save/readiness, context, product report, structured Feed tests, install, checks, beat, and grant-bound harness evolution apply artifacts. Bridge reads `.octopus/llm.env` for child commands.
+Open `http://127.0.0.1:8765/app.html` for provider env save/readiness, context, routes, product report, structured Feed tests, install, checks, beat, and grant-bound harness evolution apply artifacts. Bridge reads `.octopus/llm.env` for child commands.
 
 Update:
 
@@ -83,6 +85,7 @@ next:
 json-feed observe
 Octopus think
 Octopus context
+goal: build a clean-brain agent
 plan_source: rule
 actions: 1:read
 feed_trace: json-feed/feed via rule

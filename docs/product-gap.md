@@ -1,6 +1,6 @@
 # Product Gap Log
 
-Updated: 2026-06-26
+Updated: 2026-06-27
 
 ## Current Shape
 
@@ -21,6 +21,7 @@ Updated: 2026-06-26
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
+- `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
 - The HTML install guide can expand each check to inspect stdout, stderr, exit code, and recent harness check history.
 - `check <tentacle> [index]` records compact harness history and the HTML install guide can rerun one check at a time.
@@ -33,6 +34,7 @@ Updated: 2026-06-26
 - LLM-backed tentacle plans can execute up to two tool actions for one Need and return one compact Feed.
 - Executed Feed now writes a compact harness trace journal; manifest Feed includes `tentacle_plan` evidence and a CLI `feed_trace`.
 - Executed Feed returns `feed_trace_index`; users and the HTML app can score that trace as satisfied, partial, or failed.
+- `routes <kind> <query>` explains which installed tentacle the harness would select, route scores, support state, and recent Feed trace evidence.
 - Harness evolution proposals now carry recent Feed traces and check history for the selected tentacle and expose them to the LLM evolution planner.
 - Runtime-code evolution candidates use recent Feed traces and failed checks to target the exact tool entrypoint that produced or broke Feed.
 - Patch candidates, patch drafts, and apply plans carry a feedback focus block from matching traces/checks.
@@ -102,6 +104,8 @@ Updated: 2026-06-26
 - Added `feedback <trace-index> <status> [summary]` so human review can score a Feed trace, update route learning, and change pet color.
 - Added native HTML Feed feedback buttons so the Feed Test panel can write that harness feedback without shell use.
 - Rolled the cleanup/version cadence to `0.0.6` after the context, report, apply, and Feed feedback product cycle.
+- Added state-aware route reports in CLI, JSON, and the native app so Feed feedback becomes visible route selection evidence.
+- Added direct human `goal set` in CLI and native app so the clean brain can receive an objective without tool execution.
 
 ## Remaining Gaps
 
@@ -119,7 +123,7 @@ Updated: 2026-06-26
 
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
 - Exercise multi-action tentacle planning with a real LLM provider and record provider-specific failures.
-- Use Feed feedback outcomes from real tasks to tune route choices and evolution recommendations.
+- Exercise Feed feedback outcomes from real tasks against the new route report and tune route choices from that evidence.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Apply and score the next Feed-trace- or check-driven seed-tentacle improvement through the app review/grant loop.
 - Use `octopus report` after every product cycle to pick the next highest-impact gap.

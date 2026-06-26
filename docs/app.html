@@ -460,12 +460,14 @@
             <button type="button" data-run="install">Install</button>
             <button type="button" id="installGuide">Install Report</button>
             <button type="button" id="runChecks">Run Checks</button>
+            <button type="button" data-run="goalset">Set Goal</button>
             <button type="button" data-run="chat">Chat</button>
             <button type="button" data-run="think">Think</button>
             <button type="button" id="runContext">Context</button>
             <button type="button" data-run="need">Need</button>
             <button type="button" id="runFeed">Feed Test</button>
             <button type="button" data-run="traces">Trace</button>
+            <button type="button" id="runRoutes">Route</button>
             <button type="button" data-run="provider">Provider</button>
             <button type="button" id="providerEnv">Provider Env</button>
             <button type="button" id="providerSave">Provider Save</button>
@@ -495,6 +497,10 @@
             <h2>Feed</h2>
             <div id="feedReport" class="metric"><span>No feed yet.</span></div>
           </div>
+          <div class="route-report stack">
+            <h2>Route</h2>
+            <div id="routeReport" class="metric"><span>No route yet.</span></div>
+          </div>
           <div class="context-report stack">
             <h2>Context</h2>
             <div id="contextReport" class="metric"><span>No context yet.</span></div>
@@ -520,6 +526,7 @@
       let currentContextReport = null;
       let currentProductReport = null;
       let currentFeedTrace = null;
+      let currentRouteReport = null;
 
       function render(stateName = "harness") {
         currentPetState = stateName;
@@ -541,6 +548,7 @@
           `octopus --state ${shellQuote(state)} install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json check ${tentacle}`,
+          `octopus --state ${shellQuote(state)} goal set ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json need ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} --json context ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} feedback 1 satisfied ${shellQuote("feed worked")}`,
@@ -548,6 +556,7 @@
           `octopus --state ${shellQuote(state)} think ${tentacle} ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} need ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} traces`,
+          `octopus --state ${shellQuote(state)} --json routes ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} pet ${stateName}`,
           `octopus --state ${shellQuote(state)} doctor`,
           `octopus --state ${shellQuote(state)} report`,
@@ -565,11 +574,13 @@
         const args = {
           init: [...base, "init"],
           install: [...base, "install", tentacle],
+          goalset: [...base, "goal", "set", goal],
           chat: [...base, "chat", goal],
           think: [...base, "think", tentacle, need, target],
           context: [...base, "context", need, target],
           need: [...base, "need", need, target],
           traces: [...base, "traces"],
+          routes: [...base, "--json", "routes", need, target],
           provider: ["--json", "provider", "status"],
           pet: [...base, "pet", stateName],
           doctor: [...base, "doctor"],
@@ -663,6 +674,22 @@
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("contextReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runRouteReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const need = $("need").value;
+        const target = $("target").value.trim() || ".";
+        $("routeReport").textContent = "loading...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "routes", need, target]);
+          currentRouteReport = report;
+          renderRouteReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("routeReport").textContent = String(error);
           $("output").textContent = String(error);
         }
       }
@@ -880,6 +907,55 @@
         root.appendChild(reportList("Capabilities", report.capabilities || [], capabilityItem));
         root.appendChild(reportList("Gaps", report.gaps || [], gapItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function renderRouteReport(report) {
+        const root = $("routeReport");
+        root.className = "stack";
+        root.textContent = "";
+        root.appendChild(routeSummary(report));
+        root.appendChild(reportList("Candidates", report.candidates || [], routeItem));
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function routeSummary(report) {
+        const selected = report.selected || {};
+        const need = report.need || {};
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Need", need.kind ? `${need.kind}: ${need.query || ""}` : "none"],
+          ["Selected", selected.tentacle || "none"],
+          ["Score", selected.score == null ? "none" : Number(selected.score).toFixed(2)],
+          ["Reason", selected.reason || "none"],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        return grid;
+      }
+
+      function routeItem(option) {
+        const item = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = option.selected ? "badge ok" : option.supported ? "badge" : "badge failed";
+        badge.textContent = option.selected ? "selected" : option.supported ? "candidate" : "skip";
+        const command = document.createElement("span");
+        command.className = "check-command";
+        const score = option.score == null ? "0.00" : Number(option.score).toFixed(2);
+        command.textContent = `${option.tentacle || "tentacle"} · ${score}`;
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        const trace = option.last_trace ? ` · last #${option.last_trace.index} ${option.last_trace.status}` : "";
+        meta.textContent = `${option.reason || option.route_key || ""} · traces=${option.trace_count || 0}${trace}`;
+        item.append(badge, command, meta);
+        return item;
       }
 
       function productSummary(report) {
@@ -1632,6 +1708,8 @@
         $("providerReport").innerHTML = "<span>No provider status yet.</span>";
         $("feedReport").className = "metric";
         $("feedReport").innerHTML = "<span>No feed yet.</span>";
+        $("routeReport").className = "metric";
+        $("routeReport").innerHTML = "<span>No route yet.</span>";
         $("contextReport").className = "metric";
         $("contextReport").innerHTML = "<span>No context yet.</span>";
         $("beatReport").className = "metric";
@@ -1646,11 +1724,13 @@
         currentContextReport = null;
         currentProductReport = null;
         currentFeedTrace = null;
+        currentRouteReport = null;
         render();
       });
       $("installGuide").addEventListener("click", runInstallReport);
       $("runChecks").addEventListener("click", runChecks);
       $("runFeed").addEventListener("click", runFeedTest);
+      $("runRoutes").addEventListener("click", runRouteReport);
       $("runContext").addEventListener("click", runContextReport);
       $("providerEnv").addEventListener("click", runProviderEnv);
       $("providerSave").addEventListener("click", runProviderSave);
@@ -1672,10 +1752,13 @@
           currentContextReport = null;
           currentProductReport = null;
           currentFeedTrace = null;
+          currentRouteReport = null;
           $("providerReport").className = "metric";
           $("providerReport").innerHTML = "<span>No provider status yet.</span>";
           $("feedReport").className = "metric";
           $("feedReport").innerHTML = "<span>No feed yet.</span>";
+          $("routeReport").className = "metric";
+          $("routeReport").innerHTML = "<span>No route yet.</span>";
           $("contextReport").className = "metric";
           $("contextReport").innerHTML = "<span>No context yet.</span>";
           $("beatReport").className = "metric";

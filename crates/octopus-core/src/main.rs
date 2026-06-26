@@ -6,12 +6,12 @@ use octopus_core::{
     write_tentacle_evolution_artifacts, AdaptReport, CapabilityGrant, ChatClient, ChatMessage,
     ChatRole, CheckHistoryInput, CheckHistoryRecord, ContextReport, EnvironmentReport,
     EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome,
-    EvolutionRecommendation, Feed, FeedFeedbackOutcome, FeedTraceRecord, GoalChat, Harness,
+    EvolutionRecommendation, Feed, FeedFeedbackOutcome, FeedTraceRecord, Goal, GoalChat, Harness,
     HarnessBeatEvolution, HarnessState, HeartBeat, HeartbeatReport, InstalledTentacle,
     LoadedTentacleManifest, Need, NeedKind, OpenAiCompatibleChatClient, OpenAiCompatibleConfig,
-    SelfIterationPlan, Status, StatusReport, TentacleEvolutionProposal, TentacleManifestReport,
-    TentacleProfile, TentacleScaffold, TentacleThinkingPlan, TentacleToolAction,
-    TentacleToolCandidate, ToolPermission,
+    RouteReport, SelfIterationPlan, Status, StatusReport, TentacleEvolutionProposal,
+    TentacleManifestReport, TentacleProfile, TentacleScaffold, TentacleThinkingPlan,
+    TentacleToolAction, TentacleToolCandidate, ToolPermission,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -447,11 +447,30 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         Some("routes") => {
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&loaded.routes.scores)
-                    .map_err(|error| error.to_string())?
-            );
+            if let Some(kind_value) = rest.get(1) {
+                let kind = parse_kind(kind_value)?;
+                let query = if rest.len() > 2 {
+                    rest[2..].join(" ")
+                } else {
+                    ".".to_string()
+                };
+                let harness = harness_for_need(loaded, &kind)?;
+                let report = harness.route_report(&Need::new(kind, query));
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_route_report(&report, language);
+                }
+            } else {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&loaded.routes.scores)
+                        .map_err(|error| error.to_string())?
+                );
+            }
             Ok(())
         }
         Some("traces") => {
@@ -670,7 +689,16 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("goal") => {
-            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            if rest.get(1).map(String::as_str) == Some("set") {
+                let objective = rest
+                    .get(2..)
+                    .filter(|values| !values.is_empty())
+                    .map(|values| values.join(" "))
+                    .ok_or_else(|| "goal set requires an objective".to_string())?;
+                loaded.goal = Some(Goal::new(objective));
+                loaded.save(&state).map_err(|error| error.to_string())?;
+            }
             if json {
                 println!(
                     "{}",
@@ -3449,6 +3477,21 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             Some("octopus evolve apply swe-agent 03-runtime-code"),
         ),
         product_capability(
+            "goal_setting",
+            "ready",
+            "human goals can be set directly without Feed execution",
+            Some("octopus goal set \"build a clean-brain agent\""),
+        ),
+        product_capability(
+            "route_report",
+            "ready",
+            format!(
+                "{} route scores, {} Feed traces",
+                status.route_count, status.feed_trace_count
+            ),
+            Some("octopus routes observe ."),
+        ),
+        product_capability(
             "provider_layers",
             if provider_ready {
                 "ready"
@@ -3494,8 +3537,8 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
     if status.goal.is_none() {
         gaps.push(product_gap(
             "goal_loop_empty",
-            "chat has not refined a user goal in this state",
-            format!("octopus{state_args} chat \"describe your goal\""),
+            "human goal has not been set in this state",
+            format!("octopus{state_args} goal set \"describe your goal\""),
         ));
     }
     if status.tentacles.is_empty() {
@@ -3746,6 +3789,75 @@ fn print_feed_traces(traces: &[FeedTraceRecord], language: Language) {
     }
     for trace in traces {
         println!("{}", trace_line(trace));
+    }
+}
+
+fn print_route_report(report: &RouteReport, language: Language) {
+    match language {
+        Language::En => {
+            println!(
+                "Route report: {} {}",
+                need_label(&report.need.kind),
+                report.need.query
+            );
+            if let Some(selected) = &report.selected {
+                println!(
+                    "selected: {} score={:.2} reason={}",
+                    selected.tentacle, selected.score, selected.reason
+                );
+            } else {
+                println!("selected: none");
+            }
+            for option in &report.candidates {
+                let marker = if option.selected { "*" } else { "-" };
+                println!(
+                    "{marker} {} score={:.2} supported={} traces={} :: {}",
+                    option.tentacle,
+                    option.score,
+                    option.supported,
+                    option.trace_count,
+                    option.reason
+                );
+                if let Some(trace) = &option.last_trace {
+                    println!("  last_trace: {}", trace_line(trace));
+                }
+            }
+            for next in &report.next {
+                println!("next: {next}");
+            }
+        }
+        Language::Zh => {
+            println!(
+                "路由报告: {} {}",
+                need_label(&report.need.kind),
+                report.need.query
+            );
+            if let Some(selected) = &report.selected {
+                println!(
+                    "已选择: {} 分数={:.2} 原因={}",
+                    selected.tentacle, selected.score, selected.reason
+                );
+            } else {
+                println!("已选择: 无");
+            }
+            for option in &report.candidates {
+                let marker = if option.selected { "*" } else { "-" };
+                println!(
+                    "{marker} {} 分数={:.2} 支持={} 轨迹={} :: {}",
+                    option.tentacle,
+                    option.score,
+                    option.supported,
+                    option.trace_count,
+                    option.reason
+                );
+                if let Some(trace) = &option.last_trace {
+                    println!("  最近轨迹: {}", trace_line(trace));
+                }
+            }
+            for next in &report.next {
+                println!("下一步: {next}");
+            }
+        }
     }
 }
 
@@ -5155,7 +5267,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | report | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -5237,6 +5349,38 @@ mod tests {
         let payload: &(dyn std::any::Any + Send) =
             &"failed printing to stdout: Broken pipe (os error 32)";
         assert!(is_broken_pipe_panic(payload));
+    }
+
+    #[test]
+    fn cli_goal_set_updates_goal_without_feed() {
+        let _env = env_guard();
+        let path = std::env::temp_dir().join(format!(
+            "octopus-goal-set-state-{}.json",
+            std::process::id()
+        ));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "goal".to_string(),
+            "set".to_string(),
+            "keep".to_string(),
+            "the".to_string(),
+            "brain".to_string(),
+            "clean".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&path).unwrap();
+        assert_eq!(
+            restored.goal.as_ref().unwrap().objective,
+            "keep the brain clean"
+        );
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let _ = fs::remove_file(path);
     }
 
     #[test]

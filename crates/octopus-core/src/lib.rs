@@ -619,6 +619,27 @@ pub struct RouteDecision {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct RouteOption {
+    pub tentacle: String,
+    pub route_key: String,
+    pub score: f32,
+    pub supported: bool,
+    pub selected: bool,
+    pub reason: String,
+    pub trace_count: usize,
+    pub last_trace: Option<FeedTraceRecord>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct RouteReport {
+    pub need: Need,
+    pub selected: Option<RouteDecision>,
+    pub candidates: Vec<RouteOption>,
+    pub learned_scores: BTreeMap<String, f32>,
+    pub next: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct RouteBook {
     pub base_score: f32,
     pub scores: BTreeMap<String, f32>,
@@ -2041,6 +2062,112 @@ impl Harness {
 
     pub fn add_tentacle(&mut self, tentacle: Box<dyn Tentacle>) {
         self.tentacles.push(tentacle);
+    }
+
+    pub fn route_report(&self, need: &Need) -> RouteReport {
+        let mut options = Vec::new();
+        if matches!(
+            need.kind,
+            NeedKind::Remember | NeedKind::Recall | NeedKind::Forget
+        ) {
+            options.push(self.route_option_for("memory", need, true));
+        }
+        options.extend(
+            self.tentacles.iter().map(|tentacle| {
+                self.route_option_for(tentacle.name(), need, tentacle.supports(need))
+            }),
+        );
+
+        let supported_names = options
+            .iter()
+            .filter(|option| option.supported)
+            .map(|option| option.tentacle.clone())
+            .collect::<Vec<_>>();
+        let selected = self.state.routes.choose(need, &supported_names);
+        if let Some(decision) = &selected {
+            for option in &mut options {
+                option.selected = option.tentacle == decision.tentacle;
+                if option.selected {
+                    option.reason = decision.reason.clone();
+                }
+            }
+        }
+        options.sort_by(|left, right| {
+            right
+                .selected
+                .cmp(&left.selected)
+                .then_with(|| right.supported.cmp(&left.supported))
+                .then_with(|| right.score.total_cmp(&left.score))
+                .then_with(|| left.tentacle.cmp(&right.tentacle))
+        });
+
+        let score_prefix = format!("{}:", kind_key(&need.kind));
+        let learned_scores = self
+            .state
+            .routes
+            .scores
+            .iter()
+            .filter(|(key, _)| key.starts_with(&score_prefix))
+            .map(|(key, score)| (key.clone(), *score))
+            .collect::<BTreeMap<_, _>>();
+        let mut next = Vec::new();
+        if options.is_empty() {
+            next.push("octopus adapt".to_string());
+            next.push("octopus install swe-agent".to_string());
+        } else if selected.is_none() {
+            next.push(format!(
+                "octopus install {}",
+                default_tentacle_profiles()
+                    .first()
+                    .map(|profile| profile.id.as_str())
+                    .unwrap_or("swe-agent")
+            ));
+        } else {
+            next.push(format!(
+                "octopus need {} {}",
+                kind_key(&need.kind),
+                need.query
+            ));
+            next.push("octopus traces".to_string());
+            next.push("octopus feedback <trace-index> satisfied|partial|failed".to_string());
+        }
+
+        RouteReport {
+            need: need.clone(),
+            selected,
+            candidates: options,
+            learned_scores,
+            next,
+        }
+    }
+
+    fn route_option_for(&self, tentacle: &str, need: &Need, supported: bool) -> RouteOption {
+        let route_key = route_key(&need.kind, tentacle);
+        let score = self.state.routes.score(&need.kind, tentacle);
+        let matching_traces = self
+            .state
+            .feed_traces
+            .iter()
+            .filter(|trace| {
+                trace.need_kind == need.kind && trace.tentacle.as_deref() == Some(tentacle)
+            })
+            .collect::<Vec<_>>();
+        let last_trace = matching_traces.last().map(|trace| (*trace).clone());
+        let reason = if supported {
+            format!("{route_key}={score:.2}")
+        } else {
+            "tentacle does not advertise this Need".to_string()
+        };
+        RouteOption {
+            tentacle: tentacle.to_string(),
+            route_key,
+            score,
+            supported,
+            selected: false,
+            reason,
+            trace_count: matching_traces.len(),
+            last_trace,
+        }
     }
 
     fn add_installed_tentacles_with_grants(&mut self) {
@@ -6748,6 +6875,58 @@ mod tests {
         harness.feed_one(&Need::new(NeedKind::Verify, "claim"));
 
         assert!(harness.state.routes.score(&NeedKind::Verify, "verifier") > 1.0);
+    }
+
+    #[test]
+    fn route_report_explains_feedback_scores() {
+        let mut harness = Harness::new();
+        harness.add_tentacle(Box::new(FunctionTentacle::new(
+            "verifier",
+            vec![NeedKind::Verify],
+            |need| Feed::satisfied(need, "verified", "verifier"),
+        )));
+        harness.add_tentacle(Box::new(FunctionTentacle::new(
+            "backup",
+            vec![NeedKind::Verify],
+            |need| Feed::satisfied(need, "verified", "backup"),
+        )));
+        harness
+            .state
+            .routes
+            .scores
+            .insert(route_key(&NeedKind::Verify, "verifier"), 2.0);
+        harness
+            .state
+            .routes
+            .scores
+            .insert(route_key(&NeedKind::Verify, "backup"), 0.5);
+        harness.state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Verify, "claim"),
+            status: Status::Partial,
+            evidence: vec![Evidence::new("review", "missing citation")],
+            summary: "needs better evidence".to_string(),
+            metadata: BTreeMap::from([("tentacle".to_string(), "verifier".to_string())]),
+        });
+
+        let report = harness.route_report(&Need::new(NeedKind::Verify, "claim"));
+
+        assert_eq!(report.selected.as_ref().unwrap().tentacle, "verifier");
+        assert_eq!(report.candidates[0].tentacle, "verifier");
+        assert!(report.candidates[0].selected);
+        assert_eq!(report.candidates[0].trace_count, 1);
+        assert_eq!(
+            report.candidates[0].last_trace.as_ref().unwrap().status,
+            Status::Partial
+        );
+        assert_eq!(
+            report
+                .learned_scores
+                .get(&route_key(&NeedKind::Verify, "verifier")),
+            Some(&2.0)
+        );
+        assert!(report
+            .next
+            .contains(&"octopus feedback <trace-index> satisfied|partial|failed".to_string()));
     }
 
     #[test]

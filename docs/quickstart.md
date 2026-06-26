@@ -31,11 +31,13 @@ octopus --state "$tmp/state.json" --json check computer-use-agent
 octopus --state "$tmp/state.json" --json check computer-use-agent 1
 octopus --state "$tmp/state.json" install bash-only
 octopus --state "$tmp/state.json" installed
+octopus --state "$tmp/state.json" goal set "build a clean-brain agent"
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
 octopus --state "$tmp/state.json" context observe .
 octopus --state "$tmp/state.json" think swe-agent observe README.md
 octopus --state "$tmp/state.json" need observe .
 octopus --state "$tmp/state.json" traces
+octopus --state "$tmp/state.json" routes observe .
 octopus --state "$tmp/state.json" report
 octopus --state "$tmp/state.json" feedback 1 satisfied "feed worked"
 octopus --state "$tmp/state.json" oauth octopus tool:bash-only tool:execute
