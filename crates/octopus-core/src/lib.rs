@@ -1910,9 +1910,15 @@ impl ManifestTentacle {
 
     fn rule_plan_tool(&self, need: &Need, tools: &[InstalledToolRef]) -> Option<ManifestToolPlan> {
         let preferred = match need.kind {
+            NeedKind::Observe
+                if self.route_id == "computer-use-agent" && is_browser_observe(&need.query) =>
+            {
+                ["browser_status", "describe_screen", "screenshot", "mcp"].as_slice()
+            }
             NeedKind::Observe => [
                 "inspect_repo",
                 "describe_screen",
+                "browser_status",
                 "status_pet",
                 "screenshot",
                 "read",
@@ -3832,6 +3838,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "tentacles/computer-use-agent/tools/bash.sh".to_string(),
                     "tentacles/computer-use-agent/tools/screenshot.sh".to_string(),
                     "tentacles/computer-use-agent/tools/open_url.sh".to_string(),
+                    "tentacles/computer-use-agent/tools/browser_status.sh".to_string(),
                     "tentacles/computer-use-agent/tools/describe_screen.sh".to_string(),
                 ],
             }],
@@ -3840,10 +3847,14 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 tool_meta("bash", "Write and run a local shell script.", "shell", "tentacles/computer-use-agent/tools/bash.sh"),
                 tool_meta("screenshot", "Capture the current screen.", "shell", "tentacles/computer-use-agent/tools/screenshot.sh"),
                 tool_meta("open_url", "Open a URL in the local desktop.", "shell", "tentacles/computer-use-agent/tools/open_url.sh"),
+                tool_meta("browser_status", "Inspect local browser availability and current tab metadata.", "shell", "tentacles/computer-use-agent/tools/browser_status.sh"),
                 tool_meta("describe_screen", "Return lightweight desktop context.", "shell", "tentacles/computer-use-agent/tools/describe_screen.sh"),
             ],
             evolution: evolution_policy(
-                &["tentacles/computer-use-agent/tools/describe_screen.sh"],
+                &[
+                    "tentacles/computer-use-agent/tools/describe_screen.sh",
+                    "tentacles/computer-use-agent/tools/browser_status.sh | python3 -m json.tool > /dev/null",
+                ],
                 &["Ask for user-visible actions only when the product flow grants it."],
             ),
             llm_ready: true,
@@ -4547,9 +4558,21 @@ fn manifest_plan_reason(need: &Need, tool: &InstalledToolRef) -> String {
 
 fn is_desktop_observe(query: &str) -> bool {
     let query = query.to_lowercase();
-    ["screen", "desktop", "window", "browser", "url", "ui"]
-        .iter()
-        .any(|word| query.contains(word))
+    [
+        "screen", "desktop", "window", "browser", "url", "ui", "tab", "chrome", "safari",
+        "firefox", "edge", "brave",
+    ]
+    .iter()
+    .any(|word| query.contains(word))
+}
+
+fn is_browser_observe(query: &str) -> bool {
+    let query = query.to_lowercase();
+    [
+        "browser", "tab", "url", "chrome", "safari", "firefox", "edge", "brave",
+    ]
+    .iter()
+    .any(|word| query.contains(word))
 }
 
 fn is_visual_observe(query: &str) -> bool {
@@ -5873,6 +5896,23 @@ print(json.dumps({
 
         assert!(!tentacle.supports(&Need::new(NeedKind::Observe, ".")));
         assert!(tentacle.supports(&Need::new(NeedKind::Observe, "describe screen")));
+        assert!(tentacle.supports(&Need::new(NeedKind::Observe, "current browser tab")));
         assert!(tentacle.supports(&Need::new(NeedKind::Execute, "echo ok")));
+    }
+
+    #[test]
+    fn computer_use_browser_need_prefers_browser_status() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        let installed = state.install_manifest(&root, "computer-use-agent").unwrap();
+        let mut tentacle = ManifestTentacle::new(installed);
+
+        let plan = tentacle
+            .plan_tool(&Need::new(NeedKind::Observe, "current browser tab"))
+            .expect("browser observe need should plan a tool");
+
+        assert_eq!(plan.tool.id, "browser_status");
     }
 }

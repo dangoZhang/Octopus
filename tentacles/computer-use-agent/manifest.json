@@ -47,6 +47,13 @@
       "implementation": { "kind": "shell", "entrypoint": "tools/open_url.sh" }
     },
     {
+      "id": "browser_status",
+      "description": "Inspect local browser availability and current tab metadata when OS permissions allow it.",
+      "input": "none",
+      "output": "JSON browser availability, active tabs, opener, and notes",
+      "implementation": { "kind": "shell", "entrypoint": "tools/browser_status.sh" }
+    },
+    {
       "id": "describe_screen",
       "description": "Return lightweight desktop context.",
       "input": "none",
@@ -78,7 +85,10 @@
         "targets": ["evolution.checks", "evolution.constraints", "evolution.surfaces"]
       }
     ],
-    "checks": ["tools/describe_screen.sh"],
+    "checks": [
+      "tools/describe_screen.sh",
+      "tools/browser_status.sh | python3 -m json.tool > /dev/null"
+    ],
     "constraints": ["Ask for user-visible actions only when the product flow grants it."]
   }
 }

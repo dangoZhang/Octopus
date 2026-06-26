@@ -10,7 +10,7 @@ Most agents make the brain carry tools, memory, skills, and execution flow. Octo
 
 Tentacle brains give tools LLM intelligence. A tentacle is `LLM prompt + tool meta + code implementation + evolution policy`, and those surfaces can evolve as code-as-harness.
 
-Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools, repo-maintainer tools, and a transparent write-and-run harness. Runtime seeds such as `json-feed` prove the same contract can run beyond shell.
+Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools with browser diagnostics, repo-maintainer tools, and a transparent write-and-run harness. Runtime seeds such as `json-feed` prove the same contract can run beyond shell.
 
 Shell is only one runtime. A tentacle can declare `contract: octopus-json-v1` and run Python, Node, MCP, HTTP, native code, or any custom adapter.
 

@@ -41,7 +41,7 @@ Context boundary: clean-brain LLM context is `Goal + Mem + Need + Feed`; tentacl
 
 ## Code-As-Harness
 
-`tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Each manifest declares evolution surfaces: `brain_prompt`, `tool_meta`, `runtime_code`, and `evolution_policy`. Agent tool-combo seeds cover SWE repo tools, computer-use tools, repo-maintainer tools, and one transparent write-and-run harness. Runtime seeds such as `json-feed` prove the same contract can run beyond shell.
+`tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Each manifest declares evolution surfaces: `brain_prompt`, `tool_meta`, `runtime_code`, and `evolution_policy`. Agent tool-combo seeds cover SWE repo tools, computer-use tools with browser diagnostics, repo-maintainer tools, and one transparent write-and-run harness. Runtime seeds such as `json-feed` prove the same contract can run beyond shell.
 
 `contract: octopus-json-v1` lets any runtime receive the same Need/tool/tentacle JSON envelope through stdin and return compact text or structured JSON feedback. Legacy executable entrypoints still work.
 
