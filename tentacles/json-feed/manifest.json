@@ -41,7 +41,7 @@
       {
         "id": "tool_meta",
         "description": "JSON feed descriptions, inputs, outputs, and call contract.",
-        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].implementation.contract"]
+        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].permission", "tools[].implementation.contract"]
       },
       {
         "id": "runtime_code",

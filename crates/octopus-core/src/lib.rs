@@ -1551,7 +1551,7 @@ impl Harness {
             tentacles: Vec::new(),
             manifest_llm_config: None,
         };
-        harness.add_installed_tentacles();
+        harness.add_installed_tentacles_with_grants();
         harness
     }
 
@@ -1564,7 +1564,7 @@ impl Harness {
             tentacles: Vec::new(),
             manifest_llm_config: Some(config),
         };
-        harness.add_installed_tentacles();
+        harness.add_installed_tentacles_with_grants();
         harness
     }
 
@@ -1572,11 +1572,13 @@ impl Harness {
         self.tentacles.push(tentacle);
     }
 
-    fn add_installed_tentacles(&mut self) {
+    fn add_installed_tentacles_with_grants(&mut self) {
+        let grants = self.state.grants.clone();
         for tentacle in self.state.installed_tentacles.clone() {
-            self.add_tentacle(Box::new(ManifestTentacle::new_with_llm(
+            self.add_tentacle(Box::new(ManifestTentacle::new_with_llm_and_grants(
                 tentacle,
                 self.manifest_llm_config.clone(),
+                grants.clone(),
             )));
         }
     }
@@ -1617,7 +1619,9 @@ impl Harness {
         feed.metadata
             .insert("tentacle".to_string(), decision.tentacle);
         feed.metadata.insert("route".to_string(), decision.reason);
-        self.state.routes.learn(&feed);
+        if !feed_is_authorization_blocked(&feed) {
+            self.state.routes.learn(&feed);
+        }
         self.state.record_pet_event_from_feed(&feed);
         feed
     }
@@ -1770,6 +1774,7 @@ struct InstalledToolRef {
     kind: String,
     entrypoint: String,
     contract: Option<String>,
+    permission: Option<ToolPermission>,
 }
 
 impl InstalledToolRef {
@@ -1783,6 +1788,7 @@ impl InstalledToolRef {
             kind: parts.next()?.to_string(),
             entrypoint: parts.next()?.to_string(),
             contract: None,
+            permission: None,
         })
     }
 
@@ -1795,6 +1801,7 @@ impl InstalledToolRef {
             kind: tool.kind.clone(),
             entrypoint: tool.entrypoint.clone(),
             contract: tool.contract.clone(),
+            permission: tool.permission.clone(),
         }
     }
 }
@@ -1816,6 +1823,7 @@ struct ToolInvocationTool<'a> {
     runtime: &'a str,
     entrypoint: &'a str,
     contract: Option<&'a str>,
+    permission: Option<&'a ToolPermission>,
 }
 
 #[derive(Serialize)]
@@ -1849,6 +1857,7 @@ pub struct ManifestTentacle {
     installed: InstalledTentacle,
     tools: Vec<InstalledToolRef>,
     llm_config: Option<OpenAiCompatibleConfig>,
+    grants: Vec<CapabilityGrant>,
 }
 
 impl ManifestTentacle {
@@ -1859,6 +1868,14 @@ impl ManifestTentacle {
     pub fn new_with_llm(
         installed: InstalledTentacle,
         llm_config: Option<OpenAiCompatibleConfig>,
+    ) -> Self {
+        Self::new_with_llm_and_grants(installed, llm_config, Vec::new())
+    }
+
+    pub fn new_with_llm_and_grants(
+        installed: InstalledTentacle,
+        llm_config: Option<OpenAiCompatibleConfig>,
+        grants: Vec<CapabilityGrant>,
     ) -> Self {
         let route_id = installed.id.clone();
         let tools = if installed.tool_meta.is_empty() {
@@ -1879,6 +1896,7 @@ impl ManifestTentacle {
             installed,
             tools,
             llm_config,
+            grants,
         }
     }
 
@@ -1892,6 +1910,12 @@ impl ManifestTentacle {
         if self.route_id == "computer-use-agent"
             && need.kind == NeedKind::Observe
             && !is_desktop_observe(&need.query)
+        {
+            return Vec::new();
+        }
+        if self.route_id == "computer-use-agent"
+            && need.kind == NeedKind::Execute
+            && !is_desktop_execute(&need.query)
         {
             return Vec::new();
         }
@@ -1967,11 +1991,12 @@ impl ManifestTentacle {
             .iter()
             .map(|tool| {
                 format!(
-                    "- {}: {} | runtime={} | contract={} | input={} | output={}",
+                    "- {}: {} | runtime={} | contract={} | permission={} | input={} | output={}",
                     tool.id,
                     tool.description,
                     tool.kind,
                     tool.contract.as_deref().unwrap_or("legacy"),
+                    tool_permission_label(tool.permission.as_ref()),
                     tool.input,
                     tool.output
                 )
@@ -2041,6 +2066,10 @@ impl ManifestTentacle {
     }
 
     fn run_tool(&self, tool: &InstalledToolRef, need: &Need) -> ToolResult {
+        let active_grant = match self.authorize_tool(tool) {
+            Ok(grant) => grant.map(|grant| grant.id.clone()),
+            Err(result) => return result,
+        };
         let path = self.tool_path(tool);
         if tool.kind == "static-html" {
             let target = if path.exists() {
@@ -2053,6 +2082,7 @@ impl ManifestTentacle {
             result
                 .metadata
                 .insert("runtime".to_string(), tool.kind.clone());
+            self.record_tool_permission_metadata(tool, active_grant.as_deref(), &mut result);
             return result;
         }
         if tool.kind != "http" && !path.exists() {
@@ -2157,11 +2187,69 @@ impl ManifestTentacle {
                     .unwrap_or_else(|| OCTOPUS_JSON_CONTRACT.to_string()),
             );
         }
+        self.record_tool_permission_metadata(tool, active_grant.as_deref(), &mut result);
         result.metadata.insert(
             "returncode".to_string(),
             exit_code(&output.status).to_string(),
         );
         result
+    }
+
+    fn authorize_tool<'a>(
+        &'a self,
+        tool: &InstalledToolRef,
+    ) -> Result<Option<&'a CapabilityGrant>, ToolResult> {
+        let Some(permission) = &tool.permission else {
+            return Ok(None);
+        };
+        let grant = self.grants.iter().find(|grant| {
+            grant.status == GrantStatus::Active
+                && grant.provider == permission.provider
+                && grant.scope == permission.scope
+                && permission
+                    .permissions
+                    .iter()
+                    .all(|required| grant.permissions.iter().any(|owned| owned == required))
+        });
+        match grant {
+            Some(grant) => Ok(Some(grant)),
+            None => Err(tool_authorization_result(tool, permission)),
+        }
+    }
+
+    fn record_tool_permission_metadata(
+        &self,
+        tool: &InstalledToolRef,
+        active_grant: Option<&str>,
+        result: &mut ToolResult,
+    ) {
+        let Some(permission) = &tool.permission else {
+            return;
+        };
+        result
+            .metadata
+            .insert("authorization_required".to_string(), "true".to_string());
+        result.metadata.insert(
+            "permission_provider".to_string(),
+            permission.provider.clone(),
+        );
+        result
+            .metadata
+            .insert("permission_scope".to_string(), permission.scope.clone());
+        result.metadata.insert(
+            "required_permissions".to_string(),
+            permission.permissions.join(","),
+        );
+        if let Some(reason) = &permission.reason {
+            result
+                .metadata
+                .insert("permission_reason".to_string(), reason.clone());
+        }
+        if let Some(grant) = active_grant {
+            result
+                .metadata
+                .insert("active_grant".to_string(), grant.to_string());
+        }
     }
 
     fn tool_invocation_json(&self, tool: &InstalledToolRef, need: &Need) -> Result<String, String> {
@@ -2176,6 +2264,7 @@ impl ManifestTentacle {
                 runtime: &tool.kind,
                 entrypoint: &tool.entrypoint,
                 contract: tool.contract.as_deref(),
+                permission: tool.permission.as_ref(),
             },
             tentacle: ToolInvocationTentacle {
                 id: &self.installed.id,
@@ -2260,11 +2349,22 @@ pub struct ToolImplementation {
     pub contract: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ToolPermission {
+    pub provider: String,
+    pub scope: String,
+    pub permissions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ToolMetadata {
     pub id: String,
     pub description: String,
     pub implementation: ToolImplementation,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission: Option<ToolPermission>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -2325,6 +2425,8 @@ pub struct InstalledTool {
     pub entrypoint: String,
     #[serde(default)]
     pub contract: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission: Option<ToolPermission>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -2363,6 +2465,8 @@ pub struct ManifestTool {
     pub description: String,
     pub input: String,
     pub output: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission: Option<ToolPermission>,
     pub implementation: ToolImplementation,
 }
 
@@ -3452,7 +3556,7 @@ fn scaffold_manifest(tentacle_id: &str, runtime: &str, entrypoint: &str) -> serd
                 {
                     "id": "tool_meta",
                     "description": "Tool descriptions, inputs, outputs, and call contracts.",
-                    "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].implementation.contract"]
+                    "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].permission", "tools[].implementation.contract"]
                 },
                 {
                     "id": "runtime_code",
@@ -3843,11 +3947,11 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 ],
             }],
             tools: vec![
-                tool_meta("mcp", "Call an MCP tool through a client adapter.", "mcp", "tentacles/computer-use-agent/tools/mcp.sh"),
-                tool_meta("bash", "Write and run a local shell script.", "shell", "tentacles/computer-use-agent/tools/bash.sh"),
-                tool_meta("screenshot", "Capture the current screen.", "shell", "tentacles/computer-use-agent/tools/screenshot.sh"),
-                tool_meta("open_url", "Open a URL in the local desktop.", "shell", "tentacles/computer-use-agent/tools/open_url.sh"),
-                tool_meta("browser_status", "Inspect local browser availability and current tab metadata.", "shell", "tentacles/computer-use-agent/tools/browser_status.sh"),
+                tool_meta_with_permission("mcp", "Call an MCP tool through a client adapter.", "mcp", "tentacles/computer-use-agent/tools/mcp.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:mcp"], "external tool bridge")),
+                tool_meta_with_permission("bash", "Write and run a local shell script.", "shell", "tentacles/computer-use-agent/tools/bash.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:execute"], "local command execution")),
+                tool_meta_with_permission("screenshot", "Capture the current screen.", "shell", "tentacles/computer-use-agent/tools/screenshot.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:observe"], "screen capture")),
+                tool_meta_with_permission("open_url", "Open a URL in the local desktop.", "shell", "tentacles/computer-use-agent/tools/open_url.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:ui"], "user-visible desktop action")),
+                tool_meta_with_permission("browser_status", "Inspect local browser availability and current tab metadata.", "shell", "tentacles/computer-use-agent/tools/browser_status.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:observe"], "browser tab metadata")),
                 tool_meta("describe_screen", "Return lightweight desktop context.", "shell", "tentacles/computer-use-agent/tools/describe_screen.sh"),
             ],
             evolution: evolution_policy(
@@ -3874,11 +3978,12 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 needs: vec![NeedKind::Execute, NeedKind::Reproduce, NeedKind::Verify],
                 tools: vec!["tentacles/bash-only/tools/write_and_run.sh".to_string()],
             }],
-            tools: vec![tool_meta(
+            tools: vec![tool_meta_with_permission(
                 "write_and_run",
                 "Write stdin to an auditable script and execute it.",
                 "shell",
                 "tentacles/bash-only/tools/write_and_run.sh",
+                tool_permission("octopus", "tool:bash-only", &["tool:execute"], "generated script execution"),
             )],
             evolution: evolution_policy(
                 &["printf 'echo ok\\n' | tentacles/bash-only/tools/write_and_run.sh $(mktemp -d)"],
@@ -3916,6 +4021,7 @@ fn tool_meta(id: &str, description: &str, kind: &str, entrypoint: &str) -> ToolM
             entrypoint: entrypoint.to_string(),
             contract: None,
         },
+        permission: None,
     }
 }
 
@@ -3929,6 +4035,35 @@ fn tool_meta_with_contract(
     let mut meta = tool_meta(id, description, kind, entrypoint);
     meta.implementation.contract = Some(contract.to_string());
     meta
+}
+
+fn tool_meta_with_permission(
+    id: &str,
+    description: &str,
+    kind: &str,
+    entrypoint: &str,
+    permission: ToolPermission,
+) -> ToolMetadata {
+    let mut meta = tool_meta(id, description, kind, entrypoint);
+    meta.permission = Some(permission);
+    meta
+}
+
+fn tool_permission(
+    provider: &str,
+    scope: &str,
+    permissions: &[&str],
+    reason: &str,
+) -> ToolPermission {
+    ToolPermission {
+        provider: provider.to_string(),
+        scope: scope.to_string(),
+        permissions: permissions
+            .iter()
+            .map(|permission| permission.to_string())
+            .collect(),
+        reason: Some(reason.to_string()),
+    }
 }
 
 fn evolution_policy(checks: &[&str], constraints: &[&str]) -> EvolutionPolicy {
@@ -3961,6 +4096,7 @@ fn default_evolution_surfaces() -> Vec<EvolutionSurface> {
                 "tools[].description".to_string(),
                 "tools[].input".to_string(),
                 "tools[].output".to_string(),
+                "tools[].permission".to_string(),
                 "tools[].implementation.contract".to_string(),
             ],
         },
@@ -4195,6 +4331,7 @@ fn installed_tentacle_from_manifest(
             kind: tool.implementation.kind.clone(),
             entrypoint: tool.implementation.entrypoint.clone(),
             contract: tool.implementation.contract.clone(),
+            permission: tool.permission.clone(),
         })
         .collect::<Vec<_>>();
     Ok(InstalledTentacle {
@@ -4455,6 +4592,15 @@ fn evolution_status_score(status: &Status) -> f32 {
     }
 }
 
+fn feed_is_authorization_blocked(feed: &Feed) -> bool {
+    feed.status == Status::Failed
+        && feed
+            .metadata
+            .get("authorization_required")
+            .is_some_and(|value| value == "true")
+        && !feed.metadata.contains_key("active_grant")
+}
+
 fn memory_id_number(id: &str) -> u64 {
     id.strip_prefix('m')
         .and_then(|value| value.parse::<u64>().ok())
@@ -4533,6 +4679,61 @@ fn tool_result_from_json(tool_id: &str, text: &str) -> Option<ToolResult> {
     })
 }
 
+fn tool_authorization_result(tool: &InstalledToolRef, permission: &ToolPermission) -> ToolResult {
+    let permissions = permission.permissions.join(" ");
+    let hint = if permissions.is_empty() {
+        format!("octopus oauth {} {}", permission.provider, permission.scope)
+    } else {
+        format!(
+            "octopus oauth {} {} {}",
+            permission.provider, permission.scope, permissions
+        )
+    };
+    let mut result = ToolResult::failed(format!(
+        "needs_authorization: {} requires {}. run: {}",
+        tool.id,
+        tool_permission_label(Some(permission)),
+        hint
+    ));
+    result.metadata.insert("tool".to_string(), tool.id.clone());
+    result
+        .metadata
+        .insert("authorization_required".to_string(), "true".to_string());
+    result.metadata.insert(
+        "permission_provider".to_string(),
+        permission.provider.clone(),
+    );
+    result
+        .metadata
+        .insert("permission_scope".to_string(), permission.scope.clone());
+    result.metadata.insert(
+        "required_permissions".to_string(),
+        permission.permissions.join(","),
+    );
+    result.metadata.insert("grant_hint".to_string(), hint);
+    if let Some(reason) = &permission.reason {
+        result
+            .metadata
+            .insert("permission_reason".to_string(), reason.clone());
+    }
+    result
+}
+
+fn tool_permission_label(permission: Option<&ToolPermission>) -> String {
+    match permission {
+        Some(permission) if permission.permissions.is_empty() => {
+            format!("{}:{}", permission.provider, permission.scope)
+        }
+        Some(permission) => format!(
+            "{}:{} [{}]",
+            permission.provider,
+            permission.scope,
+            permission.permissions.join(",")
+        ),
+        None => "none".to_string(),
+    }
+}
+
 fn read_args(query: &str) -> Vec<String> {
     let mut args = query
         .split_whitespace()
@@ -4570,6 +4771,31 @@ fn is_browser_observe(query: &str) -> bool {
     let query = query.to_lowercase();
     [
         "browser", "tab", "url", "chrome", "safari", "firefox", "edge", "brave",
+    ]
+    .iter()
+    .any(|word| query.contains(word))
+}
+
+fn is_desktop_execute(query: &str) -> bool {
+    let query = query.to_lowercase();
+    [
+        "screen",
+        "desktop",
+        "window",
+        "browser",
+        "url",
+        "ui",
+        "tab",
+        "chrome",
+        "safari",
+        "firefox",
+        "edge",
+        "brave",
+        "open ",
+        "click",
+        "type",
+        "mcp",
+        "screenshot",
     ]
     .iter()
     .any(|word| query.contains(word))
@@ -4717,6 +4943,32 @@ mod tests {
         harness.feed_one(&Need::new(NeedKind::Verify, "claim"));
 
         assert!(harness.state.routes.score(&NeedKind::Verify, "verifier") > 1.0);
+    }
+
+    #[test]
+    fn router_does_not_penalize_missing_tool_grant() {
+        let mut harness = Harness::new();
+        harness.add_tentacle(Box::new(FunctionTentacle::new(
+            "guarded",
+            vec![NeedKind::Execute],
+            |need| Feed {
+                need: need.clone(),
+                status: Status::Failed,
+                evidence: Vec::new(),
+                summary: "needs_authorization".to_string(),
+                metadata: BTreeMap::from([(
+                    "authorization_required".to_string(),
+                    "true".to_string(),
+                )]),
+            },
+        )));
+
+        harness.feed_one(&Need::new(NeedKind::Execute, "guarded action"));
+
+        assert_eq!(
+            harness.state.routes.score(&NeedKind::Execute, "guarded"),
+            1.0
+        );
     }
 
     #[test]
@@ -5567,6 +5819,7 @@ print(json.dumps({
                 kind: "python".to_string(),
                 entrypoint: script.to_string_lossy().to_string(),
                 contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
+                permission: None,
             }],
             editable: vec!["tools/tool.py".to_string()],
             evolution_surfaces: vec!["runtime_code".to_string()],
@@ -5589,6 +5842,88 @@ print(json.dumps({
             Some("python")
         );
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn manifest_tool_permission_blocks_until_granted() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let dir = std::env::temp_dir()
+                .join(format!("octopus-tool-permission-{}", std::process::id()));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(dir.join("tools")).unwrap();
+            let script = dir.join("tools").join("guarded.sh");
+            fs::write(&script, "#!/bin/sh\nprintf 'guarded:%s\\n' \"$1\"\n").unwrap();
+            let mut permissions = fs::metadata(&script).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&script, permissions).unwrap();
+
+            let permission = ToolPermission {
+                provider: "octopus".to_string(),
+                scope: "tool:guarded".to_string(),
+                permissions: vec!["tool:execute".to_string()],
+                reason: Some("test execution".to_string()),
+            };
+            let installed = InstalledTentacle {
+                id: "guarded".to_string(),
+                name: "Guarded".to_string(),
+                source: dir.join("manifest.json").to_string_lossy().to_string(),
+                brain_kind: "llm".to_string(),
+                brain_prompt: "Execute only after permission.".to_string(),
+                feedback_contract: Some("Return guarded output.".to_string()),
+                runtime_kinds: vec!["shell".to_string()],
+                needs: vec!["execute".to_string()],
+                tools: vec!["guarded:shell:tools/guarded.sh".to_string()],
+                tool_meta: vec![InstalledTool {
+                    id: "guarded".to_string(),
+                    description: "Guarded local execution.".to_string(),
+                    input: "query arg".to_string(),
+                    output: "guarded output".to_string(),
+                    kind: "shell".to_string(),
+                    entrypoint: "tools/guarded.sh".to_string(),
+                    contract: None,
+                    permission: Some(permission.clone()),
+                }],
+                editable: vec!["tools/*".to_string()],
+                evolution_surfaces: vec!["tool_meta".to_string(), "runtime_code".to_string()],
+            };
+
+            let mut blocked = ManifestTentacle::new(installed.clone());
+            let blocked_feed = blocked.feed(&Need::new(NeedKind::Execute, "ok"));
+            assert_eq!(blocked_feed.status, Status::Failed);
+            assert!(blocked_feed.summary.contains("needs_authorization"));
+            assert_eq!(
+                blocked_feed
+                    .metadata
+                    .get("authorization_required")
+                    .map(String::as_str),
+                Some("true")
+            );
+
+            let grant = CapabilityGrant {
+                id: "octopus:tool:guarded".to_string(),
+                provider: "octopus".to_string(),
+                scope: "tool:guarded".to_string(),
+                permissions: vec!["tool:execute".to_string()],
+                status: GrantStatus::Active,
+            };
+            let mut allowed =
+                ManifestTentacle::new_with_llm_and_grants(installed, None, vec![grant.clone()]);
+            let allowed_feed = allowed.feed(&Need::new(NeedKind::Execute, "ok"));
+
+            assert_eq!(allowed_feed.status, Status::Satisfied);
+            assert!(allowed_feed.summary.contains("guarded:ok"));
+            assert_eq!(
+                allowed_feed
+                    .metadata
+                    .get("active_grant")
+                    .map(String::as_str),
+                Some(grant.id.as_str())
+            );
+            let _ = fs::remove_dir_all(dir);
+        }
     }
 
     #[test]
@@ -5897,7 +6232,8 @@ print(json.dumps({
         assert!(!tentacle.supports(&Need::new(NeedKind::Observe, ".")));
         assert!(tentacle.supports(&Need::new(NeedKind::Observe, "describe screen")));
         assert!(tentacle.supports(&Need::new(NeedKind::Observe, "current browser tab")));
-        assert!(tentacle.supports(&Need::new(NeedKind::Execute, "echo ok")));
+        assert!(!tentacle.supports(&Need::new(NeedKind::Execute, "echo ok")));
+        assert!(tentacle.supports(&Need::new(NeedKind::Execute, "open browser url")));
     }
 
     #[test]

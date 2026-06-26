@@ -7,7 +7,7 @@ A tentacle is a runtime-neutral execution unit. Prompt, meta, code, and policy c
 Every manifest declares four evolution surfaces:
 
 - `brain_prompt`: tool-side LLM prompt and feedback contract.
-- `tool_meta`: descriptions, inputs, outputs, and call contracts.
+- `tool_meta`: descriptions, inputs, outputs, permissions, and call contracts.
 - `runtime_code`: executable adapter code in any runtime.
 - `evolution_policy`: checks, constraints, and safe edit boundaries.
 
@@ -43,3 +43,5 @@ Memory lives in `HarnessState` as a heart/beat. It is exposed in catalogs for in
 Shell is only one seed runtime. A tentacle can evolve prompt, metadata, runtime code, or policy into Python, TypeScript, Rust, MCP, HTTP, native tools, or mixed runtimes while the kernel contract stays stable. Unknown runtimes scaffold as manifest-only and become installable after the tentacle adds its executable adapter.
 
 Use `contract: octopus-json-v1` when a tool wants the full Need/tool/tentacle JSON envelope on stdin. Omit it for legacy executable entrypoints.
+
+Use `permission` when a tool needs an explicit grant before execution. Example: `octopus oauth octopus tool:bash-only tool:execute`.

@@ -23,6 +23,12 @@
       "description": "Write stdin to an auditable script and execute it.",
       "input": "script on stdin plus optional workspace root",
       "output": "script output and stored script path",
+      "permission": {
+        "provider": "octopus",
+        "scope": "tool:bash-only",
+        "permissions": ["tool:execute"],
+        "reason": "generated script execution"
+      },
       "implementation": { "kind": "shell", "entrypoint": "tools/write_and_run.sh" }
     }
   ],
@@ -37,7 +43,7 @@
       {
         "id": "tool_meta",
         "description": "Script runner metadata and JSON contract shape.",
-        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].implementation.contract"]
+        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].permission", "tools[].implementation.contract"]
       },
       {
         "id": "runtime_code",

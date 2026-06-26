@@ -37,6 +37,8 @@ octopus install computer-use-agent
 octopus install bash-only
 octopus chat "build a clean-brain agent"
 octopus need observe .
+octopus oauth octopus tool:bash-only tool:execute
+octopus need execute "echo octopus"
 octopus pet
 octopus doctor
 octopus beat 200

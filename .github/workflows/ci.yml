@@ -94,6 +94,12 @@ jobs:
           tmp=$(mktemp -d)
           printf 'echo bash-only-ok\n' | tentacles/bash-only/tools/write_and_run.sh "$tmp"
       - run: |
+          tmp=$(mktemp -d)
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" install bash-only
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" need execute "echo blocked" | grep -q "needs_authorization"
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" oauth octopus tool:bash-only tool:execute
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" need execute "echo allowed" | grep -q "allowed"
+      - run: |
           cargo run -q -p octopus-core -- --state .octopus/json-feed-state.json install json-feed
           cargo run -q -p octopus-core -- --state .octopus/json-feed-state.json need observe README.md | grep -q "json-feed observe"
       - run: |

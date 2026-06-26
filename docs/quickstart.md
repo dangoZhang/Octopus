@@ -29,6 +29,8 @@ octopus --state "$tmp/state.json" install bash-only
 octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
 octopus --state "$tmp/state.json" need observe .
+octopus --state "$tmp/state.json" oauth octopus tool:bash-only tool:execute
+octopus --state "$tmp/state.json" need execute "echo octopus"
 octopus --state "$tmp/state.json" pet
 octopus --state "$tmp/state.json" doctor
 octopus --state "$tmp/state.json" chat "make tools think"
@@ -55,6 +57,15 @@ octopus bridge
 Known runtimes get starter code. Any other runtime gets a manifest and `tools/feed` contract so the tentacle can add its own adapter, MCP bridge, native binary, or remote executor.
 
 `json-feed` is the built-in non-shell seed: Python receives the full `octopus-json-v1` envelope and returns structured feedback.
+
+## Tool Grants
+
+```bash
+octopus oauth octopus tool:bash-only tool:execute
+octopus oauth octopus tool:computer-use-agent tool:observe
+```
+
+Tools can declare `permission` in their manifest. Without a matching grant, Octopus returns `needs_authorization` as Feed and does not run that tool.
 
 ## Optional LLM
 

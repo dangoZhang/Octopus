@@ -23,6 +23,12 @@
       "description": "Call an MCP tool through a client adapter.",
       "input": "server id, tool id, JSON args",
       "output": "MCP call result",
+      "permission": {
+        "provider": "octopus",
+        "scope": "tool:computer-use-agent",
+        "permissions": ["tool:mcp"],
+        "reason": "external tool bridge"
+      },
       "implementation": { "kind": "mcp", "entrypoint": "tools/mcp.sh" }
     },
     {
@@ -30,6 +36,12 @@
       "description": "Write and run a local shell script.",
       "input": "script on stdin",
       "output": "script output and stored script path",
+      "permission": {
+        "provider": "octopus",
+        "scope": "tool:computer-use-agent",
+        "permissions": ["tool:execute"],
+        "reason": "local command execution"
+      },
       "implementation": { "kind": "shell", "entrypoint": "tools/bash.sh" }
     },
     {
@@ -37,6 +49,12 @@
       "description": "Capture the current screen.",
       "input": "output path",
       "output": "image file path",
+      "permission": {
+        "provider": "octopus",
+        "scope": "tool:computer-use-agent",
+        "permissions": ["tool:observe"],
+        "reason": "screen capture"
+      },
       "implementation": { "kind": "shell", "entrypoint": "tools/screenshot.sh" }
     },
     {
@@ -44,6 +62,12 @@
       "description": "Open a URL in the local desktop.",
       "input": "URL",
       "output": "open status",
+      "permission": {
+        "provider": "octopus",
+        "scope": "tool:computer-use-agent",
+        "permissions": ["tool:ui"],
+        "reason": "user-visible desktop action"
+      },
       "implementation": { "kind": "shell", "entrypoint": "tools/open_url.sh" }
     },
     {
@@ -51,6 +75,12 @@
       "description": "Inspect local browser availability and current tab metadata when OS permissions allow it.",
       "input": "none",
       "output": "JSON browser availability, active tabs, opener, and notes",
+      "permission": {
+        "provider": "octopus",
+        "scope": "tool:computer-use-agent",
+        "permissions": ["tool:observe"],
+        "reason": "browser tab metadata"
+      },
       "implementation": { "kind": "shell", "entrypoint": "tools/browser_status.sh" }
     },
     {
@@ -72,7 +102,7 @@
       {
         "id": "tool_meta",
         "description": "Desktop tool descriptions, inputs, outputs, and call contracts.",
-        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].implementation.contract"]
+        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].permission", "tools[].implementation.contract"]
       },
       {
         "id": "runtime_code",

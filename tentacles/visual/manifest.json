@@ -37,7 +37,7 @@
       {
         "id": "tool_meta",
         "description": "Pet renderer metadata and state contract.",
-        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].implementation.contract"]
+        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].permission", "tools[].implementation.contract"]
       },
       {
         "id": "runtime_code",

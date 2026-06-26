@@ -15,6 +15,7 @@ Octopus keeps the non-evolvable base small.
 - `HeartbeatReport`: three-heart pulse for liveness, memory compaction, and route evolution.
 - `StatusReport`: read-only doctor view for hearts, installed tentacles, grants, goal, warnings, and next action.
 - `ManifestTentacle`: installed manifests become feed providers through runtime adapters and return plan metadata for supported needs.
+- `ToolPermission`: optional tool metadata that blocks execution until a matching grant exists.
 - `PlanningTentacle`: tool-side planner that selects tools before execution.
 - `ChatPlanner`: provider-neutral chat adapter for LLM-backed tentacle brains.
 - `SkillManifest` and `TentacleProfile`: installable behavior bundles with brain, tool metadata, implementation pointers, and evolution policy.
@@ -43,7 +44,7 @@ Context boundary: clean-brain LLM context is `Goal + Mem + Need + Feed`; tentacl
 
 `tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Each manifest declares evolution surfaces: `brain_prompt`, `tool_meta`, `runtime_code`, and `evolution_policy`. Agent tool-combo seeds cover SWE repo tools, computer-use tools with browser diagnostics, repo-maintainer tools, and one transparent write-and-run harness. Runtime seeds such as `json-feed` prove the same contract can run beyond shell.
 
-`contract: octopus-json-v1` lets any runtime receive the same Need/tool/tentacle JSON envelope through stdin and return compact text or structured JSON feedback. Legacy executable entrypoints still work.
+`contract: octopus-json-v1` lets any runtime receive the same Need/tool/tentacle JSON envelope through stdin and return compact text or structured JSON feedback. Legacy executable entrypoints still work. Tools can declare `permission`; missing grants return `needs_authorization` before the entrypoint starts.
 
 `scaffold <tentacle> [runtime]` creates a user-owned manifest and schema. Python, Node, shell, and HTTP get starter adapters; any other runtime gets a manifest-only `tools/feed` contract so the tentacle can add its own executable, MCP bridge, native binary, or remote adapter.
 

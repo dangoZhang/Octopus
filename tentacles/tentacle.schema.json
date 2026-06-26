@@ -46,6 +46,18 @@
           "description": { "type": "string" },
           "input": { "type": "string" },
           "output": { "type": "string" },
+          "permission": {
+            "description": "Optional runtime grant required before this tool can execute.",
+            "type": "object",
+            "required": ["provider", "scope", "permissions"],
+            "properties": {
+              "provider": { "type": "string" },
+              "scope": { "type": "string" },
+              "permissions": { "type": "array", "items": { "type": "string" } },
+              "reason": { "type": "string" }
+            },
+            "additionalProperties": false
+          },
           "implementation": {
             "description": "Runtime adapter, current code entrypoint, and optional call contract. kind can be shell, mcp, python, rust, node, wasm, http, native, static-html, or a custom adapter.",
             "type": "object",
