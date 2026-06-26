@@ -98,6 +98,7 @@ Updated: 2026-06-26
 - Added first-class context inspection so the product can prove the brain sees only `Goal/Mem/Need/Feed` while tentacles carry `Need/Tool/Action/Feed`.
 - Added `octopus report` and `--json report` for capability/gap review from current harness state.
 - Added a native HTML Report panel that renders capabilities, gaps, and next actions.
+- Rolled the cleanup/version cadence to `0.0.6` after the context/report/apply product cycle.
 
 ## Remaining Gaps
 
