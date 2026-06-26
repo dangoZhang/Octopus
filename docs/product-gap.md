@@ -18,10 +18,12 @@ Updated: 2026-06-27
 - `provider status` reports chat, tentacle-planning, and harness-evolution LLM layer readiness without a network call.
 - `provider save` writes reusable provider env to `.octopus/llm.env` by default, and bridge overlays that file onto child Octopus commands.
 - The native HTML app can generate or save provider env, render provider layer readiness, and run an explicit live provider check through the bridge.
+- `bootstrap` creates local state files, adapts to the project, installs seed tentacles, pulses heartbeat, and returns a product report plus next commands.
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
+- The native HTML app can run `--json bootstrap` through the bridge from the command panel.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
 - The HTML install guide can expand each check to inspect stdout, stderr, exit code, and recent harness check history.
 - `check <tentacle> [index]` records compact harness history and the HTML install guide can rerun one check at a time.
@@ -106,6 +108,8 @@ Updated: 2026-06-27
 - Rolled the cleanup/version cadence to `0.0.6` after the context, report, apply, and Feed feedback product cycle.
 - Added state-aware route reports in CLI, JSON, and the native app so Feed feedback becomes visible route selection evidence.
 - Added direct human `goal set` in CLI and native app so the clean brain can receive an objective without tool execution.
+- Added `bootstrap` so a new local state can install seed tentacles and get a report in one command.
+- Added native HTML Bootstrap access through the local bridge.
 
 ## Remaining Gaps
 
@@ -115,7 +119,7 @@ Updated: 2026-06-27
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, layer diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
-- Release packaging, examples, and docs now have richer install feedback; non-Rust packaging still needs finish.
+- Release packaging, examples, and docs now have richer install/bootstrap feedback; non-Rust packaging still needs finish.
 - The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context, run structured Feed tests, score Feed traces, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 

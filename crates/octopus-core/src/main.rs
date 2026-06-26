@@ -131,6 +131,19 @@ struct InitReport {
 }
 
 #[derive(serde::Serialize)]
+struct BootstrapReport {
+    state_path: String,
+    state_existed: bool,
+    files: Vec<InitFileReport>,
+    adapt: AdaptReport,
+    seed_tentacles: Vec<String>,
+    installed_tentacles: Vec<String>,
+    skipped_tentacles: Vec<String>,
+    report: ProductReport,
+    next: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
 struct InitFileReport {
     path: String,
     created: bool,
@@ -685,6 +698,22 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_init_report(&report, language);
+            }
+            Ok(())
+        }
+        Some("bootstrap") => {
+            let root = rest
+                .get(1)
+                .map(PathBuf::from)
+                .unwrap_or_else(default_tentacles_root);
+            let report = bootstrap_workspace(state.clone(), root)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_bootstrap_report(&report, language);
             }
             Ok(())
         }
@@ -2517,6 +2546,7 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "chat"
             | "think"
             | "need"
+            | "bootstrap"
             | "pet"
             | "doctor"
             | "report"
@@ -2840,6 +2870,72 @@ fn init_workspace(state_path: PathBuf, tentacles_root: PathBuf) -> Result<InitRe
         files,
         next,
     })
+}
+
+fn bootstrap_workspace(
+    state_path: PathBuf,
+    tentacles_root: PathBuf,
+) -> Result<BootstrapReport, String> {
+    let state_existed = state_path.exists();
+    let cwd = env::current_dir().map_err(|error| error.to_string())?;
+    let mut state = HarnessState::load(&state_path).map_err(|error| error.to_string())?;
+    let files = init_files(&state_path)?;
+    let adapt = state.adapt_environment(&cwd, &tentacles_root);
+    let seed_tentacles = bootstrap_seed_tentacles()
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let mut installed_tentacles = Vec::new();
+    let mut skipped_tentacles = Vec::new();
+    for tentacle_id in &seed_tentacles {
+        let was_installed = state
+            .installed_tentacles
+            .iter()
+            .any(|tentacle| tentacle.id == *tentacle_id);
+        let _ = state.install_profile(tentacle_id);
+        match state.install_manifest(&tentacles_root, tentacle_id) {
+            Ok(tentacle) if !was_installed => installed_tentacles.push(tentacle.id),
+            Ok(_) => {}
+            Err(error) => skipped_tentacles.push(format!("{tentacle_id}: {error}")),
+        }
+    }
+    state.beat(200);
+    state.save(&state_path).map_err(|error| error.to_string())?;
+    let report = product_report(&state, &state_path)?;
+    let state_arg = shell_arg(&state_path.to_string_lossy());
+    let mut next = vec![
+        format!("octopus --state {state_arg} report"),
+        format!("octopus --state {state_arg} context observe ."),
+        format!("octopus --state {state_arg} think swe-agent observe README.md"),
+        format!("octopus --state {state_arg} need observe README.md"),
+        format!("octopus --state {state_arg} check swe-agent"),
+        format!("octopus --state {state_arg} pet"),
+    ];
+    next.extend(report.next.iter().cloned());
+    next.sort();
+    next.dedup();
+    Ok(BootstrapReport {
+        state_path: state_path.to_string_lossy().to_string(),
+        state_existed,
+        files,
+        adapt,
+        seed_tentacles,
+        installed_tentacles,
+        skipped_tentacles,
+        report,
+        next,
+    })
+}
+
+fn bootstrap_seed_tentacles() -> Vec<&'static str> {
+    vec![
+        "swe-agent",
+        "json-feed",
+        "computer-use-agent",
+        "repo-maintainer",
+        "bash-only",
+        "visual",
+    ]
 }
 
 fn init_files(state_path: &Path) -> Result<Vec<InitFileReport>, String> {
@@ -3471,6 +3567,12 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             Some("octopus bridge"),
         ),
         product_capability(
+            "local_bootstrap",
+            "ready",
+            "init, environment adaptation, seed tentacle install, heartbeat, and report in one command",
+            Some("octopus bootstrap"),
+        ),
+        product_capability(
             "harness_apply_review",
             "ready",
             "harness beat recommendations can be granted and written as reviewable apply artifacts",
@@ -3545,7 +3647,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         gaps.push(product_gap(
             "no_installed_tentacles",
             "Needs cannot reach tool-side brains yet",
-            "octopus adapt",
+            format!("octopus{state_args} bootstrap"),
         ));
     }
     if !broken_manifests.is_empty() {
@@ -4647,6 +4749,55 @@ fn print_environment(report: &EnvironmentReport, language: Language) {
     }
 }
 
+fn print_bootstrap_report(report: &BootstrapReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus bootstrap");
+            println!(
+                "state: {} ({})",
+                report.state_path,
+                if report.state_existed {
+                    "existing"
+                } else {
+                    "new"
+                }
+            );
+            println!("seeds: {}", join_or_none(&report.seed_tentacles));
+            println!("installed: {}", join_or_none(&report.installed_tentacles));
+            println!("skipped: {}", join_or_none(&report.skipped_tentacles));
+            println!(
+                "adapted: {}",
+                join_or_none(&report.adapt.installed_tentacles)
+            );
+            println!("capabilities: {}", report.report.capabilities.len());
+            println!("gaps: {}", report.report.gaps.len());
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼启动");
+            println!(
+                "状态: {} ({})",
+                report.state_path,
+                if report.state_existed {
+                    "已有"
+                } else {
+                    "新建"
+                }
+            );
+            println!("种子触手: {}", join_or_none(&report.seed_tentacles));
+            println!("已安装: {}", join_or_none(&report.installed_tentacles));
+            println!("跳过: {}", join_or_none(&report.skipped_tentacles));
+            println!(
+                "已适配: {}",
+                join_or_none(&report.adapt.installed_tentacles)
+            );
+            println!("能力数: {}", report.report.capabilities.len());
+            println!("缺口数: {}", report.report.gaps.len());
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
 fn print_adapt_report(report: &AdaptReport, language: Language) {
     match language {
         Language::En => {
@@ -5267,7 +5418,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -5609,6 +5760,43 @@ mod tests {
         assert!(usage().contains("report"));
         assert!(usage().contains("traces [limit]"));
         assert!(usage().contains("feedback <trace-index>"));
+        assert!(usage().contains("bootstrap [tentacles-root]"));
+    }
+
+    #[test]
+    fn cli_bootstrap_installs_seed_tentacles() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!("octopus-bootstrap-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let state = dir
+            .join(".octopus/state.json")
+            .to_string_lossy()
+            .to_string();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "bootstrap".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&state).unwrap();
+        let installed = restored
+            .installed_tentacles
+            .iter()
+            .map(|tentacle| tentacle.id.as_str())
+            .collect::<Vec<_>>();
+        assert!(installed.contains(&"swe-agent"));
+        assert!(installed.contains(&"json-feed"));
+        assert!(installed.contains(&"computer-use-agent"));
+        assert!(dir.join(".octopus/llm.env.example").exists());
+        assert!(restored.last_pet_event.is_some());
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -5730,6 +5918,12 @@ mod tests {
             "--state".to_string(),
             "state.json".to_string(),
             "traces".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "bootstrap".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),

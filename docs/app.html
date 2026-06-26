@@ -457,6 +457,7 @@
           </div>
           <div class="toolbar">
             <button type="button" data-run="init">Init</button>
+            <button type="button" data-run="bootstrap">Bootstrap</button>
             <button type="button" data-run="install">Install</button>
             <button type="button" id="installGuide">Install Report</button>
             <button type="button" id="runChecks">Run Checks</button>
@@ -545,6 +546,7 @@
           `octopus provider check ${providerPrefix}`,
           "octopus bridge",
           `octopus --state ${shellQuote(state)} init`,
+          `octopus --state ${shellQuote(state)} --json bootstrap`,
           `octopus --state ${shellQuote(state)} install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json check ${tentacle}`,
@@ -573,6 +575,7 @@
         const base = ["--state", state];
         const args = {
           init: [...base, "init"],
+          bootstrap: [...base, "--json", "bootstrap"],
           install: [...base, "install", tentacle],
           goalset: [...base, "goal", "set", goal],
           chat: [...base, "chat", goal],
@@ -1662,6 +1665,9 @@
             parts.forEach(handleStreamEvent);
           }
           if (buffer.trim()) handleStreamEvent(buffer);
+          if (action === "bootstrap") {
+            await runProductReport();
+          }
         } catch (error) {
           $("output").textContent = String(error);
         }

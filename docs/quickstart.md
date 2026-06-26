@@ -22,6 +22,7 @@ octopus providers
 octopus provider status
 octopus --lang zh env
 octopus --state "$tmp/state.json" init
+octopus --state "$tmp/state.json" bootstrap
 octopus --state "$tmp/state.json" install research
 octopus --state "$tmp/state.json" install json-feed
 octopus --state "$tmp/state.json" install swe-agent
@@ -56,7 +57,7 @@ octopus --state "$tmp/state.json" goal
 octopus bridge
 ```
 
-Open `http://127.0.0.1:8765/app.html`. The app can install tentacles, inspect context, run a structured Feed test, show grant/check/next reports, and grant local Octopus tool scopes.
+Open `http://127.0.0.1:8765/app.html`. The app can bootstrap a local state, install tentacles, inspect context, run a structured Feed test, show grant/check/next reports, and grant local Octopus tool scopes.
 The Feed panel can score the latest trace as satisfied, partial, or failed; that feedback updates harness route data and pet color.
 It can also save provider env to `.octopus/llm.env`; bridge reads that file when it runs child Octopus commands.
 
@@ -132,6 +133,7 @@ tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build 
 Octopus demo
 Octopus init
 Provider status
+Octopus bootstrap
 installed swe-agent
 grants:
 checks:

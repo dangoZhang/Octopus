@@ -38,6 +38,9 @@ jobs:
           cargo install --path crates/octopus-core --bin octopus --root "$tmp/root"
           "$tmp/root/bin/octopus" demo dangoZhang/Octopus | grep -q "Octopus demo"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" init | grep -q "Octopus init"
+          "$tmp/root/bin/octopus" --state "$tmp/bootstrap-state.json" bootstrap | grep -q "Octopus bootstrap"
+          "$tmp/root/bin/octopus" --state "$tmp/bootstrap-state.json" --json bootstrap | grep -q '"seed_tentacles"'
+          grep -q swe-agent "$tmp/bootstrap-state.json"
           grep -q installed_tentacles "$tmp/state.json"
           grep -q OCTOPUS_LLM_MANIFEST "$tmp/llm.env.example"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" skills | grep -q "swe-workflow"
@@ -128,6 +131,9 @@ jobs:
       - run: grep -q "providerProfile" docs/app.html
       - run: grep -q "Copy env" docs/app.html
       - run: grep -q "Install Report" docs/app.html
+      - run: grep -q "Bootstrap" docs/app.html
+      - run: grep -q "\"bootstrap\"" docs/app.html
+      - run: grep -q "bootstrap \\[tentacles-root\\]" crates/octopus-core/src/main.rs
       - run: grep -q "runInstallReport" docs/app.html
       - run: grep -q "Run Checks" docs/app.html
       - run: grep -q "runChecks" docs/app.html
