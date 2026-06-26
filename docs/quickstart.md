@@ -118,7 +118,7 @@ tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build 
 
 `evolve` writes `PROPOSAL.md`, `PATCH_CANDIDATES.md`, `PATCH_DRAFTS.md`, `patches/`, `apply/`, optional `.patch` files, and `proposal.json` under `.octopus/evolution/<tentacle>/`. With `OCTOPUS_LLM_EVOLVE=1`, LLM candidates may include a provider-assisted patch draft for review. `evolve recommend` uses previous `evolve score` outcomes to pick the next apply plan.
 
-`beat 200` can now do the same from check history: failed or partial checks for a known tentacle become a harness-beat recommendation with an apply plan. In `docs/app.html`, the Harness Beat panel shows the candidate, plan path, apply-plan preview, next action, and review buttons that write `evolve score` feedback.
+`beat 200` can now do the same from check history: failed or partial checks for a known tentacle become a harness-beat recommendation with an apply plan. In `docs/app.html`, the Harness Beat panel shows the candidate, plan path, apply-plan preview, next action, Harness Grant, Write Apply, and review buttons that write `evolve score` feedback.
 
 ## Expected Signals
 

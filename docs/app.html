@@ -997,6 +997,7 @@
         }
         if (data.evolution_tentacle && data.evolution_candidate) {
           section.appendChild(evolutionFeedbackControls(data));
+          section.appendChild(evolutionApplyControls(data));
         }
         return section;
       }
@@ -1031,6 +1032,60 @@
         });
         wrap.append(noteLabel, buttons);
         return wrap;
+      }
+
+      function evolutionApplyControls(data) {
+        const wrap = document.createElement("div");
+        wrap.className = "toolbar";
+        const grant = document.createElement("button");
+        grant.type = "button";
+        grant.textContent = "Grant Harness";
+        grant.addEventListener("click", () => grantHarnessWrite(data));
+        const apply = document.createElement("button");
+        apply.type = "button";
+        apply.textContent = "Write Apply";
+        apply.addEventListener("click", () => applyEvolution(data));
+        wrap.append(grant, apply);
+        return wrap;
+      }
+
+      async function grantHarnessWrite(data) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        try {
+          const grant = await runBridgeJson([
+            "--state",
+            state,
+            "--json",
+            "oauth",
+            "octopus",
+            `evolve:${data.evolution_tentacle}`,
+            "harness:write",
+          ]);
+          $("output").textContent = JSON.stringify(grant, null, 2);
+          await runBeat(false);
+        } catch (error) {
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function applyEvolution(data) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        try {
+          const result = await runBridgeJson([
+            "--state",
+            state,
+            "--json",
+            "evolve",
+            "apply",
+            data.evolution_tentacle,
+            data.evolution_candidate,
+            data.evolution_source_summary || "apply harness beat recommendation",
+          ]);
+          $("output").textContent = JSON.stringify(result, null, 2);
+          await runBeat(false);
+        } catch (error) {
+          $("output").textContent = String(error);
+        }
       }
 
       async function scoreEvolution(data, status, summary) {

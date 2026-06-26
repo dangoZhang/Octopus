@@ -147,6 +147,10 @@ jobs:
       - run: grep -q "evolution_score_target" docs/app.html
       - run: grep -q "Apply plan" docs/app.html
       - run: grep -q "scoreEvolution" docs/app.html
+      - run: grep -q "Grant Harness" docs/app.html
+      - run: grep -q "Write Apply" docs/app.html
+      - run: grep -q "grantHarnessWrite" docs/app.html
+      - run: grep -q "applyEvolution" docs/app.html
       - run: grep -q "\"evolve\"" docs/app.html
       - run: grep -q "\"score\"" docs/app.html
       - run: grep -q "/api/stream" docs/app.html

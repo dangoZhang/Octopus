@@ -2381,23 +2381,34 @@ fn bridge_evolve_allowed(args: &[String]) -> bool {
     let Some(index) = bridge_command_index(args) else {
         return false;
     };
-    if args.get(index + 1).map(String::as_str) != Some("score") {
-        return false;
+    match args.get(index + 1).map(String::as_str) {
+        Some("score") => {
+            let Some(tentacle) = args.get(index + 2) else {
+                return false;
+            };
+            let Some(candidate) = args.get(index + 3) else {
+                return false;
+            };
+            let Some(status) = args.get(index + 4) else {
+                return false;
+            };
+            bridge_seed_tentacle(tentacle)
+                && bridge_safe_candidate(candidate)
+                && parse_status(status).is_ok_and(|status| {
+                    matches!(status, Status::Satisfied | Status::Partial | Status::Failed)
+                })
+        }
+        Some("apply") => {
+            let Some(tentacle) = args.get(index + 2) else {
+                return false;
+            };
+            let Some(candidate) = args.get(index + 3) else {
+                return false;
+            };
+            bridge_seed_tentacle(tentacle) && bridge_safe_candidate(candidate)
+        }
+        _ => false,
     }
-    let Some(tentacle) = args.get(index + 2) else {
-        return false;
-    };
-    let Some(candidate) = args.get(index + 3) else {
-        return false;
-    };
-    let Some(status) = args.get(index + 4) else {
-        return false;
-    };
-    bridge_seed_tentacle(tentacle)
-        && bridge_safe_candidate(candidate)
-        && parse_status(status).is_ok_and(|status| {
-            matches!(status, Status::Satisfied | Status::Partial | Status::Failed)
-        })
 }
 
 fn bridge_provider_allowed(args: &[String]) -> bool {
@@ -2469,18 +2480,30 @@ fn bridge_oauth_allowed(args: &[String]) -> bool {
     let Some(index) = bridge_command_index(args) else {
         return false;
     };
-    args.get(index).is_some_and(|command| command == "oauth")
-        && args
+    if args.get(index).is_none_or(|command| command != "oauth")
+        || args
             .get(index + 1)
-            .is_some_and(|provider| provider == "octopus")
+            .is_none_or(|provider| provider != "octopus")
+    {
+        return false;
+    }
+    let Some(scope) = args.get(index + 2) else {
+        return false;
+    };
+    if scope.starts_with("tool:") {
+        return args.get(index + 3).is_some()
+            && args
+                .iter()
+                .skip(index + 3)
+                .all(|permission| permission.starts_with("tool:"));
+    }
+    scope
+        .strip_prefix("evolve:")
+        .is_some_and(bridge_seed_tentacle)
+        && args.len() == index + 4
         && args
-            .get(index + 2)
-            .is_some_and(|scope| scope.starts_with("tool:"))
-        && args.get(index + 3).is_some()
-        && args
-            .iter()
-            .skip(index + 3)
-            .all(|permission| permission.starts_with("tool:"))
+            .get(index + 3)
+            .is_some_and(|permission| permission == "harness:write")
 }
 
 fn bridge_command_name(args: &[String]) -> Option<&str> {
@@ -5024,6 +5047,14 @@ mod tests {
         assert!(bridge_command_allowed(&[
             "--state".to_string(),
             "state.json".to_string(),
+            "oauth".to_string(),
+            "octopus".to_string(),
+            "evolve:swe-agent".to_string(),
+            "harness:write".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
             "--json".to_string(),
             "evolve".to_string(),
             "score".to_string(),
@@ -5032,13 +5063,39 @@ mod tests {
             "partial".to_string(),
             "reviewed from app".to_string()
         ]));
-        assert!(!bridge_command_allowed(&[
+        assert!(bridge_command_allowed(&[
             "--state".to_string(),
             "state.json".to_string(),
             "evolve".to_string(),
             "apply".to_string(),
             "swe-agent".to_string(),
             "03-runtime-code".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "evolve".to_string(),
+            "apply".to_string(),
+            "swe-agent".to_string(),
+            "03-runtime-code".to_string(),
+            "apply harness beat recommendation".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "evolve".to_string(),
+            "apply".to_string(),
+            "custom-feed".to_string(),
+            "03-runtime-code".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "evolve".to_string(),
+            "apply".to_string(),
+            "swe-agent".to_string(),
+            "../patch".to_string()
         ]));
         assert!(!bridge_command_allowed(&[
             "--state".to_string(),
@@ -5084,6 +5141,40 @@ mod tests {
             "octopus".to_string(),
             "tool:computer-use-agent".to_string(),
             "harness:write".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "oauth".to_string(),
+            "octopus".to_string(),
+            "evolve:swe-agent".to_string(),
+            "harness:write".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "oauth".to_string(),
+            "octopus".to_string(),
+            "evolve:custom-feed".to_string(),
+            "harness:write".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "oauth".to_string(),
+            "octopus".to_string(),
+            "evolve:swe-agent".to_string(),
+            "harness:read".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "oauth".to_string(),
+            "octopus".to_string(),
+            "evolve:swe-agent".to_string(),
+            "harness:write".to_string(),
+            "tool:execute".to_string()
         ]));
         assert!(!bridge_command_allowed(&[
             "--state".to_string(),
