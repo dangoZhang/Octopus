@@ -410,6 +410,14 @@
           <label>Provider prefix
             <input id="providerPrefix" value="OCTOPUS_LLM" />
           </label>
+          <label>Provider profile
+            <select id="providerProfile">
+              <option value="openai">openai</option>
+              <option value="local">local</option>
+              <option value="openrouter">openrouter</option>
+              <option value="custom">custom</option>
+            </select>
+          </label>
           <div class="toolbar">
             <button class="primary" type="button" id="build">Build</button>
             <button type="button" id="copy">Copy</button>
@@ -442,6 +450,7 @@
             <button type="button" data-run="need">Need</button>
             <button type="button" data-run="traces">Trace</button>
             <button type="button" data-run="provider">Provider</button>
+            <button type="button" id="providerEnv">Provider Env</button>
             <button type="button" id="providerCheck">Provider Check</button>
             <button type="button" data-run="pet">Pet</button>
             <button type="button" data-run="doctor">Doctor</button>
@@ -485,10 +494,12 @@
         const target = $("target").value.trim() || ".";
         const tentacle = $("tentacle").value;
         const providerPrefix = $("providerPrefix").value.trim() || "OCTOPUS_LLM";
+        const providerProfile = $("providerProfile").value;
         $("commands").textContent = [
           "cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus --force",
           "octopus providers",
           "octopus provider status",
+          `octopus provider ${providerProfile} ${providerPrefix} > .octopus/llm.env`,
           `octopus provider check ${providerPrefix}`,
           "octopus bridge",
           `octopus --state ${shellQuote(state)} init`,
@@ -603,6 +614,20 @@
         }
       }
 
+      async function runProviderEnv() {
+        const prefix = $("providerPrefix").value.trim() || "OCTOPUS_LLM";
+        const profile = $("providerProfile").value;
+        $("providerReport").textContent = "generating...";
+        try {
+          const report = await runBridgeJson(["--json", "provider", profile, prefix]);
+          renderProviderEnvReport(report);
+          $("output").textContent = report.shell || JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("providerReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runProviderCheck() {
         const prefix = $("providerPrefix").value.trim() || "OCTOPUS_LLM";
         $("providerReport").textContent = "checking...";
@@ -690,6 +715,31 @@
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
+      function renderProviderEnvReport(report) {
+        const root = $("providerReport");
+        root.className = "stack";
+        root.textContent = "";
+        root.appendChild(providerEnvSummary(report));
+        root.appendChild(reportList("Notes", (report.profile && report.profile.notes) || [], textItem));
+        const details = document.createElement("details");
+        const summary = document.createElement("summary");
+        summary.textContent = "Shell env";
+        const pre = document.createElement("pre");
+        pre.className = "check-output";
+        const code = document.createElement("code");
+        code.textContent = report.shell || (report.exports || []).join("\n");
+        pre.appendChild(code);
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.textContent = "Copy env";
+        copy.addEventListener("click", async () => {
+          await navigator.clipboard.writeText(code.textContent);
+        });
+        details.append(summary, pre);
+        details.appendChild(copy);
+        root.appendChild(details);
+      }
+
       function providerLayerItem(layer) {
         const item = document.createElement("li");
         const badge = document.createElement("span");
@@ -721,6 +771,29 @@
           ["Base URL", report.base_url || "unknown"],
           ["API key", report.api_key_present ? "present" : "empty"],
           ["Reply", report.content || "none"],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        return grid;
+      }
+
+      function providerEnvSummary(report) {
+        const profile = report.profile || {};
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Profile", profile.id || "unknown"],
+          ["Prefix", report.prefix || "unknown"],
+          ["Model", profile.model || "unknown"],
+          ["Base URL", profile.base_url || "unknown"],
+          ["Key env", profile.key_env || "empty"],
         ].forEach(([label, value]) => {
           const metric = document.createElement("div");
           metric.className = "metric";
@@ -1063,6 +1136,7 @@
         $("tentacle").value = "swe-agent";
         $("bridge").value = defaultBridge();
         $("providerPrefix").value = "OCTOPUS_LLM";
+        $("providerProfile").value = "openai";
         $("output").textContent = "";
         $("installReport").className = "metric";
         $("installReport").innerHTML = "<span>No report yet.</span>";
@@ -1078,6 +1152,7 @@
       });
       $("installGuide").addEventListener("click", runInstallReport);
       $("runChecks").addEventListener("click", runChecks);
+      $("providerEnv").addEventListener("click", runProviderEnv);
       $("providerCheck").addEventListener("click", runProviderCheck);
       document.querySelectorAll("[data-state]").forEach((button) => {
         button.addEventListener("click", () => render(button.dataset.state));
@@ -1085,7 +1160,7 @@
       document.querySelectorAll("[data-run]").forEach((button) => {
         button.addEventListener("click", () => runBridge(button.dataset.run));
       });
-      ["state", "goal", "need", "target", "tentacle", "bridge", "providerPrefix"].forEach((id) => {
+      ["state", "goal", "need", "target", "tentacle", "bridge", "providerPrefix", "providerProfile"].forEach((id) => {
         $(id).addEventListener("input", () => {
           currentInstallReport = null;
           currentCheckReport = null;

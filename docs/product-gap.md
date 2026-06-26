@@ -16,7 +16,7 @@ Updated: 2026-06-26
 - LLM adapters support OpenAI-compatible providers for chat goal refinement, manifest tool planning, and harness evolution candidate generation.
 - `providers` and `provider <name> [prefix]` expose reusable LLM profile setup for cloud, local, router, and custom endpoints.
 - `provider status` reports chat, tentacle-planning, and harness-evolution LLM layer readiness without a network call.
-- The native HTML app renders provider layer readiness and can run an explicit live provider check through the bridge.
+- The native HTML app can generate provider env, render provider layer readiness, and run an explicit live provider check through the bridge.
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
@@ -84,6 +84,7 @@ Updated: 2026-06-26
 - Added bridge-limited Harness Beat review buttons so accepted, partial, or rejected recommendations write `evolve score` feedback.
 - Rolled the cleanup/version cadence to `0.0.5` after the harness-beat evolution/review product cycle.
 - Added a native HTML provider panel for structured `provider status` and explicit `provider check`.
+- Added native HTML provider profile/env generation with a copyable shell env block.
 
 ## Remaining Gaps
 
@@ -91,9 +92,9 @@ Updated: 2026-06-26
 - LLM evolution can generate candidates and provider-assisted patch drafts from manifest surfaces, scored outcomes, recent Feed traces, and check history; local candidates now also target traced or failing runtime files, and patch writes stay review/grant-bound.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
-- Provider profiles now include CLI and HTML layer diagnostics plus live validation; provider-specific edge cases still need real-machine feedback.
+- Provider profiles now include CLI/HTML env generation, layer diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
 - Release packaging, examples, and docs now have richer install feedback; non-Rust packaging still needs finish.
-- The HTML app can run, stream, inspect provider readiness, check a live provider, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show harness-beat evolution recommendations with apply-plan previews, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, generate provider env, inspect provider readiness, check a live provider, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show harness-beat evolution recommendations with apply-plan previews, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill

@@ -113,9 +113,14 @@ jobs:
       - run: grep -q "data-run=\"traces\"" docs/app.html
       - run: grep -q "data-run=\"provider\"" docs/app.html
       - run: grep -q "Provider Check" docs/app.html
+      - run: grep -q "Provider Env" docs/app.html
       - run: grep -q "runProviderStatus" docs/app.html
+      - run: grep -q "runProviderEnv" docs/app.html
       - run: grep -q "renderProviderStatusReport" docs/app.html
+      - run: grep -q "renderProviderEnvReport" docs/app.html
       - run: grep -q "providerPrefix" docs/app.html
+      - run: grep -q "providerProfile" docs/app.html
+      - run: grep -q "Copy env" docs/app.html
       - run: grep -q "Install Report" docs/app.html
       - run: grep -q "runInstallReport" docs/app.html
       - run: grep -q "Run Checks" docs/app.html

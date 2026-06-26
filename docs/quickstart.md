@@ -99,7 +99,7 @@ octopus provider local OCTOPUS_LOCAL
 octopus doctor
 ```
 
-The native app can show the same provider layers and run an explicit provider check from the Provider panel.
+The native app can generate provider env, show the same provider layers, and run an explicit provider check from the Provider panel.
 
 ## Self-Iteration
 
