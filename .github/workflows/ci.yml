@@ -122,6 +122,9 @@ jobs:
       - run: grep -q "checkRunButton" docs/app.html
       - run: grep -q "checkHistoryItem" docs/app.html
       - run: grep -q "check_history" docs/app.html
+      - run: grep -q "Harness Beat" docs/app.html
+      - run: grep -q "renderBeatReport" docs/app.html
+      - run: grep -q "evolution_candidate" docs/app.html
       - run: grep -q "/api/stream" docs/app.html
       - run: grep -q "/api/run" docs/architecture.md
       - run: cargo run -q -p octopus-core -- 2>&1 | grep -q "bridge \\[addr\\]"

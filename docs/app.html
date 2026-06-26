@@ -227,6 +227,11 @@
         padding-top: 14px;
       }
 
+      .beat-report {
+        border-top: 1px solid var(--line);
+        padding-top: 14px;
+      }
+
       .report-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -431,6 +436,10 @@
             <h2>Install Report</h2>
             <div id="installReport" class="metric"><span>No report yet.</span></div>
           </div>
+          <div class="beat-report stack">
+            <h2>Harness Beat</h2>
+            <div id="beatReport" class="metric"><span>No beat yet.</span></div>
+          </div>
         </section>
       </div>
     </main>
@@ -442,6 +451,7 @@
       let currentPetState = "harness";
       let currentInstallReport = null;
       let currentCheckReport = null;
+      let currentBeatReport = null;
 
       function render(stateName = "harness") {
         currentPetState = stateName;
@@ -536,6 +546,20 @@
         }
       }
 
+      async function runBeat() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        $("beatReport").textContent = "loading...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "beat", "200"]);
+          currentBeatReport = report;
+          renderBeatReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("beatReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runSingleCheck(index) {
         if (!currentInstallReport || currentInstallReport.id !== $("tentacle").value) {
           await runInstallReport();
@@ -571,6 +595,72 @@
         root.appendChild(reportList("Checks", report.checks || [], checkItem));
         root.appendChild(reportList("History", checkHistory(report), checkHistoryItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function renderBeatReport(report) {
+        const root = $("beatReport");
+        root.className = "stack";
+        root.textContent = "";
+        const beats = report.beats || [];
+        root.appendChild(reportList("Hearts", beats, beatItem));
+        const harness = harnessBeat(report);
+        if (harness && harness.data && harness.data.evolution_candidate) {
+          root.appendChild(beatEvolutionItem(harness));
+        } else {
+          const empty = document.createElement("div");
+          empty.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = "Evolution";
+          const span = document.createElement("span");
+          span.textContent = "none";
+          empty.append(strong, span);
+          root.appendChild(empty);
+        }
+      }
+
+      function beatItem(beat) {
+        const item = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = beat.changed ? "badge ok" : "badge";
+        badge.textContent = beat.changed ? "changed" : "idle";
+        const command = document.createElement("span");
+        command.className = "check-command";
+        command.textContent = `${beat.name}: ${beat.summary}`;
+        item.append(badge, command);
+        return item;
+      }
+
+      function harnessBeat(report) {
+        return (report.beats || []).find((beat) => beat.name === "harness");
+      }
+
+      function beatEvolutionItem(beat) {
+        const data = beat.data || {};
+        const section = document.createElement("section");
+        section.className = "stack";
+        const heading = document.createElement("h2");
+        heading.textContent = "Evolution";
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Tentacle", data.evolution_tentacle || "unknown"],
+          ["Candidate", data.evolution_candidate || "unknown"],
+          ["Status", data.evolution_status || "unknown"],
+          ["Source", data.evolution_source_check ? `check #${data.evolution_source_check}` : "check"],
+          ["Plan", data.evolution_plan || "none"],
+          ["Next", data.evolution_next || "review plan"],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        section.append(heading, grid);
+        return section;
       }
 
       function reportSummary(report) {
@@ -724,6 +814,10 @@
       }
 
       async function runBridge(action) {
+        if (action === "beat") {
+          await runBeat();
+          return;
+        }
         const args = bridgeArgs(action);
         if (!args) return;
         const base = ($("bridge").value.trim() || defaultBridge()).replace(/\/$/, "");
@@ -788,8 +882,11 @@
         $("output").textContent = "";
         $("installReport").className = "metric";
         $("installReport").innerHTML = "<span>No report yet.</span>";
+        $("beatReport").className = "metric";
+        $("beatReport").innerHTML = "<span>No beat yet.</span>";
         currentInstallReport = null;
         currentCheckReport = null;
+        currentBeatReport = null;
         render();
       });
       $("installGuide").addEventListener("click", runInstallReport);
@@ -804,6 +901,9 @@
         $(id).addEventListener("input", () => {
           currentInstallReport = null;
           currentCheckReport = null;
+          currentBeatReport = null;
+          $("beatReport").className = "metric";
+          $("beatReport").innerHTML = "<span>No beat yet.</span>";
           render(currentPetState);
         });
       });

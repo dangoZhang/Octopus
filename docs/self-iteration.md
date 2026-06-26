@@ -60,7 +60,7 @@ octopus evolve recommend swe-agent "continue from scored feedback"
 
 The draft lands under `.octopus/evolution/<tentacle>/` with `PROPOSAL.md`, `PATCH_CANDIDATES.md`, `PATCH_DRAFTS.md`, per-candidate files under `patches/`, and `proposal.json`. The proposal includes recent Feed traces and check history for that tentacle, so harness evolution can use real execution feedback. Runtime-code candidates point at the concrete traced or failing tool entrypoint when one is available. Patch candidates, drafts, and apply plans include a `feedback focus` block; LLM-generated candidates can also carry a provider-assisted unified diff for the declared target. `evolve recommend` uses scored outcomes plus matching check history to choose the next candidate and write an apply plan. `evolve apply` writes an apply plan under `apply/`; it stays in `needs_authorization` until the matching `octopus:evolve:<tentacle>` grant has `harness:write`, then writes a reviewable `.patch` file without applying it.
 
-`beat 200` also feeds this loop. If recent check history has a failed or partial record for a known tentacle, the harness beat writes the proposal, recommendation, and apply plan automatically and prints the next grant or apply command.
+`beat 200` also feeds this loop. If recent check history has a failed or partial record for a known tentacle, the harness beat writes the proposal, recommendation, and apply plan automatically and prints the next grant or apply command. The native HTML app shows the same candidate and next action in its Harness Beat panel.
 
 ## Guardrails
 

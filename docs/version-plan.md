@@ -26,6 +26,6 @@ Real-machine test gate for `0.1.0` and later tags:
 
 Last cleanup/version correction: `0.0.4` on 2026-06-26. Scope: install reports, bridge-backed grants, install check status/output, single-check reruns, docs/CI alignment; no tag cut.
 
-Product commits toward `0.0.5`: 5/8.
+Product commits toward `0.0.5`: 6/8.
 
 Next planned cleanup/version commit: `0.0.5`.
