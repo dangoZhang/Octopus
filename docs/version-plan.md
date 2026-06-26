@@ -1,6 +1,6 @@
 # Version Plan
 
-Current version: `0.1.0`.
+Current version: `0.1.1`.
 
 Cadence from this plan forward:
 
@@ -23,4 +23,6 @@ Real-machine test gate for tags after `0.1.0`:
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
-Next planned cleanup/version commit: `0.1.1`.
+Last cleanup/version commit: `0.1.1` on 2026-06-26. Scope: pet events, LLM harness evolution, docs/CI alignment.
+
+Next planned cleanup/version commit: `0.1.2`.
