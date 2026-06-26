@@ -81,6 +81,7 @@ Updated: 2026-06-26
 - Added harness-beat evolution recommendations so `beat` can write the next apply plan from failed or partial check history.
 - Added a native HTML harness-beat panel that renders heartbeat data, evolution candidate, plan path, and next action.
 - Added bridge-limited Harness Beat review buttons so accepted, partial, or rejected recommendations write `evolve score` feedback.
+- Rolled the cleanup/version cadence to `0.0.5` after the harness-beat evolution/review product cycle.
 
 ## Remaining Gaps
 

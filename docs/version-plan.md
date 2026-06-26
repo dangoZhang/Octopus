@@ -1,6 +1,6 @@
 # Version Plan
 
-Current version: `0.0.4`.
+Current version: `0.0.5`.
 
 Cadence from this plan forward:
 
@@ -24,8 +24,8 @@ Real-machine test gate for `0.1.0` and later tags:
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
-Last cleanup/version correction: `0.0.4` on 2026-06-26. Scope: install reports, bridge-backed grants, install check status/output, single-check reruns, docs/CI alignment; no tag cut.
+Last cleanup/version correction: `0.0.5` on 2026-06-26. Scope: harness-beat evolution recommendations, apply-plan previews, recommendation scoring feedback, bridge allowlist, docs/CI alignment; no tag cut.
 
-Product commits toward `0.0.5`: 8/8.
+Product commits toward `0.0.6`: 0/8.
 
-Next planned cleanup/version commit: `0.0.5`.
+Next planned cleanup/version commit: `0.0.6`.
