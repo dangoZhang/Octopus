@@ -106,12 +106,13 @@ jobs:
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json need observe . > "$tmp/observe.json"
           grep -q '"status": "satisfied"' "$tmp/observe.json"
           grep -q '"plan"' "$tmp/observe.json"
-          cargo run -q -p octopus-core -- --state "$tmp/state.json" pet | grep -q "state: harness"
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" pet | grep -q "state: success"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" doctor | grep -q "Octopus doctor"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json doctor | grep -q '"llm"'
           cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build octopus"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" beat 200
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" pet | grep -q "state: harness"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" goal
           cargo run -q -p octopus-core -- --state "$tmp/state.json" self-iterate dangoZhang/Octopus
           cargo run -q -p octopus-core -- --state "$tmp/state.json" oauth github dangoZhang/Octopus
