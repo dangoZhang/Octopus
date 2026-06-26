@@ -451,6 +451,7 @@
             <button type="button" data-run="traces">Trace</button>
             <button type="button" data-run="provider">Provider</button>
             <button type="button" id="providerEnv">Provider Env</button>
+            <button type="button" id="providerSave">Provider Save</button>
             <button type="button" id="providerCheck">Provider Check</button>
             <button type="button" data-run="pet">Pet</button>
             <button type="button" data-run="doctor">Doctor</button>
@@ -499,7 +500,7 @@
           "cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus --force",
           "octopus providers",
           "octopus provider status",
-          `octopus provider ${providerProfile} ${providerPrefix} > .octopus/llm.env`,
+          `octopus provider save ${providerProfile} ${providerPrefix}`,
           `octopus provider check ${providerPrefix}`,
           "octopus bridge",
           `octopus --state ${shellQuote(state)} init`,
@@ -628,6 +629,23 @@
         }
       }
 
+      async function runProviderSave() {
+        const prefix = $("providerPrefix").value.trim() || "OCTOPUS_LLM";
+        const profile = $("providerProfile").value;
+        $("providerReport").textContent = "saving...";
+        try {
+          const report = await runBridgeJson(["--json", "provider", "save", profile, prefix]);
+          renderProviderSavedEnvReport(report);
+          $("output").textContent = [
+            `saved ${report.path || ".octopus/llm.env"}`,
+            report.env && report.env.shell ? report.env.shell : JSON.stringify(report, null, 2),
+          ].filter(Boolean).join("\n\n");
+        } catch (error) {
+          $("providerReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runProviderCheck() {
         const prefix = $("providerPrefix").value.trim() || "OCTOPUS_LLM";
         $("providerReport").textContent = "checking...";
@@ -721,6 +739,21 @@
         root.textContent = "";
         root.appendChild(providerEnvSummary(report));
         root.appendChild(reportList("Notes", (report.profile && report.profile.notes) || [], textItem));
+        root.appendChild(providerEnvShellDetails(report));
+      }
+
+      function renderProviderSavedEnvReport(report) {
+        const root = $("providerReport");
+        root.className = "stack";
+        root.textContent = "";
+        const env = report.env || {};
+        root.appendChild(providerEnvSummary(env));
+        root.appendChild(reportList("Saved", [report.path || ".octopus/llm.env"], textItem));
+        root.appendChild(reportList("Next", report.next || [], textItem));
+        root.appendChild(providerEnvShellDetails(env));
+      }
+
+      function providerEnvShellDetails(report) {
         const details = document.createElement("details");
         const summary = document.createElement("summary");
         summary.textContent = "Shell env";
@@ -737,7 +770,7 @@
         });
         details.append(summary, pre);
         details.appendChild(copy);
-        root.appendChild(details);
+        return details;
       }
 
       function providerLayerItem(layer) {
@@ -1153,6 +1186,7 @@
       $("installGuide").addEventListener("click", runInstallReport);
       $("runChecks").addEventListener("click", runChecks);
       $("providerEnv").addEventListener("click", runProviderEnv);
+      $("providerSave").addEventListener("click", runProviderSave);
       $("providerCheck").addEventListener("click", runProviderCheck);
       document.querySelectorAll("[data-state]").forEach((button) => {
         button.addEventListener("click", () => render(button.dataset.state));

@@ -230,6 +230,13 @@ struct ProviderEnvReport {
 }
 
 #[derive(Debug, serde::Serialize)]
+struct ProviderSavedEnvReport {
+    path: String,
+    env: ProviderEnvReport,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
 struct ProviderCheckReport {
     ok: bool,
     prefix: String,
@@ -262,6 +269,8 @@ struct ProviderLayerStatus {
     check_command: String,
     message: String,
 }
+
+const DEFAULT_PROVIDER_ENV_PATH: &str = ".octopus/llm.env";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Language {
@@ -506,6 +515,26 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     );
                 } else {
                     print_provider_status(&report, language);
+                }
+                return Ok(());
+            }
+            if rest.get(1).map(String::as_str) == Some("save") {
+                let profile_id = rest
+                    .get(2)
+                    .ok_or_else(|| "provider save requires a profile id".to_string())?;
+                let prefix = rest.get(3).map(String::as_str).unwrap_or("OCTOPUS_LLM");
+                let path = rest
+                    .get(4)
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from(DEFAULT_PROVIDER_ENV_PATH));
+                let report = save_provider_env_report(profile_id, prefix, &path)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_provider_saved_env(&report, language);
                 }
                 return Ok(());
             }
@@ -1651,6 +1680,29 @@ fn provider_env_report(profile_id: &str, prefix: &str) -> Result<ProviderEnvRepo
     })
 }
 
+fn save_provider_env_report(
+    profile_id: &str,
+    prefix: &str,
+    path: &Path,
+) -> Result<ProviderSavedEnvReport, String> {
+    let env = provider_env_report(profile_id, prefix)?;
+    if let Some(parent) = path.parent().filter(|value| !value.as_os_str().is_empty()) {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    fs::write(path, format!("{}\n", env.shell)).map_err(|error| error.to_string())?;
+    let path = path.to_string_lossy().to_string();
+    let prefix = env.prefix.clone();
+    Ok(ProviderSavedEnvReport {
+        path: path.clone(),
+        env,
+        next: vec![
+            format!("source {path}"),
+            "octopus provider status".to_string(),
+            format!("octopus provider check {prefix}"),
+        ],
+    })
+}
+
 fn provider_check_report(prefix: &str, message: &str) -> Result<ProviderCheckReport, String> {
     if !valid_env_prefix(prefix) {
         return Err(format!(
@@ -1687,7 +1739,7 @@ fn provider_check_report(prefix: &str, message: &str) -> Result<ProviderCheckRep
 
 fn provider_check_error(prefix: &str, error: &str) -> String {
     format!(
-        "provider check failed for {prefix}: {error}\nnext: octopus providers; octopus provider openai > .octopus/llm.env; source .octopus/llm.env; octopus provider check {prefix}"
+        "provider check failed for {prefix}: {error}\nnext: octopus providers; octopus provider save openai; source .octopus/llm.env; octopus provider check {prefix}"
     )
 }
 
@@ -1717,7 +1769,7 @@ fn provider_status_report() -> ProviderStatusReport {
     ];
     let mut next = vec!["octopus providers".to_string()];
     if layers.iter().any(|layer| !layer.configured) {
-        next.push("octopus provider openai > .octopus/llm.env".to_string());
+        next.push("octopus provider save openai".to_string());
         next.push("source .octopus/llm.env".to_string());
     }
     for layer in &layers {
@@ -1823,6 +1875,16 @@ fn print_provider_env(report: &ProviderEnvReport, language: Language) {
         }
     }
     println!("{}", report.shell);
+}
+
+fn print_provider_saved_env(report: &ProviderSavedEnvReport, language: Language) {
+    match language {
+        Language::En => println!("Saved provider env: {}", report.path),
+        Language::Zh => println!("已保存 provider env: {}", report.path),
+    }
+    for item in &report.next {
+        println!("next: {item}");
+    }
 }
 
 fn print_provider_check(report: &ProviderCheckReport, language: Language) {
@@ -2098,8 +2160,10 @@ fn run_bridge_command(args: &[String]) -> Result<BridgeRunResponse, String> {
     if !bridge_command_allowed(args) {
         return Err("bridge command not allowed".to_string());
     }
-    let output = Command::new(env::current_exe().map_err(|error| error.to_string())?)
-        .args(args)
+    let mut command = Command::new(env::current_exe().map_err(|error| error.to_string())?);
+    command.args(args);
+    apply_bridge_env_overlay(&mut command);
+    let output = command
         .output()
         .map_err(|error| format!("bridge command failed to start: {error}"))?;
     Ok(BridgeRunResponse {
@@ -2120,10 +2184,13 @@ fn stream_bridge_command(stream: &mut TcpStream, args: &[String]) -> Result<(), 
         "start",
         &serde_json::json!({ "args": args, "summary": "started" }),
     )?;
-    let mut child = Command::new(env::current_exe().map_err(|error| error.to_string())?)
+    let mut command = Command::new(env::current_exe().map_err(|error| error.to_string())?);
+    command
         .args(args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    apply_bridge_env_overlay(&mut command);
+    let mut child = command
         .spawn()
         .map_err(|error| format!("bridge command failed to start: {error}"))?;
     let stdout = child
@@ -2189,6 +2256,59 @@ where
     });
 }
 
+fn apply_bridge_env_overlay(command: &mut Command) {
+    for (key, value) in bridge_env_overlay() {
+        command.env(key, value);
+    }
+}
+
+fn bridge_env_overlay() -> Vec<(String, String)> {
+    fs::read_to_string(DEFAULT_PROVIDER_ENV_PATH)
+        .map(|content| parse_bridge_env_overlay(&content))
+        .unwrap_or_default()
+}
+
+fn parse_bridge_env_overlay(content: &str) -> Vec<(String, String)> {
+    content.lines().filter_map(parse_bridge_env_line).collect()
+}
+
+fn parse_bridge_env_line(line: &str) -> Option<(String, String)> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return None;
+    }
+    let assignment = line.strip_prefix("export ").unwrap_or(line);
+    let (key, value) = assignment.split_once('=')?;
+    let key = key.trim();
+    if !key.starts_with("OCTOPUS_") || !valid_env_prefix(key) {
+        return None;
+    }
+    Some((key.to_string(), bridge_env_value(value.trim())))
+}
+
+fn bridge_env_value(value: &str) -> String {
+    if let Some(inner) = value
+        .strip_prefix('"')
+        .and_then(|item| item.strip_suffix('"'))
+    {
+        if let Some(name) = inner
+            .strip_prefix("${")
+            .and_then(|item| item.strip_suffix(":-}"))
+            .filter(|name| valid_env_prefix(name))
+        {
+            return env::var(name).unwrap_or_default();
+        }
+        return inner.replace("\\\"", "\"").replace("\\\\", "\\");
+    }
+    if let Some(inner) = value
+        .strip_prefix('\'')
+        .and_then(|item| item.strip_suffix('\''))
+    {
+        return inner.replace("'\\''", "'");
+    }
+    value.to_string()
+}
+
 fn bridge_command_allowed(args: &[String]) -> bool {
     let Some(command) = bridge_command_name(args) else {
         return false;
@@ -2201,6 +2321,9 @@ fn bridge_command_allowed(args: &[String]) -> bool {
     }
     if command == "evolve" {
         return bridge_evolve_allowed(args);
+    }
+    if command == "provider" {
+        return bridge_provider_allowed(args);
     }
     if command == "self-iterate" && args.iter().any(|arg| arg == "pr") {
         return false;
@@ -2222,7 +2345,6 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "catalog"
             | "manifests"
             | "providers"
-            | "provider"
             | "routes"
             | "traces"
             | "env"
@@ -2252,6 +2374,36 @@ fn bridge_evolve_allowed(args: &[String]) -> bool {
         && parse_status(status).is_ok_and(|status| {
             matches!(status, Status::Satisfied | Status::Partial | Status::Failed)
         })
+}
+
+fn bridge_provider_allowed(args: &[String]) -> bool {
+    let Some(index) = bridge_command_index(args) else {
+        return false;
+    };
+    match args.get(index + 1).map(String::as_str) {
+        Some("status") => args.len() == index + 2,
+        Some("check") => args
+            .get(index + 2)
+            .is_none_or(|prefix| valid_env_prefix(prefix)),
+        Some("save") => {
+            let Some(profile) = args.get(index + 2) else {
+                return false;
+            };
+            provider_profile(profile).is_ok()
+                && args
+                    .get(index + 3)
+                    .is_none_or(|prefix| valid_env_prefix(prefix))
+                && args.len() <= index + 4
+        }
+        Some(profile) => {
+            provider_profile(profile).is_ok()
+                && args
+                    .get(index + 2)
+                    .is_none_or(|prefix| valid_env_prefix(prefix))
+                && args.len() <= index + 3
+        }
+        None => false,
+    }
 }
 
 fn bridge_check_allowed(args: &[String]) -> bool {
@@ -2480,7 +2632,7 @@ fn init_files(state_path: &Path) -> Result<Vec<InitFileReport>, String> {
 }
 
 const LLM_ENV_EXAMPLE: &str = r#"# Copy to llm.env, fill the key, then source that file.
-# You can also generate this file with: octopus provider openai > llm.env
+# You can also generate this file with: octopus provider save openai OCTOPUS_LLM llm.env
 export OCTOPUS_LLM_MODEL=gpt-4.1-mini
 export OCTOPUS_LLM_BASE_URL=https://api.openai.com/v1
 export OCTOPUS_LLM_API_KEY=
@@ -3013,7 +3165,7 @@ fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorRepo
     next.push("octopus provider status".to_string());
     if !llm.configured {
         next.push("octopus providers".to_string());
-        next.push("octopus provider openai > .octopus/llm.env".to_string());
+        next.push("octopus provider save openai".to_string());
     } else if llm.curl_available {
         next.push(format!("octopus provider check {}", llm.config_prefix));
     }
@@ -4355,7 +4507,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -4374,8 +4526,9 @@ fn parse_status(value: &str) -> Result<Status, String> {
 mod tests {
     use super::{
         bridge_command_allowed, bridge_command_name, check_report, http_content_length,
-        install_report, is_broken_pipe_panic, localize_summary, percent_encode_path, pet_report,
-        pet_report_for_state, provider_status_report, run, skill_reports, usage, Language,
+        install_report, is_broken_pipe_panic, localize_summary, parse_bridge_env_overlay,
+        percent_encode_path, pet_report, pet_report_for_state, provider_status_report, run,
+        skill_reports, usage, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
@@ -4643,8 +4796,56 @@ mod tests {
         .unwrap();
         assert!(usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
+        assert!(usage().contains("provider save <profile>"));
         assert!(usage().contains("provider status"));
         assert!(usage().contains("traces [limit]"));
+    }
+
+    #[test]
+    fn cli_provider_save_writes_env_file() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-provider-save-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+
+        run(vec![
+            "--json".to_string(),
+            "provider".to_string(),
+            "save".to_string(),
+            "openai".to_string(),
+            "OCTOPUS_TEST".to_string(),
+        ])
+        .unwrap();
+
+        let content = fs::read_to_string(dir.join(".octopus/llm.env")).unwrap();
+        assert!(content.contains("export OCTOPUS_TEST_MODEL='gpt-4.1-mini'"));
+        assert!(content.contains("export OCTOPUS_CHAT_LLM_PREFIX=OCTOPUS_TEST"));
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn bridge_provider_env_overlay_reads_octopus_exports() {
+        let _env = env_guard();
+        let old_key = std::env::var("OPENAI_API_KEY").ok();
+        std::env::set_var("OPENAI_API_KEY", "sk-test");
+
+        let overlay = parse_bridge_env_overlay(
+            "export OCTOPUS_LLM_MODEL='gpt-4.1-mini'\n\
+             export OCTOPUS_LLM_API_KEY=\"${OPENAI_API_KEY:-}\"\n\
+             export OCTOPUS_CHAT_LLM=1\n\
+             export PATH='ignored'\n",
+        );
+
+        assert!(overlay.contains(&("OCTOPUS_LLM_MODEL".to_string(), "gpt-4.1-mini".to_string())));
+        assert!(overlay.contains(&("OCTOPUS_LLM_API_KEY".to_string(), "sk-test".to_string())));
+        assert!(overlay.contains(&("OCTOPUS_CHAT_LLM".to_string(), "1".to_string())));
+        assert!(!overlay.iter().any(|(key, _)| key == "PATH"));
+
+        restore_env("OPENAI_API_KEY", old_key);
     }
 
     #[test]
@@ -4745,6 +4946,28 @@ mod tests {
             "check".to_string(),
             "computer-use-agent".to_string(),
             "1".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--json".to_string(),
+            "provider".to_string(),
+            "save".to_string(),
+            "openai".to_string(),
+            "OCTOPUS_LLM".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--json".to_string(),
+            "provider".to_string(),
+            "save".to_string(),
+            "openai".to_string(),
+            "OCTOPUS_LLM".to_string(),
+            "/tmp/llm.env".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--json".to_string(),
+            "provider".to_string(),
+            "save".to_string(),
+            "openai".to_string(),
+            "octopus-llm".to_string()
         ]));
         assert!(!bridge_command_allowed(&[
             "--json".to_string(),

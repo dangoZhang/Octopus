@@ -52,6 +52,7 @@ octopus bridge
 ```
 
 Open `http://127.0.0.1:8765/app.html`. The app can install tentacles, show grant/check/next reports, and grant local Octopus tool scopes.
+It can also save provider env to `.octopus/llm.env`; bridge reads that file when it runs child Octopus commands.
 
 ## Tentacle Run
 
@@ -82,7 +83,7 @@ Tools can declare `permission` in their manifest. Without a matching grant, Octo
 ```bash
 octopus providers
 octopus provider status
-octopus provider openai > "$tmp/llm.env"
+octopus provider save openai OCTOPUS_LLM "$tmp/llm.env"
 # set OPENAI_API_KEY first, then:
 . "$tmp/llm.env"
 octopus provider check
@@ -95,11 +96,11 @@ octopus --state "$tmp/state.json" --json need observe README.md 1 1
 
 octopus --state "$tmp/state.json" evolve swe-agent "improve observe feed"
 
-octopus provider local OCTOPUS_LOCAL
+octopus provider save local OCTOPUS_LOCAL "$tmp/local-llm.env"
 octopus doctor
 ```
 
-The native app can generate provider env, show the same provider layers, and run an explicit provider check from the Provider panel.
+The native app can generate or save provider env, show the same provider layers, and run an explicit provider check from the Provider panel.
 
 ## Self-Iteration
 
