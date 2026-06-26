@@ -97,6 +97,7 @@ Updated: 2026-06-26
 - Added first-class context inspection so the product can prove the brain sees only `Goal/Mem/Need/Feed` while tentacles carry `Need/Tool/Action/Feed`.
 - Added `feedback <trace-index> <status> [summary]` so human review can score a Feed trace, update route learning, and change pet color.
 - Added native HTML Feed feedback buttons so the Feed Test panel can write that harness feedback without shell use.
+- Rolled the cleanup/version cadence to `0.0.6` after the clean-brain context and Feed feedback product cycle.
 
 ## Remaining Gaps
 
@@ -114,6 +115,7 @@ Updated: 2026-06-26
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
 - Exercise multi-action tentacle planning with a real LLM provider and record provider-specific failures.
 - Use Feed feedback outcomes from real tasks to tune route choices and evolution recommendations.
+- Rebuild the current capability report on top of `0.0.6` before the next product cycle closes.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Apply and score the next Feed-trace- or check-driven seed-tentacle improvement through the app review/grant loop.
 - Exercise provider-assisted patch drafts with a real LLM provider and score the result through the review/grant loop.
