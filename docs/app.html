@@ -436,6 +436,12 @@
               <option value="openai">openai</option>
               <option value="local">local</option>
               <option value="openrouter">openrouter</option>
+              <option value="deepseek">deepseek</option>
+              <option value="groq">groq</option>
+              <option value="gemini">gemini</option>
+              <option value="dashscope">dashscope</option>
+              <option value="moonshot">moonshot</option>
+              <option value="lmstudio">lmstudio</option>
               <option value="custom">custom</option>
             </select>
           </label>
@@ -470,6 +476,7 @@
             <button type="button" data-run="goalset">Set Goal</button>
             <button type="button" data-run="chat">Chat</button>
             <button type="button" id="runBrainPrompt">Brain Prompt</button>
+            <button type="button" id="runBrainLive">Brain Live</button>
             <button type="button" id="runExplore">Explore</button>
             <button type="button" id="saveExplore">Save Explore</button>
             <button type="button" id="runNeedQueue">Need Queue</button>
@@ -758,6 +765,29 @@
         $("exploreReport").textContent = save ? "saving..." : "exploring...";
         try {
           const args = save ? ["--state", state, "--json", "explore", "--save", goal] : ["--state", state, "--json", "explore", goal];
+          const report = await runBridgeJson(args);
+          if (save) {
+            currentExploreReport = report.explore || null;
+            currentNeedQueueReport = report.queue || null;
+            renderExploreReport(report.explore || {});
+            renderNeedQueueReport(report.queue || {});
+          } else {
+            currentExploreReport = report;
+            renderExploreReport(report);
+          }
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("exploreReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runBrainLiveReport(save = false) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        $("exploreReport").textContent = save ? "saving live brain..." : "thinking...";
+        try {
+          const args = save ? ["--state", state, "--json", "brain", "--live", "--save", goal] : ["--state", state, "--json", "brain", "--live", goal];
           const report = await runBridgeJson(args);
           if (save) {
             currentExploreReport = report.explore || null;
@@ -2046,6 +2076,7 @@
       $("runFeed").addEventListener("click", runFeedTest);
       $("runRoutes").addEventListener("click", runRouteReport);
       $("runBrainPrompt").addEventListener("click", runBrainPromptReport);
+      $("runBrainLive").addEventListener("click", () => runBrainLiveReport(false));
       $("runExplore").addEventListener("click", () => runExploreReport(false));
       $("saveExplore").addEventListener("click", () => runExploreReport(true));
       $("runNeedQueue").addEventListener("click", runNeedQueueReport);

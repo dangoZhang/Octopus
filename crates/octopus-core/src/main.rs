@@ -597,22 +597,52 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("brain") => {
+            let live = rest.iter().skip(1).any(|value| value == "--live");
+            let save = rest.iter().skip(1).any(|value| value == "--save");
             let prompt = rest
-                .get(1..)
-                .filter(|values| !values.is_empty())
-                .map(|values| values.join(" "));
-            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                .iter()
+                .skip(1)
+                .filter(|value| value.as_str() != "--live" && value.as_str() != "--save")
+                .cloned()
+                .collect::<Vec<_>>();
+            let prompt = (!prompt.is_empty()).then(|| prompt.join(" "));
+            let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             let prompt = prompt
                 .or_else(|| loaded.goal.as_ref().map(|goal| goal.objective.clone()))
                 .unwrap_or_else(|| "what should the brain ask next?".to_string());
-            let report = loaded.clean_brain_prompt(prompt, 6);
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
-                );
+            if live || save {
+                let mut client = clean_brain_llm_client()?;
+                let report = loaded.clean_brain_explore_with_client(prompt, 6, &mut client)?;
+                if save {
+                    let saved = loaded.queue_exploration_report(&report);
+                    loaded.save(&state).map_err(|error| error.to_string())?;
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&saved)
+                                .map_err(|error| error.to_string())?
+                        );
+                    } else {
+                        print_need_queue_save(&saved, language);
+                    }
+                } else if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_brain_explore(&report, language);
+                }
             } else {
-                print_brain_prompt(&report, language);
+                let report = loaded.clean_brain_prompt(prompt, 6);
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_brain_prompt(&report, language);
+                }
             }
             Ok(())
         }
@@ -627,8 +657,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let prompt = prompt
                 .or_else(|| loaded.goal.as_ref().map(|goal| goal.objective.clone()))
                 .unwrap_or_else(|| "next useful Need".to_string());
-            let report = if chat_llm_enabled() {
-                let mut client = chat_llm_client()?;
+            let report = if clean_brain_llm_enabled() {
+                let mut client = clean_brain_llm_client()?;
                 loaded.clean_brain_explore_with_client(prompt.clone(), 6, &mut client)?
             } else {
                 loaded.clean_brain_explore(prompt.clone(), 6)
@@ -1998,6 +2028,84 @@ fn provider_profiles() -> Vec<ProviderProfile> {
             ],
         },
         ProviderProfile {
+            id: "deepseek".to_string(),
+            name: "DeepSeek OpenAI-compatible cloud".to_string(),
+            description: "DeepSeek chat models through their OpenAI-compatible endpoint."
+                .to_string(),
+            base_url: "https://api.deepseek.com".to_string(),
+            model: "deepseek-v4-flash".to_string(),
+            key_env: "DEEPSEEK_API_KEY".to_string(),
+            notes: vec![
+                "Set DEEPSEEK_API_KEY before sourcing the generated env.".to_string(),
+                "Good fit for clean-brain exploration and economical tool-side planning."
+                    .to_string(),
+            ],
+        },
+        ProviderProfile {
+            id: "groq".to_string(),
+            name: "Groq OpenAI-compatible cloud".to_string(),
+            description: "Fast hosted inference through Groq's OpenAI-compatible endpoint."
+                .to_string(),
+            base_url: "https://api.groq.com/openai/v1".to_string(),
+            model: "openai/gpt-oss-20b".to_string(),
+            key_env: "GROQ_API_KEY".to_string(),
+            notes: vec![
+                "Set GROQ_API_KEY before sourcing the generated env.".to_string(),
+                "Useful for low-latency Need exploration and provider checks.".to_string(),
+            ],
+        },
+        ProviderProfile {
+            id: "gemini".to_string(),
+            name: "Gemini OpenAI-compatible cloud".to_string(),
+            description: "Gemini models through Google's OpenAI-compatible endpoint.".to_string(),
+            base_url: "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
+            model: "gemini-3.5-flash".to_string(),
+            key_env: "GEMINI_API_KEY".to_string(),
+            notes: vec![
+                "Set GEMINI_API_KEY before sourcing the generated env.".to_string(),
+                "Use another Gemini model id if your account exposes it.".to_string(),
+            ],
+        },
+        ProviderProfile {
+            id: "dashscope".to_string(),
+            name: "DashScope OpenAI-compatible cloud".to_string(),
+            description: "Qwen models through Alibaba Cloud DashScope compatibility mode."
+                .to_string(),
+            base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string(),
+            model: "qwen-plus".to_string(),
+            key_env: "DASHSCOPE_API_KEY".to_string(),
+            notes: vec![
+                "Set DASHSCOPE_API_KEY before sourcing the generated env.".to_string(),
+                "Change the model to a Qwen id enabled for your account.".to_string(),
+                "Change the base URL if your region or workspace requires a regional endpoint."
+                    .to_string(),
+            ],
+        },
+        ProviderProfile {
+            id: "moonshot".to_string(),
+            name: "Moonshot OpenAI-compatible cloud".to_string(),
+            description: "Kimi/Moonshot models through an OpenAI-compatible endpoint.".to_string(),
+            base_url: "https://api.moonshot.ai/v1".to_string(),
+            model: "kimi-k2.6".to_string(),
+            key_env: "MOONSHOT_API_KEY".to_string(),
+            notes: vec![
+                "Set MOONSHOT_API_KEY before sourcing the generated env.".to_string(),
+                "Use a larger context model id when clean-brain memory grows.".to_string(),
+            ],
+        },
+        ProviderProfile {
+            id: "lmstudio".to_string(),
+            name: "LM Studio local server".to_string(),
+            description: "LM Studio's local OpenAI-compatible server.".to_string(),
+            base_url: "http://localhost:1234/v1".to_string(),
+            model: "local-model".to_string(),
+            key_env: "".to_string(),
+            notes: vec![
+                "Start the LM Studio local server before provider check.".to_string(),
+                "Replace local-model with the served model id.".to_string(),
+            ],
+        },
+        ProviderProfile {
             id: "custom".to_string(),
             name: "Custom OpenAI-compatible endpoint".to_string(),
             description: "Template for any provider that speaks chat completions.".to_string(),
@@ -2052,9 +2160,11 @@ fn provider_env_report(profile_id: &str, prefix: &str) -> Result<ProviderEnvRepo
     }
     exports.extend([
         "export OCTOPUS_CHAT_LLM=1".to_string(),
+        "export OCTOPUS_BRAIN_LLM=1".to_string(),
         "export OCTOPUS_LLM_MANIFEST=1".to_string(),
         "export OCTOPUS_LLM_EVOLVE=1".to_string(),
         format!("export OCTOPUS_CHAT_LLM_PREFIX={prefix}"),
+        format!("export OCTOPUS_BRAIN_LLM_PREFIX={prefix}"),
         format!("export OCTOPUS_MANIFEST_LLM_PREFIX={prefix}"),
         format!("export OCTOPUS_EVOLVE_LLM_PREFIX={prefix}"),
     ]);
@@ -2138,6 +2248,13 @@ fn provider_status_report() -> ProviderStatusReport {
             chat_llm_enabled(),
             chat_llm_prefix(),
             "export OCTOPUS_CHAT_LLM=1",
+        ),
+        provider_layer_status(
+            "clean_brain",
+            "clean brain explores Goal/Mem/Need/Feed into new Needs",
+            brain_llm_enabled(),
+            brain_llm_prefix(),
+            "export OCTOPUS_BRAIN_LLM=1",
         ),
         provider_layer_status(
             "tentacle_planning",
@@ -3152,10 +3269,12 @@ export OCTOPUS_LLM_MODEL=gpt-4.1-mini
 export OCTOPUS_LLM_BASE_URL=https://api.openai.com/v1
 export OCTOPUS_LLM_API_KEY=
 export OCTOPUS_CHAT_LLM=1
+export OCTOPUS_BRAIN_LLM=1
 export OCTOPUS_LLM_MANIFEST=1
 export OCTOPUS_LLM_EVOLVE=1
-# Optional: point chat, tentacle planning, or evolution at another OpenAI-compatible env prefix.
+# Optional: point chat, clean brain, tentacle planning, or evolution at another OpenAI-compatible env prefix.
 # export OCTOPUS_CHAT_LLM_PREFIX=OCTOPUS_LLM
+# export OCTOPUS_BRAIN_LLM_PREFIX=OCTOPUS_LLM
 # export OCTOPUS_MANIFEST_LLM_PREFIX=OCTOPUS_LLM
 # export OCTOPUS_EVOLVE_LLM_PREFIX=OCTOPUS_LLM
 "#;
@@ -6214,12 +6333,20 @@ fn chat_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
     ))
 }
 
+fn clean_brain_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
+    Ok(OpenAiCompatibleChatClient::new(
+        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_llm_prefix())?,
+    ))
+}
+
 fn manifest_llm_config() -> Result<OpenAiCompatibleConfig, String> {
     OpenAiCompatibleConfig::from_env_prefix(&manifest_llm_prefix())
 }
 
 fn doctor_llm_prefix() -> String {
-    if chat_llm_enabled() {
+    if brain_llm_enabled() {
+        brain_llm_prefix()
+    } else if chat_llm_enabled() {
         chat_llm_prefix()
     } else if manifest_llm_enabled() {
         manifest_llm_prefix()
@@ -6232,6 +6359,20 @@ fn doctor_llm_prefix() -> String {
 
 fn chat_llm_prefix() -> String {
     env::var("OCTOPUS_CHAT_LLM_PREFIX").unwrap_or_else(|_| "OCTOPUS_LLM".to_string())
+}
+
+fn brain_llm_prefix() -> String {
+    env::var("OCTOPUS_BRAIN_LLM_PREFIX").unwrap_or_else(|_| "OCTOPUS_LLM".to_string())
+}
+
+fn clean_brain_llm_prefix() -> String {
+    if brain_llm_enabled() {
+        brain_llm_prefix()
+    } else if chat_llm_enabled() {
+        chat_llm_prefix()
+    } else {
+        brain_llm_prefix()
+    }
 }
 
 fn manifest_llm_prefix() -> String {
@@ -6254,6 +6395,16 @@ fn chat_llm_enabled() -> bool {
         .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "yes" | "on"))
 }
 
+fn brain_llm_enabled() -> bool {
+    env::var("OCTOPUS_BRAIN_LLM")
+        .ok()
+        .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "yes" | "on"))
+}
+
+fn clean_brain_llm_enabled() -> bool {
+    brain_llm_enabled() || chat_llm_enabled()
+}
+
 fn evolve_llm_enabled() -> bool {
     env::var("OCTOPUS_LLM_EVOLVE")
         .ok()
@@ -6261,7 +6412,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [prompt] | explore [--save] [prompt] | needs [take|drop index] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--live] [--save] [prompt] | explore [--save] [prompt] | needs [take|drop index] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -6730,7 +6881,7 @@ mod tests {
         .unwrap();
         assert!(usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
-        assert!(usage().contains("brain [prompt]"));
+        assert!(usage().contains("brain [--live] [--save] [prompt]"));
         assert!(usage().contains("explore [--save] [prompt]"));
         assert!(usage().contains("needs [take|drop index]"));
         assert!(usage().contains("context [kind query]"));
@@ -6803,6 +6954,8 @@ mod tests {
         let content = fs::read_to_string(dir.join(".octopus/llm.env")).unwrap();
         assert!(content.contains("export OCTOPUS_TEST_MODEL='gpt-4.1-mini'"));
         assert!(content.contains("export OCTOPUS_CHAT_LLM_PREFIX=OCTOPUS_TEST"));
+        assert!(content.contains("export OCTOPUS_BRAIN_LLM=1"));
+        assert!(content.contains("export OCTOPUS_BRAIN_LLM_PREFIX=OCTOPUS_TEST"));
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
     }
@@ -6817,12 +6970,14 @@ mod tests {
             "export OCTOPUS_LLM_MODEL='gpt-4.1-mini'\n\
              export OCTOPUS_LLM_API_KEY=\"${OPENAI_API_KEY:-}\"\n\
              export OCTOPUS_CHAT_LLM=1\n\
+             export OCTOPUS_BRAIN_LLM=1\n\
              export PATH='ignored'\n",
         );
 
         assert!(overlay.contains(&("OCTOPUS_LLM_MODEL".to_string(), "gpt-4.1-mini".to_string())));
         assert!(overlay.contains(&("OCTOPUS_LLM_API_KEY".to_string(), "sk-test".to_string())));
         assert!(overlay.contains(&("OCTOPUS_CHAT_LLM".to_string(), "1".to_string())));
+        assert!(overlay.contains(&("OCTOPUS_BRAIN_LLM".to_string(), "1".to_string())));
         assert!(!overlay.iter().any(|(key, _)| key == "PATH"));
 
         restore_env("OPENAI_API_KEY", old_key);
@@ -6832,18 +6987,22 @@ mod tests {
     fn provider_status_reports_all_llm_layers() {
         let _env = env_guard();
         let old_chat = std::env::var("OCTOPUS_CHAT_LLM").ok();
+        let old_brain = std::env::var("OCTOPUS_BRAIN_LLM").ok();
         let old_manifest = std::env::var("OCTOPUS_LLM_MANIFEST").ok();
         let old_evolve = std::env::var("OCTOPUS_LLM_EVOLVE").ok();
         let old_chat_prefix = std::env::var("OCTOPUS_CHAT_LLM_PREFIX").ok();
+        let old_brain_prefix = std::env::var("OCTOPUS_BRAIN_LLM_PREFIX").ok();
         let old_manifest_prefix = std::env::var("OCTOPUS_MANIFEST_LLM_PREFIX").ok();
         let old_evolve_prefix = std::env::var("OCTOPUS_EVOLVE_LLM_PREFIX").ok();
         let old_model = std::env::var("OCTOPUS_STATUS_TEST_MODEL").ok();
         let old_base_url = std::env::var("OCTOPUS_STATUS_TEST_BASE_URL").ok();
         let old_api_key = std::env::var("OCTOPUS_STATUS_TEST_API_KEY").ok();
         std::env::set_var("OCTOPUS_CHAT_LLM", "1");
+        std::env::set_var("OCTOPUS_BRAIN_LLM", "1");
         std::env::set_var("OCTOPUS_LLM_MANIFEST", "1");
         std::env::set_var("OCTOPUS_LLM_EVOLVE", "1");
         std::env::set_var("OCTOPUS_CHAT_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
+        std::env::set_var("OCTOPUS_BRAIN_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_MANIFEST_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_EVOLVE_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_STATUS_TEST_MODEL", "test-model");
@@ -6852,7 +7011,7 @@ mod tests {
 
         let report = provider_status_report();
 
-        assert_eq!(report.layers.len(), 3);
+        assert_eq!(report.layers.len(), 4);
         assert!(report
             .layers
             .iter()
@@ -6862,14 +7021,19 @@ mod tests {
                 && layer.prefix == "OCTOPUS_STATUS_TEST"
                 && layer.model.as_deref() == Some("test-model")
         }));
+        assert!(report.layers.iter().any(|layer| {
+            layer.layer == "clean_brain" && layer.prefix == "OCTOPUS_STATUS_TEST" && layer.enabled
+        }));
         assert!(report
             .next
             .contains(&"octopus provider check OCTOPUS_STATUS_TEST".to_string()));
 
         restore_env("OCTOPUS_CHAT_LLM", old_chat);
+        restore_env("OCTOPUS_BRAIN_LLM", old_brain);
         restore_env("OCTOPUS_LLM_MANIFEST", old_manifest);
         restore_env("OCTOPUS_LLM_EVOLVE", old_evolve);
         restore_env("OCTOPUS_CHAT_LLM_PREFIX", old_chat_prefix);
+        restore_env("OCTOPUS_BRAIN_LLM_PREFIX", old_brain_prefix);
         restore_env("OCTOPUS_MANIFEST_LLM_PREFIX", old_manifest_prefix);
         restore_env("OCTOPUS_EVOLVE_LLM_PREFIX", old_evolve_prefix);
         restore_env("OCTOPUS_STATUS_TEST_MODEL", old_model);
@@ -7738,6 +7902,85 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
         let content = fs::read_to_string(&state_path).unwrap();
         assert!(content.contains("chat llm refined"));
         assert!(content.contains("observe: inspect docs"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cli_brain_live_uses_clean_brain_provider_without_feed() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _env = env_guard();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-cli-brain-llm-{}", std::process::id()));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = dir.join("fake-curl.sh");
+        fs::write(
+            &curl,
+            r#"#!/bin/sh
+printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"brain live explored\",\"needs\":[{\"kind\":\"verify\",\"query\":\"goal is still clean\"}]}"}}]}'
+"#,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+
+        let old_brain = std::env::var("OCTOPUS_BRAIN_LLM").ok();
+        let old_prefix = std::env::var("OCTOPUS_BRAIN_LLM_PREFIX").ok();
+        let old_model = std::env::var("OCTOPUS_BRAIN_TEST_MODEL").ok();
+        let old_base_url = std::env::var("OCTOPUS_BRAIN_TEST_BASE_URL").ok();
+        let old_api_key = std::env::var("OCTOPUS_BRAIN_TEST_API_KEY").ok();
+        let old_curl = std::env::var("OCTOPUS_BRAIN_TEST_CURL").ok();
+        std::env::set_var("OCTOPUS_BRAIN_LLM", "1");
+        std::env::set_var("OCTOPUS_BRAIN_LLM_PREFIX", "OCTOPUS_BRAIN_TEST");
+        std::env::set_var("OCTOPUS_BRAIN_TEST_MODEL", "test-model");
+        std::env::set_var("OCTOPUS_BRAIN_TEST_BASE_URL", "https://llm.example/v1");
+        std::env::remove_var("OCTOPUS_BRAIN_TEST_API_KEY");
+        std::env::set_var(
+            "OCTOPUS_BRAIN_TEST_CURL",
+            curl.to_string_lossy().to_string(),
+        );
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "goal".to_string(),
+            "set".to_string(),
+            "keep".to_string(),
+            "brain".to_string(),
+            "clean".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--live".to_string(),
+            "--save".to_string(),
+            "what".to_string(),
+            "next".to_string(),
+        ])
+        .unwrap();
+
+        restore_env("OCTOPUS_BRAIN_LLM", old_brain);
+        restore_env("OCTOPUS_BRAIN_LLM_PREFIX", old_prefix);
+        restore_env("OCTOPUS_BRAIN_TEST_MODEL", old_model);
+        restore_env("OCTOPUS_BRAIN_TEST_BASE_URL", old_base_url);
+        restore_env("OCTOPUS_BRAIN_TEST_API_KEY", old_api_key);
+        restore_env("OCTOPUS_BRAIN_TEST_CURL", old_curl);
+
+        let loaded = HarnessState::load(&state_path).unwrap();
+        assert_eq!(loaded.pending_need_queue_count(), 1);
+        assert!(loaded.feed_traces.is_empty());
+        assert!(loaded.routes.scores.is_empty());
+        let content = fs::read_to_string(&state_path).unwrap();
+        assert!(content.contains("brain live explored"));
+        assert!(content.contains("goal is still clean"));
         let _ = fs::remove_dir_all(dir);
     }
 

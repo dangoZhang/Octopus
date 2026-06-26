@@ -104,6 +104,9 @@ octopus --state "$tmp/state.json" install bash-only
 octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" goal set "build a clean-brain agent"
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
+octopus --state "$tmp/state.json" brain "what should the brain ask next?"
+octopus --state "$tmp/state.json" brain --live "what should the brain ask next?"
+octopus --state "$tmp/state.json" brain --live --save "what should the brain ask next?"
 octopus --state "$tmp/state.json" explore "what should the brain ask next?"
 octopus --state "$tmp/state.json" explore --save "what should the brain ask next?"
 octopus --state "$tmp/state.json" needs
@@ -150,14 +153,17 @@ octopus provider save openai OCTOPUS_LLM "$tmp/llm.env"
 . "$tmp/llm.env"
 octopus provider check
 
+octopus --state "$tmp/state.json" brain --live "what should the brain ask next?"
 octopus --state "$tmp/state.json" chat "make the harness self-evolve"
 octopus --state "$tmp/state.json" think swe-agent observe README.md
 octopus --state "$tmp/state.json" --json need observe README.md 1 1
 octopus --state "$tmp/state.json" evolve swe-agent "improve observe feed"
 
 octopus provider save local OCTOPUS_LOCAL "$tmp/local-llm.env"
+octopus provider save deepseek OCTOPUS_DEEPSEEK "$tmp/deepseek.env"
+octopus provider save gemini OCTOPUS_GEMINI "$tmp/gemini.env"
 octopus doctor</code></pre>
-      <p>The native app can generate or save provider env, show the same provider layers, run an explicit provider check, and render <code>octopus report</code>.</p>
+      <p>The native app can generate or save provider env, show the same provider layers, run an explicit provider check, render <code>octopus report</code>, render <code>octopus preflight</code>, and write a local preflight script.</p>
 
       <h2>Self-Iteration</h2>
       <pre><code>octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus

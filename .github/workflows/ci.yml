@@ -22,6 +22,7 @@ jobs:
           cargo run -q -p octopus-core -- provider status > .octopus/provider-status.txt
           grep -q "Provider status" .octopus/provider-status.txt
           cargo run -q -p octopus-core -- --json provider status > .octopus/provider-status.json
+          grep -q '"layer": "clean_brain"' .octopus/provider-status.json
           grep -q '"layer": "tentacle_planning"' .octopus/provider-status.json
       - run: cargo run -q -p octopus-core -- provider local OCTOPUS_LOCAL | grep -q "OCTOPUS_LOCAL_BASE_URL"
       - run: |
@@ -43,6 +44,7 @@ jobs:
           grep -q swe-agent "$tmp/bootstrap-state.json"
           grep -q harness-repair-agent "$tmp/bootstrap-state.json"
           grep -q installed_tentacles "$tmp/state.json"
+          grep -q OCTOPUS_BRAIN_LLM "$tmp/llm.env.example"
           grep -q OCTOPUS_LLM_MANIFEST "$tmp/llm.env.example"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" skills | grep -q "swe-workflow"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" --json install computer-use-agent | grep -q '"grants"'
