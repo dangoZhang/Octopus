@@ -26,8 +26,8 @@ Updated: 2026-06-26
 - `think <tentacle> <kind> <query>` exposes tool-side planning and planned actions without executing tools.
 - LLM-backed tentacle plans can execute up to two tool actions for one Need and return one compact Feed.
 - Executed Feed now writes a compact harness trace journal; manifest Feed includes `tentacle_plan` evidence and a CLI `feed_trace`.
-- Harness evolution proposals now carry recent Feed traces for the selected tentacle and expose them to the LLM evolution planner.
-- Runtime-code evolution candidates use recent Feed traces to target the exact tool entrypoint that produced Feed.
+- Harness evolution proposals now carry recent Feed traces and check history for the selected tentacle and expose them to the LLM evolution planner.
+- Runtime-code evolution candidates use recent Feed traces and failed checks to target the exact tool entrypoint that produced or broke Feed.
 - The SWE read tool now returns a compact file/range header and line-numbered evidence.
 
 ## Filled So Far
@@ -71,11 +71,12 @@ Updated: 2026-06-26
 - Added single-check rerun support in CLI, bridge, and the HTML install guide.
 - Rolled the cleanup/version cadence to `0.0.4` after the install-guide product cycle.
 - Added persistent harness check history for install checks and surfaced it in the HTML install guide.
+- Fed check history into harness evolution proposals, LLM evolution prompts, runtime-code targeting, and recommendation scoring.
 
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
-- LLM evolution can generate candidates from manifest surfaces, scored outcomes, and recent Feed traces; local candidates now also target traced runtime files, and patch writes stay review/grant-bound.
+- LLM evolution can generate candidates from manifest surfaces, scored outcomes, recent Feed traces, and check history; local candidates now also target traced or failing runtime files, and patch writes stay review/grant-bound.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include static layer diagnostics and live validation; provider-specific edge cases still need real-machine feedback.
@@ -89,7 +90,7 @@ Updated: 2026-06-26
 - Exercise multi-action tentacle planning with a real LLM provider and record provider-specific failures.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Use traced runtime targets to apply and score the next seed-tentacle improvement through the review/grant loop.
-- Use real-machine check history to score harness evolution and recommend next fixes.
+- Use real-machine check history to generate narrower patch drafts and apply plans.
 - Turn window/browser diagnostics into richer native control adapters.
 - Add provider-specific fixes from real-machine feedback.
 - Run and record the first real-machine test before the `0.1.0` tag.

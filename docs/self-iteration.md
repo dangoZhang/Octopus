@@ -58,7 +58,7 @@ octopus evolve score swe-agent 03-runtime-code satisfied "runtime patch improved
 octopus evolve recommend swe-agent "continue from scored feedback"
 ```
 
-The draft lands under `.octopus/evolution/<tentacle>/` with `PROPOSAL.md`, `PATCH_CANDIDATES.md`, `PATCH_DRAFTS.md`, per-candidate files under `patches/`, and `proposal.json`. The proposal includes recent Feed traces for that tentacle, so harness evolution can use real execution feedback. Runtime-code candidates point at the concrete traced tool entrypoint when one is available. `evolve recommend` uses scored outcomes to choose the next candidate and write an apply plan. `evolve apply` writes an apply plan under `apply/`; it stays in `needs_authorization` until the matching `octopus:evolve:<tentacle>` grant has `harness:write`, then writes a reviewable `.patch` file without applying it.
+The draft lands under `.octopus/evolution/<tentacle>/` with `PROPOSAL.md`, `PATCH_CANDIDATES.md`, `PATCH_DRAFTS.md`, per-candidate files under `patches/`, and `proposal.json`. The proposal includes recent Feed traces and check history for that tentacle, so harness evolution can use real execution feedback. Runtime-code candidates point at the concrete traced or failing tool entrypoint when one is available. `evolve recommend` uses scored outcomes plus matching check history to choose the next candidate and write an apply plan. `evolve apply` writes an apply plan under `apply/`; it stays in `needs_authorization` until the matching `octopus:evolve:<tentacle>` grant has `harness:write`, then writes a reviewable `.patch` file without applying it.
 
 ## Guardrails
 

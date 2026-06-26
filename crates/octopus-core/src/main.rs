@@ -3294,6 +3294,7 @@ fn print_evolution_proposal(
             println!("json: {}", artifact.json_path);
             println!("candidate count: {}", proposal.patch_candidates.len());
             println!("feed traces: {}", proposal.recent_feed_traces.len());
+            println!("check history: {}", proposal.recent_check_history.len());
             println!("editable: {}", join_or_none(&proposal.editable));
             println!("surfaces: {}", join_or_none(&surfaces));
             println!("checks: {}", join_or_none(&proposal.checks));
@@ -3311,6 +3312,7 @@ fn print_evolution_proposal(
             println!("JSON: {}", artifact.json_path);
             println!("候选数量: {}", proposal.patch_candidates.len());
             println!("Feed轨迹: {}", proposal.recent_feed_traces.len());
+            println!("检查历史: {}", proposal.recent_check_history.len());
             println!("可编辑: {}", join_or_none(&proposal.editable));
             println!("可进化面: {}", join_or_none(&surfaces));
             println!("检查: {}", join_or_none(&proposal.checks));
@@ -3366,6 +3368,7 @@ fn print_evolution_recommendation(
             println!("title: {}", recommendation.candidate_title);
             println!("score: {:.2}", recommendation.recommendation_score);
             println!("outcomes: {}", recommendation.outcome_count);
+            println!("check history: {}", recommendation.check_history_count);
             println!("reason: {}", recommendation.reason);
             println!("status: {}", recommendation.apply.status);
             println!("plan: {}", artifact.plan_path);
@@ -3380,6 +3383,7 @@ fn print_evolution_recommendation(
             println!("标题: {}", recommendation.candidate_title);
             println!("分数: {:.2}", recommendation.recommendation_score);
             println!("历史结果: {}", recommendation.outcome_count);
+            println!("检查历史: {}", recommendation.check_history_count);
             println!("原因: {}", recommendation.reason);
             println!("状态: {}", recommendation.apply.status);
             println!("计划: {}", artifact.plan_path);

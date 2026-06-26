@@ -61,9 +61,14 @@ jobs:
           tmp=$(mktemp -d)
           cargo run -q -p octopus-core -- --state "$tmp/state.json" install swe-agent
           cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe . > /dev/null
-          cargo run -q -p octopus-core -- --state "$tmp/state.json" evolve swe-agent improve | grep -q "feed traces: 1"
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" check swe-agent 1 > /dev/null
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" evolve swe-agent improve > "$tmp/evolve.txt"
+          grep -q "feed traces: 1" "$tmp/evolve.txt"
+          grep -q "check history: 1" "$tmp/evolve.txt"
           grep -q "Recent Feed Traces" .octopus/evolution/swe-agent/PROPOSAL.md
+          grep -q "Recent Check History" .octopus/evolution/swe-agent/PROPOSAL.md
           grep -q '"recent_feed_traces"' .octopus/evolution/swe-agent/proposal.json
+          grep -q '"recent_check_history"' .octopus/evolution/swe-agent/proposal.json
           grep -q "tools/inspect_repo.sh" .octopus/evolution/swe-agent/proposal.json
           rm -rf .octopus/evolution/swe-agent
           cargo run -q -p octopus-core -- evolve swe-agent improve | grep -q "patch drafts:"

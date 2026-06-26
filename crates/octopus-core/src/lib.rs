@@ -3014,6 +3014,8 @@ pub struct TentacleEvolutionProposal {
     pub previous_outcomes: Vec<EvolutionOutcome>,
     #[serde(default)]
     pub recent_feed_traces: Vec<FeedTraceRecord>,
+    #[serde(default)]
+    pub recent_check_history: Vec<CheckHistoryRecord>,
     pub files: Vec<EvolutionFileTarget>,
     pub patch_candidates: Vec<EvolutionPatchCandidate>,
     pub next_steps: Vec<String>,
@@ -3107,6 +3109,7 @@ pub struct EvolutionRecommendation {
     pub candidate_title: String,
     pub surface_id: String,
     pub outcome_count: usize,
+    pub check_history_count: usize,
     pub recommendation_score: f32,
     pub reason: String,
     pub apply: EvolutionApplyPlan,
@@ -3208,7 +3211,15 @@ pub fn propose_tentacle_evolution_with_state(
 ) -> Result<TentacleEvolutionProposal, String> {
     let outcomes = state.recent_evolution_outcomes(tentacle_id, 5);
     let feed_traces = state.recent_feed_traces_for_tentacle(tentacle_id, 8);
-    propose_tentacle_evolution_with_feedback(root, tentacle_id, objective, &outcomes, &feed_traces)
+    let check_history = state.recent_check_history_for_tentacle(tentacle_id, 8);
+    propose_tentacle_evolution_with_feedback(
+        root,
+        tentacle_id,
+        objective,
+        &outcomes,
+        &feed_traces,
+        &check_history,
+    )
 }
 
 pub fn propose_tentacle_evolution_with_client<C>(
@@ -3235,6 +3246,11 @@ where
 struct ParsedLlmEvolutionPlan {
     summary: String,
     candidates: Vec<EvolutionPatchCandidate>,
+}
+
+struct EvolutionCandidateFeedback<'a> {
+    feed_traces: &'a [FeedTraceRecord],
+    check_history: &'a [CheckHistoryRecord],
 }
 
 fn llm_evolution_plan<C>(
@@ -3287,6 +3303,7 @@ fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Result<String, 
         "constraints": proposal.constraints,
         "previous_outcomes": proposal.previous_outcomes,
         "recent_feed_traces": proposal.recent_feed_traces,
+        "recent_check_history": proposal.recent_check_history,
         "files": proposal.files,
         "context_policy": {
             "clean_brain": ["Goal", "Mem", "Need", "Feed"],
@@ -3420,7 +3437,14 @@ fn propose_tentacle_evolution_with_outcomes(
     objective: &str,
     previous_outcomes: &[EvolutionOutcome],
 ) -> Result<TentacleEvolutionProposal, String> {
-    propose_tentacle_evolution_with_feedback(root, tentacle_id, objective, previous_outcomes, &[])
+    propose_tentacle_evolution_with_feedback(
+        root,
+        tentacle_id,
+        objective,
+        previous_outcomes,
+        &[],
+        &[],
+    )
 }
 
 fn propose_tentacle_evolution_with_feedback(
@@ -3429,6 +3453,7 @@ fn propose_tentacle_evolution_with_feedback(
     objective: &str,
     previous_outcomes: &[EvolutionOutcome],
     recent_feed_traces: &[FeedTraceRecord],
+    recent_check_history: &[CheckHistoryRecord],
 ) -> Result<TentacleEvolutionProposal, String> {
     let root = root.as_ref();
     let loaded = load_tentacle_manifests(root)
@@ -3459,7 +3484,10 @@ fn propose_tentacle_evolution_with_feedback(
         &loaded.manifest.evolution.surfaces,
         &loaded.manifest.evolution.checks,
         &loaded.manifest.tools,
-        recent_feed_traces,
+        EvolutionCandidateFeedback {
+            feed_traces: recent_feed_traces,
+            check_history: recent_check_history,
+        },
     );
     let mut next_steps = vec![
         "review PROPOSAL.md".to_string(),
@@ -3498,6 +3526,7 @@ fn propose_tentacle_evolution_with_feedback(
         constraints: loaded.manifest.evolution.constraints,
         previous_outcomes: previous_outcomes.to_vec(),
         recent_feed_traces: recent_feed_traces.to_vec(),
+        recent_check_history: recent_check_history.to_vec(),
         files,
         patch_candidates,
         next_steps,
@@ -3614,7 +3643,9 @@ pub fn recommend_tentacle_evolution_apply(
         .iter()
         .map(|candidate| {
             let (score, count) = evolution_candidate_outcome_score(candidate, proposal);
-            (candidate, score, count)
+            let (check_score, check_count) =
+                evolution_candidate_check_history_score(candidate, proposal);
+            (candidate, score + check_score, count, check_count)
         })
         .max_by(|left, right| {
             left.1
@@ -3624,10 +3655,12 @@ pub fn recommend_tentacle_evolution_apply(
     else {
         return Err("no evolution candidates to recommend".to_string());
     };
-    let (candidate, score, outcome_count) = scored;
+    let (candidate, score, outcome_count, check_history_count) = scored;
     let apply = plan_tentacle_evolution_apply(proposal, state, &candidate.id)?;
     let reason = if outcome_count > 0 {
         format!("selected from {outcome_count} previous outcomes with score {score:.2}")
+    } else if check_history_count > 0 {
+        format!("selected from {check_history_count} matching check history records with score {score:.2}")
     } else if proposal.generator == "llm" {
         "selected an LLM-generated candidate after feeding previous outcomes to the planner"
             .to_string()
@@ -3641,6 +3674,7 @@ pub fn recommend_tentacle_evolution_apply(
         candidate_title: candidate.title.clone(),
         surface_id: candidate.surface_id.clone(),
         outcome_count,
+        check_history_count,
         recommendation_score: score,
         reason,
         apply,
@@ -3760,6 +3794,57 @@ fn evolution_candidate_outcome_score(
         })
         .fold((0.0, 0.0), |acc, item| (acc.0 + item.0, acc.1 + item.1));
     (weighted.0 / weighted.1.max(1.0), outcomes.len())
+}
+
+fn evolution_candidate_check_history_score(
+    candidate: &EvolutionPatchCandidate,
+    proposal: &TentacleEvolutionProposal,
+) -> (f32, usize) {
+    let matched = proposal
+        .recent_check_history
+        .iter()
+        .filter(|record| candidate_matches_check_history(candidate, record))
+        .collect::<Vec<_>>();
+    if matched.is_empty() {
+        return (0.0, 0);
+    }
+    let weighted = matched
+        .iter()
+        .enumerate()
+        .map(|(index, record)| {
+            let weight = (index + 1) as f32;
+            let score = match record.status {
+                Status::Failed => 0.45,
+                Status::Partial => 0.2,
+                Status::Satisfied => 0.05,
+                Status::Unsupported => 0.0,
+            };
+            (score * weight, weight)
+        })
+        .fold((0.0, 0.0), |acc, item| (acc.0 + item.0, acc.1 + item.1));
+    (weighted.0 / weighted.1.max(1.0), matched.len())
+}
+
+fn candidate_matches_check_history(
+    candidate: &EvolutionPatchCandidate,
+    record: &CheckHistoryRecord,
+) -> bool {
+    let target = candidate
+        .target
+        .split('#')
+        .next()
+        .unwrap_or(&candidate.target);
+    if !target.contains('*') && !target.is_empty() && record.command.contains(target) {
+        return true;
+    }
+    if let Some(name) = Path::new(target).file_name().and_then(|name| name.to_str()) {
+        if !name.is_empty() && name != "*" && record.command.contains(name) {
+            return true;
+        }
+    }
+    candidate.surface_id == "runtime_code"
+        && record.status == Status::Failed
+        && record.command.contains("tools/")
 }
 
 fn resolve_existing_patch_target(target: &str) -> Option<PathBuf> {
@@ -3948,6 +4033,29 @@ pub fn render_tentacle_evolution_proposal(proposal: &TentacleEvolutionProposal) 
                 plan,
                 trace.evidence_count,
                 trace.summary
+            ));
+        }
+    }
+    if !proposal.recent_check_history.is_empty() {
+        markdown.push_str("\n## Recent Check History\n\n");
+        for record in &proposal.recent_check_history {
+            let label = match record.status {
+                Status::Satisfied => "ok",
+                Status::Failed => "failed",
+                Status::Partial => "partial",
+                Status::Unsupported => "unsupported",
+            };
+            let check = record
+                .command_index
+                .map(|index| format!("check {index}"))
+                .unwrap_or_else(|| "check".to_string());
+            markdown.push_str(&format!(
+                "- #{} {label} {} `{}` code={:?} :: {}\n",
+                record.index,
+                check,
+                record.command,
+                record.code,
+                one_line(&record.stderr)
             ));
         }
     }
@@ -4857,21 +4965,31 @@ fn evolution_patch_candidates(
     surfaces: &[EvolutionSurface],
     checks: &[String],
     tools: &[ManifestTool],
-    recent_feed_traces: &[FeedTraceRecord],
+    feedback: EvolutionCandidateFeedback<'_>,
 ) -> Vec<EvolutionPatchCandidate> {
     surfaces
         .iter()
         .enumerate()
         .map(|(index, surface)| {
-            let trace_tool = traced_tool_for_surface(surface, tools, recent_feed_traces);
+            let trace_tool = traced_tool_for_surface(surface, tools, feedback.feed_traces);
+            let check_tool = checked_tool_for_surface(surface, tools, feedback.check_history);
             EvolutionPatchCandidate {
                 id: evolution_candidate_id(index, &surface.id),
                 surface_id: surface.id.clone(),
                 title: evolution_candidate_title(&surface.id, tentacle_id),
-                target: evolution_candidate_target_with_trace(manifest_dir, surface, trace_tool),
-                rationale: evolution_candidate_rationale(objective, surface, trace_tool),
-                change_plan: evolution_candidate_plan_with_trace(surface, trace_tool),
-                checks: evolution_candidate_checks(checks, surface, trace_tool),
+                target: evolution_candidate_target_with_feedback(
+                    manifest_dir,
+                    surface,
+                    trace_tool,
+                    check_tool,
+                ),
+                rationale: evolution_candidate_rationale(
+                    objective, surface, trace_tool, check_tool,
+                ),
+                change_plan: evolution_candidate_plan_with_feedback(
+                    surface, trace_tool, check_tool,
+                ),
+                checks: evolution_candidate_checks(checks, surface, trace_tool, check_tool),
                 draft: evolution_patch_draft(index, surface),
             }
         })
@@ -4895,12 +5013,52 @@ fn traced_tool_for_surface<'a>(
     })
 }
 
-fn evolution_candidate_target_with_trace(
+fn checked_tool_for_surface<'a>(
+    surface: &EvolutionSurface,
+    tools: &'a [ManifestTool],
+    recent_check_history: &'a [CheckHistoryRecord],
+) -> Option<(&'a ManifestTool, &'a CheckHistoryRecord)> {
+    if surface.id != "runtime_code" {
+        return None;
+    }
+    recent_check_history
+        .iter()
+        .rev()
+        .filter(|record| record.status == Status::Failed)
+        .find_map(|record| {
+            tools
+                .iter()
+                .find(|tool| check_mentions_entrypoint(record, &tool.implementation.entrypoint))
+                .map(|tool| (tool, record))
+        })
+}
+
+fn check_mentions_entrypoint(record: &CheckHistoryRecord, entrypoint: &str) -> bool {
+    let entrypoint = entrypoint.trim();
+    if entrypoint.is_empty() {
+        return false;
+    }
+    if record.command.contains(entrypoint) {
+        return true;
+    }
+    Path::new(entrypoint)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| record.command.contains(name))
+}
+
+fn evolution_candidate_target_with_feedback(
     manifest_dir: &Path,
     surface: &EvolutionSurface,
     trace_tool: Option<(&ManifestTool, &FeedTraceRecord)>,
+    check_tool: Option<(&ManifestTool, &CheckHistoryRecord)>,
 ) -> String {
     if let Some((tool, _)) = trace_tool {
+        if let Some(target) = trace_tool_entrypoint_target(manifest_dir, tool) {
+            return target;
+        }
+    }
+    if let Some((tool, _)) = check_tool {
         if let Some(target) = trace_tool_entrypoint_target(manifest_dir, tool) {
             return target;
         }
@@ -4928,24 +5086,36 @@ fn evolution_candidate_rationale(
     objective: &str,
     surface: &EvolutionSurface,
     trace_tool: Option<(&ManifestTool, &FeedTraceRecord)>,
+    check_tool: Option<(&ManifestTool, &CheckHistoryRecord)>,
 ) -> String {
     let base = format!("advance {objective} through {}", surface.description);
-    let Some((tool, trace)) = trace_tool else {
-        return base;
+    let with_trace = if let Some((tool, trace)) = trace_tool {
+        format!(
+            "{base}; recent trace #{} used `{}` for {} `{}` and returned {} evidence items",
+            trace.index,
+            tool.id,
+            kind_key(&trace.need_kind),
+            trace.need_query,
+            trace.evidence_count
+        )
+    } else {
+        base
     };
-    format!(
-        "{base}; recent trace #{} used `{}` for {} `{}` and returned {} evidence items",
-        trace.index,
-        tool.id,
-        kind_key(&trace.need_kind),
-        trace.need_query,
-        trace.evidence_count
-    )
+    if let Some((tool, record)) = check_tool {
+        return format!(
+            "{with_trace}; failed check #{} points at `{}` with `{}`",
+            record.index,
+            tool.id,
+            one_line(&record.command)
+        );
+    }
+    with_trace
 }
 
-fn evolution_candidate_plan_with_trace(
+fn evolution_candidate_plan_with_feedback(
     surface: &EvolutionSurface,
     trace_tool: Option<(&ManifestTool, &FeedTraceRecord)>,
+    check_tool: Option<(&ManifestTool, &CheckHistoryRecord)>,
 ) -> Vec<String> {
     let mut plan = evolution_candidate_plan(surface);
     if let Some((tool, trace)) = trace_tool {
@@ -4961,6 +5131,15 @@ fn evolution_candidate_plan_with_trace(
             format!("preserve the observed `{}` Feed contract", tool.id),
         );
     }
+    if let Some((tool, record)) = check_tool {
+        plan.insert(
+            0,
+            format!(
+                "repair failing check #{} around `{}` before broad harness edits",
+                record.index, tool.implementation.entrypoint
+            ),
+        );
+    }
     plan
 }
 
@@ -4968,12 +5147,18 @@ fn evolution_candidate_checks(
     checks: &[String],
     surface: &EvolutionSurface,
     trace_tool: Option<(&ManifestTool, &FeedTraceRecord)>,
+    check_tool: Option<(&ManifestTool, &CheckHistoryRecord)>,
 ) -> Vec<String> {
     let mut checks = if checks.is_empty() {
         vec!["cargo test".to_string()]
     } else {
         checks.to_vec()
     };
+    if let Some((_, record)) = check_tool {
+        if !checks.iter().any(|existing| existing == &record.command) {
+            checks.insert(0, record.command.clone());
+        }
+    }
     if let Some((tool, trace)) = trace_tool {
         if let Some(check) = traced_tool_check(tool, trace) {
             if !checks
@@ -6630,6 +6815,64 @@ mod tests {
     }
 
     #[test]
+    fn tentacle_evolution_uses_recent_check_history() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        state.record_check_history(CheckHistoryInput {
+            tentacle_id: "swe-agent".to_string(),
+            source_kind: "manifest".to_string(),
+            command_index: Some(1),
+            command: "tools/read.sh README.md 1 2".to_string(),
+            cwd: "tentacles/swe-agent".to_string(),
+            status: Status::Failed,
+            code: Some(1),
+            stdout: String::new(),
+            stderr: "line range failed".to_string(),
+        });
+        state.record_check_history(CheckHistoryInput {
+            tentacle_id: "computer-use-agent".to_string(),
+            source_kind: "manifest".to_string(),
+            command_index: Some(1),
+            command: "tools/window_status.sh".to_string(),
+            cwd: "tentacles/computer-use-agent".to_string(),
+            status: Status::Failed,
+            code: Some(1),
+            stdout: String::new(),
+            stderr: "window unavailable".to_string(),
+        });
+
+        let proposal = propose_tentacle_evolution_with_state(
+            &root,
+            "swe-agent",
+            "repair failing repo check",
+            &state,
+        )
+        .unwrap();
+        let markdown = render_tentacle_evolution_proposal(&proposal);
+        let runtime_candidate = proposal
+            .patch_candidates
+            .iter()
+            .find(|candidate| candidate.surface_id == "runtime_code")
+            .unwrap();
+        let recommendation = recommend_tentacle_evolution_apply(&proposal, &state).unwrap();
+
+        assert_eq!(proposal.recent_check_history.len(), 1);
+        assert_eq!(proposal.recent_check_history[0].command_index, Some(1));
+        assert!(runtime_candidate.target.ends_with("tools/read.sh"));
+        assert!(runtime_candidate.rationale.contains("failed check #1"));
+        assert!(runtime_candidate.change_plan[0].contains("repair failing check #1"));
+        assert_eq!(recommendation.candidate_id, "03-runtime-code");
+        assert_eq!(recommendation.check_history_count, 1);
+        assert!(recommendation.recommendation_score > 0.0);
+        assert!(recommendation.reason.contains("check history"));
+        assert!(markdown.contains("Recent Check History"));
+        assert!(markdown.contains("line range failed"));
+        assert!(!markdown.contains("window unavailable"));
+    }
+
+    #[test]
     fn tentacle_evolution_apply_uses_traced_runtime_tool_target() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
@@ -6716,6 +6959,17 @@ mod tests {
                 ("plan_source".to_string(), "rule".to_string()),
             ]),
         });
+        state.record_check_history(CheckHistoryInput {
+            tentacle_id: "swe-agent".to_string(),
+            source_kind: "manifest".to_string(),
+            command_index: Some(1),
+            command: "tools/read.sh README.md 1 2".to_string(),
+            cwd: "tentacles/swe-agent".to_string(),
+            status: Status::Failed,
+            code: Some(1),
+            stdout: String::new(),
+            stderr: "read check failed before evolution".to_string(),
+        });
         let mut fake = EvolutionFakeChat {
             response: r#"{
               "summary": "select runtime code because previous runtime changes worked",
@@ -6759,7 +7013,9 @@ mod tests {
         assert!(fake.prompt.contains("Tool"));
         assert!(fake.prompt.contains("harness_evolution"));
         assert!(fake.prompt.contains("recent_feed_traces"));
+        assert!(fake.prompt.contains("recent_check_history"));
         assert!(fake.prompt.contains("observed README before evolution"));
+        assert!(fake.prompt.contains("read check failed before evolution"));
     }
 
     #[test]
