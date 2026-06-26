@@ -37,6 +37,7 @@ octopus need observe .
 octopus pet
 octopus doctor
 octopus beat 200
+octopus pet
 tmp=$(mktemp -d)
 (cd "$tmp" && octopus scaffold my-feed python)
 (cd "$tmp" && octopus probe my-feed observe README.md)
@@ -56,6 +57,7 @@ Octopus init
 json-feed observe
 Octopus doctor
 pixel: 🟥
+event: harness beat
 heartbeat: alive
 memory: compacted 0 memories
 harness: evolved 2 routes

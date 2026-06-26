@@ -32,6 +32,7 @@ octopus --state "$tmp/state.json" pet
 octopus --state "$tmp/state.json" doctor
 octopus --state "$tmp/state.json" chat "make tools think"
 octopus --state "$tmp/state.json" beat 200
+octopus --state "$tmp/state.json" pet
 octopus --state "$tmp/state.json" goal
 ```
 
@@ -89,6 +90,7 @@ installed swe-agent
 json-feed observe
 Octopus doctor
 pixel: 🟥
+event: harness beat
 heartbeat: alive
 memory: compacted 0 memories
 harness: evolved 2 routes

@@ -192,6 +192,14 @@ pub struct HeartbeatReport {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct PetEvent {
+    pub state: String,
+    pub source: String,
+    pub summary: String,
+    pub status: Status,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct EvolutionOutcome {
     pub index: u64,
     pub tentacle_id: String,
@@ -218,6 +226,7 @@ pub struct StatusReport {
     pub tentacles: Vec<TentacleStatus>,
     pub goal: Option<GoalSnapshot>,
     pub active_grants: Vec<String>,
+    pub last_pet_event: Option<PetEvent>,
     pub warnings: Vec<String>,
     pub next_action: String,
 }
@@ -1082,6 +1091,8 @@ pub struct HarnessState {
     pub grants: Vec<CapabilityGrant>,
     #[serde(default)]
     pub evolution_outcomes: Vec<EvolutionOutcome>,
+    #[serde(default)]
+    pub last_pet_event: Option<PetEvent>,
 }
 
 impl HarnessState {
@@ -1147,7 +1158,7 @@ impl HarnessState {
     pub fn beat(&mut self, memory_keep: usize) -> HeartbeatReport {
         let dropped = self.memory.compact(memory_keep);
         let routes_changed = self.routes.decay(0.995);
-        HeartbeatReport {
+        let report = HeartbeatReport {
             beats: vec![
                 HeartBeat {
                     name: "heartbeat".to_string(),
@@ -1174,7 +1185,25 @@ impl HarnessState {
                     )]),
                 },
             ],
+        };
+        if dropped > 0 {
+            self.record_pet_event(
+                "memory",
+                "memory beat",
+                format!("compacted {dropped} memories"),
+                Status::Satisfied,
+            );
+        } else if routes_changed > 0 {
+            self.record_pet_event(
+                "harness",
+                "harness beat",
+                format!("evolved {routes_changed} routes"),
+                Status::Satisfied,
+            );
+        } else {
+            self.record_pet_event("heartbeat", "heartbeat", "alive", Status::Satisfied);
         }
+        report
     }
 
     pub fn status_report(&self) -> StatusReport {
@@ -1259,9 +1288,49 @@ impl HarnessState {
             tentacles,
             goal,
             active_grants,
+            last_pet_event: self.last_pet_event.clone(),
             warnings,
             next_action,
         }
+    }
+
+    pub fn record_pet_event(
+        &mut self,
+        state: impl Into<String>,
+        source: impl Into<String>,
+        summary: impl Into<String>,
+        status: Status,
+    ) -> PetEvent {
+        let event = PetEvent {
+            state: state.into(),
+            source: source.into(),
+            summary: summary.into(),
+            status,
+        };
+        self.last_pet_event = Some(event.clone());
+        event
+    }
+
+    pub fn record_pet_event_from_feed(&mut self, feed: &Feed) -> PetEvent {
+        let state = match feed.status {
+            Status::Failed | Status::Unsupported => "blocked",
+            Status::Partial => "harness",
+            Status::Satisfied => match feed.need.kind {
+                NeedKind::Remember | NeedKind::Recall | NeedKind::Forget => "memory",
+                _ => "success",
+            },
+        };
+        let source = feed
+            .metadata
+            .get("tentacle")
+            .cloned()
+            .unwrap_or_else(|| kind_key(&feed.need.kind).to_string());
+        let summary = if feed.summary.is_empty() {
+            format!("{} {}", kind_key(&feed.need.kind), status_key(&feed.status))
+        } else {
+            feed.summary.clone()
+        };
+        self.record_pet_event(state, source, summary, feed.status.clone())
     }
 
     pub fn adapt_environment(
@@ -1376,6 +1445,12 @@ impl HarnessState {
             )]),
         };
         self.routes.learn(&feed);
+        self.record_pet_event(
+            "harness",
+            "evolve score",
+            outcome.summary.clone(),
+            outcome.status.clone(),
+        );
         self.evolution_outcomes.push(outcome.clone());
         outcome
     }
@@ -1508,6 +1583,7 @@ impl Harness {
 
     pub fn feed_one(&mut self, need: &Need) -> Feed {
         if let Some(feed) = self.memory_feed(need) {
+            self.state.record_pet_event_from_feed(&feed);
             return feed;
         }
         let candidates = self
@@ -1518,7 +1594,9 @@ impl Harness {
             .map(|(index, tentacle)| (index, tentacle.name().to_string()))
             .collect::<Vec<_>>();
         if candidates.is_empty() {
-            return Feed::unsupported(need, "no tentacle supports this need");
+            let feed = Feed::unsupported(need, "no tentacle supports this need");
+            self.state.record_pet_event_from_feed(&feed);
+            return feed;
         }
 
         let names = candidates
@@ -1540,6 +1618,7 @@ impl Harness {
             .insert("tentacle".to_string(), decision.tentacle);
         feed.metadata.insert("route".to_string(), decision.reason);
         self.state.routes.learn(&feed);
+        self.state.record_pet_event_from_feed(&feed);
         feed
     }
 
@@ -4338,6 +4417,15 @@ fn kind_key(kind: &NeedKind) -> &'static str {
     }
 }
 
+fn status_key(status: &Status) -> &'static str {
+    match status {
+        Status::Satisfied => "satisfied",
+        Status::Partial => "partial",
+        Status::Failed => "failed",
+        Status::Unsupported => "unsupported",
+    }
+}
+
 fn evolution_status_score(status: &Status) -> f32 {
     match status {
         Status::Satisfied => 1.0,
@@ -4551,6 +4639,10 @@ mod tests {
 
         assert_eq!(feedback.status, Status::Satisfied, "{}", feedback.summary);
         assert!(feedback.summary.contains("tools stay outside the brain"));
+        assert_eq!(
+            harness.state.last_pet_event.as_ref().unwrap().state,
+            "memory"
+        );
     }
 
     #[test]
@@ -4645,6 +4737,10 @@ mod tests {
         );
         assert_eq!(harness.state.memory.len(), 1);
         assert!(harness.state.routes.score(&NeedKind::Verify, "verifier") < route_before);
+        assert_eq!(
+            harness.state.last_pet_event.as_ref().unwrap().state,
+            "memory"
+        );
         assert!(
             report
                 .beats
@@ -4653,6 +4749,39 @@ mod tests {
                 .unwrap()
                 .changed
         );
+    }
+
+    #[test]
+    fn feed_and_evolution_update_pet_event() {
+        let mut harness = Harness::new();
+
+        harness.feed_one(&Need::new(NeedKind::Verify, "claim"));
+        let event = harness.state.last_pet_event.as_ref().unwrap();
+        assert_eq!(event.state, "blocked");
+        assert_eq!(event.status, Status::Unsupported);
+
+        harness.add_tentacle(Box::new(FunctionTentacle::new(
+            "verifier",
+            vec![NeedKind::Verify],
+            |need| Feed::satisfied(need, "verified", "verifier"),
+        )));
+
+        harness.feed_one(&Need::new(NeedKind::Verify, "claim"));
+
+        let event = harness.state.last_pet_event.as_ref().unwrap();
+        assert_eq!(event.state, "success");
+        assert_eq!(event.source, "verifier");
+
+        harness.state.record_evolution_outcome(
+            "swe-agent",
+            "03-runtime-code",
+            Status::Satisfied,
+            "patch improved feed",
+        );
+
+        let event = harness.state.last_pet_event.as_ref().unwrap();
+        assert_eq!(event.state, "harness");
+        assert_eq!(event.source, "evolve score");
     }
 
     #[test]

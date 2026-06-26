@@ -75,6 +75,8 @@ struct PetReport {
     summary: String,
     color: String,
     fallback: String,
+    event_source: Option<String>,
+    event_summary: Option<String>,
     path: String,
     target: String,
     exists: bool,
@@ -863,6 +865,12 @@ fn print_pet_report(report: &PetReport, language: Language) {
             println!("pixel: {}", report.fallback);
             println!("state: {}", report.state);
             println!("summary: {}", report.summary);
+            if let Some(source) = &report.event_source {
+                println!("event: {source}");
+            }
+            if let Some(summary) = &report.event_summary {
+                println!("event_summary: {summary}");
+            }
             println!("url: {}", report.target);
             println!("exists: {}", report.exists);
         }
@@ -871,6 +879,12 @@ fn print_pet_report(report: &PetReport, language: Language) {
             println!("像素: {}", report.fallback);
             println!("状态: {}", report.state);
             println!("摘要: {}", report.summary);
+            if let Some(source) = &report.event_source {
+                println!("事件: {source}");
+            }
+            if let Some(summary) = &report.event_summary {
+                println!("事件摘要: {summary}");
+            }
             println!("入口: {}", report.target);
             println!("存在: {}", report.exists);
         }
@@ -1132,38 +1146,54 @@ fn pet_report_for_state(
     state_path: &Path,
     requested: &str,
 ) -> Result<PetReport, String> {
-    let pet_state = if requested == "auto" {
-        let status = state.status_report_with_state(Some(state_path));
-        auto_pet_state(&status)
+    let status = if requested == "auto" {
+        Some(state.status_report_with_state(Some(state_path)))
     } else {
-        requested
+        None
     };
-    pet_report(pet_state)
+    let pet_state = if let Some(status) = &status {
+        auto_pet_state(status)
+    } else {
+        requested.to_string()
+    };
+    let mut report = pet_report(&pet_state)?;
+    if let Some(event) = status.and_then(|status| status.last_pet_event) {
+        if event.state == report.state {
+            report.event_source = Some(event.source);
+            report.event_summary = Some(event.summary);
+        }
+    }
+    Ok(report)
 }
 
-fn auto_pet_state(report: &StatusReport) -> &'static str {
+fn auto_pet_state(report: &StatusReport) -> String {
     if report
         .goal
         .as_ref()
         .is_some_and(|goal| goal.status == octopus_core::GoalStatus::Blocked)
         || report.tentacles.is_empty()
     {
-        return "blocked";
+        return "blocked".to_string();
     }
     if report
         .goal
         .as_ref()
         .is_some_and(|goal| goal.status == octopus_core::GoalStatus::Satisfied)
     {
-        return "success";
+        return "success".to_string();
+    }
+    if let Some(event) = &report.last_pet_event {
+        if pet_state_info(&event.state).is_ok() {
+            return event.state.clone();
+        }
     }
     if report.route_count > 0 {
-        return "harness";
+        return "harness".to_string();
     }
     if report.memory_count > 0 {
-        return "memory";
+        return "memory".to_string();
     }
-    "heartbeat"
+    "heartbeat".to_string()
 }
 
 fn pet_report(state: &str) -> Result<PetReport, String> {
@@ -1177,6 +1207,8 @@ fn pet_report(state: &str) -> Result<PetReport, String> {
         summary: summary.to_string(),
         color: color.to_string(),
         fallback: fallback.to_string(),
+        event_source: None,
+        event_summary: None,
         target,
         exists: path.exists(),
         path: path_text,
@@ -2134,7 +2166,7 @@ mod tests {
         localize_summary, percent_encode_path, pet_report, pet_report_for_state, run,
         skill_reports, usage, Language,
     };
-    use octopus_core::{Feed, Goal, GoalStatus, HarnessState, Need, NeedKind};
+    use octopus_core::{Feed, Goal, GoalStatus, HarnessState, Need, NeedKind, Status};
     use std::fs;
     use std::path::Path;
     use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -2468,6 +2500,39 @@ mod tests {
                 .state,
             "blocked"
         );
+    }
+
+    #[test]
+    fn pet_auto_state_prefers_recent_action_event() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let state_path = Path::new("state.json");
+        let mut state = HarnessState::default();
+        state.install_manifest(root, "swe-agent").unwrap();
+        state.record_pet_event(
+            "success",
+            "swe-agent",
+            "observed repo from feed",
+            Status::Satisfied,
+        );
+
+        let report = pet_report_for_state(&state, state_path, "auto").unwrap();
+
+        assert_eq!(report.state, "success");
+        assert_eq!(report.fallback, "🟩");
+        assert_eq!(report.event_source.as_deref(), Some("swe-agent"));
+        assert_eq!(
+            report.event_summary.as_deref(),
+            Some("observed repo from feed")
+        );
+        assert!(report.target.contains("docs/pet.html?state=success"));
+
+        state.record_pet_event("not-a-pet-state", "manual", "bad state", Status::Failed);
+        let report = pet_report_for_state(&state, state_path, "auto").unwrap();
+
+        assert_eq!(report.state, "heartbeat");
+        assert!(report.event_source.is_none());
     }
 
     #[test]

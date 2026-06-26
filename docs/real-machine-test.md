@@ -56,6 +56,7 @@ Result:
 - Open `docs/app.html`.
 - Open `docs/pet.html?state=harness`.
 - Confirm pixel body color changes and chat fallback shows `🟥 🐙`.
+- Run `octopus pet` after `beat` and confirm `event: harness beat` or matching latest action event appears.
 
 Result:
 
