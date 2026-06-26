@@ -5,10 +5,10 @@ use octopus_core::{
     think_tentacle, write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts,
     AdaptReport, CapabilityGrant, ChatClient, ChatMessage, ChatRole, EnvironmentReport,
     EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome,
-    EvolutionRecommendation, Feed, GoalChat, Harness, HarnessState, HeartbeatReport, Need,
-    NeedKind, OpenAiCompatibleChatClient, OpenAiCompatibleConfig, SelfIterationPlan, Status,
-    StatusReport, TentacleEvolutionProposal, TentacleManifestReport, TentacleScaffold,
-    TentacleThinkingPlan, TentacleToolCandidate,
+    EvolutionRecommendation, Feed, FeedTraceRecord, GoalChat, Harness, HarnessState,
+    HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient, OpenAiCompatibleConfig,
+    SelfIterationPlan, Status, StatusReport, TentacleEvolutionProposal, TentacleManifestReport,
+    TentacleScaffold, TentacleThinkingPlan, TentacleToolCandidate,
 };
 use std::env;
 use std::fs;
@@ -321,6 +321,28 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 serde_json::to_string_pretty(&loaded.routes.scores)
                     .map_err(|error| error.to_string())?
             );
+            Ok(())
+        }
+        Some("traces") => {
+            let limit = rest
+                .get(1)
+                .map(|value| {
+                    value
+                        .parse::<usize>()
+                        .map_err(|_| format!("invalid trace limit: {value}"))
+                })
+                .transpose()?
+                .unwrap_or(10);
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let traces = loaded.recent_feed_traces(limit);
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&traces).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_feed_traces(&traces, language);
+            }
             Ok(())
         }
         Some("chat") => {
@@ -1810,6 +1832,7 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "providers"
             | "provider"
             | "routes"
+            | "traces"
             | "env"
             | "adapt"
             | "self-iterate"
@@ -2399,6 +2422,10 @@ fn print_status_report(report: &StatusReport, language: Language) {
             println!("tentacles: {}", status_tentacles(report));
             println!("goal: {}", status_goal(report));
             println!("grants: {}", join_or_none(&report.active_grants));
+            println!("feed_traces: {}", report.feed_trace_count);
+            if let Some(trace) = &report.latest_feed_trace {
+                println!("latest_trace: {}", trace_line(trace));
+            }
             println!("warnings: {}", join_or_none(&report.warnings));
             println!("next: {}", report.next_action);
         }
@@ -2417,10 +2444,49 @@ fn print_status_report(report: &StatusReport, language: Language) {
             println!("触手: {}", status_tentacles(report));
             println!("目标: {}", status_goal(report));
             println!("授权: {}", join_or_none(&report.active_grants));
+            println!("Feed轨迹数: {}", report.feed_trace_count);
+            if let Some(trace) = &report.latest_feed_trace {
+                println!("最近轨迹: {}", trace_line(trace));
+            }
             println!("警告: {}", join_or_none(&report.warnings));
             println!("下一步: {}", report.next_action);
         }
     }
+}
+
+fn print_feed_traces(traces: &[FeedTraceRecord], language: Language) {
+    match language {
+        Language::En => println!("Feed traces"),
+        Language::Zh => println!("Feed轨迹"),
+    }
+    if traces.is_empty() {
+        match language {
+            Language::En => println!("none"),
+            Language::Zh => println!("暂无"),
+        }
+        return;
+    }
+    for trace in traces {
+        println!("{}", trace_line(trace));
+    }
+}
+
+fn trace_line(trace: &FeedTraceRecord) -> String {
+    let tentacle = trace.tentacle.as_deref().unwrap_or("none");
+    let tool = trace.tool.as_deref().unwrap_or("none");
+    let plan = trace.plan_source.as_deref().unwrap_or("none");
+    format!(
+        "#{} {}:{} -> {:?} via {}/{} plan={} evidence={} :: {}",
+        trace.index,
+        need_label(&trace.need_kind),
+        trace.need_query,
+        trace.status,
+        tentacle,
+        tool,
+        plan,
+        trace.evidence_count,
+        trace.summary
+    )
 }
 
 fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorReport, String> {
@@ -3328,7 +3394,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | think <tentacle> <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -3555,6 +3621,7 @@ mod tests {
         assert!(usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
         assert!(usage().contains("provider status"));
+        assert!(usage().contains("traces [limit]"));
     }
 
     #[test]
@@ -3624,6 +3691,11 @@ mod tests {
             "swe-agent".to_string(),
             "observe".to_string(),
             "README.md".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "traces".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),
@@ -4458,9 +4530,16 @@ JSON
             repo,
         ])
         .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "traces".to_string(),
+        ])
+        .unwrap();
 
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("observe:swe-agent"));
+        assert!(content.contains("feed_traces"));
         let _ = fs::remove_file(path);
     }
 

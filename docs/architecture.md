@@ -38,7 +38,7 @@ Context boundary: clean-brain LLM context is `Goal + Mem + Need + Feed`; tentacl
 
 `think <tentacle> <kind> <query>` asks one tentacle brain to plan from its prompt, tool metadata, grants, and optional LLM provider, then returns the selected tool without executing it.
 
-Every executed manifest Feed also carries a `tentacle_plan` evidence item plus a short `feed_trace`, so tool-side thinking is visible after execution without adding tool burden to clean-brain context.
+Every executed Feed is also written to a compact harness trace journal. Manifest Feed carries a `tentacle_plan` evidence item plus a short `feed_trace`, so tool-side thinking is visible after execution without adding tool burden to clean-brain context. `traces [limit]` reads that journal.
 
 `bridge [addr]` serves the native HTML app and exposes `/api/run` plus `/api/stream` for local Octopus subcommands so the GUI can execute init, install, chat, think, Need, pet, doctor, and beat flows without a shell.
 

@@ -85,8 +85,10 @@ jobs:
       - run: grep -q data-state docs/pet.html
       - run: grep -q "pixel-pet" docs/pet.html
       - run: grep -q "octopus think" docs/index.html
+      - run: grep -q "octopus traces" docs/index.html
       - run: grep -q "Command Surface" docs/app.html
       - run: grep -q "data-run=\"think\"" docs/app.html
+      - run: grep -q "data-run=\"traces\"" docs/app.html
       - run: grep -q "data-run=\"provider\"" docs/app.html
       - run: grep -q "/api/stream" docs/app.html
       - run: grep -q "/api/run" docs/architecture.md
@@ -145,10 +147,13 @@ jobs:
           cargo run -q -p octopus-core -- --state "$tmp/state.json" need observe . > "$tmp/observe.txt"
           test -s "$tmp/observe.txt"
           grep -q "feed_trace:" "$tmp/observe.txt"
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" traces | grep -q "Feed traces"
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" status | grep -q "feed_traces:"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json need observe . > "$tmp/observe.json"
           grep -q '"status": "satisfied"' "$tmp/observe.json"
           grep -q '"plan"' "$tmp/observe.json"
           grep -q '"source": "tentacle_plan"' "$tmp/observe.json"
+          grep -q '"feed_traces"' "$tmp/state.json"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" pet | grep -q "state: success"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" doctor | grep -q "Octopus doctor"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json doctor | grep -q '"llm"'

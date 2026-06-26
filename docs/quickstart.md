@@ -31,6 +31,7 @@ octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
 octopus --state "$tmp/state.json" think swe-agent observe README.md
 octopus --state "$tmp/state.json" need observe .
+octopus --state "$tmp/state.json" traces
 octopus --state "$tmp/state.json" oauth octopus tool:bash-only tool:execute
 octopus --state "$tmp/state.json" need execute "echo octopus"
 octopus --state "$tmp/state.json" pet
@@ -118,6 +119,7 @@ json-feed observe
 Octopus think
 plan_source: rule
 feed_trace: json-feed/feed via rule
+Feed traces
 Octopus doctor
 Octopus bridge: http://127.0.0.1:8765
 pixel: 🟥

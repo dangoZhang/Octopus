@@ -316,6 +316,7 @@
             <button type="button" data-run="chat">Chat</button>
             <button type="button" data-run="think">Think</button>
             <button type="button" data-run="need">Need</button>
+            <button type="button" data-run="traces">Trace</button>
             <button type="button" data-run="provider">Provider</button>
             <button type="button" data-run="pet">Pet</button>
             <button type="button" data-run="doctor">Doctor</button>
@@ -350,6 +351,7 @@
           `octopus --state ${shellQuote(state)} chat ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} think ${tentacle} ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} need ${need} ${shellQuote(target)}`,
+          `octopus --state ${shellQuote(state)} traces`,
           `octopus --state ${shellQuote(state)} pet ${stateName}`,
           `octopus --state ${shellQuote(state)} doctor`,
           `octopus --state ${shellQuote(state)} beat 200`,
@@ -369,6 +371,7 @@
           chat: [...base, "chat", goal],
           think: [...base, "think", tentacle, need, target],
           need: [...base, "need", need, target],
+          traces: [...base, "traces"],
           provider: ["provider", "status"],
           pet: [...base, "pet", stateName],
           doctor: [...base, "doctor"],

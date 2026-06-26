@@ -26,4 +26,6 @@ Real-machine test gate for `0.1.0` and later tags:
 
 Last cleanup/version correction: `0.0.2` on 2026-06-26. Scope: provider profiles, local bridge, browser diagnostics, permissioned tentacle tools, docs/CI alignment; no tag cut.
 
+Product commits toward `0.0.3`: 8/8 after the Feed trace journal.
+
 Next planned cleanup/version commit: `0.0.3`.

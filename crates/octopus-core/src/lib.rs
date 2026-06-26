@@ -8,6 +8,8 @@ use std::process::{Command, Stdio};
 
 const OCTOPUS_JSON_CONTRACT: &str = "octopus-json-v1";
 const OCTOPUS_TOOL_CALL_SCHEMA: &str = "octopus-tool-call-v1";
+const FEED_TRACE_QUERY_BYTES: usize = 160;
+const FEED_TRACE_SUMMARY_BYTES: usize = 240;
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -210,6 +212,20 @@ pub struct EvolutionOutcome {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct FeedTraceRecord {
+    pub index: u64,
+    pub need_kind: NeedKind,
+    pub need_query: String,
+    pub status: Status,
+    pub tentacle: Option<String>,
+    pub tool: Option<String>,
+    pub plan_source: Option<String>,
+    pub route: Option<String>,
+    pub evidence_count: usize,
+    pub summary: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct AdaptReport {
     pub environment: EnvironmentReport,
     pub installed_profiles: Vec<String>,
@@ -222,11 +238,13 @@ pub struct StatusReport {
     pub hearts: Vec<HeartBeat>,
     pub memory_count: usize,
     pub route_count: usize,
+    pub feed_trace_count: usize,
     pub installed_profiles: Vec<String>,
     pub tentacles: Vec<TentacleStatus>,
     pub goal: Option<GoalSnapshot>,
     pub active_grants: Vec<String>,
     pub last_pet_event: Option<PetEvent>,
+    pub latest_feed_trace: Option<FeedTraceRecord>,
     pub warnings: Vec<String>,
     pub next_action: String,
 }
@@ -1093,6 +1111,10 @@ pub struct HarnessState {
     pub evolution_outcomes: Vec<EvolutionOutcome>,
     #[serde(default)]
     pub last_pet_event: Option<PetEvent>,
+    #[serde(default)]
+    pub feed_traces: Vec<FeedTraceRecord>,
+    #[serde(default)]
+    pub next_feed_trace_index: u64,
 }
 
 impl HarnessState {
@@ -1158,6 +1180,14 @@ impl HarnessState {
     pub fn beat(&mut self, memory_keep: usize) -> HeartbeatReport {
         let dropped = self.memory.compact(memory_keep);
         let routes_changed = self.routes.decay(0.995);
+        let trace_dropped = self.compact_feed_traces(memory_keep);
+        let harness_summary = if routes_changed > 0 && trace_dropped > 0 {
+            format!("evolved {routes_changed} routes, compacted {trace_dropped} traces")
+        } else if trace_dropped > 0 {
+            format!("compacted {trace_dropped} traces")
+        } else {
+            format!("evolved {routes_changed} routes")
+        };
         let report = HeartbeatReport {
             beats: vec![
                 HeartBeat {
@@ -1177,12 +1207,16 @@ impl HarnessState {
                 },
                 HeartBeat {
                     name: "harness".to_string(),
-                    changed: routes_changed > 0,
-                    summary: format!("evolved {routes_changed} routes"),
-                    data: BTreeMap::from([(
-                        "routes".to_string(),
-                        self.routes.scores.len().to_string(),
-                    )]),
+                    changed: routes_changed > 0 || trace_dropped > 0,
+                    summary: harness_summary.clone(),
+                    data: BTreeMap::from([
+                        ("routes".to_string(), self.routes.scores.len().to_string()),
+                        (
+                            "feed_traces".to_string(),
+                            self.feed_traces.len().to_string(),
+                        ),
+                        ("feed_traces_dropped".to_string(), trace_dropped.to_string()),
+                    ]),
                 },
             ],
         };
@@ -1193,11 +1227,11 @@ impl HarnessState {
                 format!("compacted {dropped} memories"),
                 Status::Satisfied,
             );
-        } else if routes_changed > 0 {
+        } else if routes_changed > 0 || trace_dropped > 0 {
             self.record_pet_event(
                 "harness",
                 "harness beat",
-                format!("evolved {routes_changed} routes"),
+                harness_summary,
                 Status::Satisfied,
             );
         } else {
@@ -1284,11 +1318,13 @@ impl HarnessState {
             ],
             memory_count: self.memory.len(),
             route_count: self.routes.scores.len(),
+            feed_trace_count: self.feed_traces.len(),
             installed_profiles: self.installed_profiles.clone(),
             tentacles,
             goal,
             active_grants,
             last_pet_event: self.last_pet_event.clone(),
+            latest_feed_trace: self.feed_traces.last().cloned(),
             warnings,
             next_action,
         }
@@ -1331,6 +1367,42 @@ impl HarnessState {
             feed.summary.clone()
         };
         self.record_pet_event(state, source, summary, feed.status.clone())
+    }
+
+    pub fn record_feed_trace_from_feed(&mut self, feed: &Feed) -> FeedTraceRecord {
+        self.next_feed_trace_index += 1;
+        let trace = FeedTraceRecord {
+            index: self.next_feed_trace_index,
+            need_kind: feed.need.kind.clone(),
+            need_query: short_text(&feed.need.query, FEED_TRACE_QUERY_BYTES),
+            status: feed.status.clone(),
+            tentacle: feed
+                .metadata
+                .get("tentacle")
+                .or_else(|| feed.metadata.get("tentacle_brain"))
+                .cloned(),
+            tool: feed.metadata.get("tool").cloned(),
+            plan_source: feed.metadata.get("plan_source").cloned(),
+            route: feed.metadata.get("route").cloned(),
+            evidence_count: feed.evidence.len(),
+            summary: short_text(&feed.summary, FEED_TRACE_SUMMARY_BYTES),
+        };
+        self.feed_traces.push(trace.clone());
+        trace
+    }
+
+    pub fn recent_feed_traces(&self, limit: usize) -> Vec<FeedTraceRecord> {
+        let start = self.feed_traces.len().saturating_sub(limit);
+        self.feed_traces[start..].to_vec()
+    }
+
+    pub fn compact_feed_traces(&mut self, keep: usize) -> usize {
+        if self.feed_traces.len() <= keep {
+            return 0;
+        }
+        let dropped = self.feed_traces.len() - keep;
+        self.feed_traces.drain(0..dropped);
+        dropped
     }
 
     pub fn adapt_environment(
@@ -1586,6 +1658,7 @@ impl Harness {
     pub fn feed_one(&mut self, need: &Need) -> Feed {
         if let Some(feed) = self.memory_feed(need) {
             self.state.record_pet_event_from_feed(&feed);
+            self.state.record_feed_trace_from_feed(&feed);
             return feed;
         }
         let candidates = self
@@ -1598,6 +1671,7 @@ impl Harness {
         if candidates.is_empty() {
             let feed = Feed::unsupported(need, "no tentacle supports this need");
             self.state.record_pet_event_from_feed(&feed);
+            self.state.record_feed_trace_from_feed(&feed);
             return feed;
         }
 
@@ -1623,6 +1697,7 @@ impl Harness {
             self.state.routes.learn(&feed);
         }
         self.state.record_pet_event_from_feed(&feed);
+        self.state.record_feed_trace_from_feed(&feed);
         feed
     }
 
@@ -5076,6 +5151,18 @@ fn trim_output(output: &str) -> String {
     format!("{}\n[truncated]", output[..end].trim())
 }
 
+fn short_text(value: &str, max_bytes: usize) -> String {
+    let value = value.trim();
+    if value.len() <= max_bytes {
+        return value.to_string();
+    }
+    let mut end = max_bytes;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", value[..end].trim())
+}
+
 fn exit_code(status: &std::process::ExitStatus) -> i32 {
     status.code().unwrap_or(-1)
 }
@@ -6521,7 +6608,34 @@ print(json.dumps({
                 && evidence.metadata.get("tool") == Some(&"inspect_repo".to_string())
                 && evidence.metadata.get("plan_source") == Some(&"rule".to_string())
         }));
+        assert_eq!(harness.state.feed_traces.len(), 1);
+        assert_eq!(
+            harness.state.feed_traces[0].tool.as_deref(),
+            Some("inspect_repo")
+        );
         assert!(harness.state.routes.score(&NeedKind::Observe, "swe-agent") > 1.0);
+    }
+
+    #[test]
+    fn beat_compacts_feed_trace_journal() {
+        let repo = fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")).unwrap();
+        let mut state = HarnessState::default();
+        state
+            .install_manifest(repo.join("tentacles"), "swe-agent")
+            .unwrap();
+        let mut harness = Harness::with_state(state);
+
+        harness.feed(&[Need::new(NeedKind::Observe, ".")]);
+        harness.feed(&[Need::new(NeedKind::Observe, "README.md")]);
+        harness.feed(&[Need::new(NeedKind::Observe, "Cargo.toml")]);
+
+        assert_eq!(harness.state.feed_traces.len(), 3);
+        let report = harness.state.beat(2);
+
+        assert_eq!(harness.state.feed_traces.len(), 2);
+        assert!(report.beats.iter().any(|beat| {
+            beat.name == "harness" && beat.data.get("feed_traces_dropped") == Some(&"1".to_string())
+        }));
     }
 
     #[cfg(unix)]

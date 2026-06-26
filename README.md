@@ -39,6 +39,7 @@ octopus install bash-only
 octopus chat "build a clean-brain agent"
 octopus think swe-agent observe README.md
 octopus need observe .
+octopus traces
 octopus oauth octopus tool:bash-only tool:execute
 octopus need execute "echo octopus"
 octopus pet
@@ -72,6 +73,7 @@ json-feed observe
 Octopus think
 plan_source: rule
 feed_trace: json-feed/feed via rule
+Feed traces
 Octopus doctor
 pixel: 🟥
 event: harness beat
