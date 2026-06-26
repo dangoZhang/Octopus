@@ -72,6 +72,7 @@ Provider status
 json-feed observe
 Octopus think
 plan_source: rule
+actions: 1:read
 feed_trace: json-feed/feed via rule
 Feed traces
 Octopus doctor

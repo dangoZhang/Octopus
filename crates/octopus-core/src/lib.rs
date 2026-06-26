@@ -10,6 +10,7 @@ const OCTOPUS_JSON_CONTRACT: &str = "octopus-json-v1";
 const OCTOPUS_TOOL_CALL_SCHEMA: &str = "octopus-tool-call-v1";
 const FEED_TRACE_QUERY_BYTES: usize = 160;
 const FEED_TRACE_SUMMARY_BYTES: usize = 240;
+const MAX_TENTACLE_ACTIONS: usize = 2;
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -1937,11 +1938,19 @@ struct ToolOutputEnvelope {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+struct ManifestToolCall {
+    tool: InstalledToolRef,
+    reason: String,
+    payload: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct ManifestToolPlan {
     tool: InstalledToolRef,
     reason: String,
     candidates: Vec<String>,
     source: String,
+    calls: Vec<ManifestToolCall>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -1957,6 +1966,12 @@ pub struct TentacleToolCandidate {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TentacleToolAction {
+    pub tool: TentacleToolCandidate,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TentacleThinkingPlan {
     pub tentacle_id: String,
     pub brain_kind: String,
@@ -1967,6 +1982,8 @@ pub struct TentacleThinkingPlan {
     pub selected_tool: TentacleToolCandidate,
     pub plan_source: String,
     pub reason: String,
+    #[serde(default)]
+    pub actions: Vec<TentacleToolAction>,
     pub candidates: Vec<TentacleToolCandidate>,
 }
 
@@ -2027,6 +2044,14 @@ impl ManifestTentacle {
     fn thinking_plan(&mut self, need: &Need) -> Option<TentacleThinkingPlan> {
         let plan = self.plan_tool(need)?;
         let candidate_ids = plan.candidates.clone();
+        let actions = plan
+            .calls
+            .iter()
+            .map(|call| TentacleToolAction {
+                tool: self.thinking_candidate(&call.tool),
+                reason: call.reason.clone(),
+            })
+            .collect::<Vec<_>>();
         let candidates = candidate_ids
             .iter()
             .filter_map(|id| self.tools.iter().find(|tool| &tool.id == id))
@@ -2042,6 +2067,7 @@ impl ManifestTentacle {
             selected_tool: self.thinking_candidate(&plan.tool),
             plan_source: plan.source,
             reason: plan.reason,
+            actions,
             candidates,
         })
     }
@@ -2119,10 +2145,15 @@ impl ManifestTentacle {
             .cloned()?;
         let reason = manifest_plan_reason(need, &tool);
         Some(ManifestToolPlan {
-            tool,
+            tool: tool.clone(),
             reason,
             candidates,
             source: "rule".to_string(),
+            calls: vec![ManifestToolCall {
+                tool,
+                reason: "rule selected primary tool".to_string(),
+                payload: BTreeMap::new(),
+            }],
         })
     }
 
@@ -2157,7 +2188,7 @@ impl ManifestTentacle {
                 ChatMessage::new(
                     ChatRole::System,
                     format!(
-                        "You are the '{}' Octopus tentacle brain. {}\nReturn only JSON: {{\"calls\":[{{\"tool\":\"id\",\"reason\":\"short\"}}],\"summary\":\"short\"}}",
+                        "You are the '{}' Octopus tentacle brain. {}\nReturn only JSON: {{\"calls\":[{{\"tool\":\"id\",\"reason\":\"short\",\"payload\":{{\"query\":\"optional per-action input\"}}}}],\"summary\":\"short\"}}",
                         self.route_id, self.installed.brain_prompt
                     ),
                 ),
@@ -2173,17 +2204,60 @@ impl ManifestTentacle {
             ])
             .ok()?;
         let plan = serde_json::from_str::<Plan>(&response.content).ok()?;
-        let call = plan.calls.first()?;
-        let tool = tools.iter().find(|tool| tool.id == call.tool).cloned()?;
+        let calls = plan
+            .calls
+            .iter()
+            .filter_map(|call| {
+                tools
+                    .iter()
+                    .find(|tool| tool.id == call.tool)
+                    .cloned()
+                    .map(|tool| ManifestToolCall {
+                        tool,
+                        reason: call.reason.clone(),
+                        payload: call.payload.clone(),
+                    })
+            })
+            .take(MAX_TENTACLE_ACTIONS)
+            .collect::<Vec<_>>();
+        let first = calls.first()?;
+        let tool = first.tool.clone();
         let candidates = tools.iter().map(|tool| tool.id.clone()).collect::<Vec<_>>();
-        let reason = if call.reason.is_empty() {
+        let reason = if calls.len() > 1 {
+            let steps = calls
+                .iter()
+                .map(|call| {
+                    if call.reason.trim().is_empty() {
+                        call.tool.id.clone()
+                    } else {
+                        format!("{}({})", call.tool.id, call.reason)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" -> ");
+            if plan.summary.trim().is_empty() {
+                format!(
+                    "llm planned {} actions for {}",
+                    calls.len(),
+                    kind_key(&need.kind)
+                )
+            } else {
+                format!(
+                    "llm planned {} actions for {}: {} :: {}",
+                    calls.len(),
+                    kind_key(&need.kind),
+                    plan.summary,
+                    steps
+                )
+            }
+        } else if first.reason.is_empty() {
             format!("llm selected {} for {}", tool.id, kind_key(&need.kind))
         } else {
             format!(
                 "llm selected {} for {}: {}",
                 tool.id,
                 kind_key(&need.kind),
-                call.reason
+                first.reason
             )
         };
         Some(ManifestToolPlan {
@@ -2191,6 +2265,7 @@ impl ManifestTentacle {
             reason,
             candidates,
             source: "llm".to_string(),
+            calls,
         })
     }
 
@@ -2213,11 +2288,20 @@ impl ManifestTentacle {
             || self.tool_path(tool).exists()
     }
 
-    fn run_tool(&self, tool: &InstalledToolRef, need: &Need) -> ToolResult {
+    fn run_tool(
+        &self,
+        tool: &InstalledToolRef,
+        need: &Need,
+        query_override: Option<&str>,
+    ) -> ToolResult {
         let active_grant = match self.authorize_tool(tool) {
             Ok(grant) => grant.map(|grant| grant.id.clone()),
             Err(result) => return result,
         };
+        let mut action_need = need.clone();
+        if let Some(query) = clean_optional(query_override) {
+            action_need.query = query.to_string();
+        }
         let path = self.tool_path(tool);
         if tool.kind == "static-html" {
             let target = if path.exists() {
@@ -2252,10 +2336,10 @@ impl ManifestTentacle {
         } else {
             match tool.id.as_str() {
                 "inspect_repo" | "run_tests" | "github_status" => {
-                    command.arg(default_tool_query(&need.query));
+                    command.arg(default_tool_query(&action_need.query));
                 }
                 "read" => {
-                    for arg in read_args(&need.query) {
+                    for arg in read_args(&action_need.query) {
                         command.arg(arg);
                     }
                 }
@@ -2268,12 +2352,12 @@ impl ManifestTentacle {
                     command.stdin(Stdio::piped());
                 }
                 "mcp" => {
-                    for arg in mcp_args(&need.query) {
+                    for arg in mcp_args(&action_need.query) {
                         command.arg(arg);
                     }
                 }
                 _ => {
-                    command.arg(default_tool_query(&need.query));
+                    command.arg(default_tool_query(&action_need.query));
                 }
             }
         }
@@ -2285,7 +2369,7 @@ impl ManifestTentacle {
             }
         };
         if uses_json_contract {
-            let input = match self.tool_invocation_json(tool, need) {
+            let input = match self.tool_invocation_json(tool, &action_need) {
                 Ok(input) => input,
                 Err(error) => return ToolResult::failed(error),
             };
@@ -2296,7 +2380,7 @@ impl ManifestTentacle {
             }
         } else if tool.id == "write_and_run" || tool.id == "bash" {
             if let Some(mut stdin) = child.stdin.take() {
-                if let Err(error) = stdin.write_all(need.query.as_bytes()) {
+                if let Err(error) = stdin.write_all(action_need.query.as_bytes()) {
                     return ToolResult::failed(format!("{} stdin failed: {error}", tool.id));
                 }
             }
@@ -2327,6 +2411,11 @@ impl ManifestTentacle {
         result
             .metadata
             .insert("runtime".to_string(), tool.kind.clone());
+        if action_need.query != need.query {
+            result
+                .metadata
+                .insert("action_query".to_string(), action_need.query);
+        }
         if uses_json_contract {
             result.metadata.insert(
                 "contract".to_string(),
@@ -2460,8 +2549,93 @@ impl ManifestTentacle {
         evidence
             .metadata
             .insert("available_tools".to_string(), plan.candidates.join(","));
+        evidence.metadata.insert(
+            "tools".to_string(),
+            plan.calls
+                .iter()
+                .map(|call| call.tool.id.as_str())
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        evidence
+            .metadata
+            .insert("action_count".to_string(), plan.calls.len().to_string());
         evidence
     }
+}
+
+fn tool_call_query(call: &ManifestToolCall) -> Option<String> {
+    call.payload
+        .get("query")
+        .or_else(|| call.payload.get("input"))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn action_results_status(results: &[(ManifestToolCall, ToolResult)]) -> Status {
+    if results.is_empty() {
+        return Status::Failed;
+    }
+    let tool_results = results
+        .iter()
+        .map(|(_, result)| result.clone())
+        .collect::<Vec<_>>();
+    tool_status(&tool_results)
+}
+
+fn action_results_summary(results: &[(ManifestToolCall, ToolResult)]) -> String {
+    if results.is_empty() {
+        return "no tentacle action executed".to_string();
+    }
+    if results.len() == 1 {
+        return results[0].1.output.clone();
+    }
+    results
+        .iter()
+        .enumerate()
+        .map(|(index, (call, result))| {
+            format!(
+                "== action {}: {} ({:?}) ==\n{}",
+                index + 1,
+                call.tool.id,
+                result.status,
+                result.output
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn action_results_evidence(results: &[(ManifestToolCall, ToolResult)]) -> Vec<Evidence> {
+    let mut evidence = Vec::new();
+    for (index, (call, result)) in results.iter().enumerate() {
+        let mut action = Evidence::new(
+            "tentacle_action",
+            format!(
+                "action {} ran {} -> {:?}",
+                index + 1,
+                call.tool.id,
+                result.status
+            ),
+        );
+        action.confidence = if result.status == Status::Satisfied {
+            0.9
+        } else {
+            0.4
+        };
+        action
+            .metadata
+            .insert("tool".to_string(), call.tool.id.clone());
+        action
+            .metadata
+            .insert("reason".to_string(), call.reason.clone());
+        action
+            .metadata
+            .insert("status".to_string(), status_key(&result.status).to_string());
+        evidence.push(action);
+        evidence.extend(result.evidence.clone());
+    }
+    evidence
 }
 
 impl Tentacle for ManifestTentacle {
@@ -2484,11 +2658,40 @@ impl Tentacle for ManifestTentacle {
             return Feed::unsupported(need, "no manifest tool supports this need");
         };
         let tool = plan.tool.clone();
-        let result = self.run_tool(&tool, need);
-        let status = result.status.clone();
-        let mut metadata = result.metadata.clone();
+        let mut action_results = Vec::new();
+        for call in plan.calls.iter().take(MAX_TENTACLE_ACTIONS) {
+            let query = tool_call_query(call);
+            let result = self.run_tool(&call.tool, need, query.as_deref());
+            let should_continue = result.status == Status::Satisfied;
+            action_results.push((call.clone(), result));
+            if !should_continue {
+                break;
+            }
+        }
+        let status = action_results_status(&action_results);
+        let mut metadata = action_results
+            .last()
+            .map(|(_, result)| result.metadata.clone())
+            .unwrap_or_default();
         metadata.insert("tool".to_string(), tool.id.clone());
         metadata.insert("tool_description".to_string(), tool.description.clone());
+        metadata.insert(
+            "tools".to_string(),
+            action_results
+                .iter()
+                .map(|(call, _)| call.tool.id.as_str())
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        metadata.insert("action_count".to_string(), action_results.len().to_string());
+        metadata.insert(
+            "action_plan".to_string(),
+            plan.calls
+                .iter()
+                .map(|call| call.tool.id.as_str())
+                .collect::<Vec<_>>()
+                .join(" -> "),
+        );
         metadata.insert("plan".to_string(), plan.reason.clone());
         metadata.insert("plan_source".to_string(), plan.source.clone());
         metadata.insert("available_tools".to_string(), plan.candidates.join(","));
@@ -2505,13 +2708,13 @@ impl Tentacle for ManifestTentacle {
         if let Some(contract) = &self.installed.feedback_contract {
             metadata.insert("feedback_contract".to_string(), contract.clone());
         }
-        let mut evidence = result.evidence;
+        let mut evidence = action_results_evidence(&action_results);
         evidence.insert(0, self.plan_evidence(&tool, &plan));
         Feed {
             need: need.clone(),
             status,
             evidence,
-            summary: result.output,
+            summary: action_results_summary(&action_results),
             metadata,
         }
     }
@@ -6860,6 +7063,8 @@ print(json.dumps({
 
         assert_eq!(plan.plan_source, "llm");
         assert_eq!(plan.selected_tool.id, "read");
+        assert_eq!(plan.actions.len(), 1);
+        assert_eq!(plan.actions[0].tool.id, "read");
         assert!(plan.reason.contains("inspect source"));
         let _ = fs::remove_dir_all(fake);
     }
@@ -6979,6 +7184,10 @@ print(json.dumps({
             feedback.feeds[0].metadata.get("plan_source"),
             Some(&"llm".to_string())
         );
+        assert_eq!(
+            feedback.feeds[0].metadata.get("action_count"),
+            Some(&"1".to_string())
+        );
         assert!(feedback.feeds[0]
             .metadata
             .get("plan")
@@ -6988,6 +7197,67 @@ print(json.dumps({
                 && evidence.metadata.get("tool") == Some(&"read".to_string())
                 && evidence.metadata.get("plan_source") == Some(&"llm".to_string())
         }));
+        let _ = fs::remove_dir_all(fake);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn installed_manifest_tentacle_executes_llm_action_sequence() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let repo = fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")).unwrap();
+        let fake = std::env::temp_dir().join(format!(
+            "octopus-manifest-llm-sequence-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&fake);
+        fs::create_dir_all(&fake).unwrap();
+        let curl = fake.join("fake-curl.sh");
+        fs::write(
+            &curl,
+            "#!/bin/sh\nprintf '%s' '{\"choices\":[{\"message\":{\"content\":\"{\\\"calls\\\":[{\\\"tool\\\":\\\"read\\\",\\\"reason\\\":\\\"inspect package\\\"},{\\\"tool\\\":\\\"read\\\",\\\"reason\\\":\\\"inspect version\\\",\\\"payload\\\":{\\\"query\\\":\\\"Cargo.toml 2 1\\\"}}],\\\"summary\\\":\\\"two-step observation\\\"}\"}}]}'\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+        let mut state = HarnessState::default();
+        state
+            .install_manifest(repo.join("tentacles"), "swe-agent")
+            .unwrap();
+        let config = OpenAiCompatibleConfig {
+            model: "test-model".to_string(),
+            api_key: None,
+            base_url: "https://llm.example/v1".to_string(),
+            timeout_seconds: 1,
+            curl_command: curl.to_string_lossy().to_string(),
+        };
+        let mut harness = Harness::with_state_and_manifest_llm(state, config);
+
+        let feedback = harness.feed(&[Need::new(NeedKind::Observe, "Cargo.toml 1 1")]);
+
+        assert_eq!(feedback.status, Status::Satisfied, "{}", feedback.summary);
+        assert!(feedback.summary.contains("== action 1: read"));
+        assert!(feedback.summary.contains("== action 2: read"));
+        assert!(feedback.summary.contains("== read Cargo.toml:2-2 =="));
+        assert_eq!(
+            feedback.feeds[0].metadata.get("action_count"),
+            Some(&"2".to_string())
+        );
+        assert_eq!(
+            feedback.feeds[0].metadata.get("action_plan"),
+            Some(&"read -> read".to_string())
+        );
+        assert_eq!(
+            feedback.feeds[0].metadata.get("tools"),
+            Some(&"read,read".to_string())
+        );
+        assert!(feedback.feeds[0].evidence.iter().any(|evidence| {
+            evidence.source == "tentacle_plan"
+                && evidence.metadata.get("action_count") == Some(&"2".to_string())
+        }));
+        assert_eq!(harness.state.feed_traces.len(), 1);
+        assert_eq!(harness.state.feed_traces[0].tool.as_deref(), Some("read"));
         let _ = fs::remove_dir_all(fake);
     }
 

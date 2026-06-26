@@ -8,7 +8,7 @@ use octopus_core::{
     EvolutionRecommendation, Feed, FeedTraceRecord, GoalChat, Harness, HarnessState,
     HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient, OpenAiCompatibleConfig,
     SelfIterationPlan, Status, StatusReport, TentacleEvolutionProposal, TentacleManifestReport,
-    TentacleScaffold, TentacleThinkingPlan, TentacleToolCandidate,
+    TentacleScaffold, TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate,
 };
 use std::env;
 use std::fs;
@@ -3153,6 +3153,7 @@ fn print_thinking_plan(plan: &TentacleThinkingPlan, language: Language) {
             println!("selected_tool: {}", plan.selected_tool.id);
             println!("plan_source: {}", plan.plan_source);
             println!("reason: {}", plan.reason);
+            println!("actions: {}", thinking_actions(&plan.actions));
             println!(
                 "authorization: {}",
                 thinking_authorization(&plan.selected_tool)
@@ -3172,6 +3173,7 @@ fn print_thinking_plan(plan: &TentacleThinkingPlan, language: Language) {
             println!("选择工具: {}", plan.selected_tool.id);
             println!("规划来源: {}", plan.plan_source);
             println!("原因: {}", plan.reason);
+            println!("动作: {}", thinking_actions(&plan.actions));
             println!("授权: {}", thinking_authorization(&plan.selected_tool));
             println!("候选工具: {}", thinking_candidates(&plan.candidates));
             println!("上下文: {}", plan.context_policy);
@@ -3188,6 +3190,24 @@ fn thinking_candidates(candidates: &[TentacleToolCandidate]) -> String {
         .map(|candidate| candidate.id.as_str())
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn thinking_actions(actions: &[TentacleToolAction]) -> String {
+    if actions.is_empty() {
+        return "none".to_string();
+    }
+    actions
+        .iter()
+        .enumerate()
+        .map(|(index, action)| {
+            if action.reason.trim().is_empty() {
+                format!("{}:{}", index + 1, action.tool.id)
+            } else {
+                format!("{}:{}({})", index + 1, action.tool.id, action.reason)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" -> ")
 }
 
 fn thinking_authorization(candidate: &TentacleToolCandidate) -> String {

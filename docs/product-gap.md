@@ -18,7 +18,8 @@ Updated: 2026-06-26
 - `provider status` reports chat, tentacle-planning, and harness-evolution LLM layer readiness without a network call.
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, and a configurable MCP JSON-RPC adapter.
 - Context policy is explicit: clean brain sees `Goal + Mem + Need + Feed`; tentacles see `Need + Tool + Action + Tool + Action -> Feed`.
-- `think <tentacle> <kind> <query>` exposes tool-side planning without executing tools.
+- `think <tentacle> <kind> <query>` exposes tool-side planning and planned actions without executing tools.
+- LLM-backed tentacle plans can execute up to two tool actions for one Need and return one compact Feed.
 - Executed Feed now writes a compact harness trace journal; manifest Feed includes `tentacle_plan` evidence and a CLI `feed_trace`.
 - Harness evolution proposals now carry recent Feed traces for the selected tentacle and expose them to the LLM evolution planner.
 - Runtime-code evolution candidates use recent Feed traces to target the exact tool entrypoint that produced Feed.
@@ -56,11 +57,13 @@ Updated: 2026-06-26
 - Added recent Feed traces to evolution proposals, Markdown artifacts, JSON artifacts, and LLM evolution prompt payloads.
 - Made local runtime-code evolution data-driven: recent traces now narrow `tools/*` to the concrete tool file for apply plans.
 - Improved the SWE read runtime so file observations carry stable line numbers for later Feed trace and patch review.
+- Added multi-action LLM tentacle execution: `calls[]` can now run up to two tool actions, with `actions`, `action_count`, and per-action evidence exposed.
 
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
 - LLM evolution can generate candidates from manifest surfaces, scored outcomes, and recent Feed traces; local candidates now also target traced runtime files, and patch writes stay review/grant-bound.
+- Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include static layer diagnostics and live validation; provider-specific edge cases still need real-machine feedback.
 - Release packaging, examples, and docs need enough finish for non-Rust users.
@@ -70,6 +73,7 @@ Updated: 2026-06-26
 ## Next Fill
 
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
+- Exercise multi-action tentacle planning with a real LLM provider and record provider-specific failures.
 - Use traced runtime targets to apply and score the next seed-tentacle improvement through the review/grant loop.
 - Turn window/browser diagnostics into richer native control adapters.
 - Add provider-specific fixes from real-machine feedback.
