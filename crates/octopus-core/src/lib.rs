@@ -2306,6 +2306,10 @@ pub struct TentacleEvolutionProposal {
     pub tentacle_id: String,
     pub tentacle_name: String,
     pub objective: String,
+    #[serde(default = "default_evolution_generator")]
+    pub generator: String,
+    #[serde(default)]
+    pub planner_summary: String,
     pub manifest_path: String,
     pub brain_kind: String,
     pub current_brain_prompt: String,
@@ -2345,6 +2349,33 @@ pub struct EvolutionPatchDraft {
     pub status: String,
     pub authorization_required: bool,
     pub apply_hint: String,
+}
+
+fn default_evolution_generator() -> String {
+    "local".to_string()
+}
+
+#[derive(Debug, Deserialize)]
+struct LlmEvolutionResponse {
+    #[serde(default)]
+    summary: String,
+    #[serde(default)]
+    candidates: Vec<LlmEvolutionCandidate>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LlmEvolutionCandidate {
+    surface_id: String,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    target: String,
+    #[serde(default)]
+    rationale: String,
+    #[serde(default)]
+    change_plan: Vec<String>,
+    #[serde(default)]
+    checks: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -2450,6 +2481,208 @@ pub fn propose_tentacle_evolution_with_state(
     propose_tentacle_evolution_with_outcomes(root, tentacle_id, objective, &outcomes)
 }
 
+pub fn propose_tentacle_evolution_with_client<C>(
+    root: impl AsRef<Path>,
+    tentacle_id: &str,
+    objective: &str,
+    state: &HarnessState,
+    client: &mut C,
+) -> Result<TentacleEvolutionProposal, String>
+where
+    C: ChatClient,
+{
+    let mut proposal = propose_tentacle_evolution_with_state(root, tentacle_id, objective, state)?;
+    let plan = llm_evolution_plan(&proposal, client)?;
+    proposal.generator = "llm".to_string();
+    proposal.planner_summary = plan.summary;
+    proposal.patch_candidates = plan.candidates;
+    proposal
+        .next_steps
+        .insert(0, "review LLM-generated harness candidates".to_string());
+    Ok(proposal)
+}
+
+struct ParsedLlmEvolutionPlan {
+    summary: String,
+    candidates: Vec<EvolutionPatchCandidate>,
+}
+
+fn llm_evolution_plan<C>(
+    proposal: &TentacleEvolutionProposal,
+    client: &mut C,
+) -> Result<ParsedLlmEvolutionPlan, String>
+where
+    C: ChatClient,
+{
+    let messages = vec![
+        ChatMessage::new(
+            ChatRole::System,
+            "You are an Octopus harness evolution brain. Preserve this context policy: clean-brain LLM context is only Goal, Mem, Need, and Feed; tentacle LLM context is Need, Tool, Action, Tool, Action, then Feed. Return only JSON and no hidden reasoning.",
+        ),
+        ChatMessage::new(ChatRole::User, llm_evolution_prompt(proposal)?),
+    ];
+    let response = client.chat(&messages)?;
+    let content = extract_json_object(&response.content)
+        .ok_or_else(|| "evolution LLM response did not contain a JSON object".to_string())?;
+    let parsed = serde_json::from_str::<LlmEvolutionResponse>(content)
+        .map_err(|error| format!("invalid evolution LLM JSON: {error}"))?;
+    let candidates = parsed
+        .candidates
+        .into_iter()
+        .map(|candidate| llm_candidate_to_evolution(proposal, candidate))
+        .collect::<Result<Vec<_>, _>>()?;
+    if candidates.is_empty() {
+        return Err("evolution LLM returned no candidates".to_string());
+    }
+    Ok(ParsedLlmEvolutionPlan {
+        summary: if parsed.summary.trim().is_empty() {
+            "LLM-generated harness evolution candidates".to_string()
+        } else {
+            parsed.summary
+        },
+        candidates,
+    })
+}
+
+fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Result<String, String> {
+    let payload = serde_json::json!({
+        "tentacle_id": proposal.tentacle_id,
+        "tentacle_name": proposal.tentacle_name,
+        "objective": proposal.objective,
+        "brain_kind": proposal.brain_kind,
+        "current_brain_prompt": proposal.current_brain_prompt,
+        "editable": proposal.editable,
+        "surfaces": proposal.surfaces,
+        "checks": proposal.checks,
+        "constraints": proposal.constraints,
+        "previous_outcomes": proposal.previous_outcomes,
+        "files": proposal.files,
+        "context_policy": {
+            "clean_brain": ["Goal", "Mem", "Need", "Feed"],
+            "tentacle_brain": ["Need", "Tool", "Action", "Tool", "Action", "Feed"],
+            "harness_evolution": "modify prompt, metadata, runtime code, or policy without moving tool burden into the clean brain"
+        },
+        "return_schema": {
+            "summary": "short reason for the selected harness changes",
+            "candidates": [
+                {
+                    "surface_id": "one declared surface id",
+                    "title": "short title",
+                    "target": "relative manifest/tool target inside this tentacle",
+                    "rationale": "why this improves Need-to-Feed",
+                    "change_plan": ["concrete harness edit step"],
+                    "checks": ["command to verify"]
+                }
+            ]
+        }
+    });
+    let payload = serde_json::to_string_pretty(&payload).map_err(|error| error.to_string())?;
+    Ok(format!(
+        "Generate code-as-harness evolution candidates from this JSON. Keep the clean brain out of tool details and preserve the declared context policy. Return only a JSON object matching return_schema.\n{payload}"
+    ))
+}
+
+fn llm_candidate_to_evolution(
+    proposal: &TentacleEvolutionProposal,
+    candidate: LlmEvolutionCandidate,
+) -> Result<EvolutionPatchCandidate, String> {
+    let surface_index = proposal
+        .surfaces
+        .iter()
+        .position(|surface| surface.id == candidate.surface_id)
+        .ok_or_else(|| {
+            format!(
+                "evolution LLM returned unknown surface: {}",
+                candidate.surface_id
+            )
+        })?;
+    let surface = &proposal.surfaces[surface_index];
+    let checks = if candidate.checks.is_empty() {
+        proposal.checks.clone()
+    } else {
+        candidate.checks
+    };
+    let checks = if checks.is_empty() {
+        vec!["cargo test".to_string()]
+    } else {
+        checks
+    };
+    let change_plan = if candidate.change_plan.is_empty() {
+        evolution_candidate_plan(surface)
+    } else {
+        candidate.change_plan
+    };
+    Ok(EvolutionPatchCandidate {
+        id: evolution_candidate_id(surface_index, &surface.id),
+        surface_id: surface.id.clone(),
+        title: if candidate.title.trim().is_empty() {
+            evolution_candidate_title(&surface.id, &proposal.tentacle_id)
+        } else {
+            candidate.title
+        },
+        target: llm_candidate_target(proposal, surface, &candidate.target),
+        rationale: if candidate.rationale.trim().is_empty() {
+            format!(
+                "advance {} through {}",
+                proposal.objective, surface.description
+            )
+        } else {
+            candidate.rationale
+        },
+        change_plan,
+        checks,
+        draft: evolution_patch_draft(surface_index, surface),
+    })
+}
+
+fn llm_candidate_target(
+    proposal: &TentacleEvolutionProposal,
+    surface: &EvolutionSurface,
+    target: &str,
+) -> String {
+    let manifest_dir = Path::new(&proposal.manifest_path)
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("tentacles").join(&proposal.tentacle_id));
+    let target = target.trim();
+    if target.is_empty() || target.contains("..") {
+        return evolution_candidate_target(&manifest_dir, surface);
+    }
+    if target.starts_with("brain.")
+        || target.starts_with("tools[]")
+        || target.starts_with("evolution.")
+    {
+        return format!(
+            "{}#{}",
+            manifest_dir.join("manifest.json").to_string_lossy(),
+            target
+        );
+    }
+    if let Some(suffix) = target.strip_prefix("manifest.json") {
+        return format!(
+            "{}{}",
+            manifest_dir.join("manifest.json").to_string_lossy(),
+            suffix
+        );
+    }
+    let path = Path::new(target);
+    if path.is_absolute() {
+        let manifest_dir_text = manifest_dir.to_string_lossy();
+        return if target.starts_with(manifest_dir_text.as_ref()) {
+            target.to_string()
+        } else {
+            evolution_candidate_target(&manifest_dir, surface)
+        };
+    }
+    manifest_dir.join(target).to_string_lossy().to_string()
+}
+
+fn extract_json_object(value: &str) -> Option<&str> {
+    let start = value.find('{')?;
+    let end = value.rfind('}')?;
+    (start <= end).then_some(&value[start..=end])
+}
+
 fn propose_tentacle_evolution_with_outcomes(
     root: impl AsRef<Path>,
     tentacle_id: &str,
@@ -2511,6 +2744,8 @@ fn propose_tentacle_evolution_with_outcomes(
         tentacle_id: loaded.manifest.id,
         tentacle_name: loaded.manifest.name,
         objective: objective.to_string(),
+        generator: "local".to_string(),
+        planner_summary: "local harness surface planner".to_string(),
         manifest_path: loaded.path,
         brain_kind: loaded.manifest.brain.kind,
         current_brain_prompt: loaded.manifest.brain.prompt,
@@ -2844,6 +3079,10 @@ pub fn render_tentacle_evolution_proposal(proposal: &TentacleEvolutionProposal) 
         proposal.tentacle_id
     ));
     markdown.push_str(&format!("objective: {}\n", proposal.objective));
+    markdown.push_str(&format!("generator: `{}`\n", proposal.generator));
+    if !proposal.planner_summary.trim().is_empty() {
+        markdown.push_str(&format!("planner: {}\n", proposal.planner_summary));
+    }
     markdown.push_str(&format!("manifest: {}\n", proposal.manifest_path));
     markdown.push_str(&format!("brain: {}\n\n", proposal.brain_kind));
     markdown.push_str("## Current Brain Prompt\n\n");
@@ -2901,6 +3140,7 @@ pub fn render_tentacle_patch_candidates(proposal: &TentacleEvolutionProposal) ->
     let mut markdown = String::new();
     markdown.push_str(&format!("# Patch Candidates: {}\n\n", proposal.tentacle_id));
     markdown.push_str(&format!("objective: {}\n\n", proposal.objective));
+    markdown.push_str(&format!("generator: `{}`\n\n", proposal.generator));
     for candidate in &proposal.patch_candidates {
         markdown.push_str(&format!("## {}. {}\n\n", candidate.id, candidate.title));
         markdown.push_str(&format!("surface: `{}`\n", candidate.surface_id));
@@ -4991,6 +5231,81 @@ mod tests {
         assert_eq!(proposal.previous_outcomes.len(), 1);
         assert!(markdown.contains("Previous Outcomes"));
         assert!(markdown.contains("patch improved feed evidence"));
+    }
+
+    struct EvolutionFakeChat {
+        response: String,
+        prompt: String,
+    }
+
+    impl ChatClient for EvolutionFakeChat {
+        fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+            self.prompt = messages
+                .iter()
+                .map(|message| message.content.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            Ok(ChatResponse {
+                content: self.response.clone(),
+                metadata: BTreeMap::new(),
+            })
+        }
+    }
+
+    #[test]
+    fn tentacle_evolution_can_use_llm_generated_candidates() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        state.record_evolution_outcome(
+            "swe-agent",
+            "03-runtime-code",
+            Status::Satisfied,
+            "runtime patch improved evidence",
+        );
+        let mut fake = EvolutionFakeChat {
+            response: r#"{
+              "summary": "select runtime code because previous runtime changes worked",
+              "candidates": [
+                {
+                  "surface_id": "runtime_code",
+                  "title": "Teach read tool to return denser evidence",
+                  "target": "tools/read.sh",
+                  "rationale": "Need-to-Feed improves when the tool returns compact file evidence",
+                  "change_plan": ["keep clean brain context limited", "change only the read adapter"],
+                  "checks": ["tentacles/swe-agent/tools/read.sh README.md 1 2"]
+                }
+              ]
+            }"#
+            .to_string(),
+            prompt: String::new(),
+        };
+
+        let proposal = propose_tentacle_evolution_with_client(
+            &root,
+            "swe-agent",
+            "improve observe feed",
+            &state,
+            &mut fake,
+        )
+        .unwrap();
+        let markdown = render_tentacle_evolution_proposal(&proposal);
+
+        assert_eq!(proposal.generator, "llm");
+        assert!(proposal
+            .planner_summary
+            .contains("previous runtime changes worked"));
+        assert_eq!(proposal.patch_candidates.len(), 1);
+        assert_eq!(proposal.patch_candidates[0].surface_id, "runtime_code");
+        assert!(proposal.patch_candidates[0]
+            .target
+            .ends_with("tools/read.sh"));
+        assert!(markdown.contains("generator: `llm`"));
+        assert!(fake.prompt.contains("Goal"));
+        assert!(fake.prompt.contains("Need"));
+        assert!(fake.prompt.contains("Tool"));
+        assert!(fake.prompt.contains("harness_evolution"));
     }
 
     #[test]

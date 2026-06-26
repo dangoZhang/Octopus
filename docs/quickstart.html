@@ -120,6 +120,9 @@ OCTOPUS_CHAT_LLM=1 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_A
 OCTOPUS_LLM_MANIFEST=1 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" \
   octopus --state "$tmp/state.json" --json need observe README.md 1 1
 
+OCTOPUS_LLM_EVOLVE=1 OCTOPUS_LLM_MODEL=gpt-4.1-mini OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY" \
+  octopus --state "$tmp/state.json" evolve swe-agent "improve observe feed"
+
 OCTOPUS_CHAT_LLM_PREFIX=OCTOPUS_LLM OCTOPUS_MANIFEST_LLM_PREFIX=OCTOPUS_LLM octopus doctor</code></pre>
 
       <h2>Self-Iteration</h2>

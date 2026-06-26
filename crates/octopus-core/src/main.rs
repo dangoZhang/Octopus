@@ -1,12 +1,12 @@
 use octopus_core::{
     default_permissions, default_tentacle_profiles, inspect_tentacle_manifests,
-    load_tentacle_manifests, plan_tentacle_evolution_apply, propose_tentacle_evolution_with_state,
-    scaffold_tentacle, write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts,
-    AdaptReport, CapabilityGrant, ChatClient, ChatMessage, ChatRole, EnvironmentReport,
-    EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome, Feed,
-    GoalChat, Harness, HarnessState, HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient,
-    OpenAiCompatibleConfig, SelfIterationPlan, Status, StatusReport, TentacleEvolutionProposal,
-    TentacleManifestReport, TentacleScaffold,
+    load_tentacle_manifests, plan_tentacle_evolution_apply, propose_tentacle_evolution_with_client,
+    propose_tentacle_evolution_with_state, scaffold_tentacle, write_tentacle_apply_artifacts,
+    write_tentacle_evolution_artifacts, AdaptReport, CapabilityGrant, ChatClient, ChatMessage,
+    ChatRole, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact,
+    EvolutionOutcome, Feed, GoalChat, Harness, HarnessState, HeartbeatReport, Need, NeedKind,
+    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, SelfIterationPlan, Status, StatusReport,
+    TentacleEvolutionProposal, TentacleManifestReport, TentacleScaffold,
 };
 use std::env;
 use std::fs;
@@ -50,6 +50,7 @@ struct DoctorLlmReport {
     config_prefix: String,
     chat_prefix: String,
     manifest_prefix: String,
+    evolve_prefix: String,
     model: Option<String>,
     base_url: Option<String>,
     api_key_present: bool,
@@ -57,6 +58,7 @@ struct DoctorLlmReport {
     curl_available: bool,
     chat_goal_refinement_enabled: bool,
     manifest_planning_enabled: bool,
+    evolution_planning_enabled: bool,
     message: String,
 }
 
@@ -433,12 +435,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     .map(|values| values.join(" "))
                     .unwrap_or_else(|| "apply evolution candidate".to_string());
                 let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-                let proposal = propose_tentacle_evolution_with_state(
-                    default_tentacles_root(),
-                    tentacle_id,
-                    &objective,
-                    &loaded,
-                )?;
+                let proposal = propose_evolution_for_cli(tentacle_id, &objective, &loaded)?;
                 let cwd = env::current_dir().map_err(|error| error.to_string())?;
                 let artifact = write_tentacle_evolution_artifacts(&cwd, &proposal)?;
                 let plan = plan_tentacle_evolution_apply(&proposal, &loaded, candidate_id)?;
@@ -501,12 +498,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .map(|values| values.join(" "))
                 .unwrap_or_else(|| "improve feed quality".to_string());
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            let proposal = propose_tentacle_evolution_with_state(
-                default_tentacles_root(),
-                tentacle_id,
-                &objective,
-                &loaded,
-            )?;
+            let proposal = propose_evolution_for_cli(tentacle_id, &objective, &loaded)?;
             let cwd = env::current_dir().map_err(|error| error.to_string())?;
             let artifact = write_tentacle_evolution_artifacts(cwd, &proposal)?;
             if json {
@@ -1526,12 +1518,14 @@ fn doctor_llm_report() -> DoctorLlmReport {
     let config_prefix = doctor_llm_prefix();
     let chat_prefix = chat_llm_prefix();
     let manifest_prefix = manifest_llm_prefix();
+    let evolve_prefix = evolve_llm_prefix();
     match OpenAiCompatibleConfig::from_env_prefix(&config_prefix) {
         Ok(config) => DoctorLlmReport {
             configured: true,
             config_prefix,
             chat_prefix,
             manifest_prefix,
+            evolve_prefix,
             model: Some(config.model),
             base_url: Some(config.base_url),
             api_key_present: config.api_key.is_some(),
@@ -1539,6 +1533,7 @@ fn doctor_llm_report() -> DoctorLlmReport {
             curl_command: config.curl_command,
             chat_goal_refinement_enabled: chat_llm_enabled(),
             manifest_planning_enabled: manifest_llm_enabled(),
+            evolution_planning_enabled: evolve_llm_enabled(),
             message: "provider env configured; run llm for live check".to_string(),
         },
         Err(error) => {
@@ -1549,6 +1544,7 @@ fn doctor_llm_report() -> DoctorLlmReport {
                 config_prefix,
                 chat_prefix,
                 manifest_prefix,
+                evolve_prefix,
                 model: None,
                 base_url: None,
                 api_key_present: false,
@@ -1556,6 +1552,7 @@ fn doctor_llm_report() -> DoctorLlmReport {
                 curl_command,
                 chat_goal_refinement_enabled: chat_llm_enabled(),
                 manifest_planning_enabled: manifest_llm_enabled(),
+                evolution_planning_enabled: evolve_llm_enabled(),
                 message: error,
             }
         }
@@ -1640,7 +1637,7 @@ fn print_doctor_report(report: &DoctorReport, language: Language) {
 fn doctor_llm_line(report: &DoctorLlmReport) -> String {
     if report.configured {
         format!(
-            "configured prefix={} model={} base_url={} api_key={} curl={}({}) chat_refinement={}({}) manifest_planning={}({})",
+            "configured prefix={} model={} base_url={} api_key={} curl={}({}) chat_refinement={}({}) manifest_planning={}({}) evolution_planning={}({})",
             report.config_prefix,
             report.model.as_deref().unwrap_or("none"),
             report.base_url.as_deref().unwrap_or("none"),
@@ -1658,11 +1655,13 @@ fn doctor_llm_line(report: &DoctorLlmReport) -> String {
             report.chat_goal_refinement_enabled,
             report.chat_prefix,
             report.manifest_planning_enabled,
-            report.manifest_prefix
+            report.manifest_prefix,
+            report.evolution_planning_enabled,
+            report.evolve_prefix
         )
     } else {
         format!(
-            "not configured prefix={} ({}) curl={}({}) chat_refinement={}({}) manifest_planning={}({})",
+            "not configured prefix={} ({}) curl={}({}) chat_refinement={}({}) manifest_planning={}({}) evolution_planning={}({})",
             report.config_prefix,
             report.message,
             report.curl_command,
@@ -1674,7 +1673,9 @@ fn doctor_llm_line(report: &DoctorLlmReport) -> String {
             report.chat_goal_refinement_enabled,
             report.chat_prefix,
             report.manifest_planning_enabled,
-            report.manifest_prefix
+            report.manifest_prefix,
+            report.evolution_planning_enabled,
+            report.evolve_prefix
         )
     }
 }
@@ -1784,6 +1785,10 @@ fn print_evolution_proposal(
         Language::En => {
             println!("tentacle: {}", proposal.tentacle_id);
             println!("objective: {}", proposal.objective);
+            println!("generator: {}", proposal.generator);
+            if !proposal.planner_summary.trim().is_empty() {
+                println!("planner: {}", proposal.planner_summary);
+            }
             println!("proposal: {}", artifact.proposal_path);
             println!("candidates: {}", artifact.candidates_path);
             println!("patch drafts: {}", artifact.drafts_path);
@@ -1796,6 +1801,10 @@ fn print_evolution_proposal(
         Language::Zh => {
             println!("触手: {}", proposal.tentacle_id);
             println!("目标: {}", proposal.objective);
+            println!("生成器: {}", proposal.generator);
+            if !proposal.planner_summary.trim().is_empty() {
+                println!("规划: {}", proposal.planner_summary);
+            }
             println!("草案: {}", artifact.proposal_path);
             println!("候选: {}", artifact.candidates_path);
             println!("补丁草案: {}", artifact.drafts_path);
@@ -2031,6 +2040,26 @@ fn harness_for_need(state: HarnessState, kind: &NeedKind) -> Result<Harness, Str
     Ok(Harness::with_state(state))
 }
 
+fn propose_evolution_for_cli(
+    tentacle_id: &str,
+    objective: &str,
+    state: &HarnessState,
+) -> Result<TentacleEvolutionProposal, String> {
+    if evolve_llm_enabled() {
+        let mut client = OpenAiCompatibleChatClient::new(OpenAiCompatibleConfig::from_env_prefix(
+            &evolve_llm_prefix(),
+        )?);
+        return propose_tentacle_evolution_with_client(
+            default_tentacles_root(),
+            tentacle_id,
+            objective,
+            state,
+            &mut client,
+        );
+    }
+    propose_tentacle_evolution_with_state(default_tentacles_root(), tentacle_id, objective, state)
+}
+
 fn chat_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
     Ok(OpenAiCompatibleChatClient::new(
         OpenAiCompatibleConfig::from_env_prefix(&chat_llm_prefix())?,
@@ -2046,6 +2075,8 @@ fn doctor_llm_prefix() -> String {
         chat_llm_prefix()
     } else if manifest_llm_enabled() {
         manifest_llm_prefix()
+    } else if evolve_llm_enabled() {
+        evolve_llm_prefix()
     } else {
         "OCTOPUS_LLM".to_string()
     }
@@ -2059,6 +2090,10 @@ fn manifest_llm_prefix() -> String {
     env::var("OCTOPUS_MANIFEST_LLM_PREFIX").unwrap_or_else(|_| "OCTOPUS_LLM".to_string())
 }
 
+fn evolve_llm_prefix() -> String {
+    env::var("OCTOPUS_EVOLVE_LLM_PREFIX").unwrap_or_else(|_| "OCTOPUS_LLM".to_string())
+}
+
 fn manifest_llm_enabled() -> bool {
     env::var("OCTOPUS_LLM_MANIFEST")
         .ok()
@@ -2067,6 +2102,12 @@ fn manifest_llm_enabled() -> bool {
 
 fn chat_llm_enabled() -> bool {
     env::var("OCTOPUS_CHAT_LLM")
+        .ok()
+        .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "yes" | "on"))
+}
+
+fn evolve_llm_enabled() -> bool {
+    env::var("OCTOPUS_LLM_EVOLVE")
         .ok()
         .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "yes" | "on"))
 }
@@ -2670,6 +2711,82 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
         restore_env("OCTOPUS_MANIFEST_TEST_CURL", old_curl);
         let content = fs::read_to_string(&state_path).unwrap();
         assert!(content.contains("observe:swe-agent"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cli_evolve_can_use_llm_planning() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-cli-evolve-llm-{}", std::process::id()));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let curl = dir.join("fake-curl.sh");
+        fs::write(
+            &curl,
+            r#"#!/bin/sh
+cat <<'JSON'
+{"choices":[{"message":{"content":"{\"summary\":\"llm evolve selected runtime\",\"candidates\":[{\"surface_id\":\"runtime_code\",\"title\":\"LLM runtime patch\",\"target\":\"tools/read.sh\",\"rationale\":\"tool-side action feed\",\"change_plan\":[\"preserve Goal Mem Need Feed boundary\",\"edit runtime adapter\"],\"checks\":[\"tentacles/swe-agent/tools/read.sh README.md 1 2\"]}]}"}}]}
+JSON
+"#,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+
+        let old_evolve = std::env::var("OCTOPUS_LLM_EVOLVE").ok();
+        let old_prefix = std::env::var("OCTOPUS_EVOLVE_LLM_PREFIX").ok();
+        let old_model = std::env::var("OCTOPUS_EVOLVE_TEST_MODEL").ok();
+        let old_base_url = std::env::var("OCTOPUS_EVOLVE_TEST_BASE_URL").ok();
+        let old_curl = std::env::var("OCTOPUS_EVOLVE_TEST_CURL").ok();
+        std::env::set_var("OCTOPUS_LLM_EVOLVE", "1");
+        std::env::set_var("OCTOPUS_EVOLVE_LLM_PREFIX", "OCTOPUS_EVOLVE_TEST");
+        std::env::set_var("OCTOPUS_EVOLVE_TEST_MODEL", "test-model");
+        std::env::set_var("OCTOPUS_EVOLVE_TEST_BASE_URL", "https://llm.example/v1");
+        std::env::set_var(
+            "OCTOPUS_EVOLVE_TEST_CURL",
+            curl.to_string_lossy().to_string(),
+        );
+
+        run(vec![
+            "--state".to_string(),
+            state,
+            "evolve".to_string(),
+            "swe-agent".to_string(),
+            "improve".to_string(),
+            "feed".to_string(),
+        ])
+        .unwrap();
+
+        restore_env("OCTOPUS_LLM_EVOLVE", old_evolve);
+        restore_env("OCTOPUS_EVOLVE_LLM_PREFIX", old_prefix);
+        restore_env("OCTOPUS_EVOLVE_TEST_MODEL", old_model);
+        restore_env("OCTOPUS_EVOLVE_TEST_BASE_URL", old_base_url);
+        restore_env("OCTOPUS_EVOLVE_TEST_CURL", old_curl);
+        let proposal = fs::read_to_string(
+            dir.join(".octopus")
+                .join("evolution")
+                .join("swe-agent")
+                .join("PROPOSAL.md"),
+        )
+        .unwrap();
+        let candidates = fs::read_to_string(
+            dir.join(".octopus")
+                .join("evolution")
+                .join("swe-agent")
+                .join("PATCH_CANDIDATES.md"),
+        )
+        .unwrap();
+        assert!(proposal.contains("generator: `llm`"));
+        assert!(candidates.contains("LLM runtime patch"));
         let _ = fs::remove_dir_all(dir);
     }
 
