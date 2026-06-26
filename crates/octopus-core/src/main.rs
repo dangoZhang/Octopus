@@ -14,6 +14,7 @@ use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::panic;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -207,10 +208,34 @@ enum Language {
 }
 
 fn main() {
-    if let Err(error) = run(env::args().skip(1).collect()) {
-        eprintln!("{error}");
-        std::process::exit(1);
+    let default_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        if !is_broken_pipe_panic(info.payload()) {
+            default_hook(info);
+        }
+    }));
+    match panic::catch_unwind(|| run(env::args().skip(1).collect())) {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+        Err(payload) if is_broken_pipe_panic(payload.as_ref()) => {}
+        Err(payload) => panic::resume_unwind(payload),
     }
+}
+
+fn is_broken_pipe_panic(payload: &(dyn std::any::Any + Send)) -> bool {
+    panic_payload_text(payload).is_some_and(|text| {
+        text.contains("failed printing to stdout") && text.contains("Broken pipe")
+    })
+}
+
+fn panic_payload_text(payload: &(dyn std::any::Any + Send)) -> Option<&str> {
+    if let Some(text) = payload.downcast_ref::<&str>() {
+        return Some(*text);
+    }
+    payload.downcast_ref::<String>().map(String::as_str)
 }
 
 fn run(args: Vec<String>) -> Result<(), String> {
@@ -3412,9 +3437,9 @@ fn parse_status(value: &str) -> Result<Status, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bridge_command_allowed, bridge_command_name, http_content_length, localize_summary,
-        percent_encode_path, pet_report, pet_report_for_state, provider_status_report, run,
-        skill_reports, usage, Language,
+        bridge_command_allowed, bridge_command_name, http_content_length, is_broken_pipe_panic,
+        localize_summary, percent_encode_path, pet_report, pet_report_for_state,
+        provider_status_report, run, skill_reports, usage, Language,
     };
     use octopus_core::{Feed, Goal, GoalStatus, HarnessState, Need, NeedKind, Status};
     use std::fs;
@@ -3457,6 +3482,13 @@ mod tests {
     fn cli_version_command_runs() {
         run(vec!["--version".to_string()]).unwrap();
         assert!(usage().contains("--version"));
+    }
+
+    #[test]
+    fn cli_treats_stdout_broken_pipe_as_clean_exit() {
+        let payload: &(dyn std::any::Any + Send) =
+            &"failed printing to stdout: Broken pipe (os error 32)";
+        assert!(is_broken_pipe_panic(payload));
     }
 
     #[test]

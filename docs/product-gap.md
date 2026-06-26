@@ -21,7 +21,7 @@ Updated: 2026-06-26
 - `think <tentacle> <kind> <query>` exposes tool-side planning without executing tools.
 - Executed Feed now writes a compact harness trace journal; manifest Feed includes `tentacle_plan` evidence and a CLI `feed_trace`.
 
-## Filled This Iteration
+## Filled So Far
 
 - Clarified the tentacle model as runtime-neutral `LLM + tool meta + code + policy`.
 - Moved seed manifests away from `tools/*.sh` as the conceptual evolution surface.
@@ -54,17 +54,17 @@ Updated: 2026-06-26
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
-- LLM evolution can generate candidates and recommend apply plans from scored outcomes; patch writes still stay review/grant-bound, and trace journal data is not yet fed directly into candidate generation.
+- LLM evolution can generate candidates and recommend apply plans from scored outcomes; patch writes stay review/grant-bound, and trace journal data is not yet fed directly into candidate generation.
 - Computer-use now has browser/window diagnostics, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include static layer diagnostics and live validation; provider-specific edge cases still need real-machine feedback.
 - Release packaging, examples, and docs need enough finish for non-Rust users.
-- The HTML app can run, stream, and inspect tentacle thinking through a local bridge; richer execution traces and desktop UX still need work.
+- The HTML app can run, stream, inspect tentacle thinking, and show Feed traces through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
 
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
-- Use real scored self-iteration outcomes to tune the next harness evolution step.
+- Feed the harness trace journal into the next LLM evolution proposal.
 - Turn window/browser diagnostics into richer native control adapters.
 - Add provider-specific fixes from real-machine feedback.
 - Run and record the first real-machine test before the `0.1.0` tag.
