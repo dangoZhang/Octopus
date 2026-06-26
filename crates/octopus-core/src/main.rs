@@ -3299,7 +3299,13 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             "clean_brain",
             "ready",
             "brain context is Goal + Mem + Need + Feed",
-            Some("octopus chat \"describe your goal\""),
+            Some("octopus context observe ."),
+        ),
+        product_capability(
+            "context_inspection",
+            "ready",
+            "CLI, JSON, and native app expose clean-brain and tentacle context boundaries",
+            Some("octopus context observe ."),
         ),
         product_capability(
             "tentacle_brains",
@@ -3361,6 +3367,12 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
                 .to_string_lossy()
                 .to_string(),
             Some("octopus bridge"),
+        ),
+        product_capability(
+            "harness_apply_review",
+            "ready",
+            "harness beat recommendations can be granted and written as reviewable apply artifacts",
+            Some("octopus evolve apply swe-agent 03-runtime-code"),
         ),
         product_capability(
             "provider_layers",
