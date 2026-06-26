@@ -23,6 +23,7 @@ Updated: 2026-06-27
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
+- `brain [prompt]` exports pasteable clean-brain chat messages from Goal/Mem/Need/Feed for any model UI.
 - `explore [prompt]` lets the clean brain suggest cognitive Needs from Goal/Mem/Need/Feed without running Feed.
 - `explore --save [prompt]` stores suggested Needs in a reviewable Need Queue; `needs take <index>` returns the command without executing Feed.
 - The native HTML app can run `--json bootstrap` through the bridge from the command panel.
@@ -119,6 +120,7 @@ Updated: 2026-06-27
 - Fixed the GitHub install command and passed `OCTOPUS_STATE_PATH` into tool runtimes so harness diagnostics can read temporary or custom state paths.
 - Added clean-brain `explore` in CLI, JSON, and native app so the main brain can suggest Needs without tool execution.
 - Added clean-brain Need Queue in CLI, JSON, status/report, and native app so exploration can become reviewable pending Needs without Feed execution.
+- Added `brain [prompt]` in CLI, JSON, product report, and native app so clean-brain context can be used with any chat model without provider setup.
 - Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and bridge API.
 - Polished README and docs homepages into product-page copy with the value story first and runnable install commands kept visible.
 - Added `preflight [--live]` so release readiness can check state, seed tentacles, manifests, context boundary, docs/pet, LLM layers, live provider, feedback data, GitHub PR path, current-head real-machine record, desktop adapters, and harness repair.

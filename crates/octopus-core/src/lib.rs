@@ -377,6 +377,18 @@ pub struct BrainExploreReport {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainPromptReport {
+    pub policy: String,
+    pub prompt: String,
+    pub goal: Option<Goal>,
+    pub mem: Vec<MemoryContextRecord>,
+    pub recent: Vec<BrainContextTurn>,
+    pub messages: Vec<ChatMessage>,
+    pub prompt_text: String,
+    pub next: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BrainContextReport {
     pub policy: String,
     pub slots: Vec<String>,
@@ -1584,6 +1596,48 @@ impl HarnessState {
         let brain = self.context_report(None, limit).brain;
         let draft = brain_explore_from_chat(&brain, &prompt, client)?;
         Ok(self.brain_explore_report(brain, prompt, "llm", draft.summary, draft.needs))
+    }
+
+    pub fn clean_brain_prompt(&self, prompt: impl Into<String>, limit: usize) -> BrainPromptReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let context = serde_json::json!({
+            "policy": brain.policy,
+            "slots": brain.slots,
+            "goal": brain.goal,
+            "mem": brain.mem,
+            "recent_need_feed": brain.turns,
+        });
+        let context_text = serde_json::to_string_pretty(&context)
+            .unwrap_or_else(|_| "{\"policy\":\"Goal + Mem + Need + Feed\"}".to_string());
+        let system = "You are the Octopus clean brain. Use only Goal, Mem, Need, and Feed. Express cognitive Needs only. Return JSON with {\"summary\":\"short\",\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}."
+            .to_string();
+        let user =
+            format!("Clean brain prompt: {prompt}\nClean brain context JSON:\n{context_text}");
+        let messages = vec![
+            ChatMessage::new(ChatRole::System, system),
+            ChatMessage::new(ChatRole::User, user),
+        ];
+        let prompt_text = messages
+            .iter()
+            .map(|message| format!("{:?}:\n{}", message.role, message.content))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let next = vec![
+            "paste messages into any chat-completions-compatible model".to_string(),
+            format!("octopus explore {}", shell_arg(&prompt)),
+            "octopus context observe .".to_string(),
+        ];
+        BrainPromptReport {
+            policy: brain.policy,
+            prompt,
+            goal: brain.goal,
+            mem: brain.mem,
+            recent: brain.turns,
+            messages,
+            prompt_text,
+            next,
+        }
     }
 
     fn brain_explore_report(
@@ -7814,6 +7868,30 @@ mod tests {
         assert!(taken.command.starts_with("octopus need "));
         assert_eq!(state.pending_need_queue_count(), report.needs.len() - 1);
         assert!(state.feed_traces.is_empty());
+    }
+
+    #[test]
+    fn clean_brain_prompt_exports_messages_without_feed() {
+        let mut state = HarnessState {
+            goal: Some(Goal::new("let the brain ask clean Needs")),
+            ..HarnessState::default()
+        };
+        state
+            .memory
+            .remember("keep tool details outside the main brain");
+
+        let report = state.clean_brain_prompt("what should I ask next", 5);
+
+        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
+        assert_eq!(report.messages.len(), 2);
+        assert!(report.prompt_text.contains("Goal + Mem + Need + Feed"));
+        assert!(report.prompt_text.contains("what should I ask next"));
+        assert!(report
+            .messages
+            .iter()
+            .all(|message| !message.content.contains("ToolSpec")));
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
     }
 
     #[test]

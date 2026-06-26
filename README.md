@@ -21,7 +21,7 @@ The result is a lighter brain and smarter tools.
 
 Octopus is still pre-`0.1`, but the local build already runs:
 
-- clean-brain chat, goal refinement, Need exploration, and reviewable Need Queue
+- clean-brain chat, goal refinement, pasteable brain prompts, Need exploration, and reviewable Need Queue
 - seed tentacles for SWE work, computer-use diagnostics, repo maintenance, harness repair, bash-only execution, and structured JSON Feed
 - OpenAI-compatible provider setup for chat, tentacle planning, and harness evolution
 - local memory, route learning, Feed traces, feedback scoring, and three-heart heartbeat
@@ -46,7 +46,7 @@ Open the local app:
 octopus bridge
 ```
 
-Then visit `http://127.0.0.1:8765/app.html` for bootstrap, provider setup, exploration, Need Queue, context, traces, checks, grants, and the pixel pet.
+Then visit `http://127.0.0.1:8765/app.html` for bootstrap, provider setup, brain prompts, exploration, Need Queue, context, traces, checks, grants, and the pixel pet.
 
 Use an LLM provider:
 
@@ -61,6 +61,7 @@ Try the core loop:
 
 ```bash
 octopus goal set "make this repo easier to use"
+octopus brain "what should the brain ask next?"
 octopus explore "what should the brain ask next?"
 octopus explore --save "what should the brain ask next?"
 octopus needs
