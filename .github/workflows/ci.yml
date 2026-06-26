@@ -47,6 +47,8 @@ jobs:
       - run: cargo run -q -p octopus-core -- skills | grep -q "computer-use"
       - run: |
           cargo run -q -p octopus-core -- think computer-use-agent observe "current browser tab" | grep -q "selected_tool: browser_status"
+          cargo run -q -p octopus-core -- think computer-use-agent observe "read clipboard" | grep -q "selected_tool: clipboard_read"
+          cargo run -q -p octopus-core -- think computer-use-agent execute "copy octopus to clipboard" | grep -q "selected_tool: clipboard_write"
           cargo run -q -p octopus-core -- think swe-agent observe README.md | grep -q "actions:"
           cargo run -q -p octopus-core -- --json think swe-agent observe README.md | grep -q '"plan_source": "rule"'
       - run: |
@@ -107,6 +109,8 @@ jobs:
       - run: tentacles/swe-agent/tools/read.sh README.md 1 2 | grep -q "== read README.md:1-2 =="
       - run: tentacles/computer-use-agent/tools/browser_status.sh | python3 -m json.tool > /dev/null
       - run: tentacles/computer-use-agent/tools/window_status.sh | python3 -m json.tool > /dev/null
+      - run: OCTOPUS_CLIPBOARD_DRY_RUN=1 tentacles/computer-use-agent/tools/clipboard_read.sh | python3 -m json.tool > /dev/null
+      - run: printf octopus | OCTOPUS_CLIPBOARD_DRY_RUN=1 tentacles/computer-use-agent/tools/clipboard_write.sh | python3 -m json.tool > /dev/null
       - run: OCTOPUS_MCP_COMMAND=cat tentacles/computer-use-agent/tools/mcp.sh default echo '{"ok":true}' | python3 -m json.tool > /dev/null
       - run: tentacles/repo-maintainer/tools/inspect_repo.sh .
       - run: tentacles/repo-maintainer/tools/github_status.sh dangoZhang/Octopus | python -m json.tool > /dev/null

@@ -66,6 +66,7 @@ Known runtimes get starter code. Any other runtime gets a manifest and `tools/fe
 ```bash
 octopus oauth octopus tool:bash-only tool:execute
 octopus oauth octopus tool:computer-use-agent tool:observe
+octopus oauth octopus tool:computer-use-agent tool:ui
 ```
 
 Tools can declare `permission` in their manifest. Without a matching grant, Octopus returns `needs_authorization` as Feed and does not run that tool.

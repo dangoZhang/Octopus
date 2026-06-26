@@ -122,7 +122,8 @@ octopus --state "$tmp/state.json" goal</code></pre>
 
       <h2>Tool Grants</h2>
       <pre><code>octopus oauth octopus tool:bash-only tool:execute
-octopus oauth octopus tool:computer-use-agent tool:observe</code></pre>
+octopus oauth octopus tool:computer-use-agent tool:observe
+octopus oauth octopus tool:computer-use-agent tool:ui</code></pre>
       <p>Tools can declare <code>permission</code> in their manifest. Without a matching grant, Octopus returns <code>needs_authorization</code> as Feed and does not run that tool.</p>
 
       <h2>Optional LLM</h2>

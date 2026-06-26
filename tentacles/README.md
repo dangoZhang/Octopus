@@ -26,7 +26,7 @@ tmp=$(mktemp -d)
 Agent tool-combo tentacles:
 
 - `swe-agent`: repo work through `read`, `edit`, inspection, patch, and test tools.
-- `computer-use-agent`: local UI work through configurable MCP calls, local commands, screenshots, URLs, browser status, front-window status, and desktop probes.
+- `computer-use-agent`: local UI work through configurable MCP calls, local commands, screenshots, URLs, browser status, front-window status, clipboard adapters, and desktop probes.
 - `repo-maintainer`: OAuth-bounded self-iteration with repo inspection, PR drafts, and explicit PR publishing.
 - `bash-only`: transparent write-and-run harness for audit and replay.
 
@@ -47,3 +47,5 @@ Use `contract: octopus-json-v1` when a tool wants the full Need/tool/tentacle JS
 Use `permission` when a tool needs an explicit grant before execution. Example: `octopus oauth octopus tool:bash-only tool:execute`.
 
 Computer-use MCP calls are adapter-neutral. Set `OCTOPUS_MCP_<SERVER>_COMMAND` or `OCTOPUS_MCP_COMMAND` to a client command that reads JSON-RPC on stdin, then grant `octopus oauth octopus tool:computer-use-agent tool:mcp`.
+
+Computer-use clipboard tools are grant-bound. Use `tool:observe` for `clipboard_read` and `tool:ui` for `clipboard_write`; set `OCTOPUS_CLIPBOARD_DRY_RUN=1` when testing without touching the real clipboard.

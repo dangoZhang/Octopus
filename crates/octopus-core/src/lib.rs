@@ -2101,6 +2101,11 @@ impl ManifestTentacle {
     fn rule_plan_tool(&self, need: &Need, tools: &[InstalledToolRef]) -> Option<ManifestToolPlan> {
         let preferred = match need.kind {
             NeedKind::Observe
+                if self.route_id == "computer-use-agent" && is_clipboard_query(&need.query) =>
+            {
+                ["clipboard_read", "window_status", "describe_screen", "mcp"].as_slice()
+            }
+            NeedKind::Observe
                 if self.route_id == "computer-use-agent" && is_browser_observe(&need.query) =>
             {
                 [
@@ -2117,6 +2122,7 @@ impl ManifestTentacle {
                 "window_status",
                 "describe_screen",
                 "browser_status",
+                "clipboard_read",
                 "status_pet",
                 "screenshot",
                 "read",
@@ -2134,6 +2140,11 @@ impl ManifestTentacle {
             ]
             .as_slice(),
             NeedKind::Compare => ["inspect_repo", "read"].as_slice(),
+            NeedKind::Execute
+                if self.route_id == "computer-use-agent" && is_clipboard_query(&need.query) =>
+            {
+                ["clipboard_write", "bash", "mcp", "open_url"].as_slice()
+            }
             NeedKind::Execute => ["write_and_run", "bash", "mcp", "open_url"].as_slice(),
             _ => [].as_slice(),
         };
@@ -2355,6 +2366,10 @@ impl ManifestTentacle {
                     for arg in mcp_args(&action_need.query) {
                         command.arg(arg);
                     }
+                }
+                "clipboard_read" => {}
+                "clipboard_write" => {
+                    command.arg(default_tool_query(&action_need.query));
                 }
                 _ => {
                     command.arg(default_tool_query(&action_need.query));
@@ -4476,6 +4491,8 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "tentacles/computer-use-agent/tools/open_url.sh".to_string(),
                     "tentacles/computer-use-agent/tools/browser_status.sh".to_string(),
                     "tentacles/computer-use-agent/tools/window_status.sh".to_string(),
+                    "tentacles/computer-use-agent/tools/clipboard_read.sh".to_string(),
+                    "tentacles/computer-use-agent/tools/clipboard_write.sh".to_string(),
                     "tentacles/computer-use-agent/tools/describe_screen.sh".to_string(),
                 ],
             }],
@@ -4486,6 +4503,8 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 tool_meta_with_permission("open_url", "Open a URL in the local desktop.", "shell", "tentacles/computer-use-agent/tools/open_url.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:ui"], "user-visible desktop action")),
                 tool_meta_with_permission("browser_status", "Inspect local browser availability and current tab metadata.", "shell", "tentacles/computer-use-agent/tools/browser_status.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:observe"], "browser tab metadata")),
                 tool_meta_with_permission("window_status", "Inspect front application, active window title, display session, and desktop process hints.", "shell", "tentacles/computer-use-agent/tools/window_status.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:observe"], "front window metadata")),
+                tool_meta_with_permission("clipboard_read", "Read current clipboard text.", "shell", "tentacles/computer-use-agent/tools/clipboard_read.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:observe"], "clipboard text observation")),
+                tool_meta_with_permission("clipboard_write", "Write provided text into the local clipboard.", "shell", "tentacles/computer-use-agent/tools/clipboard_write.sh", tool_permission("octopus", "tool:computer-use-agent", &["tool:ui"], "clipboard modification")),
                 tool_meta("describe_screen", "Return lightweight desktop context.", "shell", "tentacles/computer-use-agent/tools/describe_screen.sh"),
             ],
             evolution: evolution_policy(
@@ -4493,6 +4512,8 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "tentacles/computer-use-agent/tools/window_status.sh | python3 -m json.tool > /dev/null",
                     "tentacles/computer-use-agent/tools/describe_screen.sh",
                     "tentacles/computer-use-agent/tools/browser_status.sh | python3 -m json.tool > /dev/null",
+                    "OCTOPUS_CLIPBOARD_DRY_RUN=1 tentacles/computer-use-agent/tools/clipboard_read.sh | python3 -m json.tool > /dev/null",
+                    "printf octopus | OCTOPUS_CLIPBOARD_DRY_RUN=1 tentacles/computer-use-agent/tools/clipboard_write.sh | python3 -m json.tool > /dev/null",
                 ],
                 &["Ask for user-visible actions only when the product flow grants it."],
             ),
@@ -5445,11 +5466,31 @@ fn manifest_plan_reason(need: &Need, tool: &InstalledToolRef) -> String {
 fn is_desktop_observe(query: &str) -> bool {
     let query = query.to_lowercase();
     [
-        "screen", "desktop", "window", "browser", "url", "ui", "tab", "chrome", "safari",
-        "firefox", "edge", "brave",
+        "screen",
+        "desktop",
+        "window",
+        "browser",
+        "url",
+        "ui",
+        "tab",
+        "chrome",
+        "safari",
+        "firefox",
+        "edge",
+        "brave",
+        "clipboard",
+        "copy",
+        "paste",
     ]
     .iter()
     .any(|word| query.contains(word))
+}
+
+fn is_clipboard_query(query: &str) -> bool {
+    let query = query.to_lowercase();
+    ["clipboard", "copy", "paste"]
+        .iter()
+        .any(|word| query.contains(word))
 }
 
 fn is_browser_observe(query: &str) -> bool {
@@ -5481,6 +5522,9 @@ fn is_desktop_execute(query: &str) -> bool {
         "type",
         "mcp",
         "screenshot",
+        "clipboard",
+        "copy",
+        "paste",
     ]
     .iter()
     .any(|word| query.contains(word))
@@ -7274,8 +7318,10 @@ print(json.dumps({
         assert!(tentacle.supports(&Need::new(NeedKind::Observe, "describe screen")));
         assert!(tentacle.supports(&Need::new(NeedKind::Observe, "current window")));
         assert!(tentacle.supports(&Need::new(NeedKind::Observe, "current browser tab")));
+        assert!(tentacle.supports(&Need::new(NeedKind::Observe, "read clipboard")));
         assert!(!tentacle.supports(&Need::new(NeedKind::Execute, "echo ok")));
         assert!(tentacle.supports(&Need::new(NeedKind::Execute, "open browser url")));
+        assert!(tentacle.supports(&Need::new(NeedKind::Execute, "copy text to clipboard")));
     }
 
     #[test]
@@ -7308,5 +7354,25 @@ print(json.dumps({
             .expect("window observe need should plan a tool");
 
         assert_eq!(plan.tool.id, "window_status");
+    }
+
+    #[test]
+    fn computer_use_clipboard_needs_prefer_clipboard_tools() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        let installed = state.install_manifest(&root, "computer-use-agent").unwrap();
+        let mut tentacle = ManifestTentacle::new(installed);
+
+        let read = tentacle
+            .plan_tool(&Need::new(NeedKind::Observe, "read clipboard"))
+            .expect("clipboard observe need should plan a tool");
+        let write = tentacle
+            .plan_tool(&Need::new(NeedKind::Execute, "copy octopus to clipboard"))
+            .expect("clipboard execute need should plan a tool");
+
+        assert_eq!(read.tool.id, "clipboard_read");
+        assert_eq!(write.tool.id, "clipboard_write");
     }
 }

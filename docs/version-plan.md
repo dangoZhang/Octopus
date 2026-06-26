@@ -26,6 +26,6 @@ Real-machine test gate for `0.1.0` and later tags:
 
 Last cleanup/version correction: `0.0.3` on 2026-06-26. Scope: provider status, tool-side thinking plans, computer-use MCP/window adapters, Feed traces, harness trace journal, docs/CI alignment; no tag cut.
 
-Product commits toward `0.0.4`: 2/8.
+Product commits toward `0.0.4`: 3/8.
 
 Next planned cleanup/version commit: `0.0.4`.

@@ -97,6 +97,32 @@
       "implementation": { "kind": "shell", "entrypoint": "tools/window_status.sh" }
     },
     {
+      "id": "clipboard_read",
+      "description": "Read current clipboard text when the local platform exposes a clipboard adapter.",
+      "input": "none",
+      "output": "JSON clipboard availability, byte count, content, and notes",
+      "permission": {
+        "provider": "octopus",
+        "scope": "tool:computer-use-agent",
+        "permissions": ["tool:observe"],
+        "reason": "clipboard text observation"
+      },
+      "implementation": { "kind": "shell", "entrypoint": "tools/clipboard_read.sh" }
+    },
+    {
+      "id": "clipboard_write",
+      "description": "Write provided text into the local clipboard.",
+      "input": "text argument or stdin",
+      "output": "JSON clipboard write status, byte count, and notes",
+      "permission": {
+        "provider": "octopus",
+        "scope": "tool:computer-use-agent",
+        "permissions": ["tool:ui"],
+        "reason": "clipboard modification"
+      },
+      "implementation": { "kind": "shell", "entrypoint": "tools/clipboard_write.sh" }
+    },
+    {
       "id": "describe_screen",
       "description": "Return lightweight desktop context.",
       "input": "none",
@@ -131,7 +157,9 @@
     "checks": [
       "tools/window_status.sh | python3 -m json.tool > /dev/null",
       "tools/describe_screen.sh",
-      "tools/browser_status.sh | python3 -m json.tool > /dev/null"
+      "tools/browser_status.sh | python3 -m json.tool > /dev/null",
+      "OCTOPUS_CLIPBOARD_DRY_RUN=1 tools/clipboard_read.sh | python3 -m json.tool > /dev/null",
+      "printf octopus | OCTOPUS_CLIPBOARD_DRY_RUN=1 tools/clipboard_write.sh | python3 -m json.tool > /dev/null"
     ],
     "constraints": ["Ask for user-visible actions only when the product flow grants it."]
   }
