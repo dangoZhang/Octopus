@@ -56,6 +56,8 @@ jobs:
           "$tmp/root/bin/octopus" --state "$tmp/state.json" --json report | grep -q '"capabilities"'
           "$tmp/root/bin/octopus" --state "$tmp/state.json" preflight | grep -q "Octopus preflight"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" --json preflight | grep -q '"release_ready"'
+          "$tmp/root/bin/octopus" --state "$tmp/state.json" preflight script "$tmp/preflight.sh" | grep -q "Octopus preflight script"
+          grep -q "OCTOPUS_PREFLIGHT_LIVE" "$tmp/preflight.sh"
       - run: cargo run -q -p octopus-core -- catalog
       - run: cargo run -q -p octopus-core -- skills | grep -q "computer-use"
       - run: |
@@ -157,6 +159,9 @@ jobs:
       - run: grep -q "Preflight" docs/app.html
       - run: grep -q "runPreflightReport" docs/app.html
       - run: grep -q "renderPreflightReport" docs/app.html
+      - run: grep -q "Preflight Script" docs/app.html
+      - run: grep -q "runPreflightScript" docs/app.html
+      - run: grep -q "renderPreflightScriptReport" docs/app.html
       - run: grep -q "feedEvidenceDetails" docs/app.html
       - run: grep -q "checkOutputDetails" docs/app.html
       - run: grep -q "check-output" docs/app.html
@@ -260,6 +265,8 @@ jobs:
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json report | grep -q '"gaps"'
           cargo run -q -p octopus-core -- --state "$tmp/state.json" preflight | grep -q "Octopus preflight"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json preflight | grep -q '"checks"'
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" preflight script "$tmp/preflight.sh" | grep -q "Octopus preflight script"
+          grep -q "octopus --state \"\\$STATE\" bootstrap" "$tmp/preflight.sh"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build octopus"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" beat 200

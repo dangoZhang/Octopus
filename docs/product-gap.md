@@ -33,6 +33,7 @@ Updated: 2026-06-27
 - `report` emits a state-aware product report with clean-brain context, tentacle context, capability status, gaps, and next commands.
 - The native HTML app can render the same product report from the local bridge.
 - `preflight [--live]` turns the `0.1.0` readiness gate into CLI, JSON, and native HTML checks without live provider calls unless requested.
+- `preflight script [path]` writes a reviewable local release-gate script that runs bootstrap, Feed, checks, feedback, beat, pet, report, and optional live provider/PR dry-run gates.
 - Context policy is explicit: clean brain sees `Goal + Mem + Need + Feed`; tentacles see `Need + Tool + Action + Tool + Action -> Feed`.
 - `context [kind query]` now renders the clean-brain context slots, memory summary, recent Need/Feed, and installed tentacle tool/action context as CLI, JSON, and native HTML output.
 - `think <tentacle> <kind> <query>` exposes tool-side planning and planned actions without executing tools.
@@ -119,6 +120,7 @@ Updated: 2026-06-27
 - Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and bridge API.
 - Polished README and docs homepages into product-page copy with the value story first and runnable install commands kept visible.
 - Added `preflight [--live]` so release readiness can check state, seed tentacles, manifests, context boundary, docs/pet, LLM layers, live provider, feedback data, GitHub PR path, current-head real-machine record, desktop adapters, and harness repair.
+- Added `preflight script [path]` plus native HTML access so release-gate commands can be generated, reviewed, and run on a real machine.
 
 ## Remaining Gaps
 

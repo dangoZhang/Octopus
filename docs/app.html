@@ -484,6 +484,7 @@
             <button type="button" data-run="doctor">Doctor</button>
             <button type="button" id="runReport">Report</button>
             <button type="button" id="runPreflight">Preflight</button>
+            <button type="button" id="runPreflightScript">Preflight Script</button>
             <button type="button" data-run="beat">Beat</button>
           </div>
           <div class="output">
@@ -582,6 +583,7 @@
           `octopus --state ${shellQuote(state)} doctor`,
           `octopus --state ${shellQuote(state)} report`,
           `octopus --state ${shellQuote(state)} preflight`,
+          `octopus --state ${shellQuote(state)} preflight script`,
           `octopus --state ${shellQuote(state)} preflight --live`,
           `octopus --state ${shellQuote(state)} beat 200`,
         ].join("\n");
@@ -837,6 +839,20 @@
         }
       }
 
+      async function runPreflightScript() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        $("preflightReport").textContent = "writing script...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "preflight", "script"]);
+          currentPreflightReport = report;
+          renderPreflightScriptReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("preflightReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runSingleCheck(index) {
         if (!currentInstallReport || currentInstallReport.id !== $("tentacle").value) {
           await runInstallReport();
@@ -969,6 +985,18 @@
         root.textContent = "";
         root.appendChild(preflightSummary(report));
         root.appendChild(reportList("Checks", report.checks || [], preflightItem));
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function renderPreflightScriptReport(report) {
+        const root = $("preflightReport");
+        root.className = "stack";
+        root.textContent = "";
+        root.appendChild(reportList("Script", [
+          `path: ${report.path || ".octopus/preflight.sh"}`,
+          `state: ${report.state_path || ".octopus/state.json"}`,
+          `commands: ${(report.commands || []).length}`,
+        ], textItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
@@ -1893,6 +1921,7 @@
       $("providerCheck").addEventListener("click", runProviderCheck);
       $("runReport").addEventListener("click", runProductReport);
       $("runPreflight").addEventListener("click", runPreflightReport);
+      $("runPreflightScript").addEventListener("click", runPreflightScript);
       document.querySelectorAll("[data-state]").forEach((button) => {
         button.addEventListener("click", () => render(button.dataset.state));
       });

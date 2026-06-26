@@ -319,6 +319,14 @@ struct PreflightCheck {
 }
 
 #[derive(Debug, serde::Serialize)]
+struct PreflightScriptReport {
+    path: String,
+    state_path: String,
+    commands: Vec<String>,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
 struct ProductContextPolicy {
     brain: String,
     tentacle: String,
@@ -828,6 +836,22 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("preflight") => {
+            if rest.get(1).map(String::as_str) == Some("script") {
+                let path = rest
+                    .get(2)
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from(".octopus/preflight.sh"));
+                let report = write_preflight_script(&state, &path)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_preflight_script_report(&report, language);
+                }
+                return Ok(());
+            }
             let live = rest.iter().skip(1).any(|arg| arg == "--live");
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             let report = preflight_report(&loaded, &state, live)?;
@@ -2600,6 +2624,9 @@ fn bridge_command_allowed(args: &[String]) -> bool {
     if command == "provider" {
         return bridge_provider_allowed(args);
     }
+    if command == "preflight" {
+        return bridge_preflight_allowed(args);
+    }
     if command == "self-iterate" && args.iter().any(|arg| arg == "pr") {
         return false;
     }
@@ -2613,7 +2640,6 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "bootstrap"
             | "pet"
             | "doctor"
-            | "preflight"
             | "report"
             | "beat"
             | "status"
@@ -2632,6 +2658,14 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "adapt"
             | "self-iterate"
     )
+}
+
+fn bridge_preflight_allowed(args: &[String]) -> bool {
+    let Some(index) = bridge_command_index(args) else {
+        return false;
+    };
+    let rest = &args[index + 1..];
+    rest.is_empty() || (rest.len() == 1 && matches!(rest[0].as_str(), "--live" | "script"))
 }
 
 fn bridge_feedback_allowed(args: &[String]) -> bool {
@@ -4026,6 +4060,7 @@ fn preflight_report(
         .filter(|check| check.status != "pass")
         .map(|check| check.next.clone())
         .collect::<Vec<_>>();
+    next.push("octopus preflight script".to_string());
     next.push("octopus report".to_string());
     next.sort();
     next.dedup();
@@ -4079,6 +4114,91 @@ fn preflight_status_check(
         evidence: evidence.into(),
         next: next.into(),
     }
+}
+
+fn write_preflight_script(
+    state_path: &Path,
+    output_path: &Path,
+) -> Result<PreflightScriptReport, String> {
+    if let Some(parent) = output_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let commands = preflight_script_commands();
+    let state_default = shell_arg(&state_path.to_string_lossy());
+    let content = format!(
+        r#"#!/bin/sh
+set -eu
+
+STATE=${{OCTOPUS_PREFLIGHT_STATE:-{state_default}}}
+ROOT=${{OCTOPUS_PREFLIGHT_ROOT:-$(pwd)}}
+
+cd "$ROOT"
+
+{commands}
+
+if [ "${{OCTOPUS_PREFLIGHT_LIVE:-0}}" = "1" ]; then
+  octopus provider status
+  octopus provider check "${{OCTOPUS_LLM_PREFIX:-OCTOPUS_LLM}}"
+  octopus --state "$STATE" preflight --live
+else
+  octopus --state "$STATE" preflight
+fi
+
+if [ "${{OCTOPUS_PREFLIGHT_PR_DRY_RUN:-0}}" = "1" ]; then
+  gh auth status
+  octopus --state "$STATE" self-iterate dangoZhang/Octopus
+  OCTOPUS_PR_DRY_RUN=1 octopus --state "$STATE" self-iterate pr dangoZhang/Octopus "preflight dry run"
+fi
+"#,
+        commands = commands.join("\n")
+    );
+    fs::write(output_path, content).map_err(|error| error.to_string())?;
+    Ok(PreflightScriptReport {
+        path: output_path.to_string_lossy().to_string(),
+        state_path: state_path.to_string_lossy().to_string(),
+        commands,
+        next: vec![
+            format!("sh {}", shell_arg(&output_path.to_string_lossy())),
+            format!(
+                "OCTOPUS_PREFLIGHT_LIVE=1 sh {}",
+                shell_arg(&output_path.to_string_lossy())
+            ),
+            format!(
+                "OCTOPUS_PREFLIGHT_PR_DRY_RUN=1 sh {}",
+                shell_arg(&output_path.to_string_lossy())
+            ),
+        ],
+    })
+}
+
+fn preflight_script_commands() -> Vec<String> {
+    [
+        "octopus --version",
+        "octopus --state \"$STATE\" bootstrap",
+        "octopus --state \"$STATE\" doctor",
+        "octopus --state \"$STATE\" install swe-agent",
+        "octopus --state \"$STATE\" install computer-use-agent",
+        "octopus --state \"$STATE\" install harness-repair-agent",
+        "octopus --state \"$STATE\" install bash-only",
+        "octopus --state \"$STATE\" goal set \"build a clean-brain agent\"",
+        "octopus --state \"$STATE\" explore \"what should the brain ask next?\"",
+        "octopus --state \"$STATE\" context observe .",
+        "octopus --state \"$STATE\" think swe-agent observe README.md",
+        "octopus --state \"$STATE\" need observe README.md",
+        "octopus --state \"$STATE\" traces",
+        "octopus --state \"$STATE\" check swe-agent",
+        "octopus --state \"$STATE\" feedback 1 satisfied \"preflight feed worked\"",
+        "octopus --state \"$STATE\" routes observe README.md",
+        "octopus --state \"$STATE\" beat 200",
+        "octopus --state \"$STATE\" pet harness",
+        "octopus --state \"$STATE\" report",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
 }
 
 fn git_short_head() -> Option<String> {
@@ -4205,6 +4325,25 @@ fn print_preflight_report(report: &PreflightReport, language: Language) {
             if let Some(provider) = &report.live_provider {
                 println!("Live Provider 回复: {}", provider.content);
             }
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn print_preflight_script_report(report: &PreflightScriptReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus preflight script");
+            println!("path: {}", report.path);
+            println!("state: {}", report.state_path);
+            println!("commands: {}", report.commands.len());
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼发布前检查脚本");
+            println!("路径: {}", report.path);
+            println!("状态文件: {}", report.state_path);
+            println!("命令数: {}", report.commands.len());
             println!("下一步: {}", join_or_none(&report.next));
         }
     }
@@ -5855,7 +5994,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | explore [prompt] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | explore [prompt] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -6231,6 +6370,7 @@ mod tests {
         assert!(usage().contains("provider status"));
         assert!(usage().contains("report"));
         assert!(usage().contains("preflight [--live]"));
+        assert!(usage().contains("preflight script [path]"));
         assert!(usage().contains("traces [limit]"));
         assert!(usage().contains("feedback <trace-index>"));
         assert!(usage().contains("bootstrap [tentacles-root]"));
@@ -6432,6 +6572,21 @@ mod tests {
             "--json".to_string(),
             "preflight".to_string(),
             "--live".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "preflight".to_string(),
+            "script".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "preflight".to_string(),
+            "script".to_string(),
+            "/tmp/preflight.sh".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),
@@ -7032,6 +7187,16 @@ mod tests {
             "preflight".to_string(),
         ])
         .unwrap();
+        let script_path = path.with_file_name("preflight.sh");
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "preflight".to_string(),
+            "script".to_string(),
+            script_path.to_string_lossy().to_string(),
+        ])
+        .unwrap();
 
         let loaded = HarnessState::load(&path).unwrap();
         let report = product_report(&loaded, Path::new(&state)).unwrap();
@@ -7053,10 +7218,14 @@ mod tests {
             .next
             .iter()
             .any(|item| item.contains("preflight --live")));
+        let script = fs::read_to_string(&script_path).unwrap();
+        assert!(script.contains("octopus --state \"$STATE\" bootstrap"));
+        assert!(script.contains("OCTOPUS_PREFLIGHT_LIVE"));
 
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("swe-agent"));
         let _ = fs::remove_file(path);
+        let _ = fs::remove_file(script_path);
     }
 
     #[test]

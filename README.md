@@ -37,6 +37,7 @@ octopus bootstrap
 octopus doctor
 octopus report
 octopus preflight
+octopus preflight script
 ```
 
 Open the local app:
