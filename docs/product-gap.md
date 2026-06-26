@@ -116,6 +116,7 @@ Updated: 2026-06-27
 - Fixed the GitHub install command and passed `OCTOPUS_STATE_PATH` into tool runtimes so harness diagnostics can read temporary or custom state paths.
 - Added clean-brain `explore` in CLI, JSON, and native app so the main brain can suggest Needs without tool execution.
 - Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and bridge API.
+- Polished README and docs homepages into product-page copy with the value story first and runnable install commands kept visible.
 
 ## Remaining Gaps
 

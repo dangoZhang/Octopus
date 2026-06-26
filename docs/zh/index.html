@@ -176,28 +176,28 @@
       <section class="hero shell">
         <div>
           <h1>工具会思考，大脑才干净。</h1>
-          <p class="lead">Octopus 是一个 Rust agent kernel。模型只表达认知需求；harness 用数据决定供给；触手在执行工具前先思考。</p>
+          <p class="lead">Octopus 是一个 Rust agent kernel。模型只说自己需要什么；环境学会怎样满足它；触手在执行工具前先思考。</p>
         </div>
       </section>
 
       <section>
         <div class="shell">
-          <h2>核心洞察</h2>
+          <h2>大脑轻了，工具强了</h2>
           <div class="grid">
-            <article class="card"><h3>干净大脑</h3><p>主模型只说需要查证、复现、比较、记忆、遗忘或执行，不背工具细节。</p></article>
-            <article class="card"><h3>触手大脑</h3><p>触手由 brain prompt、带权限的工具 meta、runtime code 和可进化面组成。</p></article>
-            <article class="card"><h3>Code-as-harness</h3><p>SWE、带浏览器诊断的 computer-use、repo-maintainer、harness-repair、write-and-run 是初始 agent 工具组合；json-feed 验证 octopus-json-v1 能跨 runtime 演化。</p></article>
+            <article class="card"><h3>轻内核</h3><p>Rust 基座保持小，只管目标、记忆、结果和路线学习。</p></article>
+            <article class="card"><h3>会思考的工具</h3><p>每条触手带自己的提示词、权限、工具描述、运行代码和可修改边界。</p></article>
+            <article class="card"><h3>可改的工具组合</h3><p>SWE、带浏览器诊断的 computer-use、repo-maintainer、harness-repair、write-and-run 都是初始 agent 工具套件，可读、可测、可进化。</p></article>
           </div>
         </div>
       </section>
 
       <section>
         <div class="shell">
-          <h2>章鱼变色</h2>
+          <h2>状态一眼可见</h2>
           <div class="grid">
-            <article class="card"><h3>Heartbeat</h3><p>像素章鱼变色表达内核和 chat loop 是否存活。</p></article>
-            <article class="card"><h3>Memory beat</h3><p>召回、压缩、遗忘时，状态颜色可以变化。</p></article>
-            <article class="card"><h3>Harness beat</h3><p>路由学习和工具执行可以变成可见反馈，不进入主脑。</p></article>
+            <article class="card"><h3>活着</h3><p>内核和 chat loop 正常运行时，像素章鱼会变色。</p></article>
+            <article class="card"><h3>记忆在动</h3><p>召回、压缩、遗忘都可以变成颜色状态。</p></article>
+            <article class="card"><h3>工具在学</h3><p>路由学习和工具执行可以给出可见反馈，同时保持主脑干净。</p></article>
           </div>
           <p><a href="../pet.html">打开像素桌宠</a></p>
         </div>
@@ -205,7 +205,7 @@
 
       <section>
         <div class="shell">
-          <h2>快速安装与使用</h2>
+          <h2>装好就能跑</h2>
           <pre><code>cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus
 octopus --version
 octopus doctor

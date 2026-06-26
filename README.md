@@ -17,9 +17,9 @@ The result is a lighter brain and smarter tools.
 - The pixel Octopus changes color from real runtime state.
 - Rust keeps the kernel fast and stable; tentacles can evolve around it.
 
-## What Works Now
+## Run It Today
 
-Octopus is still pre-`0.1`, but the local MVP already runs:
+Octopus is still pre-`0.1`, but the local build already runs:
 
 - clean-brain chat, goal refinement, and Need exploration
 - seed tentacles for SWE work, computer-use diagnostics, repo maintenance, harness repair, bash-only execution, and structured JSON Feed
