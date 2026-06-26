@@ -134,6 +134,18 @@ struct ProviderEnvReport {
     shell: String,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct ProviderCheckReport {
+    ok: bool,
+    prefix: String,
+    model: String,
+    base_url: String,
+    api_key_present: bool,
+    content: String,
+    metadata: std::collections::BTreeMap<String, String>,
+    next: Vec<String>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Language {
     En,
@@ -286,6 +298,24 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("provider") => {
+            if rest.get(1).map(String::as_str) == Some("check") {
+                let prefix = rest.get(2).map(String::as_str).unwrap_or("OCTOPUS_LLM");
+                let message = rest
+                    .get(3..)
+                    .filter(|values| !values.is_empty())
+                    .map(|values| values.join(" "))
+                    .unwrap_or_else(|| "Reply with a short Octopus provider check.".to_string());
+                let report = provider_check_report(prefix, &message)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_provider_check(&report, language);
+                }
+                return Ok(());
+            }
             let profile_id = rest
                 .get(1)
                 .ok_or_else(|| "provider requires a profile id".to_string())?;
@@ -1047,6 +1077,46 @@ fn provider_env_report(profile_id: &str, prefix: &str) -> Result<ProviderEnvRepo
     })
 }
 
+fn provider_check_report(prefix: &str, message: &str) -> Result<ProviderCheckReport, String> {
+    if !valid_env_prefix(prefix) {
+        return Err(format!(
+            "invalid provider env prefix: {prefix}; use letters, digits, and underscore"
+        ));
+    }
+    let config = OpenAiCompatibleConfig::from_env_prefix(prefix)
+        .map_err(|error| provider_check_error(prefix, &error))?;
+    let mut client = OpenAiCompatibleChatClient::new(config.clone());
+    let response = client
+        .chat(&[
+            ChatMessage::new(
+                ChatRole::System,
+                "You are an Octopus provider check. Reply briefly and confirm the endpoint works.",
+            ),
+            ChatMessage::new(ChatRole::User, message),
+        ])
+        .map_err(|error| provider_check_error(prefix, &error))?;
+    Ok(ProviderCheckReport {
+        ok: true,
+        prefix: prefix.to_string(),
+        model: config.model,
+        base_url: config.base_url,
+        api_key_present: config.api_key.is_some(),
+        content: response.content,
+        metadata: response.metadata,
+        next: vec![
+            "octopus chat \"refine the goal\"".to_string(),
+            "octopus need observe README.md".to_string(),
+            "octopus evolve swe-agent \"improve tool-side feedback\"".to_string(),
+        ],
+    })
+}
+
+fn provider_check_error(prefix: &str, error: &str) -> String {
+    format!(
+        "provider check failed for {prefix}: {error}\nnext: octopus providers; octopus provider openai > .octopus/llm.env; source .octopus/llm.env; octopus provider check {prefix}"
+    )
+}
+
 fn valid_env_prefix(value: &str) -> bool {
     let mut chars = value.chars();
     let Some(first) = chars.next() else {
@@ -1091,6 +1161,43 @@ fn print_provider_env(report: &ProviderEnvReport, language: Language) {
         }
     }
     println!("{}", report.shell);
+}
+
+fn print_provider_check(report: &ProviderCheckReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Provider check: ok");
+            println!("prefix: {}", report.prefix);
+            println!("model: {}", report.model);
+            println!("base_url: {}", report.base_url);
+            println!(
+                "api_key: {}",
+                if report.api_key_present {
+                    "present"
+                } else {
+                    "empty"
+                }
+            );
+            println!("reply: {}", report.content);
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("Provider 检查: ok");
+            println!("前缀: {}", report.prefix);
+            println!("模型: {}", report.model);
+            println!("地址: {}", report.base_url);
+            println!(
+                "密钥: {}",
+                if report.api_key_present {
+                    "已设置"
+                } else {
+                    "空"
+                }
+            );
+            println!("回复: {}", report.content);
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
 }
 
 fn run_demo(repository: &str) -> Result<DemoReport, String> {
@@ -1731,6 +1838,8 @@ fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorRepo
     if !llm.configured {
         next.push("octopus providers".to_string());
         next.push("octopus provider openai > .octopus/llm.env".to_string());
+    } else if llm.curl_available {
+        next.push(format!("octopus provider check {}", llm.config_prefix));
     }
     next.push("octopus demo dangoZhang/Octopus".to_string());
     next.push(format!("open {}", pet.path));
@@ -1772,7 +1881,7 @@ fn doctor_llm_report() -> DoctorLlmReport {
             chat_goal_refinement_enabled: chat_llm_enabled(),
             manifest_planning_enabled: manifest_llm_enabled(),
             evolution_planning_enabled: evolve_llm_enabled(),
-            message: "provider env configured; run llm for live check".to_string(),
+            message: "provider env configured; run provider check for live validation".to_string(),
         },
         Err(error) => {
             let curl_command =
@@ -2351,7 +2460,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider check [prefix] [message] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -2867,6 +2976,20 @@ mod tests {
             "--json".to_string(),
             "llm".to_string(),
             "hello".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "provider".to_string(),
+            "check".to_string(),
+            "OCTOPUS_LLM".to_string(),
+            "hello".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--json".to_string(),
+            "provider".to_string(),
+            "check".to_string(),
+            "OCTOPUS_LLM".to_string(),
         ])
         .unwrap();
 

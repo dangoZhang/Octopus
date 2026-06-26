@@ -57,7 +57,7 @@ octopus providers
 octopus provider openai > "$tmp/llm.env"
 # set OPENAI_API_KEY first, then:
 . "$tmp/llm.env"
-octopus llm "provider check"
+octopus provider check
 
 octopus --state "$tmp/state.json" chat "make the harness self-evolve"
 

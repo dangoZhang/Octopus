@@ -14,7 +14,7 @@ Initial agent tentacles are common tool combinations: SWE repo tools, computer-u
 
 Shell is only one runtime. A tentacle can declare `contract: octopus-json-v1` and run Python, Node, MCP, HTTP, native code, or any custom adapter.
 
-Run `octopus providers` to generate OpenAI-compatible profiles for chat, tentacle tool planning, and harness evolution.
+Run `octopus providers` to generate OpenAI-compatible profiles, then `octopus provider check` to validate the live endpoint for chat, tentacle planning, and harness evolution.
 
 Three hearts keep it alive: heartbeat, memory evolution, and harness route evolution. Color change is a pixel pet layer.
 
@@ -29,6 +29,8 @@ octopus providers
 octopus doctor
 octopus demo dangoZhang/Octopus
 octopus init
+octopus provider openai > .octopus/llm.env
+# set OPENAI_API_KEY, source .octopus/llm.env, then run: octopus provider check
 octopus skills
 octopus install swe-agent
 octopus install computer-use-agent
