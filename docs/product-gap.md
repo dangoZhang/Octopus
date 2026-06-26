@@ -40,11 +40,12 @@ Updated: 2026-06-26
 - Added `/api/stream` so the HTML app can show command output while Octopus runs.
 - Added a computer-use `browser_status` tool for local browser availability and current-tab diagnostics.
 - Added manifest-level tool `permission` metadata and execution-time grant checks before high-risk tentacle tools run.
+- Added `evolve recommend` so scored evolution outcomes can select the next reviewed apply plan.
 
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
-- LLM evolution can generate candidates, but automatic patch application still requires a stronger feedback-scored loop.
+- LLM evolution can generate candidates and recommend apply plans from scored outcomes; patch writes still stay review/grant-bound.
 - Computer-use now has browser diagnostics and explicit tool grants; richer MCP/native control adapters still need real-machine feedback.
 - Provider profiles now include live validation through `octopus provider check`; broader provider-specific diagnostics still need real-machine feedback.
 - Release packaging, examples, and docs need enough finish for non-Rust users.
@@ -54,7 +55,7 @@ Updated: 2026-06-26
 ## Next Fill
 
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
-- Let the LLM evolution planner turn scored outcomes into reviewed patch application candidates.
+- Use real scored self-iteration outcomes to tune the next harness evolution step.
 - Turn granted browser diagnostics into richer MCP/native control adapters.
 - Add richer desktop UX and provider-specific diagnostics from real-machine feedback.
 - Run and record the first real-machine test before the `0.1.0` tag.

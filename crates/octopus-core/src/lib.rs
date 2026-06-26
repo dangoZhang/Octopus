@@ -2594,6 +2594,19 @@ pub struct EvolutionApplyPlan {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EvolutionRecommendation {
+    pub tentacle_id: String,
+    pub objective: String,
+    pub candidate_id: String,
+    pub candidate_title: String,
+    pub surface_id: String,
+    pub outcome_count: usize,
+    pub recommendation_score: f32,
+    pub reason: String,
+    pub apply: EvolutionApplyPlan,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct EvolutionApplyArtifact {
     pub directory: String,
     pub plan_path: String,
@@ -3050,6 +3063,48 @@ pub fn plan_tentacle_evolution_apply(
     })
 }
 
+pub fn recommend_tentacle_evolution_apply(
+    proposal: &TentacleEvolutionProposal,
+    state: &HarnessState,
+) -> Result<EvolutionRecommendation, String> {
+    let Some(scored) = proposal
+        .patch_candidates
+        .iter()
+        .map(|candidate| {
+            let (score, count) = evolution_candidate_outcome_score(candidate, proposal);
+            (candidate, score, count)
+        })
+        .max_by(|left, right| {
+            left.1
+                .total_cmp(&right.1)
+                .then_with(|| right.0.id.cmp(&left.0.id))
+        })
+    else {
+        return Err("no evolution candidates to recommend".to_string());
+    };
+    let (candidate, score, outcome_count) = scored;
+    let apply = plan_tentacle_evolution_apply(proposal, state, &candidate.id)?;
+    let reason = if outcome_count > 0 {
+        format!("selected from {outcome_count} previous outcomes with score {score:.2}")
+    } else if proposal.generator == "llm" {
+        "selected an LLM-generated candidate after feeding previous outcomes to the planner"
+            .to_string()
+    } else {
+        "selected candidate; no previous scored outcome matched these candidates".to_string()
+    };
+    Ok(EvolutionRecommendation {
+        tentacle_id: proposal.tentacle_id.clone(),
+        objective: proposal.objective.clone(),
+        candidate_id: candidate.id.clone(),
+        candidate_title: candidate.title.clone(),
+        surface_id: candidate.surface_id.clone(),
+        outcome_count,
+        recommendation_score: score,
+        reason,
+        apply,
+    })
+}
+
 pub fn write_tentacle_apply_artifacts(
     workspace_root: impl AsRef<Path>,
     plan: &EvolutionApplyPlan,
@@ -3140,6 +3195,29 @@ fn candidate_matches(candidate: &EvolutionPatchCandidate, value: &str) -> bool {
         || candidate.surface_id == value
         || candidate.id.replace('-', "_") == value
         || candidate.surface_id.replace('_', "-") == value
+}
+
+fn evolution_candidate_outcome_score(
+    candidate: &EvolutionPatchCandidate,
+    proposal: &TentacleEvolutionProposal,
+) -> (f32, usize) {
+    let outcomes = proposal
+        .previous_outcomes
+        .iter()
+        .filter(|outcome| candidate_matches(candidate, &outcome.candidate_id))
+        .collect::<Vec<_>>();
+    if outcomes.is_empty() {
+        return (0.0, 0);
+    }
+    let weighted = outcomes
+        .iter()
+        .enumerate()
+        .map(|(index, outcome)| {
+            let weight = (index + 1) as f32;
+            (outcome.score * weight, weight)
+        })
+        .fold((0.0, 0.0), |acc, item| (acc.0 + item.0, acc.1 + item.1));
+    (weighted.0 / weighted.1.max(1.0), outcomes.len())
 }
 
 fn resolve_existing_patch_target(target: &str) -> Option<PathBuf> {
@@ -4994,6 +5072,53 @@ mod tests {
                 .score(&NeedKind::Execute, "evolve:swe-agent:03-runtime-code")
                 > 1.0
         );
+    }
+
+    #[test]
+    fn evolution_recommendation_uses_scored_outcomes() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        state.record_evolution_outcome(
+            "swe-agent",
+            "03-runtime-code",
+            Status::Satisfied,
+            "runtime evidence improved",
+        );
+        let proposal =
+            propose_tentacle_evolution_with_state(root, "swe-agent", "improve feed", &state)
+                .unwrap();
+
+        let recommendation = recommend_tentacle_evolution_apply(&proposal, &state).unwrap();
+
+        assert_eq!(recommendation.candidate_id, "03-runtime-code");
+        assert_eq!(recommendation.surface_id, "runtime_code");
+        assert_eq!(recommendation.outcome_count, 1);
+        assert!(recommendation.recommendation_score > 0.0);
+        assert_eq!(recommendation.apply.status, "needs_authorization");
+    }
+
+    #[test]
+    fn evolution_recommendation_avoids_failed_candidates() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        state.record_evolution_outcome(
+            "swe-agent",
+            "03-runtime-code",
+            Status::Failed,
+            "runtime change regressed feed",
+        );
+        let proposal =
+            propose_tentacle_evolution_with_state(root, "swe-agent", "improve feed", &state)
+                .unwrap();
+
+        let recommendation = recommend_tentacle_evolution_apply(&proposal, &state).unwrap();
+
+        assert_ne!(recommendation.candidate_id, "03-runtime-code");
+        assert_eq!(recommendation.recommendation_score, 0.0);
     }
 
     #[test]

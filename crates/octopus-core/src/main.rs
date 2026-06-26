@@ -1,12 +1,13 @@
 use octopus_core::{
     default_permissions, default_tentacle_profiles, inspect_tentacle_manifests,
     load_tentacle_manifests, plan_tentacle_evolution_apply, propose_tentacle_evolution_with_client,
-    propose_tentacle_evolution_with_state, scaffold_tentacle, write_tentacle_apply_artifacts,
-    write_tentacle_evolution_artifacts, AdaptReport, CapabilityGrant, ChatClient, ChatMessage,
-    ChatRole, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact,
-    EvolutionOutcome, Feed, GoalChat, Harness, HarnessState, HeartbeatReport, Need, NeedKind,
-    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, SelfIterationPlan, Status, StatusReport,
-    TentacleEvolutionProposal, TentacleManifestReport, TentacleScaffold,
+    propose_tentacle_evolution_with_state, recommend_tentacle_evolution_apply, scaffold_tentacle,
+    write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts, AdaptReport,
+    CapabilityGrant, ChatClient, ChatMessage, ChatRole, EnvironmentReport, EvolutionApplyArtifact,
+    EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed,
+    GoalChat, Harness, HarnessState, HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient,
+    OpenAiCompatibleConfig, SelfIterationPlan, Status, StatusReport, TentacleEvolutionProposal,
+    TentacleManifestReport, TentacleScaffold,
 };
 use std::env;
 use std::fs;
@@ -556,6 +557,36 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("evolve") => {
+            if rest.get(1).map(String::as_str) == Some("recommend") {
+                let tentacle_id = rest
+                    .get(2)
+                    .ok_or_else(|| "evolve recommend requires a tentacle id".to_string())?;
+                let objective = rest
+                    .get(3..)
+                    .filter(|values| !values.is_empty())
+                    .map(|values| values.join(" "))
+                    .unwrap_or_else(|| "recommend next evolution candidate".to_string());
+                let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                let proposal = propose_evolution_for_cli(tentacle_id, &objective, &loaded)?;
+                let cwd = env::current_dir().map_err(|error| error.to_string())?;
+                let artifact = write_tentacle_evolution_artifacts(&cwd, &proposal)?;
+                let recommendation = recommend_tentacle_evolution_apply(&proposal, &loaded)?;
+                let apply_artifact = write_tentacle_apply_artifacts(cwd, &recommendation.apply)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "recommendation": recommendation,
+                            "apply_artifact": apply_artifact,
+                            "evolution_artifact": artifact,
+                        }))
+                        .map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_evolution_recommendation(&recommendation, &apply_artifact, language);
+                }
+                return Ok(());
+            }
             if rest.get(1).map(String::as_str) == Some("apply") {
                 let tentacle_id = rest
                     .get(2)
@@ -2695,6 +2726,43 @@ fn print_evolution_apply_plan(
     }
 }
 
+fn print_evolution_recommendation(
+    recommendation: &EvolutionRecommendation,
+    artifact: &EvolutionApplyArtifact,
+    language: Language,
+) {
+    match language {
+        Language::En => {
+            println!("tentacle: {}", recommendation.tentacle_id);
+            println!("recommended: {}", recommendation.candidate_id);
+            println!("surface: {}", recommendation.surface_id);
+            println!("title: {}", recommendation.candidate_title);
+            println!("score: {:.2}", recommendation.recommendation_score);
+            println!("outcomes: {}", recommendation.outcome_count);
+            println!("reason: {}", recommendation.reason);
+            println!("status: {}", recommendation.apply.status);
+            println!("plan: {}", artifact.plan_path);
+            if let Some(path) = &artifact.patch_path {
+                println!("patch: {path}");
+            }
+        }
+        Language::Zh => {
+            println!("触手: {}", recommendation.tentacle_id);
+            println!("推荐: {}", recommendation.candidate_id);
+            println!("可进化面: {}", recommendation.surface_id);
+            println!("标题: {}", recommendation.candidate_title);
+            println!("分数: {:.2}", recommendation.recommendation_score);
+            println!("历史结果: {}", recommendation.outcome_count);
+            println!("原因: {}", recommendation.reason);
+            println!("状态: {}", recommendation.apply.status);
+            println!("计划: {}", artifact.plan_path);
+            if let Some(path) = &artifact.patch_path {
+                println!("补丁: {path}");
+            }
+        }
+    }
+}
+
 fn print_evolution_outcome(outcome: &EvolutionOutcome, language: Language) {
     match language {
         Language::En => {
@@ -2956,7 +3024,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | providers | provider <profile> [prefix] | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -3865,6 +3933,24 @@ JSON
         let state_content = fs::read_to_string(&state_path).unwrap();
         assert!(state_content.contains("evolution_outcomes"));
         assert!(state_content.contains("patch improved feed"));
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "evolve".to_string(),
+            "recommend".to_string(),
+            "swe-agent".to_string(),
+            "next".to_string(),
+        ])
+        .unwrap();
+        let recommended_plan = fs::read_to_string(
+            dir.join(".octopus")
+                .join("evolution")
+                .join("swe-agent")
+                .join("apply")
+                .join("03-runtime-code.md"),
+        )
+        .unwrap();
+        assert!(recommended_plan.contains("authorized: true"));
         run(vec![
             "--state".to_string(),
             state,

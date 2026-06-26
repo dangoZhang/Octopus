@@ -162,8 +162,10 @@ OCTOPUS_PR_DRY_RUN=1 tentacles/repo-maintainer/tools/publish_pr.sh "$tmp" dangoZ
         <pre><code>octopus evolve swe-agent "improve repository observation feed quality"
 octopus evolve apply swe-agent runtime_code
 octopus oauth octopus evolve:swe-agent harness:write
-octopus evolve apply swe-agent runtime_code</code></pre>
-        <p>The draft lands under <code>.octopus/evolution/&lt;tentacle&gt;/</code> with <code>PROPOSAL.md</code>, <code>PATCH_CANDIDATES.md</code>, <code>PATCH_DRAFTS.md</code>, per-candidate files under <code>patches/</code>, and <code>proposal.json</code>. <code>evolve apply</code> writes an apply plan under <code>apply/</code>; it stays in <code>needs_authorization</code> until the matching <code>octopus:evolve:&lt;tentacle&gt;</code> grant has <code>harness:write</code>, then writes a reviewable <code>.patch</code> file without applying it.</p>
+octopus evolve apply swe-agent runtime_code
+octopus evolve score swe-agent 03-runtime-code satisfied "runtime patch improved feed"
+octopus evolve recommend swe-agent "continue from scored feedback"</code></pre>
+        <p>The draft lands under <code>.octopus/evolution/&lt;tentacle&gt;/</code> with <code>PROPOSAL.md</code>, <code>PATCH_CANDIDATES.md</code>, <code>PATCH_DRAFTS.md</code>, per-candidate files under <code>patches/</code>, and <code>proposal.json</code>. <code>evolve recommend</code> uses scored outcomes to choose the next candidate and write an apply plan. <code>evolve apply</code> writes an apply plan under <code>apply/</code>; it stays in <code>needs_authorization</code> until the matching <code>octopus:evolve:&lt;tentacle&gt;</code> grant has <code>harness:write</code>, then writes a reviewable <code>.patch</code> file without applying it.</p>
       </section>
 
       <section>

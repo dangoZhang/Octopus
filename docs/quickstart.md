@@ -96,10 +96,11 @@ OCTOPUS_PR_DRY_RUN=1 octopus --state "$tmp/state.json" self-iterate pr dangoZhan
 octopus evolve swe-agent "improve repository observation feed quality"
 octopus evolve apply swe-agent runtime_code
 octopus evolve score swe-agent 03-runtime-code satisfied "patch improved feed"
+octopus evolve recommend swe-agent "improve repository observation feed quality"
 tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build a clean-brain agent"
 ```
 
-`evolve` writes `PROPOSAL.md`, `PATCH_CANDIDATES.md`, `PATCH_DRAFTS.md`, `patches/`, `apply/`, optional `.patch` files, and `proposal.json` under `.octopus/evolution/<tentacle>/`.
+`evolve` writes `PROPOSAL.md`, `PATCH_CANDIDATES.md`, `PATCH_DRAFTS.md`, `patches/`, `apply/`, optional `.patch` files, and `proposal.json` under `.octopus/evolution/<tentacle>/`. `evolve recommend` uses previous `evolve score` outcomes to pick the next apply plan.
 
 ## Expected Signals
 
