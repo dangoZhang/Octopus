@@ -26,6 +26,7 @@ octopus --state "$tmp/state.json" install research
 octopus --state "$tmp/state.json" install json-feed
 octopus --state "$tmp/state.json" install swe-agent
 octopus --state "$tmp/state.json" install computer-use-agent
+octopus --state "$tmp/state.json" --json install computer-use-agent
 octopus --state "$tmp/state.json" install bash-only
 octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
@@ -65,11 +66,12 @@ Known runtimes get starter code. Any other runtime gets a manifest and `tools/fe
 
 ```bash
 octopus oauth octopus tool:bash-only tool:execute
-octopus oauth octopus tool:computer-use-agent tool:observe
-octopus oauth octopus tool:computer-use-agent tool:ui
+octopus oauth octopus tool:computer-use-agent tool:observe tool:ui
 ```
 
 Tools can declare `permission` in their manifest. Without a matching grant, Octopus returns `needs_authorization` as Feed and does not run that tool.
+
+`install` prints the tentacle's needs, runtimes, required grant commands, manifest checks, and next commands. `--json install <tentacle>` returns the same report for the HTML app or another shell.
 
 ## Optional LLM
 
@@ -116,6 +118,9 @@ Octopus demo
 Octopus init
 Provider status
 installed swe-agent
+grants:
+checks:
+next:
 json-feed observe
 Octopus think
 plan_source: rule

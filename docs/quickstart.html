@@ -94,6 +94,7 @@ octopus --state "$tmp/state.json" install research
 octopus --state "$tmp/state.json" install json-feed
 octopus --state "$tmp/state.json" install swe-agent
 octopus --state "$tmp/state.json" install computer-use-agent
+octopus --state "$tmp/state.json" --json install computer-use-agent
 octopus --state "$tmp/state.json" install bash-only
 octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
@@ -122,9 +123,9 @@ octopus --state "$tmp/state.json" goal</code></pre>
 
       <h2>Tool Grants</h2>
       <pre><code>octopus oauth octopus tool:bash-only tool:execute
-octopus oauth octopus tool:computer-use-agent tool:observe
-octopus oauth octopus tool:computer-use-agent tool:ui</code></pre>
+octopus oauth octopus tool:computer-use-agent tool:observe tool:ui</code></pre>
       <p>Tools can declare <code>permission</code> in their manifest. Without a matching grant, Octopus returns <code>needs_authorization</code> as Feed and does not run that tool.</p>
+      <p><code>install</code> prints the tentacle's needs, runtimes, required grant commands, manifest checks, and next commands. <code>--json install &lt;tentacle&gt;</code> returns the same report for the HTML app or another shell.</p>
 
       <h2>Optional LLM</h2>
       <pre><code>octopus providers
@@ -159,6 +160,9 @@ tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build 
 Octopus init
 Provider status
 installed swe-agent
+grants:
+checks:
+next:
 json-feed observe
 Octopus think
 plan_source: rule

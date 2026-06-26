@@ -17,6 +17,7 @@ Updated: 2026-06-26
 - `providers` and `provider <name> [prefix]` expose reusable LLM profile setup for cloud, local, router, and custom endpoints.
 - `provider status` reports chat, tentacle-planning, and harness-evolution LLM layer readiness without a network call.
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
+- `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
 - Context policy is explicit: clean brain sees `Goal + Mem + Need + Feed`; tentacles see `Need + Tool + Action + Tool + Action -> Feed`.
 - `think <tentacle> <kind> <query>` exposes tool-side planning and planned actions without executing tools.
 - LLM-backed tentacle plans can execute up to two tool actions for one Need and return one compact Feed.
@@ -59,6 +60,7 @@ Updated: 2026-06-26
 - Improved the SWE read runtime so file observations carry stable line numbers for later Feed trace and patch review.
 - Added multi-action LLM tentacle execution: `calls[]` can now run up to two tool actions, with `actions`, `action_count`, and per-action evidence exposed.
 - Added grant-bound computer-use clipboard read/write tools with dry-run diagnostics for CI and local tests.
+- Added install reports so user-selectable tentacles expose scope-merged grants, checks, and next commands directly from manifest/profile metadata.
 
 ## Remaining Gaps
 
@@ -67,7 +69,7 @@ Updated: 2026-06-26
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include static layer diagnostics and live validation; provider-specific edge cases still need real-machine feedback.
-- Release packaging, examples, and docs need enough finish for non-Rust users.
+- Release packaging, examples, and docs now have richer install feedback; non-Rust packaging still needs finish.
 - The HTML app can run, stream, inspect tentacle thinking, and show Feed traces through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
@@ -77,6 +79,7 @@ Updated: 2026-06-26
 - Exercise multi-action tentacle planning with a real LLM provider and record provider-specific failures.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Use traced runtime targets to apply and score the next seed-tentacle improvement through the review/grant loop.
+- Turn install reports into a guided HTML install flow with per-tentacle grant buttons and check status.
 - Turn window/browser diagnostics into richer native control adapters.
 - Add provider-specific fixes from real-machine feedback.
 - Run and record the first real-machine test before the `0.1.0` tag.

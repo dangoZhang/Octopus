@@ -6,10 +6,12 @@ use octopus_core::{
     AdaptReport, CapabilityGrant, ChatClient, ChatMessage, ChatRole, EnvironmentReport,
     EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome,
     EvolutionRecommendation, Feed, FeedTraceRecord, GoalChat, Harness, HarnessState,
-    HeartbeatReport, Need, NeedKind, OpenAiCompatibleChatClient, OpenAiCompatibleConfig,
-    SelfIterationPlan, Status, StatusReport, TentacleEvolutionProposal, TentacleManifestReport,
-    TentacleScaffold, TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate,
+    HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind,
+    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, SelfIterationPlan, Status, StatusReport,
+    TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile, TentacleScaffold,
+    TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate, ToolPermission,
 };
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -131,6 +133,36 @@ struct InitFileReport {
     path: String,
     created: bool,
 }
+
+#[derive(serde::Serialize)]
+struct InstallReport {
+    id: String,
+    name: String,
+    source_kind: String,
+    state_path: String,
+    description: String,
+    brain_kind: String,
+    installed: bool,
+    needs: Vec<String>,
+    tools: Vec<String>,
+    runtimes: Vec<String>,
+    evolution_surfaces: Vec<String>,
+    grants: Vec<InstallGrantReport>,
+    checks: Vec<String>,
+    next: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+struct InstallGrantReport {
+    provider: String,
+    scope: String,
+    permissions: Vec<String>,
+    reason: Option<String>,
+    active: bool,
+    command: String,
+}
+
+type InstallGrantGroups = BTreeMap<(String, String), (BTreeSet<String>, BTreeSet<String>)>;
 
 #[derive(serde::Serialize)]
 struct SkillReport {
@@ -920,32 +952,37 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let profile = rest
                 .get(1)
                 .ok_or_else(|| "install requires a profile id".to_string())?;
+            let root = default_tentacles_root();
+            let profile_metadata = default_tentacle_profiles()
+                .into_iter()
+                .find(|candidate| candidate.id == profile.as_str());
+            let manifest_metadata = load_tentacle_manifests(&root)
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .find(|loaded| loaded.manifest.id == profile.as_str());
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             let profile_installed = loaded.install_profile(profile).is_ok();
-            let manifest_installed = loaded
-                .install_manifest(default_tentacles_root(), profile)
-                .ok();
+            let manifest_installed = loaded.install_manifest(&root, profile).ok();
             if !profile_installed && manifest_installed.is_none() {
                 return Err(format!("unknown profile or tentacle manifest: {profile}"));
             }
             loaded.save(&state).map_err(|error| error.to_string())?;
-            match (language, manifest_installed) {
-                (Language::En, Some(tentacle)) => {
-                    println!(
-                        "installed {} (runtimes: {})",
-                        profile,
-                        tentacle.runtime_kinds.join(",")
-                    )
-                }
-                (Language::Zh, Some(tentacle)) => {
-                    println!(
-                        "已安装 {} (runtimes: {})",
-                        profile,
-                        tentacle.runtime_kinds.join(",")
-                    )
-                }
-                (Language::En, None) => println!("installed {profile}"),
-                (Language::Zh, None) => println!("已安装 {profile}"),
+            let report = install_report(
+                profile,
+                &state,
+                profile_installed,
+                manifest_installed.as_ref(),
+                profile_metadata.as_ref(),
+                manifest_metadata.as_ref(),
+                &loaded,
+            );
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_install_report(&report, language);
             }
             Ok(())
         }
@@ -1036,6 +1073,90 @@ fn print_catalog(profiles: &[octopus_core::TentacleProfile], language: Language)
     }
     for profile in profiles {
         println!("- {}: {}", profile.id, profile.description);
+    }
+}
+
+fn print_install_report(report: &InstallReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("installed {}", report.id);
+            println!("source: {}", report.source_kind);
+            println!("state: {}", report.state_path);
+            println!("brain: {}", report.brain_kind);
+            println!("needs: {}", join_or_none(&report.needs));
+            println!("tools: {}", join_or_none(&report.tools));
+            println!("runtimes: {}", join_or_none(&report.runtimes));
+            println!("surfaces: {}", join_or_none(&report.evolution_surfaces));
+            print_install_grants(report, language);
+            print_install_checks(report, language);
+            print_install_next(report, language);
+        }
+        Language::Zh => {
+            println!("已安装 {}", report.id);
+            println!("来源: {}", report.source_kind);
+            println!("状态文件: {}", report.state_path);
+            println!("触手脑: {}", report.brain_kind);
+            println!("需求: {}", join_or_none(&report.needs));
+            println!("工具: {}", join_or_none(&report.tools));
+            println!("运行时: {}", join_or_none(&report.runtimes));
+            println!("进化面: {}", join_or_none(&report.evolution_surfaces));
+            print_install_grants(report, language);
+            print_install_checks(report, language);
+            print_install_next(report, language);
+        }
+    }
+}
+
+fn print_install_grants(report: &InstallReport, language: Language) {
+    if report.grants.is_empty() {
+        match language {
+            Language::En => println!("grants: none required"),
+            Language::Zh => println!("授权: 无需授权"),
+        }
+        return;
+    }
+    match language {
+        Language::En => println!("grants:"),
+        Language::Zh => println!("授权:"),
+    }
+    for grant in &report.grants {
+        let status = match (language, grant.active) {
+            (Language::En, true) => "active",
+            (Language::En, false) => "missing",
+            (Language::Zh, true) => "已生效",
+            (Language::Zh, false) => "待授权",
+        };
+        if let Some(reason) = &grant.reason {
+            println!("- {status}: {} ({reason})", grant.command);
+        } else {
+            println!("- {status}: {}", grant.command);
+        }
+    }
+}
+
+fn print_install_checks(report: &InstallReport, language: Language) {
+    if report.checks.is_empty() {
+        return;
+    }
+    match language {
+        Language::En => println!("checks:"),
+        Language::Zh => println!("检查:"),
+    }
+    for check in &report.checks {
+        println!("- {check}");
+    }
+}
+
+fn print_install_next(report: &InstallReport, language: Language) {
+    if report.next.is_empty() {
+        return;
+    }
+    match language {
+        Language::En => println!("next:"),
+        Language::Zh => println!("下一步:"),
+    }
+    for command in &report.next {
+        println!("- {command}");
     }
 }
 
@@ -3311,6 +3432,287 @@ fn join_or_none(values: &[String]) -> String {
     }
 }
 
+fn install_report(
+    id: &str,
+    state_path: &Path,
+    profile_installed: bool,
+    manifest_installed: Option<&InstalledTentacle>,
+    profile: Option<&TentacleProfile>,
+    manifest: Option<&LoadedTentacleManifest>,
+    state: &HarnessState,
+) -> InstallReport {
+    let source_kind = match (profile_installed, manifest_installed.is_some()) {
+        (true, true) => "profile+manifest",
+        (true, false) => "profile",
+        (false, true) => "manifest",
+        (false, false) => "unknown",
+    }
+    .to_string();
+
+    let name = manifest_installed
+        .map(|tentacle| tentacle.name.clone())
+        .or_else(|| profile.map(|profile| profile.name.clone()))
+        .unwrap_or_else(|| title_from_id(id));
+    let description = manifest
+        .map(|loaded| loaded.manifest.description.clone())
+        .or_else(|| profile.map(|profile| profile.description.clone()))
+        .unwrap_or_default();
+    let brain_kind = manifest_installed
+        .map(|tentacle| tentacle.brain_kind.clone())
+        .or_else(|| profile.map(|profile| profile.brain.kind.clone()))
+        .unwrap_or_else(|| "unknown".to_string());
+    let needs = manifest_installed
+        .map(|tentacle| tentacle.needs.clone())
+        .or_else(|| profile.map(profile_needs))
+        .unwrap_or_default();
+    let tools = manifest_installed
+        .map(|tentacle| {
+            tentacle
+                .tool_meta
+                .iter()
+                .map(|tool| format!("{}:{}", tool.id, tool.kind))
+                .collect::<Vec<_>>()
+        })
+        .or_else(|| profile.map(profile_tools))
+        .unwrap_or_default();
+    let runtimes = manifest_installed
+        .map(|tentacle| tentacle.runtime_kinds.clone())
+        .or_else(|| profile.map(profile_runtimes))
+        .unwrap_or_default();
+    let evolution_surfaces = manifest_installed
+        .map(|tentacle| tentacle.evolution_surfaces.clone())
+        .or_else(|| profile.map(profile_surfaces))
+        .unwrap_or_default();
+    let grants = install_grants(state_path, state, manifest_installed, profile);
+    let checks = install_checks(manifest, profile);
+    let next = install_next_commands(
+        id,
+        state_path,
+        manifest_installed.is_some(),
+        &needs,
+        &grants,
+    );
+
+    InstallReport {
+        id: id.to_string(),
+        name,
+        source_kind,
+        state_path: state_path.to_string_lossy().to_string(),
+        description,
+        brain_kind,
+        installed: profile_installed || manifest_installed.is_some(),
+        needs,
+        tools,
+        runtimes,
+        evolution_surfaces,
+        grants,
+        checks,
+        next,
+    }
+}
+
+fn profile_needs(profile: &TentacleProfile) -> Vec<String> {
+    let mut needs = profile
+        .skills
+        .iter()
+        .flat_map(|skill| skill.needs.iter().map(need_label))
+        .collect::<Vec<_>>();
+    needs.sort();
+    needs.dedup();
+    needs
+}
+
+fn profile_tools(profile: &TentacleProfile) -> Vec<String> {
+    profile
+        .tools
+        .iter()
+        .map(|tool| format!("{}:{}", tool.id, tool.implementation.kind))
+        .collect()
+}
+
+fn profile_runtimes(profile: &TentacleProfile) -> Vec<String> {
+    let mut runtimes = profile
+        .tools
+        .iter()
+        .map(|tool| tool.implementation.kind.clone())
+        .collect::<Vec<_>>();
+    runtimes.sort();
+    runtimes.dedup();
+    runtimes
+}
+
+fn profile_surfaces(profile: &TentacleProfile) -> Vec<String> {
+    profile
+        .evolution
+        .surfaces
+        .iter()
+        .map(|surface| surface.id.clone())
+        .collect()
+}
+
+fn install_grants(
+    state_path: &Path,
+    state: &HarnessState,
+    manifest: Option<&InstalledTentacle>,
+    profile: Option<&TentacleProfile>,
+) -> Vec<InstallGrantReport> {
+    let mut grouped = InstallGrantGroups::new();
+    if let Some(tentacle) = manifest {
+        for permission in tentacle
+            .tool_meta
+            .iter()
+            .filter_map(|tool| tool.permission.as_ref())
+        {
+            collect_install_grant(&mut grouped, permission);
+        }
+    } else if let Some(profile) = profile {
+        for permission in profile
+            .tools
+            .iter()
+            .filter_map(|tool| tool.permission.as_ref())
+        {
+            collect_install_grant(&mut grouped, permission);
+        }
+    }
+    grouped
+        .into_iter()
+        .map(|((provider, scope), (permissions, reasons))| {
+            let permission = ToolPermission {
+                provider,
+                scope,
+                permissions: permissions.into_iter().collect(),
+                reason: (!reasons.is_empty())
+                    .then(|| reasons.into_iter().collect::<Vec<_>>().join("; ")),
+            };
+            install_grant_report(state_path, state, permission)
+        })
+        .collect()
+}
+
+fn collect_install_grant(grouped: &mut InstallGrantGroups, permission: &ToolPermission) {
+    let entry = grouped
+        .entry((permission.provider.clone(), permission.scope.clone()))
+        .or_default();
+    for required in &permission.permissions {
+        entry.0.insert(required.clone());
+    }
+    if let Some(reason) = &permission.reason {
+        entry.1.insert(reason.clone());
+    }
+}
+
+fn install_grant_report(
+    state_path: &Path,
+    state: &HarnessState,
+    permission: ToolPermission,
+) -> InstallGrantReport {
+    let command = oauth_command(state_path, &permission);
+    let active = state
+        .active_grant(&permission.provider, &permission.scope)
+        .is_some_and(|grant| {
+            permission
+                .permissions
+                .iter()
+                .all(|required| grant.permissions.iter().any(|owned| owned == required))
+        });
+    InstallGrantReport {
+        provider: permission.provider.clone(),
+        scope: permission.scope.clone(),
+        permissions: permission.permissions.clone(),
+        reason: permission.reason.clone(),
+        active,
+        command,
+    }
+}
+
+fn oauth_command(state_path: &Path, permission: &ToolPermission) -> String {
+    let mut parts = vec![
+        "octopus".to_string(),
+        "--state".to_string(),
+        shell_arg(&state_path.to_string_lossy()),
+        "oauth".to_string(),
+        shell_arg(&permission.provider),
+        shell_arg(&permission.scope),
+    ];
+    parts.extend(
+        permission
+            .permissions
+            .iter()
+            .map(|permission| shell_arg(permission)),
+    );
+    parts.join(" ")
+}
+
+fn install_checks(
+    manifest: Option<&LoadedTentacleManifest>,
+    profile: Option<&TentacleProfile>,
+) -> Vec<String> {
+    if let Some(manifest) = manifest {
+        let directory = Path::new(&manifest.path)
+            .parent()
+            .map(|path| shell_arg(&path.to_string_lossy()))
+            .unwrap_or_else(|| ".".to_string());
+        return manifest
+            .manifest
+            .evolution
+            .checks
+            .iter()
+            .map(|check| format!("(cd {directory} && {check})"))
+            .collect();
+    }
+    profile
+        .map(|profile| profile.evolution.checks.clone())
+        .unwrap_or_default()
+}
+
+fn install_next_commands(
+    id: &str,
+    state_path: &Path,
+    has_manifest: bool,
+    needs: &[String],
+    grants: &[InstallGrantReport],
+) -> Vec<String> {
+    let prefix = format!(
+        "octopus --state {}",
+        shell_arg(&state_path.to_string_lossy())
+    );
+    let mut commands = grants
+        .iter()
+        .filter(|grant| !grant.active)
+        .map(|grant| grant.command.clone())
+        .collect::<Vec<_>>();
+    let sample_need = sample_need(needs);
+    let sample_query = if sample_need == "execute" {
+        shell_arg("echo octopus")
+    } else {
+        ".".to_string()
+    };
+    if has_manifest {
+        commands.push(format!(
+            "{prefix} think {} {sample_need} {sample_query}",
+            shell_arg(id)
+        ));
+    }
+    commands.push(format!("{prefix} need {sample_need} {sample_query}"));
+    commands.push(format!("{prefix} doctor"));
+    commands
+}
+
+fn sample_need(needs: &[String]) -> String {
+    if needs.iter().any(|need| need == "observe") {
+        "observe".to_string()
+    } else if needs.iter().any(|need| need == "verify") {
+        "verify".to_string()
+    } else if needs.iter().any(|need| need == "execute") {
+        "execute".to_string()
+    } else {
+        needs
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "observe".to_string())
+    }
+}
+
 fn default_tentacles_root() -> PathBuf {
     let cwd_root = env::current_dir()
         .ok()
@@ -3459,11 +3861,14 @@ fn parse_status(value: &str) -> Result<Status, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bridge_command_allowed, bridge_command_name, http_content_length, is_broken_pipe_panic,
-        localize_summary, percent_encode_path, pet_report, pet_report_for_state,
-        provider_status_report, run, skill_reports, usage, Language,
+        bridge_command_allowed, bridge_command_name, http_content_length, install_report,
+        is_broken_pipe_panic, localize_summary, percent_encode_path, pet_report,
+        pet_report_for_state, provider_status_report, run, skill_reports, usage, Language,
     };
-    use octopus_core::{Feed, Goal, GoalStatus, HarnessState, Need, NeedKind, Status};
+    use octopus_core::{
+        default_tentacle_profiles, load_tentacle_manifests, Feed, Goal, GoalStatus, HarnessState,
+        Need, NeedKind, Status,
+    };
     use std::fs;
     use std::path::Path;
     use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -4555,6 +4960,72 @@ JSON
         assert!(content.contains("installed_tentacles"));
         assert!(content.contains("tools/read.sh"));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn install_report_exposes_manifest_grants_checks_and_next_steps() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let state_path = Path::new(".octopus/state with space.json");
+        let mut state = HarnessState::default();
+        state
+            .install_profile("computer-use-agent")
+            .expect("profile should install");
+        let installed = state
+            .install_manifest(&root, "computer-use-agent")
+            .expect("manifest should install");
+        let profile = default_tentacle_profiles()
+            .into_iter()
+            .find(|profile| profile.id == "computer-use-agent");
+        let manifest = load_tentacle_manifests(&root)
+            .unwrap()
+            .into_iter()
+            .find(|loaded| loaded.manifest.id == "computer-use-agent");
+
+        let report = install_report(
+            "computer-use-agent",
+            state_path,
+            true,
+            Some(&installed),
+            profile.as_ref(),
+            manifest.as_ref(),
+            &state,
+        );
+
+        assert_eq!(report.source_kind, "profile+manifest");
+        assert!(report
+            .tools
+            .iter()
+            .any(|tool| tool == "clipboard_read:shell"));
+        assert!(report.runtimes.iter().any(|runtime| runtime == "shell"));
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.contains("OCTOPUS_CLIPBOARD_DRY_RUN=1")));
+        assert!(report.grants.iter().any(|grant| {
+            !grant.active
+                && grant.scope == "tool:computer-use-agent"
+                && grant
+                    .permissions
+                    .iter()
+                    .any(|permission| permission == "tool:observe")
+                && grant
+                    .permissions
+                    .iter()
+                    .any(|permission| permission == "tool:ui")
+                && grant.command.contains("'.octopus/state with space.json'")
+                && grant.command.contains("'tool:observe'")
+                && grant.command.contains("'tool:ui'")
+        }));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| { command.contains("think computer-use-agent observe .") }));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| { command.contains("need observe .") }));
     }
 
     #[test]

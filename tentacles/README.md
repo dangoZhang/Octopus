@@ -17,11 +17,15 @@ Inspect installable manifests:
 
 ```bash
 octopus manifests
+octopus install computer-use-agent
+octopus --json install computer-use-agent
 tmp=$(mktemp -d)
 (cd "$tmp" && octopus scaffold my-feed python)
 (cd "$tmp" && octopus probe my-feed observe README.md)
 (cd "$tmp" && octopus scaffold native-feed rust)
 ```
+
+`install` reads manifest/profile metadata and prints needs, runtimes, grant commands, checks, and next commands. If a tentacle evolves its tool metadata or policy, this report changes with it.
 
 Agent tool-combo tentacles:
 
@@ -48,4 +52,4 @@ Use `permission` when a tool needs an explicit grant before execution. Example: 
 
 Computer-use MCP calls are adapter-neutral. Set `OCTOPUS_MCP_<SERVER>_COMMAND` or `OCTOPUS_MCP_COMMAND` to a client command that reads JSON-RPC on stdin, then grant `octopus oauth octopus tool:computer-use-agent tool:mcp`.
 
-Computer-use clipboard tools are grant-bound. Use `tool:observe` for `clipboard_read` and `tool:ui` for `clipboard_write`; set `OCTOPUS_CLIPBOARD_DRY_RUN=1` when testing without touching the real clipboard.
+Computer-use clipboard tools are grant-bound. Use `tool:observe` for `clipboard_read` and `tool:ui` for `clipboard_write`; combine permissions for the same scope in one `octopus oauth` command. Set `OCTOPUS_CLIPBOARD_DRY_RUN=1` when testing without touching the real clipboard.
