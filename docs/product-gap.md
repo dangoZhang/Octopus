@@ -28,6 +28,7 @@ Updated: 2026-06-26
 - Executed Feed now writes a compact harness trace journal; manifest Feed includes `tentacle_plan` evidence and a CLI `feed_trace`.
 - Harness evolution proposals now carry recent Feed traces and check history for the selected tentacle and expose them to the LLM evolution planner.
 - Runtime-code evolution candidates use recent Feed traces and failed checks to target the exact tool entrypoint that produced or broke Feed.
+- Patch candidates, patch drafts, and apply plans carry a feedback focus block from matching traces/checks.
 - The SWE read tool now returns a compact file/range header and line-numbered evidence.
 
 ## Filled So Far
@@ -72,6 +73,7 @@ Updated: 2026-06-26
 - Rolled the cleanup/version cadence to `0.0.4` after the install-guide product cycle.
 - Added persistent harness check history for install checks and surfaced it in the HTML install guide.
 - Fed check history into harness evolution proposals, LLM evolution prompts, runtime-code targeting, and recommendation scoring.
+- Added per-candidate feedback focus in patch candidates, patch drafts, and apply plans.
 
 ## Remaining Gaps
 
@@ -90,7 +92,7 @@ Updated: 2026-06-26
 - Exercise multi-action tentacle planning with a real LLM provider and record provider-specific failures.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Use traced runtime targets to apply and score the next seed-tentacle improvement through the review/grant loop.
-- Use real-machine check history to generate narrower patch drafts and apply plans.
+- Turn feedback-focused drafts into provider-assisted patch text when `OCTOPUS_LLM_EVOLVE=1`.
 - Turn window/browser diagnostics into richer native control adapters.
 - Add provider-specific fixes from real-machine feedback.
 - Run and record the first real-machine test before the `0.1.0` tag.

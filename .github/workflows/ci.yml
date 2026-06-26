@@ -70,6 +70,7 @@ jobs:
           grep -q '"recent_feed_traces"' .octopus/evolution/swe-agent/proposal.json
           grep -q '"recent_check_history"' .octopus/evolution/swe-agent/proposal.json
           grep -q "tools/inspect_repo.sh" .octopus/evolution/swe-agent/proposal.json
+          grep -q "feedback focus:" .octopus/evolution/swe-agent/patches/03-runtime-code.patch.md
           rm -rf .octopus/evolution/swe-agent
           cargo run -q -p octopus-core -- evolve swe-agent improve | grep -q "patch drafts:"
           grep -q runtime_code .octopus/evolution/swe-agent/PATCH_CANDIDATES.md

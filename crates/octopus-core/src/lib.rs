@@ -3035,9 +3035,23 @@ pub struct EvolutionPatchCandidate {
     pub title: String,
     pub target: String,
     pub rationale: String,
+    #[serde(default)]
+    pub feedback: Vec<EvolutionPatchFeedback>,
     pub change_plan: Vec<String>,
     pub checks: Vec<String>,
     pub draft: EvolutionPatchDraft,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EvolutionPatchFeedback {
+    pub kind: String,
+    pub source_index: u64,
+    pub status: Status,
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -3097,6 +3111,8 @@ pub struct EvolutionApplyPlan {
     pub target: String,
     pub draft_path: String,
     pub checks: Vec<String>,
+    #[serde(default)]
+    pub feedback: Vec<EvolutionPatchFeedback>,
     pub guardrails: Vec<String>,
     pub next_steps: Vec<String>,
 }
@@ -3360,7 +3376,8 @@ fn llm_candidate_to_evolution(
     } else {
         candidate.change_plan
     };
-    Ok(EvolutionPatchCandidate {
+    let target = llm_candidate_target(proposal, surface, &candidate.target);
+    let mut patch_candidate = EvolutionPatchCandidate {
         id: evolution_candidate_id(surface_index, &surface.id),
         surface_id: surface.id.clone(),
         title: if candidate.title.trim().is_empty() {
@@ -3368,7 +3385,7 @@ fn llm_candidate_to_evolution(
         } else {
             candidate.title
         },
-        target: llm_candidate_target(proposal, surface, &candidate.target),
+        target,
         rationale: if candidate.rationale.trim().is_empty() {
             format!(
                 "advance {} through {}",
@@ -3377,10 +3394,14 @@ fn llm_candidate_to_evolution(
         } else {
             candidate.rationale
         },
+        feedback: Vec::new(),
         change_plan,
         checks,
         draft: evolution_patch_draft(surface_index, surface),
-    })
+    };
+    patch_candidate.feedback =
+        evolution_candidate_feedback_from_proposal(&patch_candidate, proposal);
+    Ok(patch_candidate)
 }
 
 fn llm_candidate_target(
@@ -3625,6 +3646,7 @@ pub fn plan_tentacle_evolution_apply(
         target: candidate.target.clone(),
         draft_path: candidate.draft.path.clone(),
         checks: candidate.checks.clone(),
+        feedback: candidate.feedback.clone(),
         guardrails: vec![
             "do not modify kernel code from an evolution draft".to_string(),
             "patch only declared harness targets".to_string(),
@@ -3742,6 +3764,13 @@ pub fn render_tentacle_apply_plan(plan: &EvolutionApplyPlan) -> String {
     if plan.authorized {
         markdown.push_str(&format!("patch: `{}.patch`\n\n", plan.candidate_id));
     }
+    if !plan.feedback.is_empty() {
+        markdown.push_str("feedback focus:\n");
+        for feedback in &plan.feedback {
+            markdown.push_str(&format!("- {}\n", evolution_feedback_line(feedback)));
+        }
+        markdown.push('\n');
+    }
     markdown.push_str("guardrails:\n");
     for guardrail in &plan.guardrails {
         markdown.push_str(&format!("- {guardrail}\n"));
@@ -3825,6 +3854,30 @@ fn evolution_candidate_check_history_score(
     (weighted.0 / weighted.1.max(1.0), matched.len())
 }
 
+fn evolution_candidate_feedback_from_proposal(
+    candidate: &EvolutionPatchCandidate,
+    proposal: &TentacleEvolutionProposal,
+) -> Vec<EvolutionPatchFeedback> {
+    let mut feedback = Vec::new();
+    if let Some(record) = proposal
+        .recent_check_history
+        .iter()
+        .rev()
+        .find(|record| candidate_matches_check_history(candidate, record))
+    {
+        feedback.push(feedback_from_check_history(record, None));
+    }
+    if let Some(trace) = proposal
+        .recent_feed_traces
+        .iter()
+        .rev()
+        .find(|trace| candidate_matches_feed_trace(candidate, trace))
+    {
+        feedback.push(feedback_from_feed_trace(trace, None));
+    }
+    feedback
+}
+
 fn candidate_matches_check_history(
     candidate: &EvolutionPatchCandidate,
     record: &CheckHistoryRecord,
@@ -3845,6 +3898,75 @@ fn candidate_matches_check_history(
     candidate.surface_id == "runtime_code"
         && record.status == Status::Failed
         && record.command.contains("tools/")
+}
+
+fn candidate_matches_feed_trace(
+    candidate: &EvolutionPatchCandidate,
+    trace: &FeedTraceRecord,
+) -> bool {
+    let Some(tool) = trace.tool.as_deref() else {
+        return false;
+    };
+    target_mentions_tool(&candidate.target, tool)
+}
+
+fn target_mentions_tool(target: &str, tool: &str) -> bool {
+    if target.contains(tool) {
+        return true;
+    }
+    Path::new(target.split('#').next().unwrap_or(target))
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == tool)
+}
+
+fn evolution_candidate_feedback(
+    trace_tool: Option<(&ManifestTool, &FeedTraceRecord)>,
+    check_tool: Option<(&ManifestTool, &CheckHistoryRecord)>,
+) -> Vec<EvolutionPatchFeedback> {
+    let mut feedback = Vec::new();
+    if let Some((tool, record)) = check_tool {
+        feedback.push(feedback_from_check_history(record, Some(tool)));
+    }
+    if let Some((tool, trace)) = trace_tool {
+        feedback.push(feedback_from_feed_trace(trace, Some(tool)));
+    }
+    feedback
+}
+
+fn feedback_from_check_history(
+    record: &CheckHistoryRecord,
+    tool: Option<&ManifestTool>,
+) -> EvolutionPatchFeedback {
+    let summary = if record.stderr.trim().is_empty() {
+        one_line(&record.stdout)
+    } else {
+        one_line(&record.stderr)
+    };
+    EvolutionPatchFeedback {
+        kind: "check_history".to_string(),
+        source_index: record.index,
+        status: record.status.clone(),
+        summary,
+        command: Some(record.command.clone()),
+        target: tool.map(|tool| tool.implementation.entrypoint.clone()),
+    }
+}
+
+fn feedback_from_feed_trace(
+    trace: &FeedTraceRecord,
+    tool: Option<&ManifestTool>,
+) -> EvolutionPatchFeedback {
+    EvolutionPatchFeedback {
+        kind: "feed_trace".to_string(),
+        source_index: trace.index,
+        status: trace.status.clone(),
+        summary: one_line(&trace.summary),
+        command: None,
+        target: tool
+            .map(|tool| tool.implementation.entrypoint.clone())
+            .or_else(|| trace.tool.clone()),
+    }
 }
 
 fn resolve_existing_patch_target(target: &str) -> Option<PathBuf> {
@@ -3966,6 +4088,23 @@ fn one_line(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+fn evolution_feedback_line(feedback: &EvolutionPatchFeedback) -> String {
+    let mut parts = vec![
+        format!("{} #{}", feedback.kind, feedback.source_index),
+        format!("{:?}", feedback.status),
+    ];
+    if let Some(target) = &feedback.target {
+        parts.push(format!("target `{target}`"));
+    }
+    if let Some(command) = &feedback.command {
+        parts.push(format!("command `{}`", one_line(command)));
+    }
+    if !feedback.summary.trim().is_empty() {
+        parts.push(format!("summary {}", one_line(&feedback.summary)));
+    }
+    parts.join(" · ")
+}
+
 pub fn render_tentacle_evolution_proposal(proposal: &TentacleEvolutionProposal) -> String {
     let mut markdown = String::new();
     markdown.push_str(&format!(
@@ -4083,6 +4222,13 @@ pub fn render_tentacle_patch_candidates(proposal: &TentacleEvolutionProposal) ->
         markdown.push_str(&format!("surface: `{}`\n", candidate.surface_id));
         markdown.push_str(&format!("target: `{}`\n", candidate.target));
         markdown.push_str(&format!("rationale: {}\n\n", candidate.rationale));
+        if !candidate.feedback.is_empty() {
+            markdown.push_str("feedback:\n");
+            for feedback in &candidate.feedback {
+                markdown.push_str(&format!("- {}\n", evolution_feedback_line(feedback)));
+            }
+            markdown.push('\n');
+        }
         markdown.push_str(&format!("draft: `{}`\n", candidate.draft.path));
         markdown.push_str(&format!("status: `{}`\n", candidate.draft.status));
         markdown.push_str(&format!(
@@ -4131,6 +4277,13 @@ pub fn render_single_patch_draft(
         candidate.draft.authorization_required
     ));
     markdown.push_str(&format!("apply_hint: {}\n\n", candidate.draft.apply_hint));
+    if !candidate.feedback.is_empty() {
+        markdown.push_str("feedback focus:\n");
+        for feedback in &candidate.feedback {
+            markdown.push_str(&format!("- {}\n", evolution_feedback_line(feedback)));
+        }
+        markdown.push('\n');
+    }
     markdown.push_str("diff intent:\n");
     for step in &candidate.change_plan {
         markdown.push_str(&format!("- {step}\n"));
@@ -4986,6 +5139,7 @@ fn evolution_patch_candidates(
                 rationale: evolution_candidate_rationale(
                     objective, surface, trace_tool, check_tool,
                 ),
+                feedback: evolution_candidate_feedback(trace_tool, check_tool),
                 change_plan: evolution_candidate_plan_with_feedback(
                     surface, trace_tool, check_tool,
                 ),
@@ -6862,14 +7016,41 @@ mod tests {
         assert_eq!(proposal.recent_check_history[0].command_index, Some(1));
         assert!(runtime_candidate.target.ends_with("tools/read.sh"));
         assert!(runtime_candidate.rationale.contains("failed check #1"));
+        assert_eq!(runtime_candidate.feedback.len(), 1);
+        assert_eq!(runtime_candidate.feedback[0].kind, "check_history");
+        assert!(runtime_candidate.feedback[0]
+            .summary
+            .contains("line range failed"));
         assert!(runtime_candidate.change_plan[0].contains("repair failing check #1"));
         assert_eq!(recommendation.candidate_id, "03-runtime-code");
         assert_eq!(recommendation.check_history_count, 1);
+        assert_eq!(recommendation.apply.feedback.len(), 1);
         assert!(recommendation.recommendation_score > 0.0);
         assert!(recommendation.reason.contains("check history"));
         assert!(markdown.contains("Recent Check History"));
         assert!(markdown.contains("line range failed"));
         assert!(!markdown.contains("window unavailable"));
+
+        let workspace =
+            std::env::temp_dir().join(format!("octopus-check-draft-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&workspace);
+        let artifact = write_tentacle_evolution_artifacts(&workspace, &proposal).unwrap();
+        let candidates = fs::read_to_string(&artifact.candidates_path).unwrap();
+        let runtime_draft_path = artifact
+            .patch_draft_paths
+            .iter()
+            .find(|path| path.contains("03-runtime-code"))
+            .unwrap();
+        let runtime_draft = fs::read_to_string(runtime_draft_path).unwrap();
+        let apply_artifact =
+            write_tentacle_apply_artifacts(&workspace, &recommendation.apply).unwrap();
+        let apply_plan = fs::read_to_string(&apply_artifact.plan_path).unwrap();
+
+        assert!(candidates.contains("feedback:"));
+        assert!(runtime_draft.contains("feedback focus:"));
+        assert!(runtime_draft.contains("line range failed"));
+        assert!(apply_plan.contains("feedback focus:"));
+        let _ = fs::remove_dir_all(workspace);
     }
 
     #[test]
@@ -7007,6 +7188,10 @@ mod tests {
         assert!(proposal.patch_candidates[0]
             .target
             .ends_with("tools/read.sh"));
+        assert!(proposal.patch_candidates[0]
+            .feedback
+            .iter()
+            .any(|feedback| feedback.kind == "check_history"));
         assert!(markdown.contains("generator: `llm`"));
         assert!(fake.prompt.contains("Goal"));
         assert!(fake.prompt.contains("Need"));
