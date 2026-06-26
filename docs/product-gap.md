@@ -21,6 +21,8 @@ Updated: 2026-06-26
 - `think <tentacle> <kind> <query>` exposes tool-side planning without executing tools.
 - Executed Feed now writes a compact harness trace journal; manifest Feed includes `tentacle_plan` evidence and a CLI `feed_trace`.
 - Harness evolution proposals now carry recent Feed traces for the selected tentacle and expose them to the LLM evolution planner.
+- Runtime-code evolution candidates use recent Feed traces to target the exact tool entrypoint that produced Feed.
+- The SWE read tool now returns a compact file/range header and line-numbered evidence.
 
 ## Filled So Far
 
@@ -52,11 +54,13 @@ Updated: 2026-06-26
 - Added execution-time `tentacle_plan` evidence and concise `feed_trace` output for manifest Feed.
 - Added a persistent Feed trace journal, `octopus traces`, status exposure, HTML Trace button, and beat compaction for old traces.
 - Added recent Feed traces to evolution proposals, Markdown artifacts, JSON artifacts, and LLM evolution prompt payloads.
+- Made local runtime-code evolution data-driven: recent traces now narrow `tools/*` to the concrete tool file for apply plans.
+- Improved the SWE read runtime so file observations carry stable line numbers for later Feed trace and patch review.
 
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
-- LLM evolution can generate candidates from manifest surfaces, scored outcomes, and recent Feed traces; patch writes stay review/grant-bound.
+- LLM evolution can generate candidates from manifest surfaces, scored outcomes, and recent Feed traces; local candidates now also target traced runtime files, and patch writes stay review/grant-bound.
 - Computer-use now has browser/window diagnostics, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include static layer diagnostics and live validation; provider-specific edge cases still need real-machine feedback.
 - Release packaging, examples, and docs need enough finish for non-Rust users.
@@ -66,7 +70,7 @@ Updated: 2026-06-26
 ## Next Fill
 
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
-- Use trace-aware evolution proposals to improve one seed tentacle's runtime behavior.
+- Use traced runtime targets to apply and score the next seed-tentacle improvement through the review/grant loop.
 - Turn window/browser diagnostics into richer native control adapters.
 - Add provider-specific fixes from real-machine feedback.
 - Run and record the first real-machine test before the `0.1.0` tag.

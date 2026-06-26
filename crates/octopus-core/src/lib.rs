@@ -3147,6 +3147,8 @@ fn propose_tentacle_evolution_with_feedback(
         objective,
         &loaded.manifest.evolution.surfaces,
         &loaded.manifest.evolution.checks,
+        &loaded.manifest.tools,
+        recent_feed_traces,
     );
     let mut next_steps = vec![
         "review PROPOSAL.md".to_string(),
@@ -4236,7 +4238,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 ],
             }],
             tools: vec![
-                tool_meta("read", "Read a safe slice of a workspace file.", "shell", "tentacles/swe-agent/tools/read.sh"),
+                tool_meta("read", "Read a safe, line-numbered slice of a workspace file.", "shell", "tentacles/swe-agent/tools/read.sh"),
                 tool_meta("edit", "Apply one scoped text replacement.", "shell", "tentacles/swe-agent/tools/edit.sh"),
                 tool_meta("inspect_repo", "Summarize repo state and project type.", "shell", "tentacles/swe-agent/tools/inspect_repo.sh"),
                 tool_meta("write_patch", "Write and optionally apply a patch.", "shell", "tentacles/swe-agent/tools/write_patch.sh"),
@@ -4537,26 +4539,160 @@ fn evolution_patch_candidates(
     objective: &str,
     surfaces: &[EvolutionSurface],
     checks: &[String],
+    tools: &[ManifestTool],
+    recent_feed_traces: &[FeedTraceRecord],
 ) -> Vec<EvolutionPatchCandidate> {
-    let checks = if checks.is_empty() {
+    surfaces
+        .iter()
+        .enumerate()
+        .map(|(index, surface)| {
+            let trace_tool = traced_tool_for_surface(surface, tools, recent_feed_traces);
+            EvolutionPatchCandidate {
+                id: evolution_candidate_id(index, &surface.id),
+                surface_id: surface.id.clone(),
+                title: evolution_candidate_title(&surface.id, tentacle_id),
+                target: evolution_candidate_target_with_trace(manifest_dir, surface, trace_tool),
+                rationale: evolution_candidate_rationale(objective, surface, trace_tool),
+                change_plan: evolution_candidate_plan_with_trace(surface, trace_tool),
+                checks: evolution_candidate_checks(checks, surface, trace_tool),
+                draft: evolution_patch_draft(index, surface),
+            }
+        })
+        .collect()
+}
+
+fn traced_tool_for_surface<'a>(
+    surface: &EvolutionSurface,
+    tools: &'a [ManifestTool],
+    recent_feed_traces: &'a [FeedTraceRecord],
+) -> Option<(&'a ManifestTool, &'a FeedTraceRecord)> {
+    if surface.id != "runtime_code" {
+        return None;
+    }
+    recent_feed_traces.iter().rev().find_map(|trace| {
+        let tool_id = trace.tool.as_deref()?;
+        tools
+            .iter()
+            .find(|tool| tool.id == tool_id)
+            .map(|tool| (tool, trace))
+    })
+}
+
+fn evolution_candidate_target_with_trace(
+    manifest_dir: &Path,
+    surface: &EvolutionSurface,
+    trace_tool: Option<(&ManifestTool, &FeedTraceRecord)>,
+) -> String {
+    if let Some((tool, _)) = trace_tool {
+        if let Some(target) = trace_tool_entrypoint_target(manifest_dir, tool) {
+            return target;
+        }
+    }
+    evolution_candidate_target(manifest_dir, surface)
+}
+
+fn trace_tool_entrypoint_target(manifest_dir: &Path, tool: &ManifestTool) -> Option<String> {
+    let entrypoint = tool.implementation.entrypoint.trim();
+    if entrypoint.is_empty()
+        || entrypoint.contains("..")
+        || entrypoint.starts_with("http://")
+        || entrypoint.starts_with("https://")
+    {
+        return None;
+    }
+    let path = Path::new(entrypoint);
+    if path.is_absolute() {
+        return path.exists().then(|| path.to_string_lossy().to_string());
+    }
+    Some(manifest_dir.join(path).to_string_lossy().to_string())
+}
+
+fn evolution_candidate_rationale(
+    objective: &str,
+    surface: &EvolutionSurface,
+    trace_tool: Option<(&ManifestTool, &FeedTraceRecord)>,
+) -> String {
+    let base = format!("advance {objective} through {}", surface.description);
+    let Some((tool, trace)) = trace_tool else {
+        return base;
+    };
+    format!(
+        "{base}; recent trace #{} used `{}` for {} `{}` and returned {} evidence items",
+        trace.index,
+        tool.id,
+        kind_key(&trace.need_kind),
+        trace.need_query,
+        trace.evidence_count
+    )
+}
+
+fn evolution_candidate_plan_with_trace(
+    surface: &EvolutionSurface,
+    trace_tool: Option<(&ManifestTool, &FeedTraceRecord)>,
+) -> Vec<String> {
+    let mut plan = evolution_candidate_plan(surface);
+    if let Some((tool, trace)) = trace_tool {
+        plan.insert(
+            0,
+            format!(
+                "patch `{}` from trace #{} instead of a broad tools/* target",
+                tool.implementation.entrypoint, trace.index
+            ),
+        );
+        plan.insert(
+            1,
+            format!("preserve the observed `{}` Feed contract", tool.id),
+        );
+    }
+    plan
+}
+
+fn evolution_candidate_checks(
+    checks: &[String],
+    surface: &EvolutionSurface,
+    trace_tool: Option<(&ManifestTool, &FeedTraceRecord)>,
+) -> Vec<String> {
+    let mut checks = if checks.is_empty() {
         vec!["cargo test".to_string()]
     } else {
         checks.to_vec()
     };
-    surfaces
-        .iter()
-        .enumerate()
-        .map(|(index, surface)| EvolutionPatchCandidate {
-            id: evolution_candidate_id(index, &surface.id),
-            surface_id: surface.id.clone(),
-            title: evolution_candidate_title(&surface.id, tentacle_id),
-            target: evolution_candidate_target(manifest_dir, surface),
-            rationale: format!("advance {objective} through {}", surface.description),
-            change_plan: evolution_candidate_plan(surface),
-            checks: checks.clone(),
-            draft: evolution_patch_draft(index, surface),
-        })
-        .collect()
+    if let Some((tool, trace)) = trace_tool {
+        if let Some(check) = traced_tool_check(tool, trace) {
+            if !checks
+                .iter()
+                .any(|existing| existing.contains(&tool.implementation.entrypoint))
+            {
+                checks.insert(0, check);
+            }
+        }
+    }
+    if surface.id == "evolution_policy" && !checks.iter().any(|check| check == "cargo test") {
+        checks.push("cargo test".to_string());
+    }
+    checks
+}
+
+fn traced_tool_check(tool: &ManifestTool, trace: &FeedTraceRecord) -> Option<String> {
+    let entrypoint = tool.implementation.entrypoint.trim();
+    if entrypoint.is_empty()
+        || entrypoint.contains("..")
+        || entrypoint.starts_with("http://")
+        || entrypoint.starts_with("https://")
+    {
+        return None;
+    }
+    let args = trace
+        .need_query
+        .split_whitespace()
+        .map(shell_arg)
+        .collect::<Vec<_>>();
+    let command = shell_arg(entrypoint);
+    if args.is_empty() {
+        Some(command)
+    } else {
+        Some(format!("{command} {}", args.join(" ")))
+    }
 }
 
 fn evolution_candidate_id(index: usize, surface_id: &str) -> String {
@@ -6089,9 +6225,62 @@ mod tests {
 
         assert_eq!(proposal.recent_feed_traces.len(), 1);
         assert_eq!(proposal.recent_feed_traces[0].tool.as_deref(), Some("read"));
+        let runtime_candidate = proposal
+            .patch_candidates
+            .iter()
+            .find(|candidate| candidate.surface_id == "runtime_code")
+            .unwrap();
+        assert!(runtime_candidate.target.ends_with("tools/read.sh"));
+        assert!(runtime_candidate.rationale.contains("trace #1"));
+        assert!(runtime_candidate.change_plan[0].contains("tools/read.sh"));
         assert!(markdown.contains("Recent Feed Traces"));
         assert!(markdown.contains("observed README through read tool"));
         assert!(!markdown.contains("browser trace"));
+    }
+
+    #[test]
+    fn tentacle_evolution_apply_uses_traced_runtime_tool_target() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Observe, "README.md"),
+            status: Status::Satisfied,
+            evidence: vec![Evidence::new("read", "README evidence")],
+            summary: "observed README through read tool".to_string(),
+            metadata: BTreeMap::from([
+                ("tentacle".to_string(), "swe-agent".to_string()),
+                ("tool".to_string(), "read".to_string()),
+                ("plan_source".to_string(), "llm".to_string()),
+            ]),
+        });
+        state.grant_oauth(
+            "octopus",
+            "evolve:swe-agent",
+            default_permissions("octopus"),
+        );
+        let proposal = propose_tentacle_evolution_with_state(
+            &root,
+            "swe-agent",
+            "improve repository observation feed quality",
+            &state,
+        )
+        .unwrap();
+        let plan = plan_tentacle_evolution_apply(&proposal, &state, "runtime_code").unwrap();
+
+        assert!(plan.authorized);
+        assert!(plan.target.ends_with("tools/read.sh"));
+
+        let workspace =
+            std::env::temp_dir().join(format!("octopus-traced-apply-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&workspace);
+        let artifact = write_tentacle_apply_artifacts(&workspace, &plan).unwrap();
+        let patch = fs::read_to_string(artifact.patch_path.as_ref().unwrap()).unwrap();
+
+        assert!(patch.contains("b/tentacles/swe-agent/tools/read.sh"));
+        assert!(!patch.contains("b/tentacles/swe-agent/tools/edit.sh"));
+        let _ = fs::remove_dir_all(workspace);
     }
 
     struct EvolutionFakeChat {
