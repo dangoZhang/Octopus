@@ -2,15 +2,15 @@ use octopus_core::{
     default_permissions, default_tentacle_profiles, inspect_tentacle_manifests,
     load_tentacle_manifests, plan_tentacle_evolution_apply, propose_tentacle_evolution_with_client,
     propose_tentacle_evolution_with_state, recommend_tentacle_evolution_apply, scaffold_tentacle,
-    think_tentacle, write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts,
-    AdaptReport, CapabilityGrant, ChatClient, ChatMessage, ChatRole, CheckHistoryInput,
-    CheckHistoryRecord, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan,
-    EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed, FeedTraceRecord, GoalChat,
-    Harness, HarnessState, HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need,
-    NeedKind, OpenAiCompatibleChatClient, OpenAiCompatibleConfig, SelfIterationPlan, Status,
-    StatusReport, TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile,
-    TentacleScaffold, TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate,
-    ToolPermission,
+    think_tentacle, write_harness_beat_evolution_artifacts, write_tentacle_apply_artifacts,
+    write_tentacle_evolution_artifacts, AdaptReport, CapabilityGrant, ChatClient, ChatMessage,
+    ChatRole, CheckHistoryInput, CheckHistoryRecord, EnvironmentReport, EvolutionApplyArtifact,
+    EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed,
+    FeedTraceRecord, GoalChat, Harness, HarnessBeatEvolution, HarnessState, HeartBeat,
+    HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind,
+    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, SelfIterationPlan, Status, StatusReport,
+    TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile, TentacleScaffold,
+    TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate, ToolPermission,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -641,7 +641,22 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .transpose()?
                 .unwrap_or(200);
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            let report = loaded.beat(memory_keep);
+            let mut report = loaded.beat(memory_keep);
+            let cwd = env::current_dir().map_err(|error| error.to_string())?;
+            let evolution =
+                write_harness_beat_evolution_artifacts(default_tentacles_root(), &cwd, &loaded)?;
+            if let Some(evolution) = &evolution {
+                attach_harness_beat_evolution(&mut report, evolution);
+                loaded.record_pet_event(
+                    "harness",
+                    "harness beat",
+                    format!(
+                        "recommended {} for {}",
+                        evolution.candidate_id, evolution.tentacle_id
+                    ),
+                    Status::Partial,
+                );
+            }
             loaded.save(&state).map_err(|error| error.to_string())?;
             if json {
                 println!(
@@ -1399,11 +1414,89 @@ fn print_chat(chat: &GoalChat, language: Language) {
     }
 }
 
+fn attach_harness_beat_evolution(report: &mut HeartbeatReport, evolution: &HarnessBeatEvolution) {
+    let Some(beat) = report.beats.iter_mut().find(|beat| beat.name == "harness") else {
+        return;
+    };
+    beat.changed = true;
+    beat.summary = format!(
+        "{}; recommended {} for {}",
+        beat.summary, evolution.candidate_id, evolution.tentacle_id
+    );
+    beat.data.insert(
+        "evolution_source_check".to_string(),
+        evolution.source_check_index.to_string(),
+    );
+    beat.data.insert(
+        "evolution_tentacle".to_string(),
+        evolution.tentacle_id.clone(),
+    );
+    beat.data.insert(
+        "evolution_candidate".to_string(),
+        evolution.candidate_id.clone(),
+    );
+    beat.data
+        .insert("evolution_status".to_string(), evolution.status.clone());
+    beat.data
+        .insert("evolution_reason".to_string(), evolution.reason.clone());
+    beat.data.insert(
+        "evolution_plan".to_string(),
+        evolution.apply_plan_path.clone(),
+    );
+    beat.data
+        .insert("evolution_next".to_string(), evolution.next_action.clone());
+    if let Some(patch) = &evolution.patch_path {
+        beat.data
+            .insert("evolution_patch".to_string(), patch.clone());
+    }
+}
+
 fn print_heartbeat_report(report: &HeartbeatReport, language: Language) {
     for beat in &report.beats {
         match language {
             Language::En => println!("{}: {}", beat.name, beat.summary),
             Language::Zh => println!("{}: {}", localize_beat(&beat.name), beat.summary),
+        }
+        if beat.name == "harness" {
+            print_harness_beat_evolution(beat, language);
+        }
+    }
+}
+
+fn print_harness_beat_evolution(beat: &HeartBeat, language: Language) {
+    let Some(candidate) = beat.data.get("evolution_candidate") else {
+        return;
+    };
+    let tentacle = beat
+        .data
+        .get("evolution_tentacle")
+        .map(String::as_str)
+        .unwrap_or("unknown");
+    let status = beat
+        .data
+        .get("evolution_status")
+        .map(String::as_str)
+        .unwrap_or("unknown");
+    let next = beat
+        .data
+        .get("evolution_next")
+        .map(String::as_str)
+        .unwrap_or("review evolution plan");
+    let plan = beat
+        .data
+        .get("evolution_plan")
+        .map(String::as_str)
+        .unwrap_or("none");
+    match language {
+        Language::En => {
+            println!("  recommendation: {tentacle} {candidate} ({status})");
+            println!("  plan: {plan}");
+            println!("  next: {next}");
+        }
+        Language::Zh => {
+            println!("  推荐: {tentacle} {candidate} ({status})");
+            println!("  计划: {plan}");
+            println!("  下一步: {next}");
         }
     }
 }
@@ -4239,8 +4332,8 @@ mod tests {
         pet_report_for_state, provider_status_report, run, skill_reports, usage, Language,
     };
     use octopus_core::{
-        default_tentacle_profiles, load_tentacle_manifests, Feed, Goal, GoalStatus, HarnessState,
-        Need, NeedKind, Status,
+        default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
+        GoalStatus, HarnessState, Need, NeedKind, Status,
     };
     use std::fs;
     use std::path::Path;
@@ -4359,6 +4452,58 @@ mod tests {
         assert!(!content.contains("first"));
         assert!(content.contains("second"));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_beat_writes_harness_evolution_hint_from_failed_check() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let workspace =
+            std::env::temp_dir().join(format!("octopus-beat-evolution-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&workspace);
+        fs::create_dir_all(&workspace).unwrap();
+        std::env::set_current_dir(&workspace).unwrap();
+        let state_path = workspace.join("state.json");
+        let state_arg = state_path.to_string_lossy().to_string();
+        let mut state = HarnessState::default();
+        state.record_check_history(CheckHistoryInput {
+            tentacle_id: "swe-agent".to_string(),
+            source_kind: "manifest".to_string(),
+            command_index: Some(1),
+            command: "tools/read.sh README.md 1 2".to_string(),
+            cwd: "tentacles/swe-agent".to_string(),
+            status: Status::Failed,
+            code: Some(1),
+            stdout: String::new(),
+            stderr: "range output failed".to_string(),
+        });
+        state.save(&state_path).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state_arg,
+            "beat".to_string(),
+            "200".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert_eq!(
+            restored.last_pet_event.as_ref().unwrap().source,
+            "harness beat"
+        );
+        assert_eq!(restored.last_pet_event.as_ref().unwrap().state, "harness");
+        let plan = workspace
+            .join(".octopus")
+            .join("evolution")
+            .join("swe-agent")
+            .join("apply")
+            .join("03-runtime-code.md");
+        assert!(plan.exists());
+        let plan_content = fs::read_to_string(plan).unwrap();
+        assert!(plan_content.contains("feedback focus:"));
+        assert!(plan_content.contains("range output failed"));
+        let _ = fs::remove_dir_all(workspace);
     }
 
     #[test]

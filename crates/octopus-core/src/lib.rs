@@ -3146,6 +3146,21 @@ pub struct EvolutionApplyArtifact {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct HarnessBeatEvolution {
+    pub source_check_index: u64,
+    pub tentacle_id: String,
+    pub objective: String,
+    pub candidate_id: String,
+    pub status: String,
+    pub reason: String,
+    pub recommendation_score: f32,
+    pub proposal_path: String,
+    pub apply_plan_path: String,
+    pub patch_path: Option<String>,
+    pub next_action: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TentacleScaffold {
     pub tentacle_id: String,
     pub runtime: String,
@@ -3754,6 +3769,59 @@ pub fn write_tentacle_apply_artifacts(
     })
 }
 
+pub fn write_harness_beat_evolution_artifacts(
+    tentacles_root: impl AsRef<Path>,
+    workspace_root: impl AsRef<Path>,
+    state: &HarnessState,
+) -> Result<Option<HarnessBeatEvolution>, String> {
+    let tentacles_root = tentacles_root.as_ref();
+    let workspace_root = workspace_root.as_ref();
+    for record in state
+        .check_history
+        .iter()
+        .rev()
+        .filter(|record| evolution_actionable_check_status(&record.status))
+    {
+        let objective = check_history_evolution_objective(record);
+        let Ok(proposal) = propose_tentacle_evolution_with_state(
+            tentacles_root,
+            &record.tentacle_id,
+            &objective,
+            state,
+        ) else {
+            continue;
+        };
+        let proposal_artifact = write_tentacle_evolution_artifacts(workspace_root, &proposal)?;
+        let recommendation = recommend_tentacle_evolution_apply(&proposal, state)?;
+        let apply_artifact = write_tentacle_apply_artifacts(workspace_root, &recommendation.apply)?;
+        let next_action = if recommendation.apply.authorized {
+            format!(
+                "octopus evolve apply {} {}",
+                recommendation.tentacle_id, recommendation.candidate_id
+            )
+        } else {
+            format!(
+                "octopus oauth octopus evolve:{} harness:write",
+                recommendation.tentacle_id
+            )
+        };
+        return Ok(Some(HarnessBeatEvolution {
+            source_check_index: record.index,
+            tentacle_id: recommendation.tentacle_id,
+            objective,
+            candidate_id: recommendation.candidate_id,
+            status: recommendation.apply.status,
+            reason: recommendation.reason,
+            recommendation_score: recommendation.recommendation_score,
+            proposal_path: proposal_artifact.proposal_path,
+            apply_plan_path: apply_artifact.plan_path,
+            patch_path: apply_artifact.patch_path,
+            next_action,
+        }));
+    }
+    Ok(None)
+}
+
 pub fn render_tentacle_apply_plan(plan: &EvolutionApplyPlan) -> String {
     let mut markdown = String::new();
     markdown.push_str(&format!(
@@ -3799,6 +3867,26 @@ pub fn render_tentacle_apply_plan(plan: &EvolutionApplyPlan) -> String {
         markdown.push_str(&format!("- {step}\n"));
     }
     markdown
+}
+
+fn evolution_actionable_check_status(status: &Status) -> bool {
+    matches!(status, Status::Failed | Status::Partial)
+}
+
+fn check_history_evolution_objective(record: &CheckHistoryRecord) -> String {
+    let detail = if !record.stderr.trim().is_empty() {
+        &record.stderr
+    } else if !record.stdout.trim().is_empty() {
+        &record.stdout
+    } else {
+        &record.command
+    };
+    format!(
+        "repair check #{} for {}: {}",
+        record.index,
+        record.tentacle_id,
+        short_text(&one_line(detail), 160)
+    )
 }
 
 pub fn render_authorized_apply_patch(plan: &EvolutionApplyPlan, apply_dir: &Path) -> String {
@@ -7147,6 +7235,60 @@ mod tests {
         assert!(runtime_draft.contains("feedback focus:"));
         assert!(runtime_draft.contains("line range failed"));
         assert!(apply_plan.contains("feedback focus:"));
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn harness_beat_evolution_writes_recommended_apply_plan() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        state.record_check_history(CheckHistoryInput {
+            tentacle_id: "swe-agent".to_string(),
+            source_kind: "manifest".to_string(),
+            command_index: Some(1),
+            command: "tools/read.sh README.md 1 2".to_string(),
+            cwd: "tentacles/swe-agent".to_string(),
+            status: Status::Failed,
+            code: Some(1),
+            stdout: String::new(),
+            stderr: "read output lost line numbers".to_string(),
+        });
+        state.record_check_history(CheckHistoryInput {
+            tentacle_id: "missing-tentacle".to_string(),
+            source_kind: "manifest".to_string(),
+            command_index: Some(1),
+            command: "tools/missing.sh".to_string(),
+            cwd: "tentacles/missing-tentacle".to_string(),
+            status: Status::Failed,
+            code: Some(127),
+            stdout: String::new(),
+            stderr: "stale check".to_string(),
+        });
+
+        let workspace =
+            std::env::temp_dir().join(format!("octopus-harness-beat-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&workspace);
+        let evolution = write_harness_beat_evolution_artifacts(&root, &workspace, &state)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(evolution.source_check_index, 1);
+        assert_eq!(evolution.tentacle_id, "swe-agent");
+        assert_eq!(evolution.candidate_id, "03-runtime-code");
+        assert_eq!(evolution.status, "needs_authorization");
+        assert!(evolution
+            .objective
+            .contains("read output lost line numbers"));
+        assert!(evolution
+            .next_action
+            .contains("octopus oauth octopus evolve:swe-agent harness:write"));
+        assert!(Path::new(&evolution.proposal_path).exists());
+        assert!(Path::new(&evolution.apply_plan_path).exists());
+        let plan = fs::read_to_string(&evolution.apply_plan_path).unwrap();
+        assert!(plan.contains("feedback focus:"));
+        assert!(plan.contains("read output lost line numbers"));
         let _ = fs::remove_dir_all(workspace);
     }
 

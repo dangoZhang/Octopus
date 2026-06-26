@@ -48,6 +48,8 @@ Every executed Feed is also written to a compact harness trace journal. Manifest
 
 `check <tentacle> [index]` runs all manifest/profile evolution checks or one 1-based check, returns per-command status, records compact check history in harness state, and updates pet state from the result. Bridge exposes it only for built-in seed tentacles.
 
+`beat [memory_keep]` pulses the three hearts. The harness beat now watches recent failed or partial check history; when a matching tentacle manifest exists, it writes the next evolution proposal, recommendation, and apply plan under `.octopus/evolution/`, then exposes the candidate and next action in heartbeat data.
+
 ## Code-As-Harness
 
 `tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Each manifest declares evolution surfaces: `brain_prompt`, `tool_meta`, `runtime_code`, and `evolution_policy`. Agent tool-combo seeds cover SWE repo tools, computer-use tools with configurable MCP calls plus browser/window diagnostics and clipboard adapters, repo-maintainer tools, and one transparent write-and-run harness. Runtime seeds such as `json-feed` prove the same contract can run beyond shell.

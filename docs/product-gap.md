@@ -7,7 +7,7 @@ Updated: 2026-06-26
 - Clean brain emits cognitive `Need`; it does not choose tools.
 - Tentacles own LLM prompt, tool metadata, runtime code, and evolution policy.
 - Harness stores memory, route scores, OAuth grants, installed tentacles, goal state, Feed traces, and check history.
-- Three beats exist: heartbeat, memory compaction, and harness route evolution.
+- Three beats exist: heartbeat, memory compaction, and harness route/evolution recommendation.
 - Pixel pet exposes heartbeat, memory, harness, blocked, and success states through deterministic state mapping.
 - Pet auto-color now follows the latest persisted Need/Feed/beat/evolve-score event plus goal status.
 - Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools, repo-maintainer, and a write-and-run harness.
@@ -30,6 +30,7 @@ Updated: 2026-06-26
 - Runtime-code evolution candidates use recent Feed traces and failed checks to target the exact tool entrypoint that produced or broke Feed.
 - Patch candidates, patch drafts, and apply plans carry a feedback focus block from matching traces/checks.
 - LLM-generated evolution candidates can carry a provider-assisted unified diff into drafts and authorized apply artifacts.
+- Harness beat turns recent failed or partial check history into a written evolution proposal, recommendation, and apply plan.
 - The SWE read tool now returns a compact file/range header and line-numbered evidence.
 
 ## Filled So Far
@@ -76,6 +77,7 @@ Updated: 2026-06-26
 - Fed check history into harness evolution proposals, LLM evolution prompts, runtime-code targeting, and recommendation scoring.
 - Added per-candidate feedback focus in patch candidates, patch drafts, and apply plans.
 - Added provider-assisted patch drafts for `OCTOPUS_LLM_EVOLVE=1` candidates, including authorized `.patch` emission when the diff stays on the declared target.
+- Added harness-beat evolution recommendations so `beat` can write the next apply plan from failed or partial check history.
 
 ## Remaining Gaps
 
@@ -95,6 +97,7 @@ Updated: 2026-06-26
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Use traced runtime targets to apply and score the next seed-tentacle improvement through the review/grant loop.
 - Exercise provider-assisted patch drafts with a real LLM provider and score the result through the review/grant loop.
+- Surface harness-beat evolution recommendations inside the native HTML app.
 - Turn window/browser diagnostics into richer native control adapters.
 - Add provider-specific fixes from real-machine feedback.
 - Run and record the first real-machine test before the `0.1.0` tag.
