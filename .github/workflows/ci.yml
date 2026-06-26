@@ -18,6 +18,7 @@ jobs:
       - run: cargo run -q -p octopus-core -- --json demo dangoZhang/Octopus | grep -q '"probe_summary"'
       - run: cargo run -q -p octopus-core -- providers | grep -q "openai"
       - run: |
+          mkdir -p .octopus
           cargo run -q -p octopus-core -- provider status > .octopus/provider-status.txt
           grep -q "Provider status" .octopus/provider-status.txt
           cargo run -q -p octopus-core -- --json provider status > .octopus/provider-status.json
