@@ -1,0 +1,90 @@
+{
+  "$schema": "../tentacle.schema.json",
+  "schema_version": "0.0.1",
+  "id": "harness-repair-agent",
+  "name": "Harness Repair Tentacle",
+  "description": "LLM-guided harness diagnosis and repair planning from state, traces, checks, and local adapters.",
+  "brain": {
+    "kind": "llm",
+    "model": null,
+    "prompt": "Read the Need plus harness state, Feed traces, check history, evolution artifacts, and adapter probes. Return the smallest repair Feed or next Need without moving tool details into the clean brain.",
+    "feedback_contract": "Return diagnosis, evidence, repair plan, required grants, checks, and the next useful Need. Do not patch the kernel directly."
+  },
+  "skills": [
+    {
+      "id": "harness-self-repair",
+      "description": "Diagnose broken harness feedback loops and prepare safe repair actions.",
+      "needs": ["observe", "verify", "execute"]
+    }
+  ],
+  "tools": [
+    {
+      "id": "diagnose_harness",
+      "description": "Summarize state, installed tentacles, recent traces, check history, evolution artifacts, and repo dirtiness.",
+      "input": "octopus-json-v1 tool call or workspace root",
+      "output": "JSON Feed with diagnosis and next Need",
+      "implementation": {
+        "kind": "shell",
+        "entrypoint": "tools/diagnose_harness.sh",
+        "contract": "octopus-json-v1"
+      }
+    },
+    {
+      "id": "heartbeat_repair",
+      "description": "Inspect harness-beat evolution artifacts and suggest the next grant, apply, or score action.",
+      "input": "octopus-json-v1 tool call or workspace root",
+      "output": "JSON Feed with repair plan and review boundary",
+      "implementation": {
+        "kind": "shell",
+        "entrypoint": "tools/heartbeat_repair.sh",
+        "contract": "octopus-json-v1"
+      }
+    },
+    {
+      "id": "adapter_probe",
+      "description": "Probe local command, provider, desktop, and GitHub adapters needed by common tentacles.",
+      "input": "octopus-json-v1 tool call or workspace root",
+      "output": "JSON Feed with adapter readiness and missing pieces",
+      "implementation": {
+        "kind": "shell",
+        "entrypoint": "tools/adapter_probe.sh",
+        "contract": "octopus-json-v1"
+      }
+    }
+  ],
+  "evolution": {
+    "editable": ["manifest.json", "brain.prompt", "tools/*", "adapters/*"],
+    "surfaces": [
+      {
+        "id": "brain_prompt",
+        "description": "Prompt that turns harness signals into compact repair Feed.",
+        "targets": ["brain.prompt", "brain.feedback_contract"]
+      },
+      {
+        "id": "tool_meta",
+        "description": "Repair tool descriptions, inputs, outputs, and call contracts.",
+        "targets": ["tools[].description", "tools[].input", "tools[].output", "tools[].permission", "tools[].implementation.contract"]
+      },
+      {
+        "id": "runtime_code",
+        "description": "Editable harness diagnosis, heartbeat repair, and adapter probe implementations.",
+        "targets": ["tools/*", "tools[].implementation.kind", "tools[].implementation.entrypoint"]
+      },
+      {
+        "id": "evolution_policy",
+        "description": "Checks and constraints that keep self-repair reviewable and grant-bound.",
+        "targets": ["evolution.checks", "evolution.constraints", "evolution.surfaces"]
+      }
+    ],
+    "checks": [
+      "tools/diagnose_harness.sh . | python3 -m json.tool > /dev/null",
+      "tools/heartbeat_repair.sh . | python3 -m json.tool > /dev/null",
+      "tools/adapter_probe.sh . | python3 -m json.tool > /dev/null"
+    ],
+    "constraints": [
+      "Return repair plans as Feed before writing patches.",
+      "Require explicit harness:write grants before apply artifacts.",
+      "Keep clean-brain context limited to Goal, Mem, Need, and Feed."
+    ]
+  }
+}

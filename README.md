@@ -1,107 +1,87 @@
 # Octopus 🐙
 
-> Independent-thinking tools, clean agent brain.
+> Tools that think on their own, with a brain that stays clean.
 
-🐙 clean brain · 🟢🐙 heartbeat · 🟣🐙 memory beat · 🟠🐙 harness beat
+Octopus starts from a small bet: an agent should not carry every tool, memory rule, and execution detail inside its main thought loop. The model should ask for the cognition it needs. The environment should learn how to supply it.
 
-## Insight
+That gives Octopus a different shape from the usual agent loop. The main brain stays focused on the goal and the next cognitive demand. The tentacles own the messy part: tool metadata, executable code, local permissions, runtime adapters, and feedback. When a tool runs, a tentacle can plan, act, inspect evidence, and return a compact result.
 
-Most agents make the brain carry tools, memory, skills, and execution flow. Octopus keeps the brain clean: chat refines the `Goal`, then the model only says what cognition it needs.
+The result is a lighter brain and smarter tools.
 
-Tentacle brains give tools LLM intelligence. A tentacle is `LLM prompt + tool meta + code implementation + evolution policy`, and those surfaces can evolve as code-as-harness.
+## Why It Feels Different
 
-Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools with browser diagnostics, repo-maintainer tools, and a transparent write-and-run harness. Runtime seeds such as `json-feed` prove the same contract can run beyond shell.
+- The main context stays small: goal, memory, request, result.
+- Tools are productized as editable tentacles: prompt, metadata, code, policy.
+- The harness learns from scored traces, checks, and route outcomes.
+- Local actions are permissioned before high-risk tools run.
+- The pixel Octopus changes color from real runtime state.
+- Rust keeps the kernel fast and stable; tentacles can evolve around it.
 
-Shell is only one runtime. A tentacle can declare `contract: octopus-json-v1` and run Python, Node, MCP, HTTP, native code, or any custom adapter.
+## What Works Now
 
-Run `octopus provider save openai` to create `.octopus/llm.env`, then `octopus provider check` to validate the live endpoint for chat, tentacle planning, and harness evolution.
+Octopus is still pre-`0.1`, but the local MVP already runs:
 
-Three hearts keep it alive: heartbeat, memory evolution, and harness route evolution. Color change is a pixel pet layer.
+- clean-brain chat and goal refinement
+- seed tentacles for SWE work, computer-use diagnostics, repo maintenance, harness repair, bash-only execution, and structured JSON Feed
+- OpenAI-compatible provider setup for chat, tentacle planning, and harness evolution
+- local memory, route learning, Feed traces, feedback scoring, and three-heart heartbeat
+- native HTML app for bootstrap, provider setup, context, traces, checks, grants, pet state, and harness review
+- reviewable harness evolution artifacts instead of silent self-patching
 
-The mechanism is `Need -> Feed -> Feedback`. The outcome is less tool burden and stronger tools.
-
-## Quick Install & Use
+## Install & Start
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus
 octopus --version
-octopus providers
-octopus provider status
-octopus provider save openai
-# set OPENAI_API_KEY, then: source .octopus/llm.env && octopus provider check
-octopus doctor
-octopus demo dangoZhang/Octopus
 octopus bootstrap
-octopus skills
-octopus install swe-agent
-octopus install computer-use-agent
-octopus --json install computer-use-agent
-octopus --json check computer-use-agent
-octopus --json check computer-use-agent 1
-octopus report
-octopus install bash-only
-octopus goal set "build a clean-brain agent"
-octopus chat "build a clean-brain agent"
-octopus context observe .
-octopus think swe-agent observe README.md
-octopus need observe .
-octopus traces
-octopus feedback 1 satisfied "feed worked"
-octopus oauth octopus tool:bash-only tool:execute
-octopus need execute "echo octopus"
-octopus routes observe .
-octopus pet
 octopus doctor
-octopus beat 200
-octopus pet
-tmp=$(mktemp -d)
-(cd "$tmp" && octopus scaffold my-feed python)
-(cd "$tmp" && octopus probe my-feed observe README.md)
+octopus report
 ```
 
-Local app:
+Open the local app:
 
 ```bash
 octopus bridge
 ```
 
-Open `http://127.0.0.1:8765/app.html` for bootstrap, provider env save/readiness, context, routes, product report, structured Feed tests, install, checks, beat, and grant-bound harness evolution apply artifacts. Bridge reads `.octopus/llm.env` for child commands.
+Then visit `http://127.0.0.1:8765/app.html`.
 
-Update:
+Use an LLM provider:
 
 ```bash
-cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus --force
+octopus provider save openai
+# set OPENAI_API_KEY, then:
+source .octopus/llm.env
+octopus provider check
 ```
 
-Output includes:
+Try the core loop:
 
-```text
-Octopus demo
-Octopus init
-Octopus bootstrap
-Provider status
-grants:
-checks:
-next:
-json-feed observe
-Octopus think
-Octopus context
-goal: build a clean-brain agent
-plan_source: rule
-actions: 1:read
-feed_trace: json-feed/feed via rule
-Feed traces
-trace_index: 1
-Octopus doctor
-Octopus report
-pixel: 🟥
-event: harness beat
-heartbeat: alive
-memory: compacted 0 memories
-harness: evolved 2 routes
-status: Satisfied
+```bash
+octopus goal set "make this repo easier to use"
+octopus think swe-agent observe README.md
+octopus context observe .
+octopus need observe README.md
+octopus traces
+octopus feedback 1 satisfied "useful feed"
+octopus beat 200
+octopus pet
 ```
 
-Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
-Native HTML app: [docs/app.html](docs/app.html). Local bridge: `octopus bridge`.
-Tentacle contract: [tentacles/README.md](tentacles/README.md).
+## Built-In Tentacles
+
+- `swe-agent`: read, edit, patch, inspect, test
+- `computer-use-agent`: browser/window diagnostics, clipboard, MCP, local desktop probes
+- `repo-maintainer`: repo inspection, PR drafts, grant-bound publishing
+- `harness-repair-agent`: diagnoses state, traces, checks, evolution artifacts, and adapters
+- `bash-only`: transparent write-and-run execution
+- `json-feed`: Python `octopus-json-v1` runtime seed
+- `visual`: pixel Octopus state layer
+
+## Links
+
+- Product app: [docs/app.html](docs/app.html)
+- Pixel pet: [docs/pet.html](docs/pet.html)
+- Architecture: [docs/architecture.md](docs/architecture.md)
+- Quick walkthrough: [docs/quickstart.md](docs/quickstart.md)
+- Tentacle contract: [tentacles/README.md](tentacles/README.md)

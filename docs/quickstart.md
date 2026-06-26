@@ -27,9 +27,11 @@ octopus --state "$tmp/state.json" install research
 octopus --state "$tmp/state.json" install json-feed
 octopus --state "$tmp/state.json" install swe-agent
 octopus --state "$tmp/state.json" install computer-use-agent
+octopus --state "$tmp/state.json" install harness-repair-agent
 octopus --state "$tmp/state.json" --json install computer-use-agent
 octopus --state "$tmp/state.json" --json check computer-use-agent
 octopus --state "$tmp/state.json" --json check computer-use-agent 1
+octopus --state "$tmp/state.json" --json check harness-repair-agent
 octopus --state "$tmp/state.json" install bash-only
 octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" goal set "build a clean-brain agent"

@@ -10,7 +10,7 @@ Updated: 2026-06-27
 - Three beats exist: heartbeat, memory compaction, and harness route/evolution recommendation.
 - Pixel pet exposes heartbeat, memory, harness, blocked, and success states through deterministic state mapping.
 - Pet auto-color now follows the latest persisted Need/Feed/beat/evolve-score event plus goal status.
-- Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools, repo-maintainer, and a write-and-run harness.
+- Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools, repo-maintainer, harness-repair diagnostics, and a write-and-run harness.
 - `json-feed` is a runtime seed for the `octopus-json-v1` contract.
 - Memory is a heart/beat; visual is the color-changing pet layer.
 - LLM adapters support OpenAI-compatible providers for chat goal refinement, manifest tool planning, and harness evolution candidate generation.
@@ -24,6 +24,7 @@ Updated: 2026-06-27
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
 - The native HTML app can run `--json bootstrap` through the bridge from the command panel.
+- `harness-repair-agent` can diagnose state, traces, check history, evolution artifacts, repo dirtiness, provider env, and local adapters as structured Feed.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
 - The HTML install guide can expand each check to inspect stdout, stderr, exit code, and recent harness check history.
 - `check <tentacle> [index]` records compact harness history and the HTML install guide can rerun one check at a time.
@@ -110,11 +111,13 @@ Updated: 2026-06-27
 - Added direct human `goal set` in CLI and native app so the clean brain can receive an objective without tool execution.
 - Added `bootstrap` so a new local state can install seed tentacles and get a report in one command.
 - Added native HTML Bootstrap access through the local bridge.
+- Added `harness-repair-agent` as a seed tentacle for tool-side diagnosis of the harness feedback and adapter loop.
 
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
 - LLM evolution can generate candidates and provider-assisted patch drafts from manifest surfaces, scored outcomes, recent Feed traces, and check history; local candidates now also target traced or failing runtime files, and harness beat can start from Feed trace or check feedback while app and CLI patch writes stay review/grant-bound.
+- Harness-repair diagnosis is available as a seed tentacle; closing the loop still needs real scored repairs from provider-backed runs.
 - Product reporting is available in CLI and app; report quality still needs feedback from real project states.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
@@ -130,6 +133,7 @@ Updated: 2026-06-27
 - Exercise Feed feedback outcomes from real tasks against the new route report and tune route choices from that evidence.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Apply and score the next Feed-trace- or check-driven seed-tentacle improvement through the app review/grant loop.
+- Run `harness-repair-agent` after bootstrap and use its Feed to choose the next self-repair action.
 - Use `octopus report` after every product cycle to pick the next highest-impact gap.
 - Exercise provider-assisted patch drafts with a real LLM provider and score the result through the review/grant loop.
 - Turn window/browser diagnostics into richer native control adapters.

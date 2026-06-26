@@ -2671,6 +2671,7 @@ fn bridge_seed_tentacle(tentacle: &str) -> bool {
             | "computer-use-agent"
             | "bash-only"
             | "repo-maintainer"
+            | "harness-repair-agent"
             | "json-feed"
             | "visual"
     )
@@ -2933,6 +2934,7 @@ fn bootstrap_seed_tentacles() -> Vec<&'static str> {
         "json-feed",
         "computer-use-agent",
         "repo-maintainer",
+        "harness-repair-agent",
         "bash-only",
         "visual",
     ]
@@ -5793,6 +5795,7 @@ mod tests {
         assert!(installed.contains(&"swe-agent"));
         assert!(installed.contains(&"json-feed"));
         assert!(installed.contains(&"computer-use-agent"));
+        assert!(installed.contains(&"harness-repair-agent"));
         assert!(dir.join(".octopus/llm.env.example").exists());
         assert!(restored.last_pet_event.is_some());
         std::env::set_current_dir(&_cwd.original).unwrap();
@@ -5988,6 +5991,13 @@ mod tests {
             "1".to_string()
         ]));
         assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "check".to_string(),
+            "harness-repair-agent".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
             "--json".to_string(),
             "provider".to_string(),
             "save".to_string(),
@@ -6041,6 +6051,14 @@ mod tests {
             "oauth".to_string(),
             "octopus".to_string(),
             "evolve:swe-agent".to_string(),
+            "harness:write".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "oauth".to_string(),
+            "octopus".to_string(),
+            "evolve:harness-repair-agent".to_string(),
             "harness:write".to_string()
         ]));
         assert!(bridge_command_allowed(&[
