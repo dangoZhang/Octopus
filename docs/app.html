@@ -660,6 +660,19 @@
           grid.appendChild(metric);
         });
         section.append(heading, grid);
+        if (data.evolution_plan_preview) {
+          const details = document.createElement("details");
+          details.className = "check-output-details";
+          const summary = document.createElement("summary");
+          summary.textContent = "Apply plan";
+          const pre = document.createElement("pre");
+          pre.className = "check-output";
+          const code = document.createElement("code");
+          code.textContent = data.evolution_plan_preview;
+          pre.appendChild(code);
+          details.append(summary, pre);
+          section.appendChild(details);
+        }
         return section;
       }
 

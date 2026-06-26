@@ -3156,6 +3156,7 @@ pub struct HarnessBeatEvolution {
     pub recommendation_score: f32,
     pub proposal_path: String,
     pub apply_plan_path: String,
+    pub apply_plan_preview: String,
     pub patch_path: Option<String>,
     pub next_action: String,
 }
@@ -3794,6 +3795,9 @@ pub fn write_harness_beat_evolution_artifacts(
         let proposal_artifact = write_tentacle_evolution_artifacts(workspace_root, &proposal)?;
         let recommendation = recommend_tentacle_evolution_apply(&proposal, state)?;
         let apply_artifact = write_tentacle_apply_artifacts(workspace_root, &recommendation.apply)?;
+        let apply_plan_preview = fs::read_to_string(&apply_artifact.plan_path)
+            .map(|content| short_text(&content, 2000))
+            .unwrap_or_default();
         let next_action = if recommendation.apply.authorized {
             format!(
                 "octopus evolve apply {} {}",
@@ -3815,6 +3819,7 @@ pub fn write_harness_beat_evolution_artifacts(
             recommendation_score: recommendation.recommendation_score,
             proposal_path: proposal_artifact.proposal_path,
             apply_plan_path: apply_artifact.plan_path,
+            apply_plan_preview,
             patch_path: apply_artifact.patch_path,
             next_action,
         }));
@@ -7289,6 +7294,10 @@ mod tests {
         let plan = fs::read_to_string(&evolution.apply_plan_path).unwrap();
         assert!(plan.contains("feedback focus:"));
         assert!(plan.contains("read output lost line numbers"));
+        assert!(evolution.apply_plan_preview.contains("feedback focus:"));
+        assert!(evolution
+            .apply_plan_preview
+            .contains("read output lost line numbers"));
         let _ = fs::remove_dir_all(workspace);
     }
 

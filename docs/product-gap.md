@@ -88,7 +88,7 @@ Updated: 2026-06-26
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include static layer diagnostics and live validation; provider-specific edge cases still need real-machine feedback.
 - Release packaging, examples, and docs now have richer install feedback; non-Rust packaging still needs finish.
-- The HTML app can run, stream, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, and show harness-beat evolution recommendations through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, and show harness-beat evolution recommendations with apply-plan previews through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
@@ -98,7 +98,7 @@ Updated: 2026-06-26
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Use traced runtime targets to apply and score the next seed-tentacle improvement through the review/grant loop.
 - Exercise provider-assisted patch drafts with a real LLM provider and score the result through the review/grant loop.
-- Add a bridge-safe apply-plan preview for harness-beat recommendations.
 - Turn window/browser diagnostics into richer native control adapters.
+- Turn harness-beat preview and scored feedback into a stronger apply/review loop.
 - Add provider-specific fixes from real-machine feedback.
 - Run and record the first real-machine test before the `0.1.0` tag.

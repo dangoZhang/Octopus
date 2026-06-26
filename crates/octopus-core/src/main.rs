@@ -1443,6 +1443,10 @@ fn attach_harness_beat_evolution(report: &mut HeartbeatReport, evolution: &Harne
         "evolution_plan".to_string(),
         evolution.apply_plan_path.clone(),
     );
+    beat.data.insert(
+        "evolution_plan_preview".to_string(),
+        evolution.apply_plan_preview.clone(),
+    );
     beat.data
         .insert("evolution_next".to_string(), evolution.next_action.clone());
     if let Some(patch) = &evolution.patch_path {
