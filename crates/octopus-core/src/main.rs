@@ -3,15 +3,16 @@ use octopus_core::{
     load_tentacle_manifests, plan_tentacle_evolution_apply, propose_tentacle_evolution_with_client,
     propose_tentacle_evolution_with_state, recommend_tentacle_evolution_apply, scaffold_tentacle,
     think_tentacle, write_harness_beat_evolution_artifacts, write_tentacle_apply_artifacts,
-    write_tentacle_evolution_artifacts, AdaptReport, BrainExploreReport, CapabilityGrant,
-    ChatClient, ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord, ContextReport,
-    EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact,
-    EvolutionOutcome, EvolutionRecommendation, Feed, FeedFeedbackOutcome, FeedTraceRecord, Goal,
-    GoalChat, Harness, HarnessBeatEvolution, HarnessState, HeartBeat, HeartbeatReport,
-    InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, OpenAiCompatibleChatClient,
-    OpenAiCompatibleConfig, RouteReport, SelfIterationPlan, Status, StatusReport,
-    TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile, TentacleScaffold,
-    TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate, ToolPermission,
+    write_tentacle_evolution_artifacts, AdaptReport, BrainExploreReport, BrainPromptReport,
+    CapabilityGrant, ChatClient, ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord,
+    ContextReport, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan,
+    EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed, FeedFeedbackOutcome,
+    FeedTraceRecord, Goal, GoalChat, Harness, HarnessBeatEvolution, HarnessState, HeartBeat,
+    HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind,
+    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, RouteReport, SelfIterationPlan, Status,
+    StatusReport, TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile,
+    TentacleScaffold, TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate,
+    ToolPermission,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -561,6 +562,26 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_chat(&chat, language);
+            }
+            Ok(())
+        }
+        Some("brain") => {
+            let prompt = rest
+                .get(1..)
+                .filter(|values| !values.is_empty())
+                .map(|values| values.join(" "));
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let prompt = prompt
+                .or_else(|| loaded.goal.as_ref().map(|goal| goal.objective.clone()))
+                .unwrap_or_else(|| "what should the brain ask next?".to_string());
+            let report = loaded.clean_brain_prompt(prompt, 6);
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_brain_prompt(&report, language);
             }
             Ok(())
         }
@@ -2570,6 +2591,7 @@ fn bridge_command_allowed(args: &[String]) -> bool {
         command,
         "init"
             | "chat"
+            | "brain"
             | "explore"
             | "think"
             | "need"
@@ -3541,6 +3563,12 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             Some("octopus explore"),
         ),
         product_capability(
+            "clean_brain_prompt",
+            "ready",
+            "exports pasteable Goal/Mem/Need/Feed messages for any chat model",
+            Some("octopus brain"),
+        ),
+        product_capability(
             "tentacle_brains",
             if status.tentacles.is_empty() {
                 "available"
@@ -3891,6 +3919,45 @@ fn print_brain_explore(report: &BrainExploreReport, language: Language) {
             for need in &report.needs {
                 println!("Need: {} {}", need_label(&need.kind), need.query);
             }
+            for next in &report.next {
+                println!("下一步: {next}");
+            }
+        }
+    }
+}
+
+fn print_brain_prompt(report: &BrainPromptReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus brain prompt");
+            println!("brain: {}", report.policy);
+            println!(
+                "goal: {}",
+                report
+                    .goal
+                    .as_ref()
+                    .map(|goal| goal.objective.as_str())
+                    .unwrap_or("none")
+            );
+            println!("messages: {}", report.messages.len());
+            println!("{}", report.prompt_text);
+            for next in &report.next {
+                println!("next: {next}");
+            }
+        }
+        Language::Zh => {
+            println!("章鱼主脑提示词");
+            println!("主脑: {}", report.policy);
+            println!(
+                "目标: {}",
+                report
+                    .goal
+                    .as_ref()
+                    .map(|goal| goal.objective.as_str())
+                    .unwrap_or("无")
+            );
+            println!("消息: {}", report.messages.len());
+            println!("{}", report.prompt_text);
             for next in &report.next {
                 println!("下一步: {next}");
             }
@@ -5498,7 +5565,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | explore [prompt] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [prompt] | explore [prompt] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -5636,6 +5703,40 @@ mod tests {
             state.clone(),
             "--json".to_string(),
             "explore".to_string(),
+            "next".to_string(),
+            "need".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&path).unwrap();
+        assert_eq!(restored.goal.as_ref().unwrap().objective, "clean brain");
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_brain_prompt_keeps_state_read_only() {
+        let _env = env_guard();
+        let path =
+            std::env::temp_dir().join(format!("octopus-brain-state-{}.json", std::process::id()));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "goal".to_string(),
+            "set".to_string(),
+            "clean".to_string(),
+            "brain".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
             "next".to_string(),
             "need".to_string(),
         ])
@@ -5868,6 +5969,7 @@ mod tests {
         .unwrap();
         assert!(usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
+        assert!(usage().contains("brain [prompt]"));
         assert!(usage().contains("explore [prompt]"));
         assert!(usage().contains("context [kind query]"));
         assert!(usage().contains("provider save <profile>"));
@@ -6047,6 +6149,14 @@ mod tests {
             "context".to_string(),
             "observe".to_string(),
             ".".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "what".to_string(),
+            "next".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),
