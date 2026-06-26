@@ -463,6 +463,7 @@
             <button type="button" id="runChecks">Run Checks</button>
             <button type="button" data-run="goalset">Set Goal</button>
             <button type="button" data-run="chat">Chat</button>
+            <button type="button" id="runExplore">Explore</button>
             <button type="button" data-run="think">Think</button>
             <button type="button" id="runContext">Context</button>
             <button type="button" data-run="need">Need</button>
@@ -502,6 +503,10 @@
             <h2>Route</h2>
             <div id="routeReport" class="metric"><span>No route yet.</span></div>
           </div>
+          <div class="explore-report stack">
+            <h2>Explore</h2>
+            <div id="exploreReport" class="metric"><span>No exploration yet.</span></div>
+          </div>
           <div class="context-report stack">
             <h2>Context</h2>
             <div id="contextReport" class="metric"><span>No context yet.</span></div>
@@ -528,6 +533,7 @@
       let currentProductReport = null;
       let currentFeedTrace = null;
       let currentRouteReport = null;
+      let currentExploreReport = null;
 
       function render(stateName = "harness") {
         currentPetState = stateName;
@@ -551,6 +557,7 @@
           `octopus --state ${shellQuote(state)} --json install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json check ${tentacle}`,
           `octopus --state ${shellQuote(state)} goal set ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json explore ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json need ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} --json context ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} feedback 1 satisfied ${shellQuote("feed worked")}`,
@@ -693,6 +700,21 @@
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("routeReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runExploreReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        $("exploreReport").textContent = "exploring...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "explore", goal]);
+          currentExploreReport = report;
+          renderExploreReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("exploreReport").textContent = String(error);
           $("output").textContent = String(error);
         }
       }
@@ -919,6 +941,52 @@
         root.appendChild(routeSummary(report));
         root.appendChild(reportList("Candidates", report.candidates || [], routeItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function renderExploreReport(report) {
+        const root = $("exploreReport");
+        root.className = "stack";
+        root.textContent = "";
+        root.appendChild(exploreSummary(report));
+        root.appendChild(reportList("Needs", report.needs || [], exploreNeedItem));
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function exploreSummary(report) {
+        const goal = report.goal || {};
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Source", report.source || "local"],
+          ["Brain", report.policy || "Goal + Mem + Need + Feed"],
+          ["Goal", goal.objective || "none"],
+          ["Summary", report.summary || "none"],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        return grid;
+      }
+
+      function exploreNeedItem(need) {
+        const item = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = "badge ok";
+        badge.textContent = need.kind || "need";
+        const command = document.createElement("span");
+        command.className = "check-command";
+        command.textContent = need.query || "";
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        meta.textContent = "clean-brain suggestion";
+        item.append(badge, command, meta);
+        return item;
       }
 
       function routeSummary(report) {
@@ -1716,6 +1784,8 @@
         $("feedReport").innerHTML = "<span>No feed yet.</span>";
         $("routeReport").className = "metric";
         $("routeReport").innerHTML = "<span>No route yet.</span>";
+        $("exploreReport").className = "metric";
+        $("exploreReport").innerHTML = "<span>No exploration yet.</span>";
         $("contextReport").className = "metric";
         $("contextReport").innerHTML = "<span>No context yet.</span>";
         $("beatReport").className = "metric";
@@ -1731,12 +1801,14 @@
         currentProductReport = null;
         currentFeedTrace = null;
         currentRouteReport = null;
+        currentExploreReport = null;
         render();
       });
       $("installGuide").addEventListener("click", runInstallReport);
       $("runChecks").addEventListener("click", runChecks);
       $("runFeed").addEventListener("click", runFeedTest);
       $("runRoutes").addEventListener("click", runRouteReport);
+      $("runExplore").addEventListener("click", runExploreReport);
       $("runContext").addEventListener("click", runContextReport);
       $("providerEnv").addEventListener("click", runProviderEnv);
       $("providerSave").addEventListener("click", runProviderSave);
@@ -1759,12 +1831,15 @@
           currentProductReport = null;
           currentFeedTrace = null;
           currentRouteReport = null;
+          currentExploreReport = null;
           $("providerReport").className = "metric";
           $("providerReport").innerHTML = "<span>No provider status yet.</span>";
           $("feedReport").className = "metric";
           $("feedReport").innerHTML = "<span>No feed yet.</span>";
           $("routeReport").className = "metric";
           $("routeReport").innerHTML = "<span>No route yet.</span>";
+          $("exploreReport").className = "metric";
+          $("exploreReport").innerHTML = "<span>No exploration yet.</span>";
           $("contextReport").className = "metric";
           $("contextReport").innerHTML = "<span>No context yet.</span>";
           $("beatReport").className = "metric";

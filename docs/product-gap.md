@@ -23,6 +23,7 @@ Updated: 2026-06-27
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
+- `explore [prompt]` lets the clean brain suggest cognitive Needs from Goal/Mem/Need/Feed without running Feed.
 - The native HTML app can run `--json bootstrap` through the bridge from the command panel.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
 - The HTML install guide can expand each check to inspect stdout, stderr, exit code, and recent harness check history.
@@ -110,6 +111,7 @@ Updated: 2026-06-27
 - Added direct human `goal set` in CLI and native app so the clean brain can receive an objective without tool execution.
 - Added `bootstrap` so a new local state can install seed tentacles and get a report in one command.
 - Added native HTML Bootstrap access through the local bridge.
+- Added clean-brain `explore` in CLI, JSON, and native app so the main brain can suggest Needs without tool execution.
 
 ## Remaining Gaps
 

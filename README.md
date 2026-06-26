@@ -42,6 +42,7 @@ octopus report
 octopus install bash-only
 octopus goal set "build a clean-brain agent"
 octopus chat "build a clean-brain agent"
+octopus explore "what should the brain ask next?"
 octopus context observe .
 octopus think swe-agent observe README.md
 octopus need observe .
@@ -65,7 +66,7 @@ Local app:
 octopus bridge
 ```
 
-Open `http://127.0.0.1:8765/app.html` for bootstrap, provider env save/readiness, context, routes, product report, structured Feed tests, install, checks, beat, and grant-bound harness evolution apply artifacts. Bridge reads `.octopus/llm.env` for child commands.
+Open `http://127.0.0.1:8765/app.html` for bootstrap, provider env save/readiness, exploration, context, routes, product report, structured Feed tests, install, checks, beat, and grant-bound harness evolution apply artifacts. Bridge reads `.octopus/llm.env` for child commands.
 
 Update:
 
@@ -85,6 +86,7 @@ checks:
 next:
 json-feed observe
 Octopus think
+Octopus explore
 Octopus context
 goal: build a clean-brain agent
 plan_source: rule
