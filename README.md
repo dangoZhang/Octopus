@@ -21,11 +21,11 @@ The result is a lighter brain and smarter tools.
 
 Octopus is still pre-`0.1`, but the local MVP already runs:
 
-- clean-brain chat and goal refinement
+- clean-brain chat, goal refinement, and Need exploration
 - seed tentacles for SWE work, computer-use diagnostics, repo maintenance, harness repair, bash-only execution, and structured JSON Feed
 - OpenAI-compatible provider setup for chat, tentacle planning, and harness evolution
 - local memory, route learning, Feed traces, feedback scoring, and three-heart heartbeat
-- native HTML app for bootstrap, provider setup, context, traces, checks, grants, pet state, and harness review
+- native HTML app for bootstrap, provider setup, exploration, context, traces, checks, grants, pet state, and harness review
 - reviewable harness evolution artifacts instead of silent self-patching
 
 ## Install & Start
@@ -44,7 +44,7 @@ Open the local app:
 octopus bridge
 ```
 
-Then visit `http://127.0.0.1:8765/app.html`.
+Then visit `http://127.0.0.1:8765/app.html` for bootstrap, provider setup, exploration, context, traces, checks, grants, and the pixel pet.
 
 Use an LLM provider:
 
@@ -59,8 +59,9 @@ Try the core loop:
 
 ```bash
 octopus goal set "make this repo easier to use"
-octopus think swe-agent observe README.md
+octopus explore "what should the brain ask next?"
 octopus context observe .
+octopus think swe-agent observe README.md
 octopus need observe README.md
 octopus traces
 octopus feedback 1 satisfied "useful feed"

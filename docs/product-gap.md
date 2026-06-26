@@ -23,6 +23,7 @@ Updated: 2026-06-27
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
+- `explore [prompt]` lets the clean brain suggest cognitive Needs from Goal/Mem/Need/Feed without running Feed.
 - The native HTML app can run `--json bootstrap` through the bridge from the command panel.
 - `harness-repair-agent` can diagnose state, traces, check history, evolution artifacts, repo dirtiness, provider env, and local adapters as structured Feed.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
@@ -113,6 +114,8 @@ Updated: 2026-06-27
 - Added native HTML Bootstrap access through the local bridge.
 - Added `harness-repair-agent` as a seed tentacle for tool-side diagnosis of the harness feedback and adapter loop.
 - Fixed the GitHub install command and passed `OCTOPUS_STATE_PATH` into tool runtimes so harness diagnostics can read temporary or custom state paths.
+- Added clean-brain `explore` in CLI, JSON, and native app so the main brain can suggest Needs without tool execution.
+- Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and bridge API.
 
 ## Remaining Gaps
 
@@ -139,4 +142,4 @@ Updated: 2026-06-27
 - Exercise provider-assisted patch drafts with a real LLM provider and score the result through the review/grant loop.
 - Turn window/browser diagnostics into richer native control adapters.
 - Add provider-specific fixes from real-machine feedback.
-- Run and record the first real-machine test before the `0.1.0` tag.
+- Repeat the real-machine gate with live LLM provider, OAuth PR publishing, and richer desktop control before the `0.1.0` tag.

@@ -322,6 +322,19 @@ pub struct ContextReport {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainExploreReport {
+    pub policy: String,
+    pub source: String,
+    pub prompt: String,
+    pub goal: Option<Goal>,
+    pub mem: Vec<MemoryContextRecord>,
+    pub recent: Vec<BrainContextTurn>,
+    pub summary: String,
+    pub needs: Vec<GoalNeedSuggestion>,
+    pub next: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BrainContextReport {
     pub policy: String,
     pub slots: Vec<String>,
@@ -1130,6 +1143,42 @@ where
         .map_err(|error| format!("invalid goal refinement JSON: {error}"))
 }
 
+#[derive(Deserialize)]
+struct BrainExploreDraft {
+    summary: String,
+    #[serde(default)]
+    needs: Vec<GoalNeedSuggestion>,
+}
+
+fn brain_explore_from_chat<C>(
+    brain: &BrainContextReport,
+    prompt: &str,
+    client: &mut C,
+) -> Result<BrainExploreDraft, String>
+where
+    C: ChatClient,
+{
+    let context = serde_json::json!({
+        "policy": brain.policy,
+        "slots": brain.slots,
+        "goal": brain.goal,
+        "mem": brain.mem,
+        "recent_need_feed": brain.turns,
+    });
+    let response = client.chat(&[
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain exploration layer. You see only Goal, Mem, Need, and Feed. Express cognitive Needs only. Do not choose tools, APIs, files, commands, routes, tentacles, or implementation. Return only JSON: {\"summary\":\"short exploration\",\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!("Clean brain context JSON: {context}\nUser exploration prompt: {prompt}"),
+        ),
+    ])?;
+    serde_json::from_str::<BrainExploreDraft>(&response.content)
+        .map_err(|error| format!("invalid clean-brain explore JSON: {error}"))
+}
+
 pub struct PlanningTentacle<P>
 where
     P: Planner,
@@ -1455,6 +1504,73 @@ impl HarnessState {
             },
             tentacles,
             hearts: self.status_report().hearts,
+            next,
+        }
+    }
+
+    pub fn clean_brain_explore(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+    ) -> BrainExploreReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let needs = local_brain_explore_needs(&brain, &prompt);
+        self.brain_explore_report(
+            brain,
+            prompt,
+            "local",
+            "local clean-brain exploration",
+            needs,
+        )
+    }
+
+    pub fn clean_brain_explore_with_client<C>(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        client: &mut C,
+    ) -> Result<BrainExploreReport, String>
+    where
+        C: ChatClient,
+    {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let draft = brain_explore_from_chat(&brain, &prompt, client)?;
+        Ok(self.brain_explore_report(brain, prompt, "llm", draft.summary, draft.needs))
+    }
+
+    fn brain_explore_report(
+        &self,
+        brain: BrainContextReport,
+        prompt: String,
+        source: &str,
+        summary: impl Into<String>,
+        needs: Vec<GoalNeedSuggestion>,
+    ) -> BrainExploreReport {
+        let next = if needs.is_empty() {
+            vec!["octopus goal set \"describe your goal\"".to_string()]
+        } else {
+            needs
+                .iter()
+                .map(|need| {
+                    format!(
+                        "octopus need {} {}",
+                        kind_key(&need.kind),
+                        shell_arg(&need.query)
+                    )
+                })
+                .collect()
+        };
+        BrainExploreReport {
+            policy: brain.policy,
+            source: source.to_string(),
+            prompt,
+            goal: brain.goal,
+            mem: brain.mem,
+            recent: brain.turns,
+            summary: summary.into(),
+            needs,
             next,
         }
     }
@@ -6448,6 +6564,49 @@ fn kind_key(kind: &NeedKind) -> &'static str {
     }
 }
 
+fn local_brain_explore_needs(brain: &BrainContextReport, prompt: &str) -> Vec<GoalNeedSuggestion> {
+    let focus = clean_optional(Some(prompt))
+        .map(str::to_string)
+        .or_else(|| brain.goal.as_ref().map(|goal| goal.objective.clone()))
+        .or_else(|| brain.turns.last().map(|turn| turn.need.query.clone()))
+        .unwrap_or_else(|| "current goal".to_string());
+    let mut needs = vec![
+        GoalNeedSuggestion {
+            kind: NeedKind::Observe,
+            query: format!("clarify current state for {focus}"),
+        },
+        GoalNeedSuggestion {
+            kind: NeedKind::Verify,
+            query: format!("check whether {focus} is already satisfied"),
+        },
+    ];
+    if brain.mem.is_empty() {
+        needs.push(GoalNeedSuggestion {
+            kind: NeedKind::Remember,
+            query: format!("goal focus: {focus}"),
+        });
+    } else {
+        needs.push(GoalNeedSuggestion {
+            kind: NeedKind::Recall,
+            query: focus.clone(),
+        });
+    }
+    if !brain.turns.is_empty() {
+        needs.push(GoalNeedSuggestion {
+            kind: NeedKind::Compare,
+            query: format!("recent Feed against goal: {focus}"),
+        });
+    }
+    let mut seen = BTreeMap::new();
+    needs
+        .into_iter()
+        .filter(|need| {
+            let key = format!("{}:{}", kind_key(&need.kind), need.query);
+            seen.insert(key, ()).is_none()
+        })
+        .collect()
+}
+
 fn status_key(status: &Status) -> &'static str {
     match status {
         Status::Satisfied => "satisfied",
@@ -7379,6 +7538,65 @@ mod tests {
             Some("llm")
         );
         assert!(harness.state.routes.score(&NeedKind::Remember, "memory") > 1.0);
+    }
+
+    #[test]
+    fn clean_brain_explore_suggests_needs_without_feed() {
+        let mut state = HarnessState {
+            goal: Some(Goal::new("build a clean brain")),
+            ..HarnessState::default()
+        };
+        state.memory.remember("main brain only expresses Need");
+
+        let report = state.clean_brain_explore("what should the brain ask next", 5);
+
+        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
+        assert_eq!(report.source, "local");
+        assert!(report
+            .needs
+            .iter()
+            .any(|need| need.kind == NeedKind::Observe));
+        assert!(report
+            .needs
+            .iter()
+            .any(|need| need.kind == NeedKind::Verify));
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
+    }
+
+    #[test]
+    fn clean_brain_explore_can_use_llm_for_need_suggestions() {
+        struct FakeChat;
+
+        impl ChatClient for FakeChat {
+            fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                let combined = messages
+                    .iter()
+                    .map(|message| message.content.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert!(combined.contains("Goal, Mem, Need, and Feed"));
+                assert!(combined.contains("Do not choose tools"));
+                Ok(ChatResponse {
+                    content: r#"{"summary":"clean exploration","needs":[{"kind":"compare","query":"current evidence against goal"}]}"#.to_string(),
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
+        let state = HarnessState {
+            goal: Some(Goal::new("keep tools outside the brain")),
+            ..HarnessState::default()
+        };
+        let mut client = FakeChat;
+
+        let report = state
+            .clean_brain_explore_with_client("what next", 5, &mut client)
+            .unwrap();
+
+        assert_eq!(report.source, "llm");
+        assert_eq!(report.summary, "clean exploration");
+        assert_eq!(report.needs[0].kind, NeedKind::Compare);
     }
 
     #[test]
