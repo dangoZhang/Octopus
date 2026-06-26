@@ -232,7 +232,7 @@ jobs:
           cargo run -q --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" -p octopus-core -- manifests tentacles | grep -q "native-feed"
           cargo run -q --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" -p octopus-core -- manifests tentacles | grep -q "tools/feed"
       - run: |
-          set -euxo pipefail
+          set -euo pipefail
           tmp=$(mktemp -d)
           cargo run -q -p octopus-core -- --state "$tmp/state.json" init
           grep -q OCTOPUS_LLM_MANIFEST "$tmp/llm.env.example"
@@ -267,7 +267,7 @@ jobs:
           cargo run -q -p octopus-core -- --state "$tmp/state.json" preflight | grep -q "Octopus preflight"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json preflight | grep -q '"checks"'
           cargo run -q -p octopus-core -- --state "$tmp/state.json" preflight script "$tmp/preflight.sh" | grep -q "Octopus preflight script"
-          grep -q "octopus --state \"\\$STATE\" bootstrap" "$tmp/preflight.sh"
+          grep -q 'octopus --state "$STATE" bootstrap' "$tmp/preflight.sh"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "build octopus"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" chat "make tools think"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" beat 200
