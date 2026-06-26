@@ -165,6 +165,7 @@
         <div class="links">
           <a href="../">English</a>
           <a href="../pet.html">章鱼变色</a>
+          <a href="../app.html">App</a>
           <a href="../about.html">About</a>
           <a href="https://github.com/dangoZhang/Octopus">GitHub</a>
         </div>
@@ -194,11 +195,11 @@
         <div class="shell">
           <h2>章鱼变色</h2>
           <div class="grid">
-            <article class="card"><h3>Heartbeat</h3><p>桌宠状态层表达内核和 chat loop 是否存活。</p></article>
+            <article class="card"><h3>Heartbeat</h3><p>像素章鱼变色表达内核和 chat loop 是否存活。</p></article>
             <article class="card"><h3>Memory beat</h3><p>召回、压缩、遗忘时，状态颜色可以变化。</p></article>
             <article class="card"><h3>Harness beat</h3><p>路由学习和工具执行可以变成可见反馈，不进入主脑。</p></article>
           </div>
-          <p><a href="../pet.html">打开状态桌宠</a></p>
+          <p><a href="../pet.html">打开像素桌宠</a></p>
         </div>
       </section>
 
@@ -206,6 +207,8 @@
         <div class="shell">
           <h2>快速安装与使用</h2>
           <pre><code>cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus
+octopus --version
+octopus doctor
 octopus demo dangoZhang/Octopus
 octopus --lang zh init
 octopus --lang zh skills
@@ -218,7 +221,7 @@ octopus --lang zh beat 200
 tmp=$(mktemp -d)
 (cd "$tmp" &amp;&amp; octopus scaffold my-feed python)
 (cd "$tmp" &amp;&amp; octopus probe my-feed observe README.md)</code></pre>
-          <p><a href="../quickstart.html">完整流程</a>。内核保持小，SDK 和触手围绕它进化。</p>
+          <p><a href="../quickstart.html">完整流程</a>。<a href="../app.html">打开 HTML App</a>。内核保持小，SDK 和触手围绕它进化。</p>
         </div>
       </section>
     </main>

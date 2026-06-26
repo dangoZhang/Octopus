@@ -3,7 +3,7 @@
   "schema_version": "0.1.0",
   "id": "visual",
   "name": "Color Pet Layer",
-  "description": "A color-changing Octopus status pet layer for heartbeat, memory, harness, blocked, and success states.",
+  "description": "A color-changing Octopus pixel pet layer for heartbeat, memory, harness, blocked, and success states.",
   "brain": {
     "kind": "rule",
     "model": null,
@@ -20,7 +20,7 @@
   "tools": [
     {
       "id": "status_pet",
-      "description": "Render the color-changing Octopus status pet.",
+      "description": "Render the color-changing Octopus pixel pet.",
       "input": "status name through query string or UI selection",
       "output": "interactive static HTML",
       "implementation": { "kind": "static-html", "entrypoint": "docs/pet.html" }
@@ -41,7 +41,7 @@
       },
       {
         "id": "runtime_code",
-        "description": "Browser-rendered status pet UI.",
+        "description": "Browser-rendered pixel pet UI.",
         "targets": ["docs/pet.html"]
       },
       {
@@ -50,7 +50,7 @@
         "targets": ["evolution.checks", "evolution.constraints", "evolution.surfaces"]
       }
     ],
-    "checks": ["grep -q data-state docs/pet.html"],
+    "checks": ["grep -q pixel-pet docs/pet.html"],
     "constraints": ["Keep visual state outside Need, Feed, and Feedback."]
   }
 }

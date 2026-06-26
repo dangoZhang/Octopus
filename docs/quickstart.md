@@ -3,6 +3,14 @@
 ## Source Run
 
 ```bash
+cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus --force
+octopus --version
+octopus doctor
+```
+
+## Source Build
+
+```bash
 cargo test
 cargo install --path crates/octopus-core --bin octopus --force
 tmp=$(mktemp -d)
@@ -15,6 +23,8 @@ octopus --state "$tmp/state.json" init
 octopus --state "$tmp/state.json" install research
 octopus --state "$tmp/state.json" install json-feed
 octopus --state "$tmp/state.json" install swe-agent
+octopus --state "$tmp/state.json" install computer-use-agent
+octopus --state "$tmp/state.json" install bash-only
 octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
 octopus --state "$tmp/state.json" need observe .
@@ -73,8 +83,9 @@ tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build 
 Octopus demo
 Octopus init
 installed swe-agent
-== project ==
+json-feed observe
 Octopus doctor
+pixel: 🟥
 heartbeat: alive
 memory: compacted 0 memories
 harness: evolved 2 routes

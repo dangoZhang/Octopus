@@ -12,6 +12,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test
       - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo run -q -p octopus-core -- --version | grep -q "octopus 0.1.0"
       - run: cargo run -q -p octopus-core --example thinking_tentacle
       - run: cargo run -q -p octopus-core -- demo dangoZhang/Octopus | grep -q "Octopus demo"
       - run: cargo run -q -p octopus-core -- --json demo dangoZhang/Octopus | grep -q '"probe_summary"'
@@ -43,6 +44,7 @@ jobs:
           grep -q "evolution_outcomes" .octopus/apply-state.json
       - run: |
           cargo run -q -p octopus-core -- --json pet success | grep -q '"state": "success"'
+          cargo run -q -p octopus-core -- pet harness | grep -q "pixel: 🟥"
       - run: |
           cargo run -q -p octopus-core -- manifests > .octopus/manifests.txt
           grep -q "surfaces=brain_prompt" .octopus/manifests.txt
@@ -58,6 +60,10 @@ jobs:
       - run: grep -q '"surfaces"' tentacles/tentacle.schema.json
       - run: grep -q '"runtime_code"' tentacles/swe-agent/manifest.json
       - run: grep -q data-state docs/pet.html
+      - run: grep -q "pixel-pet" docs/pet.html
+      - run: grep -q "Command Surface" docs/app.html
+      - run: grep -q "Next planned cleanup/version commit" docs/version-plan.md
+      - run: grep -q "Required before every version tag after" docs/real-machine-test.md
       - run: tentacles/swe-agent/tools/read.sh README.md 1 2
       - run: tentacles/repo-maintainer/tools/inspect_repo.sh .
       - run: tentacles/repo-maintainer/tools/github_status.sh dangoZhang/Octopus | python -m json.tool > /dev/null

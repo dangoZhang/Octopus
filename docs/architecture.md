@@ -47,9 +47,9 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 `evolve <tentacle> <objective>` writes an auditable draft under `.octopus/evolution/` listing the surfaces, prompt, metadata, code files, patch candidates, per-candidate patch drafts, checks, and constraints that can change safely. `evolve apply <tentacle> <candidate>` writes an apply plan; with `harness:write`, it also emits a reviewable `.patch` file without applying it. `evolve score <tentacle> <candidate> <status>` stores the outcome in harness state so later proposals can see what worked.
 
-## Color Pet
+## Pixel Pet
 
-Color change is a visual pet/status layer. It can show heartbeat, memory beat, harness beat, blocked state, or success without changing `Need`, `Feed`, or `Feedback`.
+Color change is a pixel pet layer. It can show heartbeat, memory beat, harness beat, blocked state, or success without changing `Need`, `Feed`, or `Feedback`.
 
 `pet` auto-selects a color from current status. `pet [state]` can force `heartbeat`, `memory`, `harness`, `blocked`, or `success`; `--json pet` makes the state usable by other UI shells.
 

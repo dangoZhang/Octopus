@@ -3331,7 +3331,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
         TentacleProfile {
             id: "visual".to_string(),
             name: "Color Pet Layer".to_string(),
-            description: "Shows heartbeat, memory, harness, blocked, and success state as a color-changing pet layer.".to_string(),
+            description: "Shows heartbeat, memory, harness, blocked, and success state as a color-changing pixel pet layer.".to_string(),
             brain: rule_brain(
                 "Visual state translator",
                 "Convert Feedback and harness status into user-visible pet state without changing the kernel contract.",
@@ -3351,7 +3351,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 "docs/pet.html",
             )],
             evolution: evolution_policy(
-                &["grep -q data-state docs/pet.html"],
+                &["grep -q pixel-pet docs/pet.html"],
                 &["Keep visual state outside Need, Feed, and Feedback."],
             ),
             llm_ready: false,

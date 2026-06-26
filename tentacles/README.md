@@ -36,7 +36,7 @@ Runtime seeds:
 
 Visual layer:
 
-- `visual`: color-changing status pet for heartbeat, memory, harness, blocked, and success states.
+- `visual`: color-changing pixel pet for heartbeat, memory, harness, blocked, and success states.
 
 Memory lives in `HarnessState` as a heart/beat. It is exposed in catalogs for installation and status, but it is not an agent tool-combo tentacle.
 

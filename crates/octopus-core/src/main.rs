@@ -72,6 +72,7 @@ struct PetReport {
     title: String,
     summary: String,
     color: String,
+    fallback: String,
     path: String,
     target: String,
     exists: bool,
@@ -126,6 +127,11 @@ fn main() {
 fn run(args: Vec<String>) -> Result<(), String> {
     if args.is_empty() {
         return Err(usage());
+    }
+
+    if args.iter().any(|arg| arg == "--version" || arg == "-V") {
+        println!("octopus {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
     }
 
     let mut state = PathBuf::from(".octopus/state.json");
@@ -862,6 +868,7 @@ fn print_pet_report(report: &PetReport, language: Language) {
     match language {
         Language::En => {
             println!("Octopus pet");
+            println!("pixel: {}", report.fallback);
             println!("state: {}", report.state);
             println!("summary: {}", report.summary);
             println!("url: {}", report.target);
@@ -869,6 +876,7 @@ fn print_pet_report(report: &PetReport, language: Language) {
         }
         Language::Zh => {
             println!("章鱼桌宠");
+            println!("像素: {}", report.fallback);
             println!("状态: {}", report.state);
             println!("摘要: {}", report.summary);
             println!("入口: {}", report.target);
@@ -1167,7 +1175,7 @@ fn auto_pet_state(report: &StatusReport) -> &'static str {
 }
 
 fn pet_report(state: &str) -> Result<PetReport, String> {
-    let (state, title, summary, color) = pet_state_info(state)?;
+    let (state, title, summary, color, fallback) = pet_state_info(state)?;
     let path = repo_root().join("docs/pet.html");
     let path_text = path.to_string_lossy().to_string();
     let target = format!("{}?state={state}", file_url(&path));
@@ -1176,6 +1184,7 @@ fn pet_report(state: &str) -> Result<PetReport, String> {
         title: title.to_string(),
         summary: summary.to_string(),
         color: color.to_string(),
+        fallback: fallback.to_string(),
         target,
         exists: path.exists(),
         path: path_text,
@@ -1201,37 +1210,51 @@ fn percent_encode_path(path: &str) -> String {
 
 fn pet_state_info(
     state: &str,
-) -> Result<(&'static str, &'static str, &'static str, &'static str), String> {
+) -> Result<
+    (
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+    ),
+    String,
+> {
     match state {
         "heartbeat" | "alive" => Ok((
             "heartbeat",
             "Heartbeat",
             "Kernel and chat loop are alive.",
             "#0f766e",
+            "🟩",
         )),
         "memory" => Ok((
             "memory",
             "Memory beat",
             "Context was recalled, compacted, or forgotten.",
             "#6d5bd0",
+            "🟪",
         )),
         "harness" | "route" => Ok((
             "harness",
             "Harness beat",
             "Routes or tools are adapting from feedback.",
             "#cf4d32",
+            "🟥",
         )),
         "blocked" => Ok((
             "blocked",
             "Blocked",
             "The harness needs a grant or external change.",
             "#a16207",
+            "🟨",
         )),
         "success" | "satisfied" => Ok((
             "success",
             "Success",
             "Feedback returned useful evidence.",
             "#16833a",
+            "🟩",
         )),
         value => Err(format!(
             "unknown pet state: {value}; expected heartbeat, memory, harness, blocked, or success"
@@ -2049,7 +2072,7 @@ fn chat_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | need <kind> <query> | chat <message> | llm <message> | demo [repo] | goal | status | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | evolve <tentacle> <objective> | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | routes | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | installed".to_string()
 }
 
 fn parse_status(value: &str) -> Result<Status, String> {
@@ -2068,7 +2091,7 @@ fn parse_status(value: &str) -> Result<Status, String> {
 mod tests {
     use super::{
         localize_summary, percent_encode_path, pet_report, pet_report_for_state, run,
-        skill_reports, Language,
+        skill_reports, usage, Language,
     };
     use octopus_core::{Feed, Goal, GoalStatus, HarnessState, Need, NeedKind};
     use std::fs;
@@ -2105,6 +2128,12 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::env::set_current_dir(&self.original);
         }
+    }
+
+    #[test]
+    fn cli_version_command_runs() {
+        run(vec!["--version".to_string()]).unwrap();
+        assert!(usage().contains("--version"));
     }
 
     #[test]
@@ -2322,6 +2351,7 @@ mod tests {
         let report = pet_report("route").unwrap();
 
         assert_eq!(report.state, "harness");
+        assert_eq!(report.fallback, "🟥");
         assert!(report.target.starts_with("file://"));
         assert!(report.target.contains("docs/pet.html?state=harness"));
         assert!(report.exists);

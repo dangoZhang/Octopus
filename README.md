@@ -16,7 +16,7 @@ Shell is only one runtime. A tentacle can declare `contract: octopus-json-v1` an
 
 Set `OCTOPUS_CHAT_LLM=1` for LLM goal refinement; set `OCTOPUS_LLM_MANIFEST=1` for LLM tool planning inside tentacles. Use `OCTOPUS_CHAT_LLM_PREFIX` or `OCTOPUS_MANIFEST_LLM_PREFIX` when each layer should use a different provider env.
 
-Three hearts keep it alive: heartbeat, memory evolution, and harness route evolution. Color change is a visual pet/status layer.
+Three hearts keep it alive: heartbeat, memory evolution, and harness route evolution. Color change is a pixel pet layer.
 
 The mechanism is `Need -> Feed -> Feedback`. The outcome is less tool burden and stronger tools.
 
@@ -24,6 +24,8 @@ The mechanism is `Need -> Feed -> Feedback`. The outcome is less tool burden and
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus
+octopus --version
+octopus doctor
 octopus demo dangoZhang/Octopus
 octopus init
 octopus skills
@@ -40,13 +42,20 @@ tmp=$(mktemp -d)
 (cd "$tmp" && octopus probe my-feed observe README.md)
 ```
 
+Update:
+
+```bash
+cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus --force
+```
+
 Output includes:
 
 ```text
 Octopus demo
 Octopus init
-== project ==
+json-feed observe
 Octopus doctor
+pixel: 🟥
 heartbeat: alive
 memory: compacted 0 memories
 harness: evolved 2 routes
@@ -54,4 +63,5 @@ status: Satisfied
 ```
 
 Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
+Native HTML app: [docs/app.html](docs/app.html).
 Tentacle contract: [tentacles/README.md](tentacles/README.md).

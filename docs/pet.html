@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Octopus Status Pet</title>
-    <meta name="description" content="A color-changing Octopus status pet for heartbeat, memory, and harness state." />
+    <title>Octopus Pixel Pet</title>
+    <meta name="description" content="A pixel Octopus pet that changes color for heartbeat, memory, harness, blocked, and success state." />
     <style>
       :root {
         color-scheme: light;
@@ -14,7 +14,8 @@
         --paper: #ffffff;
         --soft: #f5f7fa;
         --pet: #0f766e;
-        --accent: #cf4d32;
+        --accent: #0f766e;
+        --pixel: clamp(12px, 4.7vw, 24px);
       }
 
       * {
@@ -83,63 +84,39 @@
         background: var(--soft);
       }
 
-      .pet {
-        position: relative;
-        width: min(300px, 78vw);
-        aspect-ratio: 1;
-        color: var(--pet);
+      .pixel-pet {
+        display: grid;
+        grid-template-columns: repeat(15, var(--pixel));
+        grid-auto-rows: var(--pixel);
+        gap: 2px;
+        image-rendering: pixelated;
       }
 
-      .head {
-        position: absolute;
-        left: 22%;
-        top: 10%;
-        width: 56%;
-        height: 54%;
-        border-radius: 48% 48% 44% 44%;
-        background: currentColor;
-        box-shadow: inset 0 -14px 0 rgba(0, 0, 0, 0.08);
+      .pixel {
+        width: var(--pixel);
+        height: var(--pixel);
+        border-radius: 2px;
       }
 
-      .eye {
-        position: absolute;
-        top: 31%;
-        width: 11%;
-        aspect-ratio: 1;
-        border-radius: 999px;
+      .pixel.body {
+        background: var(--pet);
+        box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.12);
+      }
+
+      .pixel.eye {
         background: #ffffff;
+        box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.14);
       }
 
-      .eye::after {
+      .pixel.eye::after {
         content: "";
-        position: absolute;
-        inset: 32%;
-        border-radius: 999px;
+        display: block;
+        width: 40%;
+        height: 40%;
+        margin: 30%;
+        border-radius: 2px;
         background: var(--ink);
       }
-
-      .eye.left {
-        left: 37%;
-      }
-
-      .eye.right {
-        right: 37%;
-      }
-
-      .arm {
-        position: absolute;
-        bottom: 18%;
-        width: 14%;
-        height: 38%;
-        border-radius: 999px;
-        background: currentColor;
-        transform-origin: top center;
-      }
-
-      .arm.a1 { left: 18%; transform: rotate(38deg); }
-      .arm.a2 { left: 34%; transform: rotate(12deg); }
-      .arm.a3 { right: 34%; transform: rotate(-12deg); }
-      .arm.a4 { right: 18%; transform: rotate(-38deg); }
 
       .state {
         border: 1px solid var(--line);
@@ -149,9 +126,14 @@
 
       h1 {
         margin: 0;
-        font-size: 40px;
+        font-size: 38px;
         line-height: 1;
         letter-spacing: 0;
+      }
+
+      .fallback {
+        margin: 12px 0 0;
+        font-size: 28px;
       }
 
       .label {
@@ -199,29 +181,23 @@
   </head>
   <body data-state="heartbeat">
     <nav class="shell">
-      <div class="brand">Octopus</div>
+      <div class="brand">Octopus 🐙</div>
       <div class="links">
         <a href="./">Home</a>
+        <a href="./app.html">App</a>
         <a href="https://github.com/dangoZhang/Octopus">GitHub</a>
       </div>
     </nav>
 
     <main class="shell">
       <div class="stage">
-        <div class="pet-wrap" aria-label="Octopus status pet">
-          <div class="pet" aria-hidden="true">
-            <div class="head"></div>
-            <div class="eye left"></div>
-            <div class="eye right"></div>
-            <div class="arm a1"></div>
-            <div class="arm a2"></div>
-            <div class="arm a3"></div>
-            <div class="arm a4"></div>
-          </div>
+        <div class="pet-wrap" aria-label="Octopus pixel pet">
+          <div class="pixel-pet" id="pixel-pet" aria-hidden="true"></div>
         </div>
 
         <section class="state" aria-live="polite">
           <h1 id="state-title">Heartbeat</h1>
+          <div class="fallback" id="fallback" aria-label="chat fallback">🟩 🐙</div>
           <p class="label" id="state-label">Kernel and chat loop are alive.</p>
           <div class="swatches">
             <button type="button" data-state="heartbeat">Heartbeat</button>
@@ -235,30 +211,58 @@
     </main>
 
     <script>
+      const octopusPixels = [
+        ".....bbbbb.....",
+        "...bbbbbbbbb...",
+        "..bbbbbbbbbbb..",
+        ".bbbbbbbbbbbbb.",
+        ".bbbbebbbebbbb.",
+        ".bbbbbbbbbbbbb.",
+        "..bbbbbbbbbbb..",
+        "...bbbbbbbbb...",
+        "..bb.bbb.bb....",
+        ".bb..bbb..bb...",
+        "bb...b.b...bb..",
+        "b....b.b....b.."
+      ];
+
       const states = {
-        heartbeat: ["Heartbeat", "Kernel and chat loop are alive.", "#0f766e", "#0f766e"],
-        memory: ["Memory beat", "Context was recalled, compacted, or forgotten.", "#6d5bd0", "#6d5bd0"],
-        harness: ["Harness beat", "Routes or tools are adapting from feedback.", "#cf4d32", "#cf4d32"],
-        blocked: ["Blocked", "The harness needs a grant or external change.", "#a16207", "#a16207"],
-        success: ["Success", "Feedback returned useful evidence.", "#16833a", "#16833a"]
+        heartbeat: ["Heartbeat", "Kernel and chat loop are alive.", "#0f766e", "🟩"],
+        memory: ["Memory beat", "Context was recalled, compacted, or forgotten.", "#6d5bd0", "🟪"],
+        harness: ["Harness beat", "Routes or tools are adapting from feedback.", "#cf4d32", "🟥"],
+        blocked: ["Blocked", "The harness needs a grant or external change.", "#a16207", "🟨"],
+        success: ["Success", "Feedback returned useful evidence.", "#16833a", "🟩"]
       };
 
+      const pet = document.querySelector("#pixel-pet");
       const title = document.querySelector("#state-title");
       const label = document.querySelector("#state-label");
+      const fallback = document.querySelector("#fallback");
       const buttons = [...document.querySelectorAll("[data-state]")];
+
+      function drawPet() {
+        pet.replaceChildren();
+        octopusPixels.join("").split("").forEach((pixel) => {
+          const block = document.createElement("span");
+          block.className = pixel === "b" ? "pixel body" : pixel === "e" ? "pixel eye" : "pixel";
+          pet.appendChild(block);
+        });
+      }
 
       function setState(name) {
         const state = states[name] || states.heartbeat;
         document.body.dataset.state = name;
         document.documentElement.style.setProperty("--pet", state[2]);
-        document.documentElement.style.setProperty("--accent", state[3]);
+        document.documentElement.style.setProperty("--accent", state[2]);
         title.textContent = state[0];
         label.textContent = state[1];
+        fallback.textContent = `${state[3]} 🐙`;
         buttons.forEach((button) => {
           button.setAttribute("aria-pressed", String(button.dataset.state === name));
         });
       }
 
+      drawPet();
       const initial = new URLSearchParams(window.location.search).get("state") || "heartbeat";
       buttons.forEach((button) => button.addEventListener("click", () => setState(button.dataset.state)));
       setState(initial);

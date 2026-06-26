@@ -8,7 +8,7 @@ Updated: 2026-06-26
 - Tentacles own LLM prompt, tool metadata, runtime code, and evolution policy.
 - Harness stores memory, route scores, OAuth grants, installed tentacles, and goal state.
 - Three beats exist: heartbeat, memory compaction, and harness route evolution.
-- Color pet exposes heartbeat, memory, harness, blocked, and success states through deterministic state mapping.
+- Pixel pet exposes heartbeat, memory, harness, blocked, and success states through deterministic state mapping.
 - Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools, repo-maintainer, and a write-and-run harness.
 - `json-feed` is a runtime seed for the `octopus-json-v1` contract.
 - Memory is a heart/beat; visual is the color-changing pet layer.
@@ -23,6 +23,10 @@ Updated: 2026-06-26
 - Added a built-in non-shell `json-feed` runtime seed that consumes `octopus-json-v1`.
 - Added `evolve score` so applied candidates can feed outcome scores back into harness state.
 - Split product language into agent tool-combo tentacles, runtime seeds, memory heart, and visual color layer.
+- Added a version cadence: 8 product commits, then one cleanup/version commit with patch version +0.0.1.
+- Added a native HTML command surface for install, goal, need, tentacle, pet, doctor, and heartbeat flows.
+- Rebuilt `pet.html` as a pixel Octopus whose body pixels change color; CLI/chat fallback returns colored squares.
+- Added a real-machine test gate template for every version tag after `0.1.0`.
 
 ## Remaining Gaps
 
@@ -31,9 +35,13 @@ Updated: 2026-06-26
 - Computer-use has seed adapters; it needs richer MCP/native/browser bridges.
 - LLM provider setup works through env vars; user-facing provider profiles need polish.
 - Release packaging, examples, and docs need enough finish for non-Rust users.
+- The HTML app is command-generating only; a future local bridge should execute commands and stream status safely.
+- Tags after `0.1.0` require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
 
 - Turn repo-maintainer from draft artifacts into an OAuth-scoped PR adapter.
 - Let the LLM evolution planner use scored outcomes to rewrite harness patches.
 - Add richer non-shell adapters beyond the JSON feed seed.
+- Add local GUI bridge and version bump automation.
+- Run and record the first real-machine test before the first post-`0.1.0` tag.

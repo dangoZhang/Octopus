@@ -74,6 +74,11 @@
       <p>Run Octopus from source, scaffold a tentacle, then optionally enable LLM planning or self-iteration.</p>
 
       <h2>Source Run</h2>
+      <pre><code>cargo install --git https://github.com/dangoZhang/Octopus --locked --package octopus-core --bin octopus --force
+octopus --version
+octopus doctor</code></pre>
+
+      <h2>Source Build</h2>
       <pre><code>cargo test
 cargo install --path crates/octopus-core --bin octopus --force
 tmp=$(mktemp -d)
@@ -86,6 +91,8 @@ octopus --state "$tmp/state.json" init
 octopus --state "$tmp/state.json" install research
 octopus --state "$tmp/state.json" install json-feed
 octopus --state "$tmp/state.json" install swe-agent
+octopus --state "$tmp/state.json" install computer-use-agent
+octopus --state "$tmp/state.json" install bash-only
 octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
 octopus --state "$tmp/state.json" need observe .
@@ -124,6 +131,18 @@ octopus evolve apply swe-agent runtime_code
 octopus evolve score swe-agent 03-runtime-code satisfied "patch improved feed"
 tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build a clean-brain agent"</code></pre>
       <p><code>evolve</code> writes <code>PROPOSAL.md</code>, <code>PATCH_CANDIDATES.md</code>, <code>PATCH_DRAFTS.md</code>, <code>patches/</code>, <code>apply/</code>, optional <code>.patch</code> files, and <code>proposal.json</code> under <code>.octopus/evolution/&lt;tentacle&gt;/</code>.</p>
+
+      <h2>Expected Signals</h2>
+      <pre><code>Octopus demo
+Octopus init
+installed swe-agent
+json-feed observe
+Octopus doctor
+pixel: 🟥
+heartbeat: alive
+memory: compacted 0 memories
+harness: evolved 2 routes
+status: Satisfied</code></pre>
 
       <p><a href="./index.html">Back to Octopus</a></p>
     </main>
