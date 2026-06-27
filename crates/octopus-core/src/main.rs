@@ -5158,6 +5158,11 @@ fn repair_workspace_from_query(query: &str) -> Result<PathBuf, String> {
 fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
     let metadata = &feed.metadata;
     let path = metadata.get("repair_plan")?.to_string();
+    let score_command = metadata_value(metadata, "score_command");
+    let score_command = metadata
+        .get("feed_trace_index")
+        .map(|index| score_command.replace("<trace-index>", index))
+        .unwrap_or(score_command);
     Some(RepairPlanReport {
         path,
         review: metadata_value(metadata, "review"),
@@ -5171,7 +5176,7 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         check_command: metadata_value(metadata, "check_command"),
         grant_command: metadata_value(metadata, "grant_command"),
         apply_command: metadata_value(metadata, "apply_command"),
-        score_command: metadata_value(metadata, "score_command"),
+        score_command,
         suggested_commands: metadata_value(metadata, "suggested_commands"),
         next_need_kind: metadata_value(metadata, "next_need_kind"),
         next_need_query: metadata_value(metadata, "next_need_query"),
@@ -9837,6 +9842,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(plan.status, "review_required");
         assert_eq!(plan.target_tool, "repair_session");
         assert!(plan.grant_command.contains("harness:write"));
+        assert!(plan.score_command.contains("repair score 2"));
+        assert!(!plan.score_command.contains("<trace-index>"));
         assert!(report
             .next
             .iter()

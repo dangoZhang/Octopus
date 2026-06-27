@@ -183,6 +183,7 @@ Updated: 2026-06-27
 - Added repair-plan surfacing in `octopus repair` and the native Repair panel so users can see the latest plan path and review commands without digging into metadata.
 - Added repair-session review bundles so each session writes `REVIEW.md` and report surfaces can link the user-facing repair review.
 - Added repair report next-step review commands so the review bundle is visible in the normal next-action list.
+- Added trace-aware repair score commands so report/app score prompts use the concrete Feed trace instead of a placeholder.
 - Added starter recommendation evidence signals so each card can explain its group, objective matches, Needs, tools, runtimes, evolution surfaces, LLM readiness, and install state.
 - Reworked README into a product-page share surface with a first-screen story, edge-intelligence insight, differentiators, install/use path, and usable pre-release boundary.
 
