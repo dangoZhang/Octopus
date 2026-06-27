@@ -488,6 +488,7 @@
             <button type="button" id="runBrainLive">Brain Live</button>
             <button type="button" id="runBrainGoal">Brain Goal</button>
             <button type="button" id="applyBrainReply">Apply Reply</button>
+            <button type="button" id="rewriteBrainReply">Rewrite Reply</button>
             <button type="button" id="applyBrainGoal">Apply Goal</button>
             <button type="button" id="runExplore">Explore</button>
             <button type="button" id="saveExplore">Save Explore</button>
@@ -922,7 +923,7 @@
         }
       }
 
-      async function applyBrainReply(refineGoal = false) {
+      async function applyBrainReply(refineGoal = false, rewrite = false) {
         const state = $("state").value.trim() || ".octopus/state.json";
         const goal = $("goal").value.trim() || "build a clean-brain agent";
         const reply = $("brainReply").value.trim();
@@ -930,11 +931,13 @@
           $("exploreReport").textContent = "empty brain reply";
           return;
         }
-        $("exploreReport").textContent = refineGoal ? "applying goal..." : "applying reply...";
+        $("exploreReport").textContent = refineGoal ? "applying goal..." : rewrite ? "rewriting reply..." : "applying reply...";
         try {
           const args = refineGoal
             ? ["--state", state, "--json", "brain", "--goal", "--apply-json", reply, "--save", goal]
-            : ["--state", state, "--json", "brain", "--apply-json", reply, "--save", goal];
+            : rewrite
+              ? ["--state", state, "--json", "brain", "--rewrite", "--live", "--apply-json", reply, "--save", goal]
+              : ["--state", state, "--json", "brain", "--apply-json", reply, "--save", goal];
           const report = await runBridgeJson(args);
           if (refineGoal) {
             currentExploreReport = report.goal || null;
@@ -2891,6 +2894,7 @@
       $("runBrainLive").addEventListener("click", () => runBrainLiveReport(false));
       $("runBrainGoal").addEventListener("click", runBrainGoalReport);
       $("applyBrainReply").addEventListener("click", () => applyBrainReply(false));
+      $("rewriteBrainReply").addEventListener("click", () => applyBrainReply(false, true));
       $("applyBrainGoal").addEventListener("click", () => applyBrainReply(true));
       $("runExplore").addEventListener("click", () => runExploreReport(false));
       $("saveExplore").addEventListener("click", () => runExploreReport(true));

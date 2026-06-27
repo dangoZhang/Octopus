@@ -1316,6 +1316,40 @@ where
         .map_err(|error| format!("invalid clean-brain explore JSON: {error}"))
 }
 
+fn brain_rewrite_from_chat<C>(
+    brain: &BrainContextReport,
+    prompt: &str,
+    draft: &BrainExploreDraft,
+    audit: &BrainNeedAudit,
+    client: &mut C,
+) -> Result<BrainExploreDraft, String>
+where
+    C: ChatClient,
+{
+    let context = serde_json::json!({
+        "policy": brain.policy,
+        "slots": brain.slots,
+        "goal": brain.goal,
+        "mem": brain.mem,
+        "recent_need_feed": brain.turns,
+        "raw_summary": draft.summary,
+        "raw_needs": draft.needs,
+        "audit": audit,
+    });
+    let response = client.chat(&[
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain Need rewrite layer. You see only Goal, Mem, Need, Feed, and rejected Need candidates. Rewrite tool, API, command, file, route, or implementation details into cognitive Needs only. Do not choose tools or implementation. Return only JSON: {\"summary\":\"short rewrite\",\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!("Clean brain rewrite prompt: {prompt}\nClean brain context JSON: {context}"),
+        ),
+    ])?;
+    serde_json::from_str::<BrainExploreDraft>(&response.content)
+        .map_err(|error| format!("invalid clean-brain rewrite JSON: {error}"))
+}
+
 pub struct PlanningTentacle<P>
 where
     P: Planner,
@@ -1703,6 +1737,58 @@ impl HarnessState {
         let prompt = prompt.into();
         let brain = self.context_report(None, limit).brain;
         self.brain_explore_report(brain, prompt, "external_chat", draft.summary, draft.needs)
+    }
+
+    pub fn clean_brain_rewrite_from_draft(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        draft: BrainExploreDraft,
+    ) -> BrainExploreReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let raw_audit = audit_clean_brain_needs(&draft.needs);
+        let summary = if raw_audit.issue_count == 0 {
+            draft.summary
+        } else {
+            format!(
+                "rewrite review accepted {} clean Need(s); {} polluted Need(s) require live rewrite",
+                raw_audit.clean_count, raw_audit.issue_count
+            )
+        };
+        self.brain_explore_report(
+            brain,
+            prompt,
+            "rewrite_review",
+            summary,
+            raw_audit.clean_needs,
+        )
+    }
+
+    pub fn clean_brain_rewrite_with_client<C>(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        draft: BrainExploreDraft,
+        client: &mut C,
+    ) -> Result<BrainExploreReport, String>
+    where
+        C: ChatClient,
+    {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let raw_audit = audit_clean_brain_needs(&draft.needs);
+        if raw_audit.issue_count == 0 {
+            return Ok(self.brain_explore_report(
+                brain,
+                prompt,
+                "rewrite_clean",
+                draft.summary,
+                draft.needs,
+            ));
+        }
+        let rewrite = brain_rewrite_from_chat(&brain, &prompt, &draft, &raw_audit, client)?;
+        Ok(self.brain_explore_report(brain, prompt, "llm_rewrite", rewrite.summary, rewrite.needs))
     }
 
     pub fn clean_brain_goal(&mut self, prompt: impl Into<String>, limit: usize) -> BrainGoalReport {
@@ -8543,6 +8629,60 @@ mod tests {
         assert_eq!(report.needs[0].kind, NeedKind::Compare);
         assert_eq!(report.audit.status, Status::Satisfied);
         assert_eq!(report.audit.summary, "all Needs stay cognitive");
+    }
+
+    #[test]
+    fn clean_brain_rewrite_uses_llm_without_feed() {
+        struct FakeChat;
+
+        impl ChatClient for FakeChat {
+            fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                let combined = messages
+                    .iter()
+                    .map(|message| message.content.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert!(combined.contains("Need rewrite layer"));
+                assert!(combined.contains("rejected Need candidates"));
+                assert!(combined.contains("cargo test -p octopus-core"));
+                Ok(ChatResponse {
+                    content: r#"{"summary":"rewritten cleanly","needs":[{"kind":"verify","query":"whether test evidence supports the goal"}]}"#.to_string(),
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
+        let state = HarnessState {
+            goal: Some(Goal::new("keep the main brain clean")),
+            ..HarnessState::default()
+        };
+        let mut client = FakeChat;
+
+        let report = state
+            .clean_brain_rewrite_with_client(
+                "rewrite polluted Needs",
+                5,
+                BrainExploreDraft {
+                    summary: "dirty draft".to_string(),
+                    needs: vec![GoalNeedSuggestion {
+                        kind: NeedKind::Execute,
+                        query: "cargo test -p octopus-core".to_string(),
+                    }],
+                },
+                &mut client,
+            )
+            .unwrap();
+
+        assert_eq!(report.source, "llm_rewrite");
+        assert_eq!(report.summary, "rewritten cleanly");
+        assert_eq!(report.needs.len(), 1);
+        assert_eq!(report.audit.status, Status::Satisfied);
+        assert_eq!(
+            report.audit.clean_needs[0].query,
+            "whether test evidence supports the goal"
+        );
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
     }
 
     #[test]

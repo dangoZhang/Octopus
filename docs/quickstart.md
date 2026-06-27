@@ -127,6 +127,7 @@ octopus provider check
 octopus --state "$tmp/state.json" brain --goal --live --save "make the goal sharper"
 octopus --state "$tmp/state.json" brain --live "what should the brain ask next?"
 octopus --state "$tmp/state.json" brain --session --live "what should the brain ask next?"
+octopus --state "$tmp/state.json" brain --rewrite --live --apply-json '{"summary":"dirty","needs":[{"kind":"execute","query":"cargo test -p octopus-core"}]}' --save "rewrite as cognitive Need"
 octopus --state "$tmp/state.json" brain --apply-json '{"summary":"external chat explored","needs":[{"kind":"compare","query":"provider and external chat paths"}]}' --save "what should the brain ask next?"
 
 octopus --state "$tmp/state.json" chat "make the harness self-evolve"
