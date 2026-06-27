@@ -11,10 +11,10 @@ use octopus_core::{
     GoalNeedSuggestion, GoalRefinement, Harness, HarnessBeatEvolution, HarnessState, HeartBeat,
     HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem,
     NeedQueueReport, NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport,
-    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, RouteReport, SelfIterationPlan, Status,
-    StatusReport, TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile,
-    TentacleScaffold, TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate,
-    ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
+    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, RepairOutcome, RouteReport,
+    SelfIterationPlan, Status, StatusReport, TentacleEvolutionProposal, TentacleManifestReport,
+    TentacleProfile, TentacleScaffold, TentacleThinkingPlan, TentacleToolAction,
+    TentacleToolCandidate, ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -309,6 +309,13 @@ struct RepairReport {
 }
 
 #[derive(Debug, serde::Serialize)]
+struct RepairScoreReport {
+    outcome: RepairOutcome,
+    recent: Vec<RepairOutcome>,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
 struct PreflightReport {
     version: String,
     target: String,
@@ -483,6 +490,42 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("repair") => {
+            if rest.get(1).map(String::as_str) == Some("score") {
+                let trace_index = rest
+                    .get(2)
+                    .ok_or_else(|| "repair score requires a feed trace index".to_string())
+                    .and_then(|value| parse_trace_index(value))?;
+                let status = rest
+                    .get(3)
+                    .ok_or_else(|| "repair score requires a status".to_string())
+                    .and_then(|value| parse_status(value))?;
+                let summary = rest
+                    .get(4..)
+                    .filter(|values| !values.is_empty())
+                    .map(|values| values.join(" "))
+                    .unwrap_or_else(|| "recorded repair outcome".to_string());
+                let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                let outcome = loaded.record_repair_outcome(Some(trace_index), status, summary)?;
+                let report = RepairScoreReport {
+                    outcome,
+                    recent: loaded.recent_repair_outcomes(5),
+                    next: vec![
+                        "octopus repair .".to_string(),
+                        "octopus report".to_string(),
+                        "octopus beat 200".to_string(),
+                    ],
+                };
+                loaded.save(&state).map_err(|error| error.to_string())?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_repair_score_report(&report, language);
+                }
+                return Ok(());
+            }
             let query = rest
                 .get(1..)
                 .filter(|values| !values.is_empty())
@@ -1747,6 +1790,33 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                     item.need.query
                 );
             }
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn print_repair_score_report(report: &RepairScoreReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("recorded repair outcome #{}", report.outcome.index);
+            if let Some(trace_index) = report.outcome.trace_index {
+                println!("feed_trace: {trace_index}");
+            }
+            println!("status: {:?}", report.outcome.status);
+            println!("score: {:.2}", report.outcome.score);
+            println!("summary: {}", report.outcome.summary);
+            println!("recent_repair_outcomes: {}", report.recent.len());
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("已记录 repair 结果 #{}", report.outcome.index);
+            if let Some(trace_index) = report.outcome.trace_index {
+                println!("Feed trace: {trace_index}");
+            }
+            println!("状态: {:?}", report.outcome.status);
+            println!("分数: {:.2}", report.outcome.score);
+            println!("摘要: {}", report.outcome.summary);
+            println!("近期 repair 结果: {}", report.recent.len());
             println!("下一步: {}", join_or_none(&report.next));
         }
     }
@@ -3915,6 +3985,13 @@ fn print_status_report(report: &StatusReport, language: Language) {
             if let Some(record) = &report.latest_check {
                 println!("latest_check: {}", check_history_line(record));
             }
+            println!("repair_outcomes: {}", report.repair_outcome_count);
+            if let Some(outcome) = &report.latest_repair_outcome {
+                println!(
+                    "latest_repair: #{} {:?} {}",
+                    outcome.index, outcome.status, outcome.summary
+                );
+            }
             println!("warnings: {}", join_or_none(&report.warnings));
             println!("next: {}", report.next_action);
         }
@@ -3944,6 +4021,13 @@ fn print_status_report(report: &StatusReport, language: Language) {
             println!("检查历史数: {}", report.check_history_count);
             if let Some(record) = &report.latest_check {
                 println!("最近检查: {}", check_history_line(record));
+            }
+            println!("repair结果数: {}", report.repair_outcome_count);
+            if let Some(outcome) = &report.latest_repair_outcome {
+                println!(
+                    "最近repair: #{} {:?} {}",
+                    outcome.index, outcome.status, outcome.summary
+                );
             }
             println!("警告: {}", join_or_none(&report.warnings));
             println!("下一步: {}", report.next_action);
@@ -4246,7 +4330,10 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             } else {
                 "available"
             },
-            "harness-repair-agent can turn heartbeat, evolution, and adapter signals into reviewable repair Feed",
+            format!(
+                "harness-repair-agent can turn signals into repair Feed; {} scored repair outcomes",
+                status.repair_outcome_count
+            ),
             Some("octopus install harness-repair-agent"),
         ),
         product_capability(
@@ -4359,6 +4446,13 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             "evolution_scores_empty",
             "recommendations have not received outcome feedback",
             "octopus evolve score swe-agent 03-runtime-code partial \"reviewed\"",
+        ));
+    }
+    if status.repair_outcome_count == 0 {
+        gaps.push(product_gap(
+            "repair_outcomes_empty",
+            "harness repair sessions have no scored outcome memory yet",
+            "octopus repair score <trace-index> satisfied \"repair improved harness\"",
         ));
     }
     if environment.recommended_profiles.is_empty() {
@@ -7034,7 +7128,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop index] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop index] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -7631,6 +7725,7 @@ mod tests {
         assert!(usage().contains("explore [--save] [prompt]"));
         assert!(usage().contains("needs [take|drop index]"));
         assert!(usage().contains("repair [query]"));
+        assert!(usage().contains("repair score <trace-index>"));
         assert!(usage().contains("context [kind query]"));
         assert!(usage().contains("provider save <profile>"));
         assert!(usage().contains("provider status"));
@@ -9433,6 +9528,46 @@ JSON
             "feed feedback"
         );
         assert_eq!(restored.last_pet_event.as_ref().unwrap().state, "blocked");
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_repair_score_records_outcome() {
+        let _env = env_guard();
+        let path = std::env::temp_dir().join(format!(
+            "octopus-repair-score-state-{}.json",
+            std::process::id()
+        ));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "repair".to_string(),
+            ".".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "repair".to_string(),
+            "score".to_string(),
+            "1".to_string(),
+            "satisfied".to_string(),
+            "repair improved harness".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&path).unwrap();
+        assert_eq!(restored.repair_outcomes.len(), 1);
+        assert_eq!(restored.repair_outcomes[0].trace_index, Some(1));
+        assert_eq!(
+            restored.last_pet_event.as_ref().unwrap().source,
+            "repair score"
+        );
+        assert_eq!(restored.last_pet_event.as_ref().unwrap().state, "harness");
         let _ = fs::remove_file(path);
     }
 

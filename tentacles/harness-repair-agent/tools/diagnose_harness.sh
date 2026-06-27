@@ -93,6 +93,7 @@ installed = ids((state or {}).get("installed_tentacles", []))
 profiles = ids((state or {}).get("installed_profiles", []))
 traces = (state or {}).get("feed_traces", [])
 history = (state or {}).get("check_history", [])
+repair_outcomes = (state or {}).get("repair_outcomes", [])
 routes = (state or {}).get("routes", {})
 grants = (state or {}).get("capability_grants", [])
 evolution_root = root / ".octopus/evolution"
@@ -107,7 +108,7 @@ state_label = "present" if state else "missing"
 summary = (
     f"harness diagnosis: state={state_label}; tentacles={len(installed)}; "
     f"profiles={len(profiles)}; traces={len(traces)}; checks={len(history)}; "
-    f"routes={len(routes) if isinstance(routes, dict) else 0}; grants={len(grants)}; "
+    f"repair_outcomes={len(repair_outcomes)}; routes={len(routes) if isinstance(routes, dict) else 0}; grants={len(grants)}; "
     f"evolution={len(evolution_dirs)}; provider_env={'present' if provider_env.exists() else 'missing'}; "
     f"git={compact(git_status, 90)}"
 )
@@ -130,6 +131,10 @@ elif not traces and not history:
     next_need = "collect Feed trace or check history"
     next_need_kind = "verify"
     next_need_query = "collect Feed trace or check history"
+elif traces and not repair_outcomes:
+    next_need = "score harness repair outcome"
+    next_need_kind = "verify"
+    next_need_query = "octopus repair score <trace-index> satisfied|partial|failed"
 
 metadata = {
     "workspace": str(root),
@@ -138,6 +143,8 @@ metadata = {
     "installed_profiles": ",".join(profiles),
     "feed_trace_count": str(len(traces)),
     "check_history_count": str(len(history)),
+    "repair_outcome_count": str(len(repair_outcomes)),
+    "latest_repair_outcome": compact(repair_outcomes[-1] if repair_outcomes else ""),
     "evolution_tentacles": ",".join(evolution_dirs),
     "provider_env": "present" if provider_env.exists() else "missing",
     "next_need": next_need,

@@ -257,6 +257,17 @@ pub struct EvolutionOutcome {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct RepairOutcome {
+    pub index: u64,
+    pub trace_index: Option<u64>,
+    pub tentacle_id: String,
+    pub tool: Option<String>,
+    pub status: Status,
+    pub score: f32,
+    pub summary: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct FeedTraceRecord {
     pub index: u64,
     pub need_kind: NeedKind,
@@ -324,6 +335,7 @@ pub struct StatusReport {
     pub need_queue_count: usize,
     pub feed_trace_count: usize,
     pub check_history_count: usize,
+    pub repair_outcome_count: usize,
     pub installed_profiles: Vec<String>,
     pub tentacles: Vec<TentacleStatus>,
     pub goal: Option<GoalSnapshot>,
@@ -332,6 +344,7 @@ pub struct StatusReport {
     pub latest_feed_trace: Option<FeedTraceRecord>,
     pub latest_need_queue_item: Option<NeedQueueItem>,
     pub latest_check: Option<CheckHistoryRecord>,
+    pub latest_repair_outcome: Option<RepairOutcome>,
     pub warnings: Vec<String>,
     pub next_action: String,
 }
@@ -1416,6 +1429,10 @@ pub struct HarnessState {
     pub check_history: Vec<CheckHistoryRecord>,
     #[serde(default)]
     pub next_check_history_index: u64,
+    #[serde(default)]
+    pub repair_outcomes: Vec<RepairOutcome>,
+    #[serde(default)]
+    pub next_repair_outcome_index: u64,
 }
 
 impl HarnessState {
@@ -1483,7 +1500,8 @@ impl HarnessState {
         let routes_changed = self.routes.decay(0.995);
         let trace_dropped = self.compact_feed_traces(memory_keep);
         let check_dropped = self.compact_check_history(memory_keep);
-        let compacted = trace_dropped + check_dropped;
+        let repair_dropped = self.compact_repair_outcomes(memory_keep);
+        let compacted = trace_dropped + check_dropped + repair_dropped;
         let harness_summary = if routes_changed > 0 && compacted > 0 {
             format!("evolved {routes_changed} routes, compacted {compacted} harness records")
         } else if compacted > 0 {
@@ -1526,6 +1544,14 @@ impl HarnessState {
                         (
                             "check_history_dropped".to_string(),
                             check_dropped.to_string(),
+                        ),
+                        (
+                            "repair_outcomes".to_string(),
+                            self.repair_outcomes.len().to_string(),
+                        ),
+                        (
+                            "repair_outcomes_dropped".to_string(),
+                            repair_dropped.to_string(),
                         ),
                     ]),
                 },
@@ -2117,6 +2143,7 @@ impl HarnessState {
             need_queue_count: pending_need_queue_count,
             feed_trace_count: self.feed_traces.len(),
             check_history_count: self.check_history.len(),
+            repair_outcome_count: self.repair_outcomes.len(),
             installed_profiles: self.installed_profiles.clone(),
             tentacles,
             goal,
@@ -2125,6 +2152,7 @@ impl HarnessState {
             latest_feed_trace: self.feed_traces.last().cloned(),
             latest_need_queue_item: self.need_queue.last().cloned(),
             latest_check: self.check_history.last().cloned(),
+            latest_repair_outcome: self.repair_outcomes.last().cloned(),
             warnings,
             next_action,
         }
@@ -2405,6 +2433,96 @@ impl HarnessState {
         }
         let dropped = self.check_history.len() - keep;
         self.check_history.drain(0..dropped);
+        dropped
+    }
+
+    pub fn record_repair_outcome(
+        &mut self,
+        trace_index: Option<u64>,
+        status: Status,
+        summary: impl Into<String>,
+    ) -> Result<RepairOutcome, String> {
+        let summary = summary.into();
+        let trace = match trace_index {
+            Some(index) => Some(
+                self.feed_traces
+                    .iter()
+                    .find(|trace| trace.index == index)
+                    .cloned()
+                    .ok_or_else(|| format!("unknown feed trace: {index}"))?,
+            ),
+            None => None,
+        };
+        self.next_repair_outcome_index += 1;
+        let tentacle_id = trace
+            .as_ref()
+            .and_then(|trace| trace.tentacle.clone())
+            .unwrap_or_else(|| "harness-repair-agent".to_string());
+        let tool = trace.as_ref().and_then(|trace| trace.tool.clone());
+        let outcome = RepairOutcome {
+            index: self.next_repair_outcome_index,
+            trace_index,
+            tentacle_id: tentacle_id.clone(),
+            tool: tool.clone(),
+            status: status.clone(),
+            score: evolution_status_score(&status),
+            summary: summary.clone(),
+        };
+        let need = trace
+            .as_ref()
+            .map(|trace| Need::new(trace.need_kind.clone(), trace.need_query.clone()))
+            .unwrap_or_else(|| Need::new(NeedKind::Verify, "harness repair outcome"));
+        let mut metadata = BTreeMap::from([
+            ("tentacle".to_string(), tentacle_id),
+            ("tool".to_string(), "repair_outcome".to_string()),
+            ("repair_outcome".to_string(), outcome.index.to_string()),
+        ]);
+        if let Some(trace_index) = trace_index {
+            metadata.insert("feed_trace_index".to_string(), trace_index.to_string());
+        }
+        if let Some(tool) = tool {
+            metadata.insert("source_tool".to_string(), tool);
+        }
+        let feed = Feed {
+            need,
+            status: status.clone(),
+            evidence: vec![Evidence::new("repair_outcome", summary.clone())],
+            summary: summary.clone(),
+            metadata,
+        };
+        self.routes.learn(&feed);
+        let event_state = match status {
+            Status::Satisfied | Status::Partial => "harness",
+            Status::Failed | Status::Unsupported => "blocked",
+        };
+        self.record_pet_event(
+            event_state,
+            "repair score",
+            format!("#{} {summary}", outcome.index),
+            status,
+        );
+        self.repair_outcomes.push(outcome.clone());
+        Ok(outcome)
+    }
+
+    pub fn recent_repair_outcomes(&self, limit: usize) -> Vec<RepairOutcome> {
+        let mut outcomes = self
+            .repair_outcomes
+            .iter()
+            .rev()
+            .take(limit)
+            .cloned()
+            .collect::<Vec<_>>();
+        outcomes.reverse();
+        outcomes
+    }
+
+    pub fn compact_repair_outcomes(&mut self, keep: usize) -> usize {
+        if self.repair_outcomes.len() <= keep {
+            return 0;
+        }
+        let dropped = self.repair_outcomes.len() - keep;
+        self.repair_outcomes.drain(0..dropped);
         dropped
     }
 
@@ -7807,6 +7925,54 @@ mod tests {
             harness.state.last_pet_event.as_ref().unwrap().state,
             "blocked"
         );
+    }
+
+    #[test]
+    fn repair_outcome_feeds_harness_memory() {
+        let mut state = HarnessState::default();
+        let trace = state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Verify, "harness repair loop"),
+            status: Status::Partial,
+            evidence: vec![Evidence::new("repair", "needs score")],
+            summary: "repair session created".to_string(),
+            metadata: BTreeMap::from([
+                ("tentacle".to_string(), "harness-repair-agent".to_string()),
+                ("tool".to_string(), "repair_session".to_string()),
+            ]),
+        });
+        let route_before = state
+            .routes
+            .score(&NeedKind::Verify, "harness-repair-agent");
+
+        let outcome = state
+            .record_repair_outcome(
+                Some(trace.index),
+                Status::Satisfied,
+                "repair improved harness",
+            )
+            .unwrap();
+
+        assert_eq!(outcome.index, 1);
+        assert_eq!(outcome.trace_index, Some(trace.index));
+        assert_eq!(outcome.tool.as_deref(), Some("repair_session"));
+        assert!(
+            state
+                .routes
+                .score(&NeedKind::Verify, "harness-repair-agent")
+                > route_before
+        );
+        assert_eq!(state.recent_repair_outcomes(1)[0].summary, outcome.summary);
+        assert_eq!(
+            state.last_pet_event.as_ref().unwrap().source,
+            "repair score"
+        );
+        assert_eq!(state.last_pet_event.as_ref().unwrap().state, "harness");
+
+        state
+            .record_repair_outcome(None, Status::Failed, "still broken")
+            .unwrap();
+        assert_eq!(state.compact_repair_outcomes(1), 1);
+        assert_eq!(state.repair_outcomes[0].summary, "still broken");
     }
 
     #[test]

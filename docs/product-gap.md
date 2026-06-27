@@ -7,6 +7,7 @@ Updated: 2026-06-27
 - Clean brain emits cognitive `Need`; it does not choose tools.
 - Tentacles own LLM prompt, tool metadata, runtime code, and evolution policy.
 - Harness stores memory, route scores, OAuth grants, installed tentacles, goal state, Feed traces, and check history.
+- Harness also stores scored repair outcomes so repair sessions can become route-learning and heartbeat evidence.
 - Three beats exist: heartbeat, memory compaction, and harness route/evolution recommendation.
 - Pixel pet exposes heartbeat, memory, harness, blocked, and success states through deterministic state mapping.
 - Pet auto-color now follows the latest persisted Need/Feed/beat/evolve-score event plus goal status.
@@ -147,6 +148,7 @@ Updated: 2026-06-27
 - Rolled the cleanup/version cadence to `0.0.7` after bootstrap, clean-brain exploration, harness-repair state paths, preflight gates, product README polish, and remote deployment cleanup.
 - Rolled the cleanup/version cadence to `0.0.8` after clean-brain Goal history/import, provider-routed clean-brain calls, harness repair queue/drafts, real-machine record gate, and README/control-surface cleanup.
 - Added harness repair outcome memory so reviewed repair sessions can be scored locally and reused by later repair sessions without exposing tool logs to the clean brain.
+- Added `repair score <trace-index> <status>` so reviewed repair Feed can update route learning, pet state, product reports, and heartbeat compaction.
 
 ## Remaining Gaps
 

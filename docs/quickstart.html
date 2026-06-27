@@ -120,6 +120,7 @@ octopus --state "$tmp/state.json" need observe .
 octopus --state "$tmp/state.json" traces
 octopus --state "$tmp/state.json" repair .
 octopus --state "$tmp/state.json" needs
+octopus --state "$tmp/state.json" repair score 1 satisfied "repair improved harness"
 octopus --state "$tmp/state.json" routes observe .
 octopus --state "$tmp/state.json" report
 octopus --state "$tmp/state.json" oauth octopus tool:bash-only tool:execute
