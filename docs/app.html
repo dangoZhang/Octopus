@@ -486,9 +486,12 @@
             <button type="button" id="runBrainLiveSession">Live Session</button>
             <button type="button" id="runBrainGoalLiveSession">Goal Live Session</button>
             <button type="button" id="runBrainRewriteSession">Rewrite Session</button>
+            <button type="button" id="runBrainDeliberateSession">Deliberate Session</button>
             <button type="button" id="runBrainLive">Brain Live</button>
+            <button type="button" id="runBrainDeliberate">Deliberate</button>
             <button type="button" id="runBrainGoal">Brain Goal</button>
             <button type="button" id="applyBrainReply">Apply Reply</button>
+            <button type="button" id="applyBrainDeliberation">Apply Deliberate</button>
             <button type="button" id="rewriteBrainReply">Rewrite Reply</button>
             <button type="button" id="applyBrainGoal">Apply Goal</button>
             <button type="button" id="runExplore">Explore</button>
@@ -868,6 +871,21 @@
         }
       }
 
+      async function runBrainDeliberateSessionReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        $("brainPromptReport").textContent = "writing deliberation session...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "brain", "--deliberate", "--session", goal]);
+          currentBrainSessionReport = report;
+          renderBrainSessionReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("brainPromptReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runGoalStatusReport() {
         const state = $("state").value.trim() || ".octopus/state.json";
         $("goalReport").textContent = "loading...";
@@ -928,6 +946,23 @@
         }
       }
 
+      async function runBrainDeliberateReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        $("exploreReport").textContent = "deliberating...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "brain", "--deliberate", "--save", goal]);
+          currentExploreReport = report.deliberation || null;
+          currentNeedQueueReport = report.queue || null;
+          renderExploreReport(report.deliberation || {});
+          renderNeedQueueReport(report.queue || {});
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("exploreReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runBrainGoalReport() {
         const state = $("state").value.trim() || ".octopus/state.json";
         const goal = $("goal").value.trim() || "build a clean-brain agent";
@@ -975,6 +1010,28 @@
             renderExploreReport(report.explore || {});
             renderNeedQueueReport(report.queue || {});
           }
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("exploreReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function applyBrainDeliberation() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        const reply = $("brainReply").value.trim();
+        if (!reply) {
+          $("exploreReport").textContent = "empty brain reply";
+          return;
+        }
+        $("exploreReport").textContent = "applying deliberation...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "brain", "--deliberate", "--apply-json", reply, "--save", goal]);
+          currentExploreReport = report.deliberation || null;
+          currentNeedQueueReport = report.queue || null;
+          renderExploreReport(report.deliberation || {});
+          renderNeedQueueReport(report.queue || {});
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("exploreReport").textContent = String(error);
@@ -1442,6 +1499,10 @@
         const audit = report.audit || {};
         const cleanNeeds = audit.clean_needs || report.needs || [];
         root.appendChild(exploreSummary(report));
+        root.appendChild(reportList("Observations", report.observations || [], textItem));
+        root.appendChild(reportList("Questions", report.questions || [], textItem));
+        root.appendChild(reportList("Options", report.options || [], textItem));
+        root.appendChild(reportList("Risks", report.risks || [], textItem));
         root.appendChild(brainAuditSummary(audit));
         root.appendChild(reportList("Accepted Needs", cleanNeeds, exploreNeedItem));
         root.appendChild(reportList("Audit Issues", audit.issues || [], brainAuditIssueItem));
@@ -3003,10 +3064,13 @@
       $("runBrainLiveSession").addEventListener("click", () => runBrainSessionReport(false, true));
       $("runBrainGoalLiveSession").addEventListener("click", () => runBrainSessionReport(true, true));
       $("runBrainRewriteSession").addEventListener("click", runBrainRewriteSessionReport);
+      $("runBrainDeliberateSession").addEventListener("click", runBrainDeliberateSessionReport);
       $("runGoalStatus").addEventListener("click", runGoalStatusReport);
       $("runBrainLive").addEventListener("click", () => runBrainLiveReport(false));
+      $("runBrainDeliberate").addEventListener("click", runBrainDeliberateReport);
       $("runBrainGoal").addEventListener("click", runBrainGoalReport);
       $("applyBrainReply").addEventListener("click", () => applyBrainReply(false));
+      $("applyBrainDeliberation").addEventListener("click", applyBrainDeliberation);
       $("rewriteBrainReply").addEventListener("click", () => applyBrainReply(false, true));
       $("applyBrainGoal").addEventListener("click", () => applyBrainReply(true));
       $("runExplore").addEventListener("click", () => runExploreReport(false));
