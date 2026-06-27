@@ -1,6 +1,6 @@
 # Version Plan
 
-Current version: `0.0.7`.
+Current version: `0.0.8`.
 
 Cadence from this plan forward:
 
@@ -25,8 +25,8 @@ Real-machine test gate for `0.1.0` and later tags:
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
-Last cleanup/version correction: `0.0.7` on 2026-06-27. Scope: clean-brain exploration, bootstrap, harness repair state paths, real-machine preflight, release preflight/script gates, product README polish, CI/deployment cleanup; no tag cut.
+Last cleanup/version correction: `0.0.8` on 2026-06-27. Scope: external clean-brain reply import, clean-brain goal refinement, provider-routed clean-brain calls, harness repair sessions with optional provider drafts, real-machine record gate correction, and product-page/docs cleanup; no tag cut.
 
-Product commits toward `0.0.8`: 8/8.
+Product commits toward `0.0.9`: 0/8.
 
-Next planned cleanup/version commit: `0.0.8`.
+Next planned cleanup/version commit: `0.0.9`.

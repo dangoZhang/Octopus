@@ -145,6 +145,7 @@ Updated: 2026-06-27
 - Added `repair [query]` plus native HTML access so harness-repair Feed can become a queued clean-brain Need without exposing tools to the brain.
 - Rebuilt README into a product-page first share surface with the Octopus story, fast install path, current usable surface, and proof kept above the links.
 - Rolled the cleanup/version cadence to `0.0.7` after bootstrap, clean-brain exploration, harness-repair state paths, preflight gates, product README polish, and remote deployment cleanup.
+- Rolled the cleanup/version cadence to `0.0.8` after external clean-brain reply import, clean-brain goal refinement, provider-routed clean-brain calls, provider-backed harness repair drafts, real-machine record gate correction, and product-page/docs cleanup.
 
 ## Remaining Gaps
 
