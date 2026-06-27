@@ -54,7 +54,7 @@ Every executed Feed is also written to a compact harness trace journal and retur
 
 `beat [memory_keep]` pulses the three hearts. The harness beat now watches recent failed or partial check history and Feed traces; when a matching tentacle manifest exists, it writes the next evolution proposal, recommendation, and apply plan under `.octopus/evolution/`, then exposes the source signal, candidate, preview, next action, and review target in heartbeat data.
 
-`harness-repair-agent` is the seed tentacle for that loop. Its tool-side LLM can inspect heartbeat/evolution/state diagnostics, probe adapter readiness, write a reviewable `.octopus/harness-repair/` session, and return the next review/grant/apply/score Feed without adding tool logs to clean-brain context.
+`harness-repair-agent` is the seed tentacle for that loop. Its tool-side LLM can inspect heartbeat/evolution/state diagnostics, probe adapter readiness, write a reviewable `.octopus/harness-repair/` session with `PROMPT.md`, `NEXT_NEED.json`, and `COMMANDS.sh`, then return the next review/grant/apply/score Feed without adding tool logs to clean-brain context.
 
 ## Code-As-Harness
 

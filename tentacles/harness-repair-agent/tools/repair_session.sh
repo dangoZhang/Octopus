@@ -58,6 +58,19 @@ def compact(value, limit=180):
     return " ".join(str(value).split())[:limit]
 
 
+def need_parts(value):
+    text = compact(value, 240)
+    if not text:
+        return "execute", "repair harness"
+    first, _, rest = text.partition(" ")
+    allowed = {"observe", "verify", "reproduce", "compare", "remember", "forget", "recall", "execute"}
+    if first in allowed and rest.strip():
+        return first, rest.strip()
+    if first in allowed:
+        return first, text
+    return "execute", text
+
+
 payload = load_payload(sys.argv[1])
 workspace = workspace_from(sys.argv[2:], payload)
 state_path = Path(os.environ.get("OCTOPUS_STATE", workspace / ".octopus" / "state.json")).expanduser()
@@ -122,6 +135,10 @@ while session_dir.exists():
 session_dir.mkdir(parents=True)
 session_json = session_dir / "SESSION.json"
 session_md = session_dir / "SESSION.md"
+prompt_md = session_dir / "PROMPT.md"
+next_need_json = session_dir / "NEXT_NEED.json"
+command_script = session_dir / "COMMANDS.sh"
+next_need_kind, next_need_query = need_parts(next_need)
 session = {
     "schema_version": "octopus-harness-repair-session-v1",
     "workspace": str(workspace),
@@ -140,7 +157,65 @@ session = {
         "commands": available,
     },
 }
+next_need_payload = {
+    "kind": next_need_kind,
+    "query": next_need_query,
+    "source": "harness-repair-agent/repair_session",
+    "session": rel(session_json, workspace),
+}
 session_json.write_text(json.dumps(session, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
+next_need_json.write_text(json.dumps(next_need_payload, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
+command_script.write_text(
+    "\n".join(
+        [
+            "#!/usr/bin/env bash",
+            "set -euo pipefail",
+            "",
+            "# Review this generated harness repair script before running it.",
+            *commands,
+            "",
+        ]
+    ),
+    encoding="utf-8",
+)
+command_script.chmod(0o755)
+prompt_md.write_text(
+    "\n".join(
+        [
+            "# Harness Repair Prompt",
+            "",
+            "You are the Octopus harness-repair-agent tentacle brain.",
+            "Clean-brain context stays Goal + Mem + Need + Feed.",
+            "Use only this session's Need, Tool, Action, and Feed evidence to plan the next repair step.",
+            "",
+            "Return compact Feed with:",
+            "- status",
+            "- evidence",
+            "- next Need",
+            "- required grant or review boundary",
+            "",
+            f"workspace: `{workspace}`",
+            f"target tentacle: `{target_tentacle}`",
+            f"candidate: `{candidate}`",
+            f"source: `{source}`",
+            f"next Need: `{next_need_kind} {next_need_query}`",
+            "",
+            "signals:",
+            f"- feed traces: {len(feed_traces)}",
+            f"- check history: {len(check_history)}",
+            f"- apply plans: {len(apply_plans)}",
+            f"- proposals: {len(proposals)}",
+            f"- provider ready: {provider_ready}",
+            "",
+            "artifacts:",
+            f"- session: `{rel(session_json, workspace)}`",
+            f"- next need: `{rel(next_need_json, workspace)}`",
+            f"- commands: `{rel(command_script, workspace)}`",
+        ]
+    )
+    + "\n",
+    encoding="utf-8",
+)
 session_md.write_text(
     "\n".join(
         [
@@ -155,6 +230,9 @@ session_md.write_text(
             *[f"- `{command}`" for command in commands],
             "",
             f"json: `{rel(session_json, workspace)}`",
+            f"prompt: `{rel(prompt_md, workspace)}`",
+            f"next need: `{rel(next_need_json, workspace)}`",
+            f"commands: `{rel(command_script, workspace)}`",
         ]
     )
     + "\n",
@@ -167,8 +245,13 @@ metadata = {
     "workspace": str(workspace),
     "session": rel(session_json, workspace),
     "session_markdown": rel(session_md, workspace),
+    "prompt": rel(prompt_md, workspace),
+    "next_need_file": rel(next_need_json, workspace),
+    "command_script": rel(command_script, workspace),
     "target_tentacle": target_tentacle,
     "candidate": candidate,
+    "next_need_kind": next_need_kind,
+    "next_need_query": next_need_query,
     "next_need": next_need,
 }
 

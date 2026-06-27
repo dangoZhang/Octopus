@@ -9398,6 +9398,18 @@ print(json.dumps({
             Some("repair_session")
         );
         assert!(workspace.join(".octopus/harness-repair").exists());
+        for key in ["prompt", "next_need_file", "command_script"] {
+            let path = feed
+                .metadata
+                .get(key)
+                .map(|path| workspace.join(path))
+                .expect("repair session metadata path");
+            assert!(path.exists(), "{key} should exist at {}", path.display());
+        }
+        assert_eq!(
+            feed.metadata.get("next_need_kind").map(String::as_str),
+            Some("verify")
+        );
         assert!(feed
             .evidence
             .iter()
