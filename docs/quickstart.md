@@ -76,6 +76,7 @@ octopus --state "$tmp/state.json" feedback 1 satisfied "feed worked"
 octopus --state "$tmp/state.json" oauth octopus tool:bash-only tool:execute
 octopus --state "$tmp/state.json" need execute "echo octopus"
 octopus --state "$tmp/state.json" pet
+octopus --state "$tmp/state.json" pet image auto "$tmp/octopus-pet.svg"
 octopus --state "$tmp/state.json" doctor
 octopus --state "$tmp/state.json" chat "make tools think"
 octopus --state "$tmp/state.json" beat 200
@@ -211,6 +212,7 @@ Octopus preflight script
 Octopus preflight record
 Octopus bridge: http://127.0.0.1:8765
 pixel: 🟥
+Octopus pet image
 event: harness beat
 heartbeat: alive
 memory: compacted 0 memories

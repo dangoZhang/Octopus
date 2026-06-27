@@ -1,18 +1,18 @@
 # Octopus 🐙
 
-> Independent-thinking tools for agents with a clean brain.
+> A clean-brain agent runtime where tools think at the edge.
 
 [Open the app](https://dangozhang.github.io/Octopus/app.html) · [Docs](https://dangozhang.github.io/Octopus/) · [Install guide](docs/quickstart.md)
 
-Most agents make one model do everything: keep the goal, remember context, read tool manuals, choose commands, parse logs, and repair the system that just failed. The brain gets crowded before the work gets hard.
+Most agents turn one model into a crowded operator: hold the goal, remember context, read tool manuals, choose commands, parse logs, and repair the adapters that just failed. The hard part starts after the brain is already full.
 
-Octopus keeps the center quiet. The main model carries only `Goal + Mem + Need + Feed`. It asks for cognition: verify this, reproduce that, compare options, remember a fact, forget stale context, execute a job, repair a broken path. It does not need to know which tool, API, file, shell command, or desktop adapter will be used.
+Octopus gives the center a smaller job. The main model carries only `Goal + Mem + Need + Feed`. It asks for cognition: verify this, reproduce that, compare options, remember a fact, forget stale context, execute a job, repair a broken path. Tool choice and implementation stay out of its context.
 
-The edge does the work. A tentacle is an LLM prompt, tool metadata, runtime code, local grants, traces, and an editable harness surface. It can think while using tools, return compact Feed, and improve from feedback without dragging implementation burden back into the main brain.
+The edge does the work. A tentacle is an LLM prompt, tool metadata, runtime code, local grants, traces, and an editable harness. It can think while using SWE tools, computer-use tools, repo maintenance flows, or local scripts; then it returns compact Feed and improves from scored outcomes.
 
-The system has three pulses: one heartbeat for liveness, one memory beat for context, and one harness beat for tool-side evolution. The pixel Octopus changes color from real work states, so the agent has a small visible body instead of only logs.
+The runtime keeps three pulses alive: liveness, memory, and harness evolution. A pixel Octopus changes color from real work states, giving the agent a visible body instead of only logs.
 
-## Quick Install & Use
+## Install & Launch
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
@@ -23,7 +23,7 @@ octopus bridge
 
 Open `http://127.0.0.1:8765/app.html`.
 
-Run the first clean loop:
+Run a first loop:
 
 ```bash
 octopus goal set "make this repo easier to use"
@@ -35,7 +35,7 @@ octopus beat 200
 octopus pet
 ```
 
-Add an OpenAI-compatible provider when you want live clean-brain calls or tool-side planning:
+Use an OpenAI-compatible provider for live clean-brain calls and tool-side planning:
 
 ```bash
 octopus provider save openai
@@ -48,4 +48,11 @@ octopus brain --live --save "what should the brain ask next?"
 
 Set `OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX`, `OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX`, `OCTOPUS_BRAIN_GOAL_LLM_PREFIX`, `OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX`, `OCTOPUS_BRAIN_REWRITE_LLM_PREFIX`, or `OCTOPUS_BRAIN_QUEUE_LLM_PREFIX` to route clean-brain jobs to different models.
 
-Current line: `0.0.11`. `0.1.0` waits for recorded real-machine testing.
+## Works Today
+
+- Clean-brain Goal, Need, Feed, queue, context, deliberation, synthesis, and external-chat sessions.
+- Seed tentacles for SWE work, computer-use adapters, repo maintenance, harness repair, and write-and-run local execution.
+- Tool-side LLM planning with grants, traces, route scores, feedback scoring, and reviewable harness evolution drafts.
+- Native HTML app, local bridge, install reports, provider setup, preflight gates, and pixel pet SVG export.
+
+Pre-release line: `0.0.11`. `0.1.0` waits for recorded real-machine testing.

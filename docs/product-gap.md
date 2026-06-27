@@ -9,7 +9,7 @@ Updated: 2026-06-27
 - Harness stores memory, route scores, OAuth grants, installed tentacles, goal state, Feed traces, and check history.
 - Harness also stores scored repair outcomes so repair sessions can become route-learning and heartbeat evidence.
 - Three beats exist: heartbeat, memory compaction, and harness route/evolution recommendation.
-- Pixel pet exposes heartbeat, memory, harness, blocked, and success states through deterministic state mapping.
+- Pixel pet exposes heartbeat, memory, harness, blocked, and success states through deterministic state mapping, and CLI can export the same pixel body as SVG.
 - Pet auto-color now follows the latest persisted Need/Feed/beat/evolve-score event plus goal status.
 - Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools, repo-maintainer, harness-repair diagnostics, and a write-and-run harness.
 - `json-feed` is a runtime seed for the `octopus-json-v1` contract.
@@ -197,6 +197,7 @@ Updated: 2026-06-27
 - Added starter choice feedback so accepted, ignored, and failed starter picks become compact harness records, influence later recommendation ranking, update pet state, and show in the native HTML app.
 - Rolled the cleanup/version cadence to `0.0.11` after repair action plans, heartbeat plan pickup, repair plan/report/app surfacing, REVIEW.md bundles, trace-aware repair scoring, starter choice feedback, and README product landing polish.
 - Tightened README to story plus Quick Install & Use, and kept English and Chinese docs homepages as shorter product pages with the value promise, first clean loop, usable surface, and pre-`0.1.0` boundary visible before deep docs.
+- Added `pet image [state] [path]` so the color-changing pixel Octopus can be exported as SVG from the same state mapping used by CLI and HTML.
 
 ## Remaining Gaps
 
