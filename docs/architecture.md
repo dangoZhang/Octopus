@@ -26,13 +26,11 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 ## SDK
 
-`src/octopus` is the Python SDK/prototype layer. It is useful for quick integrations, demos, and LLM-tool experiments.
+`src/octopus` is the Python SDK/prototype layer. It is useful for quick integrations, SDK tests, and LLM-tool experiments.
 
 `OpenAiCompatibleChatClient` in Rust and `OpenAICompatibleLLM` in Python adapt any chat-completions-compatible provider. `providers` lists built-in OpenAI-compatible profiles for OpenAI, local servers, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints. `provider <name> [prefix]` emits shell env for chat goal refinement, clean-brain exploration, manifest tool planning, and harness evolution; `provider save <name> [prefix] [path]` writes the same env to `.octopus/llm.env` by default; `provider status` shows LLM readiness without a network call, including clean-brain Goal, Clarify, Agenda, Deliberate, Reflect, Memory, Synthesize, Explore, Rewrite, and Queue model slots; `provider check [prefix]` validates the live endpoint with the same adapter. The Rust adapter keeps the kernel light by using a `curl` runtime adapter. `OCTOPUS_CHAT_LLM_PREFIX`, `OCTOPUS_BRAIN_LLM_PREFIX`, `OCTOPUS_BRAIN_COUNCIL_LLM_PREFIXES`, `OCTOPUS_BRAIN_GOAL_LLM_PREFIX`, `OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX`, `OCTOPUS_BRAIN_AGENDA_LLM_PREFIX`, `OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX`, `OCTOPUS_BRAIN_REFLECT_LLM_PREFIX`, `OCTOPUS_BRAIN_MEMORY_LLM_PREFIX`, `OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX`, `OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX`, `OCTOPUS_BRAIN_REWRITE_LLM_PREFIX`, `OCTOPUS_BRAIN_QUEUE_LLM_PREFIX`, `OCTOPUS_MANIFEST_LLM_PREFIX`, and `OCTOPUS_EVOLVE_LLM_PREFIX` can route those layers or brain jobs to different provider env groups.
 
 Context boundary: clean-brain LLM context is `Goal + Mem + Need + Feed`; tentacle LLM context is `Need + Tool + Action + Tool + Action -> Feed`; harness evolution sees manifest surfaces, outcomes, checks, and constraints so it can modify prompt, metadata, runtime code, or policy without moving tool burden into the clean brain.
-
-`demo [repo]` runs a source-local end-to-end loop: adapt, install, chat, feed, probe, heartbeat, self-iteration mode, and pet link.
 
 `bootstrap [tentacles-root]` creates the local state files, adapts to the current project, installs the built-in seed tentacles, pulses the heartbeat, and returns a product report plus next commands. It does not grant high-risk tool scopes.
 

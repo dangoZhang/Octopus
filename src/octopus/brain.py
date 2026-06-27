@@ -13,7 +13,7 @@ class Brain(Protocol):
 
 
 class StaticBrain:
-    """Tiny brain for demos and tests."""
+    """Tiny brain for SDK tests and integrations."""
 
     def __init__(self, needs: Iterable[Need]):
         self._needs = tuple(needs)
@@ -24,4 +24,3 @@ class StaticBrain:
             self.feedback += (feedback,)
             return ()
         return self._needs
-
