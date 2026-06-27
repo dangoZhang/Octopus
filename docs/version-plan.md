@@ -1,6 +1,6 @@
 # Version Plan
 
-Current version: `0.0.15`.
+Current version: `0.0.16`.
 
 Cadence from this plan forward:
 
@@ -25,8 +25,8 @@ Real-machine test gate for `0.1.0` and later tags:
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
-Last cleanup/version correction: `0.0.15` on 2026-06-28. Scope: clean-brain brief compaction, live first-run and record append gates, score-to-next harness evolution, README trim, app control-surface cleanup, and version consistency; no tag cut.
+Last cleanup/version correction: `0.0.16` on 2026-06-28. Scope: clean-brain alignment/scout modes, backend-aware provider routing, brain-goal bridge boundary, structured bridge denial feedback, preflight/real-machine product bridge gates, docs cleanup, and version consistency; no tag cut.
 
-Product commits toward `0.0.16`: 8/8.
+Product commits toward `0.0.17`: 0/8.
 
-Next planned cleanup/version commit: `0.0.16`.
+Next planned cleanup/version commit: `0.0.17`.

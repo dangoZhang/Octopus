@@ -57,4 +57,4 @@ Need, Feed, tool choice, provider routing, repair, and harness evolution are age
 - Tool-side LLM planning, grants, traces, route scores, and reviewable feedback-driven harness evolution.
 - Native app server, provider/readiness observation, preflight gates, and pixel pet state.
 
-Pre-release line: `0.0.15`. `0.1.0` waits for recorded real-machine testing.
+Pre-release line: `0.0.16`. `0.1.0` waits for recorded real-machine testing.

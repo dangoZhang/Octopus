@@ -32,8 +32,8 @@ Updated: 2026-06-28
 - The native HTML app defaults its local API URL to Octopus when opened from docs pages, and auto-renders a read-only startup snapshot when served by `octopus start`.
 - The native HTML app can render the dry-run update report and copy the explicit reinstall command while the local app API blocks `update --run`.
 - The native HTML app can render a structured Doctor panel with state, tentacles, manifests, environment, LLM, pet, warnings, and next actions.
-- The native HTML app Doctor panel has readiness actions for bootstrap, goal setup, provider status/env, starter recommendations, preflight, seed checks, beat, and product report, with Doctor refresh after local actions.
-- The native HTML app now has a First Run path that runs Doctor, Bootstrap, Goal, Starter, safe Feed, Feed feedback, Preflight, record actions, and Beat through the whole-project local API.
+- The native HTML app Doctor panel shows readiness state and keeps product-facing mutation on Goal or First Run; bootstrap, provider, checks, repair, record, and beat commands are internal/developer paths.
+- The native HTML app now has a First Run path that runs the whole-project local loop while keeping granular Need/Feed/harness steps behind the bridge.
 - `first-run [objective]` runs the same safe local loop from CLI and returns one JSON record with Bootstrap, Goal, Starter, Feed, Feedback, Beat, Product, Preflight, and Doctor evidence.
 - `first-run --live [objective]` keeps the same loop but turns on the live provider preflight gate only when explicitly requested.
 - `update` reports the current GitHub reinstall command by default, and `update --run` performs the cargo reinstall explicitly.
@@ -46,12 +46,12 @@ Updated: 2026-06-28
 - Starter recommendation cards now include group reasons and manifest-derived signals so first-run users can see why a tentacle was recommended.
 - Starter recommendations now record accepted, ignored, and failed first-run choices as harness feedback, and later ranking uses that feedback score.
 - README now stays short with the Octopus story and install path; docs homepages carry the broader product landing copy.
-- The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the local app API.
+- The native HTML app can render install/check/grant reports as observation surfaces; direct user writes for those internal flows are blocked by the local bridge.
 - `goal set --constraint ...` and `goal refine ...` let a human set or sharpen the clean-brain Goal without running Feed or touching route learning.
 - `status --json` exposes recent clean-brain Goal turns so Goal refinement history stays visible without replaying Feed.
 - `brain [prompt]` exports pasteable clean-brain chat messages from Goal/Mem/Need/Feed for any model UI.
 - `brain --session [--live] [--goal] [prompt]` writes local external-chat session files: prompt, messages, reply template, optional provider draft, and apply command.
-- `brain --apply <file|->` and `brain --apply-json <json>` import external chat replies into Goal or Need Queue without running Feed; `brain --rewrite --session --apply...` writes an external-chat rewrite session, and `brain --rewrite --live --apply...` can rewrite polluted Need candidates through the clean-brain provider before queueing.
+- `brain --apply <file|->` and `brain --apply-json <json>` import external chat replies into Goal or internal Need review without running Feed; `brain --rewrite --session --apply...` writes an external-chat rewrite session, and `brain --rewrite --live --apply...` can rewrite polluted Need candidates before internal review.
 - `brain --goal [--live] [--save] [prompt]` lets the clean brain refine Goal and optional queued Needs without running Feed.
 - `brain --clarify [--live] [--save] [prompt]` lets the clean brain ask human-facing questions and draft cognitive Needs before Feed when the Goal or next Need is underspecified.
 - `brain --intent [--live] [--save] [prompt]` lets the clean brain map Goal/Mem/Need/Feed into the next cognitive intent and clean Needs before Feed.
@@ -70,21 +70,20 @@ Updated: 2026-06-28
 - `explore [prompt]` lets the clean brain suggest cognitive Needs from Goal/Mem/Need/Feed without running Feed.
 - Clean-brain Goal, intent, brief, alignment, clarification, agenda, scout, memory, reflection, and exploration reports now include a Need audit that flags tool/API/command/file burden and exposes only clean Needs for follow-up commands or queueing.
 - `explore --save [prompt]` stores only audit-clean Needs in a reviewable Need Queue; `needs session [--live] [prompt]` writes a clean-brain review session, `needs take <index>` returns one command, and `needs script [path]` writes a reviewable Feed script without executing it.
-- The native HTML app can run `--json bootstrap` through the local app API from the command panel.
+- The native HTML app keeps bootstrap as internal startup plumbing behind `start` and `first-run`.
 - The native HTML app can show current Goal, status, refinements, and recent clean-brain Goal turns from persisted state.
-- The native HTML app can paste an external brain reply and apply it to Need Queue or Goal through the local app API.
-- The native HTML app can run Intent Session, Intent, Save Intent, Brief Session, Brief, Save Brief, Align Session, Align, Apply Align, Clarify Session, Clarify, Apply Clarify, Agenda Session, Agenda, Apply Agenda, Scout Session, Scout, and Apply Scout controls so questions, alignment checks, cognitive maps, and cognitive priorities can be drafted or imported without Feed execution.
-- The native HTML app can run Memory Session, Memory, and Apply Memory controls so memory Needs can be drafted or imported without Feed execution.
-- The native HTML app can take or drop individual queued Needs, write the pending Need Queue into a local reviewable Feed script, and write offline or live clean-brain review sessions.
+- The native HTML app can paste an external brain reply into Goal through the local app API; Need Queue apply/take/drop remains an internal or developer-only flow.
+- The native HTML app may show older clean-brain mode panels, but the product bridge only accepts Goal-facing brain work from users.
+- Memory, Need Queue, and review-session actions remain harness/agent internals unless routed through Goal.
 - `harness-repair-agent` can diagnose state, traces, check history, evolution artifacts, repo dirtiness, provider env, and local adapters as structured Feed.
 - `repair [query]` runs the harness-repair tentacle, records the Feed trace, exposes the latest repair plan when present, and queues the tentacle's structured next Need for review.
 - `repair continue [query]` runs repair, takes the queued clean Need, routes it back through the harness, and returns the continued Feed plus trace-scoring commands.
-- The native HTML app can score a repair Feed as satisfied, partial, or failed, then render the recent repair outcome memory.
+- Repair Feed scoring exists for harness feedback; direct user scoring from the app is no longer the main product path.
 - Repair scoring mirrors session-backed outcomes into `.octopus/harness-repair/<session>/OUTCOME.md` and `outcomes.jsonl`.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
 - The HTML install guide can expand each check to inspect stdout, stderr, exit code, and recent harness check history.
 - `check <tentacle> [index]` records compact harness history and the HTML install guide can rerun one check at a time.
-- The native HTML app can run a structured Feed test that installs the selected tentacle, sends the selected Need, and renders plan source, tool, action count, summary, and evidence.
+- Structured Feed tests remain available as internal/developer diagnostics; the user-facing app treats Feed results as observation.
 - `report` emits a state-aware product report with clean-brain context, tentacle context, capability status, gaps, and next commands.
 - The native HTML app can render the same product report from the local app API.
 - `preflight [--live]` turns the `0.1.0` readiness gate into CLI, JSON, and native HTML checks without live provider calls unless requested.
@@ -108,7 +107,7 @@ Updated: 2026-06-28
 - LLM-generated evolution candidates can carry a provider-assisted unified diff into drafts and authorized apply artifacts.
 - `evolve score` now records the outcome and immediately writes the next recommendation/apply artifacts from updated harness feedback.
 - Harness beat turns recent failed or partial check history, Feed traces, or repair outcomes into a written evolution proposal, recommendation, and apply plan.
-- Harness beat recommendations can be granted, written as reviewable apply artifacts, reviewed, and scored from the native HTML app.
+- Harness beat recommendations can be granted, written as reviewable apply artifacts, reviewed, and scored from internal/developer flows; the product app can observe the result.
 - `harness-repair-agent` can read heartbeat/evolution/state signals, probe adapter readiness, write `.octopus/harness-repair/SESSION.*`, `PROMPT.md`, optional provider-backed `DRAFT.md`, `REVIEW.md`, `NEXT_NEED.json`, `COMMANDS.sh`, `OUTCOME_MEMORY.md`, `CODE_CONTEXT.md`, and `REPAIR_PLAN.json`, continue from the latest repair plan through `heartbeat_repair`, record reviewed `OUTCOME.md` plus `.octopus/harness-repair/outcomes.jsonl`, then feed merged outcome memory and target code context into later reviewable repair plans.
 - The SWE read tool now returns a compact file/range header and line-numbered evidence.
 
@@ -280,6 +279,7 @@ Updated: 2026-06-28
 - Added structured bridge denial feedback for non-goal user writes, including policy id and suggested Goal commands.
 - Added the product bridge boundary to the `0.1.0` preflight evidence.
 - Added product-bridge evidence to the real-machine record template and audit.
+- Rolled the cleanup/version cadence to `0.0.16` after clean-brain alignment/scout modes, backend-aware provider routing, brain-goal bridge boundary, structured bridge denial feedback, product-bridge gates, docs cleanup, and version consistency.
 
 ## Remaining Gaps
 

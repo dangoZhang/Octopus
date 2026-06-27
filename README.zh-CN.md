@@ -51,7 +51,7 @@ octopus first-run "make this repo easier to use"
 - 触手执行：`Need + Tool + Action + Tool + Action -> Feed`。
 - Seed tentacles：SWE、computer-use、repo-maintainer、harness-repair、bash-only、json-feed、visual。
 - Provider：Codex CLI OAuth、OpenAI-compatible API、本地模型、LiteLLM 等。
-- 本地 app：安装、provider、Need Queue、Feed test、repair、route feedback、preflight、pet。
+- 本地 app：用户只改 Goal；provider、preflight、pet、trace、repair 和 harness 状态作为观察面。
 - Harness evolution：基于 Feed trace、check history、repair outcome 生成可审查的改动计划。
 
 ## 中文文档
@@ -61,4 +61,4 @@ octopus first-run "make this repo easier to use"
 - [英文架构](docs/architecture.md)
 - [产品 gap log](docs/product-gap.md)
 
-当前版本线是 `0.0.15`。`0.1.0` 需要完整真实机器记录、live provider gate、GitHub OAuth/PR 路径和发布前 preflight 全部通过。
+当前版本线是 `0.0.16`。`0.1.0` 需要完整真实机器记录、live provider gate、GitHub OAuth/PR 路径和发布前 preflight 全部通过。
