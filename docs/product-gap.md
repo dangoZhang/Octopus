@@ -35,7 +35,7 @@ Updated: 2026-06-27
 - The native HTML app can run `--json bootstrap` through the bridge from the command panel.
 - The native HTML app can show current Goal, status, refinements, and recent clean-brain Goal turns from persisted state.
 - The native HTML app can paste an external brain reply and apply it to Need Queue or Goal through the bridge.
-- The native HTML app can write the pending Need Queue into a local reviewable Feed script.
+- The native HTML app can take or drop individual queued Needs and write the pending Need Queue into a local reviewable Feed script.
 - `harness-repair-agent` can diagnose state, traces, check history, evolution artifacts, repo dirtiness, provider env, and local adapters as structured Feed.
 - `repair [query]` runs the harness-repair tentacle, records the Feed trace, and queues the tentacle's structured next Need for review.
 - The native HTML app can score a repair Feed as satisfied, partial, or failed, then render the recent repair outcome memory.
@@ -139,6 +139,7 @@ Updated: 2026-06-27
 - Added `brain --session [--goal] [prompt]` in CLI, JSON, product report, and native app so external Chat work has local prompt/reply/apply artifacts.
 - Added `brain --session --live [--goal] [prompt]` so a clean-brain provider can write `DRAFT.json` into the same reviewable session without mutating state or running Feed.
 - Added `needs script [path]` plus native HTML access so pending clean-brain Needs can become one reviewable Feed script while the queue remains unexecuted until a human runs it.
+- Added native HTML Need Queue take/drop controls so one clean-brain Need can become a reviewable Feed command without running tools.
 - Added `brain --goal [--live] [--save]` in CLI, JSON, and native app so the clean brain can maintain Goal and queue Needs without Feed execution.
 - Added recent Goal turns to JSON status and the native HTML Goal panel so users can inspect Goal changes without running another Feed.
 - Added `brain --apply` and `brain --apply-json` plus native HTML apply buttons so external Chat UIs can feed clean-brain JSON back into Goal or Need Queue without tool context.
@@ -169,7 +170,7 @@ Updated: 2026-06-27
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, clean-brain layer diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
 - GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
-- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, run structured Feed tests, score Feed traces, score repair outcomes, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill

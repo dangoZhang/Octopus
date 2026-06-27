@@ -138,7 +138,7 @@ octopus --state "$tmp/state.json" goal</code></pre>
 
       <h2>Local App</h2>
       <pre><code>octopus bridge</code></pre>
-      <p>Open <code>http://127.0.0.1:8765/app.html</code>. The app can bootstrap a local state, install tentacles, inspect context, apply external brain replies, run harness repair into Need Queue, run a structured Feed test, show grant/check/next reports, and grant local Octopus tool scopes.</p>
+      <p>Open <code>http://127.0.0.1:8765/app.html</code>. The app can bootstrap a local state, install tentacles, inspect context, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run harness repair into Need Queue, run a structured Feed test, show grant/check/next reports, and grant local Octopus tool scopes.</p>
       <p>The Feed panel can score the latest trace as satisfied, partial, or failed; the Repair panel can score repair outcomes through the same harness journal. Both feedback paths update route data and pet color.</p>
       <p>It can also save provider env to <code>.octopus/llm.env</code>; bridge reads that file when it runs child Octopus commands.</p>
 
@@ -177,7 +177,7 @@ octopus provider save local OCTOPUS_LOCAL "$tmp/local-llm.env"
 octopus provider save deepseek OCTOPUS_DEEPSEEK "$tmp/deepseek.env"
 octopus provider save gemini OCTOPUS_GEMINI "$tmp/gemini.env"
 octopus doctor</code></pre>
-      <p>The native app can generate or save provider env, show the same provider layers, run an explicit provider check, render <code>octopus report</code>, render <code>octopus preflight</code>, run harness repair into Need Queue, score repair outcomes, and write local preflight script/record artifacts.</p>
+      <p>The native app can generate or save provider env, show the same provider layers, run an explicit provider check, render <code>octopus report</code>, render <code>octopus preflight</code>, run harness repair into Need Queue, take/drop queued Needs, score repair outcomes, and write local preflight script/record artifacts.</p>
 
       <h2>Self-Iteration</h2>
       <pre><code>octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus
