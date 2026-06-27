@@ -22,6 +22,7 @@ Updated: 2026-06-28
 - Provider env supports optional model thinking controls: reasoning effort, token budget, temperature, top_p, and provider-specific JSON body keys.
 - The local app bridge now limits user-writable commands to `chat`, `goal set/refine`, `brain --goal`, and `first-run`; provider status/check and other diagnostics are observation-only.
 - Blocked local app bridge writes now return `user_writes_brain_goal_only` plus suggested Goal commands, so old/internal controls fail with product guidance instead of a generic server error.
+- `preflight` now includes a required `bridge_goal_surface` gate that checks allowed Goal writes, denied internal writes, and the structured denial policy.
 - `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
 - `start` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
 - `start` and `bootstrap` can materialize editable bundled seed tentacles under `.octopus/bundled-tentacles` when source tentacles are unavailable.
@@ -276,6 +277,7 @@ Updated: 2026-06-28
 - Generalized manifest tentacle planning, clean-brain council, and harness evolution to the same provider client factory, so Codex OAuth, API-key providers, local models, and LiteLLM gateways can feed tool-side thinking instead of only clean-brain chat.
 - Restricted the local product bridge so direct user mutation is brain-goal only; Need, Feed feedback, repair, evolve, installs, checks, provider writes, preflight record writes, OAuth grants, and pet image writes stay internal or developer-only.
 - Added structured bridge denial feedback for non-goal user writes, including policy id and suggested Goal commands.
+- Added the product bridge boundary to the `0.1.0` preflight evidence.
 
 ## Remaining Gaps
 

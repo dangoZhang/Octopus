@@ -8017,6 +8017,7 @@ fn preflight_report(
             ),
             "octopus context observe .",
         ),
+        bridge_goal_surface_preflight_check(state_path),
         preflight_check(
             "docs_and_pet",
             docs_ready,
@@ -8145,6 +8146,107 @@ fn preflight_report(
         live_provider,
         next,
     })
+}
+
+fn bridge_goal_surface_preflight_check(state_path: &Path) -> PreflightCheck {
+    let state = state_path.to_string_lossy().to_string();
+    let allowed_cases = [
+        vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "chat".to_string(),
+            "refine the goal".to_string(),
+        ],
+        vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "goal".to_string(),
+            "refine".to_string(),
+            "prefer clean Needs".to_string(),
+        ],
+        vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--goal".to_string(),
+            "--save".to_string(),
+            "tighten the objective".to_string(),
+        ],
+        vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "first-run".to_string(),
+            "make this repo easier".to_string(),
+        ],
+    ];
+    let denied_cases = [
+        vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "need".to_string(),
+            "observe".to_string(),
+            ".".to_string(),
+        ],
+        vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "repair".to_string(),
+            ".".to_string(),
+        ],
+        vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "provider".to_string(),
+            "save".to_string(),
+            "openai".to_string(),
+            "OCTOPUS_LLM".to_string(),
+        ],
+        vec![
+            "--state".to_string(),
+            state,
+            "--json".to_string(),
+            "preflight".to_string(),
+            "record".to_string(),
+            "append".to_string(),
+        ],
+    ];
+    let allowed_count = allowed_cases
+        .iter()
+        .filter(|args| bridge_command_allowed(args))
+        .count();
+    let denied_count = denied_cases
+        .iter()
+        .filter(|args| !bridge_command_allowed(args))
+        .count();
+    let denied_response = bridge_denied_response(&denied_cases[0]);
+    let policy_ok = !denied_response.ok
+        && denied_response.policy.as_deref() == Some("user_writes_brain_goal_only")
+        && denied_response
+            .suggested_args
+            .iter()
+            .any(|args| args.iter().any(|arg| arg == "--goal"));
+    preflight_check(
+        "bridge_goal_surface",
+        allowed_count == allowed_cases.len() && denied_count == denied_cases.len() && policy_ok,
+        true,
+        format!(
+            "allowed_goal_writes={allowed_count}/{}, denied_internal_writes={denied_count}/{}, policy={}",
+            allowed_cases.len(),
+            denied_cases.len(),
+            denied_response
+                .policy
+                .as_deref()
+                .unwrap_or("missing")
+        ),
+        "octopus chat \"refine the goal\"",
+    )
 }
 
 fn preflight_check(
@@ -17771,6 +17873,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .any(|item| item.id == "provider_feedback"));
         let preflight = preflight_report(&loaded, Path::new(&state), false).unwrap();
         assert!(!preflight.release_ready);
+        assert!(preflight
+            .checks
+            .iter()
+            .any(|item| item.id == "bridge_goal_surface" && item.status == "pass"));
         assert!(preflight
             .checks
             .iter()
