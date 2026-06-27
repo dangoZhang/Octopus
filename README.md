@@ -41,6 +41,8 @@ Use an OpenAI-compatible provider for live clean-brain calls and tool-side plann
 octopus provider save openai
 source .octopus/llm.env
 octopus provider check
+octopus brain --llm-prefix OCTOPUS_LLM --agenda --save "what matters next?"
+octopus brain --council --models OCTOPUS_LLM --save "ask clean brains"
 octopus brain --agenda --save "what matters next?"
 octopus brain --clarify --save "what should the user clarify?"
 octopus brain --deliberate --save "think before the next Need"

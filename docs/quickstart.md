@@ -55,6 +55,8 @@ octopus provider save openai
 source .octopus/llm.env
 octopus provider check
 octopus brain --agenda --save "what matters next?"
+octopus brain --llm-prefix OCTOPUS_LLM --agenda --save "what matters next?"
+octopus brain --council --models OCTOPUS_LLM --save "ask clean brains"
 octopus brain --live --save "what should the brain ask next?"
 ```
 

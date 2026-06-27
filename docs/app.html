@@ -495,10 +495,12 @@
             <button type="button" id="runBrainLive">Brain Live</button>
             <button type="button" id="runBrainClarify">Clarify</button>
             <button type="button" id="runBrainAgenda">Agenda</button>
+            <button type="button" id="runBrainPrefixAgenda">Agenda Model</button>
             <button type="button" id="runBrainDeliberate">Deliberate</button>
             <button type="button" id="runBrainReflect">Reflect</button>
             <button type="button" id="runBrainMemory">Memory</button>
             <button type="button" id="runBrainCouncil">Brain Council</button>
+            <button type="button" id="runBrainCouncilModels">Council Models</button>
             <button type="button" id="runBrainGoal">Brain Goal</button>
             <button type="button" id="applyBrainReply">Apply Reply</button>
             <button type="button" id="applyBrainClarification">Apply Clarify</button>
@@ -660,11 +662,13 @@
           `octopus --state ${shellQuote(state)} --json brain --clarify --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --agenda --session ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --agenda --save ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --llm-prefix ${shellQuote(providerPrefix)} --agenda --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --reflect --session ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --reflect --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --memory --session ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --memory --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --council --save ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --council --models ${shellQuote(providerPrefix)} --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --synthesize --session --apply drafts.json ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --synthesize --apply synthesis.json --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --clarify --apply clarification.json --save ${shellQuote(goal)}`,
@@ -1109,6 +1113,24 @@
         }
       }
 
+      async function runBrainPrefixAgendaReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        const prefix = $("providerPrefix").value.trim() || "OCTOPUS_LLM";
+        $("exploreReport").textContent = "building model agenda...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "brain", "--llm-prefix", prefix, "--agenda", "--save", goal]);
+          currentExploreReport = report.deliberation || null;
+          currentNeedQueueReport = report.queue || null;
+          renderExploreReport(report.deliberation || {});
+          renderNeedQueueReport(report.queue || {});
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("exploreReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runBrainReflectReport() {
         const state = $("state").value.trim() || ".octopus/state.json";
         const goal = $("goal").value.trim() || "build a clean-brain agent";
@@ -1149,6 +1171,24 @@
         $("exploreReport").textContent = "collecting council...";
         try {
           const report = await runBridgeJson(["--state", state, "--json", "brain", "--council", "--save", goal]);
+          currentExploreReport = (report.council && report.council.synthesis) || null;
+          currentNeedQueueReport = report.queue || null;
+          renderExploreReport((report.council && report.council.synthesis) || {});
+          renderNeedQueueReport(report.queue || {});
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("exploreReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runBrainCouncilModelsReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        const prefixes = $("providerPrefix").value.trim() || "OCTOPUS_LLM";
+        $("exploreReport").textContent = "collecting model council...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "brain", "--council", "--models", prefixes, "--save", goal]);
           currentExploreReport = (report.council && report.council.synthesis) || null;
           currentNeedQueueReport = report.queue || null;
           renderExploreReport((report.council && report.council.synthesis) || {});
@@ -3398,10 +3438,12 @@
       $("runBrainLive").addEventListener("click", () => runBrainLiveReport(false));
       $("runBrainClarify").addEventListener("click", runBrainClarifyReport);
       $("runBrainAgenda").addEventListener("click", runBrainAgendaReport);
+      $("runBrainPrefixAgenda").addEventListener("click", runBrainPrefixAgendaReport);
       $("runBrainDeliberate").addEventListener("click", runBrainDeliberateReport);
       $("runBrainReflect").addEventListener("click", runBrainReflectReport);
       $("runBrainMemory").addEventListener("click", runBrainMemoryReport);
       $("runBrainCouncil").addEventListener("click", runBrainCouncilReport);
+      $("runBrainCouncilModels").addEventListener("click", runBrainCouncilModelsReport);
       $("runBrainGoal").addEventListener("click", runBrainGoalReport);
       $("applyBrainReply").addEventListener("click", () => applyBrainReply(false));
       $("applyBrainClarification").addEventListener("click", applyBrainClarification);

@@ -1025,6 +1025,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let mut agenda = false;
             let mut apply_path = None;
             let mut apply_json = None;
+            let mut llm_prefix_override = None;
+            let mut council_prefixes_override = None;
             let mut prompt = Vec::new();
             let mut brain_index = 1;
             while brain_index < rest.len() {
@@ -1041,6 +1043,22 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     "--memory" => memory = true,
                     "--clarify" => clarify = true,
                     "--agenda" => agenda = true,
+                    "--llm-prefix" | "--provider-prefix" => {
+                        brain_index += 1;
+                        let Some(prefix) = rest.get(brain_index) else {
+                            return Err("brain --llm-prefix requires an env prefix".to_string());
+                        };
+                        llm_prefix_override = Some(parse_brain_llm_prefix(prefix)?);
+                    }
+                    "--models" => {
+                        brain_index += 1;
+                        let Some(prefixes) = rest.get(brain_index) else {
+                            return Err(
+                                "brain --models requires comma-separated env prefixes".to_string()
+                            );
+                        };
+                        council_prefixes_override = Some(parse_brain_llm_prefixes(prefixes)?);
+                    }
                     "--apply" => {
                         brain_index += 1;
                         let Some(path) = rest.get(brain_index) else {
@@ -1178,12 +1196,22 @@ fn run(args: Vec<String>) -> Result<(), String> {
             if agenda && clarify {
                 return Err("brain --agenda cannot be combined with --clarify".to_string());
             }
+            if council_prefixes_override.is_some() && !council {
+                return Err("brain --models requires --council".to_string());
+            }
             if rewrite && !has_apply_payload {
                 return Err("brain --rewrite requires --apply or --apply-json".to_string());
             }
             if synthesize && !session && !has_apply_payload {
                 return Err("brain --synthesize requires --apply or --apply-json".to_string());
             }
+            if llm_prefix_override.is_some() {
+                live = true;
+            }
+            let _brain_prefix_guard = llm_prefix_override
+                .as_deref()
+                .map(BrainLlmPrefixOverride::apply)
+                .transpose()?;
             let prompt = (!prompt.is_empty()).then(|| prompt.join(" "));
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             let prompt = prompt
@@ -1197,7 +1225,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 None
             };
             if council {
-                let report = run_brain_council(&loaded, &prompt, live)?;
+                let report = run_brain_council(
+                    &loaded,
+                    &prompt,
+                    live,
+                    council_prefixes_override.as_deref(),
+                )?;
                 if save {
                     let saved = save_brain_council(&mut loaded, report);
                     loaded.save(&state).map_err(|error| error.to_string())?;
@@ -10111,6 +10144,81 @@ fn clean_brain_council_llm_prefixes() -> Vec<String> {
     })
 }
 
+struct BrainLlmPrefixOverride {
+    saved: Vec<(&'static str, Option<String>)>,
+}
+
+impl BrainLlmPrefixOverride {
+    fn apply(prefix: &str) -> Result<Self, String> {
+        let prefix = parse_brain_llm_prefix(prefix)?;
+        let keys = brain_llm_override_keys();
+        let saved = keys
+            .iter()
+            .map(|key| (*key, env::var(key).ok()))
+            .collect::<Vec<_>>();
+        env::set_var("OCTOPUS_BRAIN_LLM", "1");
+        for key in keys
+            .iter()
+            .copied()
+            .filter(|key| *key != "OCTOPUS_BRAIN_LLM")
+        {
+            env::set_var(key, &prefix);
+        }
+        Ok(Self { saved })
+    }
+}
+
+impl Drop for BrainLlmPrefixOverride {
+    fn drop(&mut self) {
+        for (key, value) in self.saved.iter().rev() {
+            if let Some(value) = value {
+                env::set_var(key, value);
+            } else {
+                env::remove_var(key);
+            }
+        }
+    }
+}
+
+fn brain_llm_override_keys() -> [&'static str; 13] {
+    [
+        "OCTOPUS_BRAIN_LLM",
+        "OCTOPUS_BRAIN_LLM_PREFIX",
+        "OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX",
+        "OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX",
+        "OCTOPUS_BRAIN_AGENDA_LLM_PREFIX",
+        "OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX",
+        "OCTOPUS_BRAIN_REFLECT_LLM_PREFIX",
+        "OCTOPUS_BRAIN_MEMORY_LLM_PREFIX",
+        "OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX",
+        "OCTOPUS_BRAIN_GOAL_LLM_PREFIX",
+        "OCTOPUS_BRAIN_REWRITE_LLM_PREFIX",
+        "OCTOPUS_BRAIN_QUEUE_LLM_PREFIX",
+        "OCTOPUS_BRAIN_COUNCIL_LLM_PREFIXES",
+    ]
+}
+
+fn parse_brain_llm_prefix(prefix: &str) -> Result<String, String> {
+    let prefix = prefix.trim();
+    if !valid_env_prefix(prefix) {
+        return Err(format!(
+            "invalid brain env prefix: {prefix}; use letters, digits, and underscore"
+        ));
+    }
+    Ok(prefix.to_string())
+}
+
+fn parse_brain_llm_prefixes(value: &str) -> Result<Vec<String>, String> {
+    let prefixes = parse_llm_prefix_list(value);
+    if prefixes.is_empty() {
+        return Err("brain --models requires at least one env prefix".to_string());
+    }
+    prefixes
+        .iter()
+        .map(|prefix| parse_brain_llm_prefix(prefix))
+        .collect()
+}
+
 fn parse_llm_prefix_list(value: &str) -> Vec<String> {
     let mut prefixes = Vec::new();
     for prefix in value
@@ -10859,10 +10967,14 @@ fn run_brain_council(
     state: &HarnessState,
     prompt: &str,
     synthesize_live: bool,
+    prefixes_override: Option<&[String]>,
 ) -> Result<BrainCouncilReport, String> {
     let prompt_report = state.clean_brain_prompt(prompt.to_string(), 6);
     let messages = brain_deliberation_session_messages(&prompt_report);
-    let prefixes = clean_brain_council_llm_prefixes();
+    let has_prefixes_override = prefixes_override.is_some();
+    let prefixes = prefixes_override
+        .map(|prefixes| prefixes.to_vec())
+        .unwrap_or_else(clean_brain_council_llm_prefixes);
     let mut drafts = Vec::new();
     for prefix in &prefixes {
         let mut client =
@@ -10902,8 +11014,16 @@ fn run_brain_council(
     } else {
         state.clean_brain_synthesize_from_input(prompt.to_string(), 6, input)
     };
+    let model_arg = if has_prefixes_override {
+        format!(" --models {}", shell_arg(&prefixes.join(",")))
+    } else {
+        String::new()
+    };
     let mut next = vec![
-        format!("octopus brain --council --save {}", shell_arg(prompt)),
+        format!(
+            "octopus brain --council{model_arg} --save {}",
+            shell_arg(prompt)
+        ),
         "octopus needs script".to_string(),
     ];
     next.extend(synthesis.next.clone());
@@ -11536,7 +11656,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [addr] | bridge [addr] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [addr] | bridge [addr] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -12917,6 +13037,103 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"council b\",\"obs
 
     #[cfg(unix)]
     #[test]
+    fn cli_brain_council_models_override_routes_multiple_models_without_feed() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _env = env_guard();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-brain-council-models-{}",
+            std::process::id()
+        ));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl_a = dir.join("models-a.sh");
+        let curl_b = dir.join("models-b.sh");
+        fs::write(
+            &curl_a,
+            r#"#!/bin/sh
+printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"models a\",\"observations\":[\"model a looked at the goal\"],\"questions\":[\"what evidence is missing?\"],\"options\":[\"verify the next gap\"],\"risks\":[\"model a risk\"],\"needs\":[{\"kind\":\"verify\",\"query\":\"model-a cognitive need\"}]}"}}]}'
+"#,
+        )
+        .unwrap();
+        fs::write(
+            &curl_b,
+            r#"#!/bin/sh
+printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"models b\",\"observations\":[\"model b compared memory\"],\"questions\":[\"what should persist?\"],\"options\":[\"remember the durable point\"],\"risks\":[\"model b risk\"],\"needs\":[{\"kind\":\"remember\",\"query\":\"model-b cognitive memory\"}]}"}}]}'
+"#,
+        )
+        .unwrap();
+        for path in [&curl_a, &curl_b] {
+            let mut permissions = fs::metadata(path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(path, permissions).unwrap();
+        }
+
+        let old_prefixes = std::env::var("OCTOPUS_BRAIN_COUNCIL_LLM_PREFIXES").ok();
+        let old_a_model = std::env::var("OCTOPUS_MODELS_A_MODEL").ok();
+        let old_a_base_url = std::env::var("OCTOPUS_MODELS_A_BASE_URL").ok();
+        let old_a_api_key = std::env::var("OCTOPUS_MODELS_A_API_KEY").ok();
+        let old_a_curl = std::env::var("OCTOPUS_MODELS_A_CURL").ok();
+        let old_b_model = std::env::var("OCTOPUS_MODELS_B_MODEL").ok();
+        let old_b_base_url = std::env::var("OCTOPUS_MODELS_B_BASE_URL").ok();
+        let old_b_api_key = std::env::var("OCTOPUS_MODELS_B_API_KEY").ok();
+        let old_b_curl = std::env::var("OCTOPUS_MODELS_B_CURL").ok();
+        std::env::remove_var("OCTOPUS_BRAIN_COUNCIL_LLM_PREFIXES");
+        std::env::set_var("OCTOPUS_MODELS_A_MODEL", "models-a");
+        std::env::set_var("OCTOPUS_MODELS_A_BASE_URL", "https://models-a.example/v1");
+        std::env::remove_var("OCTOPUS_MODELS_A_API_KEY");
+        std::env::set_var(
+            "OCTOPUS_MODELS_A_CURL",
+            curl_a.to_string_lossy().to_string(),
+        );
+        std::env::set_var("OCTOPUS_MODELS_B_MODEL", "models-b");
+        std::env::set_var("OCTOPUS_MODELS_B_BASE_URL", "https://models-b.example/v1");
+        std::env::remove_var("OCTOPUS_MODELS_B_API_KEY");
+        std::env::set_var(
+            "OCTOPUS_MODELS_B_CURL",
+            curl_b.to_string_lossy().to_string(),
+        );
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--council".to_string(),
+            "--models".to_string(),
+            "OCTOPUS_MODELS_A,OCTOPUS_MODELS_B".to_string(),
+            "--save".to_string(),
+            "ask".to_string(),
+            "two".to_string(),
+            "models".to_string(),
+        ])
+        .unwrap();
+
+        restore_env("OCTOPUS_BRAIN_COUNCIL_LLM_PREFIXES", old_prefixes);
+        restore_env("OCTOPUS_MODELS_A_MODEL", old_a_model);
+        restore_env("OCTOPUS_MODELS_A_BASE_URL", old_a_base_url);
+        restore_env("OCTOPUS_MODELS_A_API_KEY", old_a_api_key);
+        restore_env("OCTOPUS_MODELS_A_CURL", old_a_curl);
+        restore_env("OCTOPUS_MODELS_B_MODEL", old_b_model);
+        restore_env("OCTOPUS_MODELS_B_BASE_URL", old_b_base_url);
+        restore_env("OCTOPUS_MODELS_B_API_KEY", old_b_api_key);
+        restore_env("OCTOPUS_MODELS_B_CURL", old_b_curl);
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert_eq!(restored.pending_need_queue_count(), 2);
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let content = fs::read_to_string(&state_path).unwrap();
+        assert!(content.contains("clean-brain council from 2 model(s)"));
+        assert!(content.contains("model-a cognitive need"));
+        assert!(content.contains("model-b cognitive memory"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn cli_brain_live_session_writes_draft_without_feed() {
         use std::os::unix::fs::PermissionsExt;
 
@@ -13509,7 +13726,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
         assert!(usage().contains(
-            "brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--apply path|-] [--apply-json json] [prompt]"
+            "brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt]"
         ));
         assert!(usage().contains("explore [--save] [prompt]"));
         assert!(usage().contains("needs [take|drop|script [path]|session [--live] [prompt]]"));
@@ -15036,6 +15253,89 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"brain live explor
         let content = fs::read_to_string(&state_path).unwrap();
         assert!(content.contains("brain live explored"));
         assert!(content.contains("goal is still clean"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cli_brain_llm_prefix_routes_single_call_without_feed() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _env = env_guard();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-cli-brain-llm-prefix-{}",
+            std::process::id()
+        ));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = dir.join("direct-curl.sh");
+        fs::write(
+            &curl,
+            r#"#!/bin/sh
+printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"direct prefix agenda\",\"observations\":[\"prefix observation\"],\"questions\":[\"prefix question\"],\"options\":[\"prefix option\"],\"risks\":[\"prefix risk\"],\"needs\":[{\"kind\":\"verify\",\"query\":\"direct-prefix cognitive need\"}]}"}}]}'
+"#,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+
+        let old_brain = std::env::var("OCTOPUS_BRAIN_LLM").ok();
+        let old_brain_prefix = std::env::var("OCTOPUS_BRAIN_LLM_PREFIX").ok();
+        let old_agenda_prefix = std::env::var("OCTOPUS_BRAIN_AGENDA_LLM_PREFIX").ok();
+        let old_model = std::env::var("OCTOPUS_DIRECT_MODEL").ok();
+        let old_base_url = std::env::var("OCTOPUS_DIRECT_BASE_URL").ok();
+        let old_api_key = std::env::var("OCTOPUS_DIRECT_API_KEY").ok();
+        let old_curl = std::env::var("OCTOPUS_DIRECT_CURL").ok();
+        std::env::remove_var("OCTOPUS_BRAIN_LLM");
+        std::env::remove_var("OCTOPUS_BRAIN_LLM_PREFIX");
+        std::env::remove_var("OCTOPUS_BRAIN_AGENDA_LLM_PREFIX");
+        std::env::set_var("OCTOPUS_DIRECT_MODEL", "direct-model");
+        std::env::set_var("OCTOPUS_DIRECT_BASE_URL", "https://direct.example/v1");
+        std::env::remove_var("OCTOPUS_DIRECT_API_KEY");
+        std::env::set_var("OCTOPUS_DIRECT_CURL", curl.to_string_lossy().to_string());
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--llm-prefix".to_string(),
+            "OCTOPUS_DIRECT".to_string(),
+            "--agenda".to_string(),
+            "--save".to_string(),
+            "route".to_string(),
+            "direct".to_string(),
+            "model".to_string(),
+        ])
+        .unwrap();
+
+        assert_eq!(std::env::var("OCTOPUS_BRAIN_LLM").ok(), old_brain.clone());
+        assert_eq!(
+            std::env::var("OCTOPUS_BRAIN_LLM_PREFIX").ok(),
+            old_brain_prefix.clone()
+        );
+        assert_eq!(
+            std::env::var("OCTOPUS_BRAIN_AGENDA_LLM_PREFIX").ok(),
+            old_agenda_prefix.clone()
+        );
+        restore_env("OCTOPUS_BRAIN_LLM", old_brain);
+        restore_env("OCTOPUS_BRAIN_LLM_PREFIX", old_brain_prefix);
+        restore_env("OCTOPUS_BRAIN_AGENDA_LLM_PREFIX", old_agenda_prefix);
+        restore_env("OCTOPUS_DIRECT_MODEL", old_model);
+        restore_env("OCTOPUS_DIRECT_BASE_URL", old_base_url);
+        restore_env("OCTOPUS_DIRECT_API_KEY", old_api_key);
+        restore_env("OCTOPUS_DIRECT_CURL", old_curl);
+
+        let loaded = HarnessState::load(&state_path).unwrap();
+        assert_eq!(loaded.pending_need_queue_count(), 1);
+        assert!(loaded.feed_traces.is_empty());
+        assert!(loaded.routes.scores.is_empty());
+        let content = fs::read_to_string(&state_path).unwrap();
+        assert!(content.contains("direct prefix agenda"));
+        assert!(content.contains("direct-prefix cognitive need"));
         let _ = fs::remove_dir_all(dir);
     }
 
