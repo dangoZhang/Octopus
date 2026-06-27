@@ -812,6 +812,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let mut save = false;
             let mut refine_goal = false;
             let mut session = false;
+            let mut rewrite = false;
             let mut apply_path = None;
             let mut apply_json = None;
             let mut prompt = Vec::new();
@@ -822,6 +823,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     "--save" => save = true,
                     "--goal" => refine_goal = true,
                     "--session" => session = true,
+                    "--rewrite" => rewrite = true,
                     "--apply" => {
                         brain_index += 1;
                         let Some(path) = rest.get(brain_index) else {
@@ -840,13 +842,36 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 }
                 brain_index += 1;
             }
+            let has_apply_payload = apply_json.is_some() || apply_path.is_some();
+            if rewrite && refine_goal {
+                return Err("brain --rewrite cannot be combined with --goal".to_string());
+            }
+            if rewrite && !has_apply_payload {
+                return Err("brain --rewrite requires --apply or --apply-json".to_string());
+            }
             let prompt = (!prompt.is_empty()).then(|| prompt.join(" "));
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             let prompt = prompt
                 .or_else(|| loaded.goal.as_ref().map(|goal| goal.objective.clone()))
                 .unwrap_or_else(|| "what should the brain ask next?".to_string());
+            let apply_payload = if let Some(payload) = apply_json {
+                Some(payload)
+            } else if let Some(path) = apply_path {
+                Some(read_brain_apply_payload(&path)?)
+            } else {
+                None
+            };
             if session {
-                let report = write_brain_session(&loaded, &state, &prompt, refine_goal, live)?;
+                let report = if rewrite {
+                    let payload = apply_payload.as_deref().ok_or_else(|| {
+                        "brain --rewrite --session requires a reply payload".to_string()
+                    })?;
+                    let draft =
+                        parse_brain_reply::<BrainExploreDraft>(payload, "clean-brain rewrite")?;
+                    write_brain_rewrite_session(&loaded, &state, &prompt, draft, live)?
+                } else {
+                    write_brain_session(&loaded, &state, &prompt, refine_goal, live)?
+                };
                 if json {
                     println!(
                         "{}",
@@ -855,11 +880,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 } else {
                     print_brain_session(&report, language);
                 }
-            } else if let Some(payload) = apply_json
-                .map(Ok)
-                .or_else(|| apply_path.map(|path| read_brain_apply_payload(&path)))
-                .transpose()?
-            {
+            } else if let Some(payload) = apply_payload {
                 if refine_goal {
                     let refinement =
                         parse_brain_reply::<GoalRefinement>(&payload, "clean-brain goal")?;
@@ -892,7 +913,21 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 } else {
                     let draft =
                         parse_brain_reply::<BrainExploreDraft>(&payload, "clean-brain explore")?;
-                    let report = loaded.clean_brain_explore_from_draft(prompt.clone(), 6, draft);
+                    let report = if rewrite {
+                        if live || clean_brain_llm_enabled() {
+                            let mut client = clean_brain_llm_client()?;
+                            loaded.clean_brain_rewrite_with_client(
+                                prompt.clone(),
+                                6,
+                                draft,
+                                &mut client,
+                            )?
+                        } else {
+                            loaded.clean_brain_rewrite_from_draft(prompt.clone(), 6, draft)
+                        }
+                    } else {
+                        loaded.clean_brain_explore_from_draft(prompt.clone(), 6, draft)
+                    };
                     if save {
                         let saved = loaded.queue_exploration_report(&report);
                         loaded.save(&state).map_err(|error| error.to_string())?;
@@ -5215,6 +5250,12 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             Some("octopus brain --live \"what should the brain ask next?\""),
         ),
         product_capability(
+            "clean_brain_rewrite",
+            "ready",
+            "provider-backed or external-chat rewrite turns polluted model Needs into cognitive Needs before queueing",
+            Some("octopus brain --rewrite --live --apply reply.json --save"),
+        ),
+        product_capability(
             "need_queue",
             "ready",
             format!(
@@ -8388,6 +8429,96 @@ fn write_brain_session(
     })
 }
 
+fn write_brain_rewrite_session(
+    state: &HarnessState,
+    state_path: &Path,
+    prompt: &str,
+    draft: BrainExploreDraft,
+    live: bool,
+) -> Result<BrainSessionReport, String> {
+    let prompt_report = state.clean_brain_prompt(prompt.to_string(), 6);
+    let raw_report = state.clean_brain_explore_from_draft(prompt.to_string(), 6, draft);
+    let messages = brain_rewrite_session_messages(&prompt_report, &raw_report);
+    let reply_template = serde_json::json!({
+        "summary": "rewritten clean Needs",
+        "needs": [
+            {"kind": "verify", "query": "short cognitive request"}
+        ]
+    });
+    let session_dir = next_brain_session_dir(state_path)?;
+    fs::create_dir_all(&session_dir).map_err(|error| error.to_string())?;
+
+    let prompt_path = session_dir.join("PROMPT.md");
+    let messages_path = session_dir.join("messages.json");
+    let reply_path = session_dir.join("REPLY.json");
+    let draft_path = session_dir.join("DRAFT.json");
+    let command_path = session_dir.join("COMMANDS.sh");
+    let state_arg = shell_arg(state_path.to_string_lossy().as_ref());
+    let prompt_arg = shell_arg(prompt);
+    let reply_arg = shell_arg(reply_path.to_string_lossy().as_ref());
+    let apply_command = format!(
+        "octopus --state {state_arg} brain --rewrite --apply {reply_arg} --save {prompt_arg}"
+    );
+
+    fs::write(
+        &prompt_path,
+        brain_session_prompt_markdown(&prompt_report, &messages, "rewrite", &apply_command),
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        &messages_path,
+        serde_json::to_string_pretty(&messages).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        &reply_path,
+        serde_json::to_string_pretty(&reply_template).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    let draft_path = if live {
+        let mut client = clean_brain_llm_client()?;
+        let response = client.chat(&messages)?;
+        let draft = clean_brain_session_draft_json(&response.content)?;
+        fs::write(&draft_path, draft).map_err(|error| error.to_string())?;
+        Some(draft_path)
+    } else {
+        None
+    };
+    fs::write(
+        &command_path,
+        format!(
+            "#!/usr/bin/env sh\nset -eu\n# Paste the rewritten clean Needs into REPLY.json first.\n{apply_command}\n"
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    make_executable(&command_path)?;
+    let draft_path_string = draft_path
+        .as_ref()
+        .map(|path| path.to_string_lossy().to_string());
+    let mut next = Vec::new();
+    if draft_path_string.is_some() {
+        next.push("review DRAFT.json, then copy accepted JSON into REPLY.json".to_string());
+    } else {
+        next.push("paste PROMPT.md or messages.json into a chat model".to_string());
+        next.push("replace REPLY.json with rewritten clean Needs".to_string());
+    }
+    next.push(apply_command.clone());
+
+    Ok(BrainSessionReport {
+        policy: prompt_report.policy,
+        mode: "rewrite".to_string(),
+        prompt: prompt.to_string(),
+        session_dir: session_dir.to_string_lossy().to_string(),
+        prompt_path: prompt_path.to_string_lossy().to_string(),
+        messages_path: messages_path.to_string_lossy().to_string(),
+        reply_path: reply_path.to_string_lossy().to_string(),
+        draft_path: draft_path_string,
+        command_path: command_path.to_string_lossy().to_string(),
+        apply_command,
+        next,
+    })
+}
+
 fn clean_brain_session_draft_json(content: &str) -> Result<String, String> {
     if let Some(object) = extract_json_object(content) {
         return Ok(format!("{}\n", object.trim()));
@@ -8674,6 +8805,35 @@ fn brain_goal_session_messages(report: &BrainPromptReport) -> Vec<ChatMessage> {
     ]
 }
 
+fn brain_rewrite_session_messages(
+    brain: &BrainPromptReport,
+    raw: &BrainExploreReport,
+) -> Vec<ChatMessage> {
+    let context = serde_json::json!({
+        "policy": brain.policy,
+        "slots": ["Goal", "Mem", "Need", "Feed"],
+        "goal": brain.goal,
+        "mem": brain.mem,
+        "recent_need_feed": brain.recent,
+        "raw_summary": raw.summary,
+        "raw_needs": raw.needs,
+        "audit": raw.audit,
+    });
+    vec![
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain Need rewrite layer. You see only Goal, Mem, Need, Feed, and rejected Need candidates. Rewrite tool, API, command, file, route, or implementation details into cognitive Needs only. Do not choose tools or implementation. Return only JSON: {\"summary\":\"short rewrite\",\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!(
+                "Clean brain rewrite prompt: {}\nClean brain context JSON: {context}",
+                brain.prompt
+            ),
+        ),
+    ]
+}
+
 fn brain_session_prompt_markdown(
     report: &BrainPromptReport,
     messages: &[ChatMessage],
@@ -8727,7 +8887,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -9023,6 +9183,123 @@ mod tests {
         assert!(content.contains("goal evidence stays clean"));
         assert!(!content.contains("cargo test"));
         let _ = fs::remove_file(path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cli_brain_rewrite_live_saves_rewritten_clean_needs() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _env = env_guard();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-brain-rewrite-state-{}",
+            std::process::id()
+        ));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = dir.join("fake-curl.sh");
+        fs::write(
+            &curl,
+            r#"#!/bin/sh
+printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"rewrite clean\",\"needs\":[{\"kind\":\"verify\",\"query\":\"whether test evidence supports the goal\"}]}"}}]}'
+"#,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+
+        let old_brain = std::env::var("OCTOPUS_BRAIN_LLM").ok();
+        let old_prefix = std::env::var("OCTOPUS_BRAIN_LLM_PREFIX").ok();
+        let old_model = std::env::var("OCTOPUS_BRAIN_REWRITE_MODEL").ok();
+        let old_base_url = std::env::var("OCTOPUS_BRAIN_REWRITE_BASE_URL").ok();
+        let old_api_key = std::env::var("OCTOPUS_BRAIN_REWRITE_API_KEY").ok();
+        let old_curl = std::env::var("OCTOPUS_BRAIN_REWRITE_CURL").ok();
+        std::env::set_var("OCTOPUS_BRAIN_LLM", "1");
+        std::env::set_var("OCTOPUS_BRAIN_LLM_PREFIX", "OCTOPUS_BRAIN_REWRITE");
+        std::env::set_var("OCTOPUS_BRAIN_REWRITE_MODEL", "test-model");
+        std::env::set_var("OCTOPUS_BRAIN_REWRITE_BASE_URL", "https://llm.example/v1");
+        std::env::remove_var("OCTOPUS_BRAIN_REWRITE_API_KEY");
+        std::env::set_var(
+            "OCTOPUS_BRAIN_REWRITE_CURL",
+            curl.to_string_lossy().to_string(),
+        );
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--rewrite".to_string(),
+            "--live".to_string(),
+            "--apply-json".to_string(),
+            "{\"summary\":\"dirty\",\"needs\":[{\"kind\":\"execute\",\"query\":\"cargo test -p octopus-core\"}]}".to_string(),
+            "--save".to_string(),
+            "what".to_string(),
+            "next".to_string(),
+        ])
+        .unwrap();
+
+        restore_env("OCTOPUS_BRAIN_LLM", old_brain);
+        restore_env("OCTOPUS_BRAIN_LLM_PREFIX", old_prefix);
+        restore_env("OCTOPUS_BRAIN_REWRITE_MODEL", old_model);
+        restore_env("OCTOPUS_BRAIN_REWRITE_BASE_URL", old_base_url);
+        restore_env("OCTOPUS_BRAIN_REWRITE_API_KEY", old_api_key);
+        restore_env("OCTOPUS_BRAIN_REWRITE_CURL", old_curl);
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert_eq!(restored.pending_need_queue_count(), 1);
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let content = fs::read_to_string(&state_path).unwrap();
+        assert!(content.contains("rewrite clean"));
+        assert!(content.contains("whether test evidence supports the goal"));
+        assert!(!content.contains("cargo test"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_brain_rewrite_session_writes_external_chat_artifacts_without_feed() {
+        let _env = env_guard();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-brain-rewrite-session-{}",
+            std::process::id()
+        ));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--rewrite".to_string(),
+            "--session".to_string(),
+            "--apply-json".to_string(),
+            "{\"summary\":\"dirty\",\"needs\":[{\"kind\":\"execute\",\"query\":\"cargo test -p octopus-core\"}]}".to_string(),
+            "rewrite".to_string(),
+            "as".to_string(),
+            "Need".to_string(),
+        ])
+        .unwrap();
+
+        let session_dir = dir.join("brain").join("session-1");
+        let messages = fs::read_to_string(session_dir.join("messages.json")).unwrap();
+        let prompt = fs::read_to_string(session_dir.join("PROMPT.md")).unwrap();
+        let command = fs::read_to_string(session_dir.join("COMMANDS.sh")).unwrap();
+        assert!(messages.contains("Need rewrite layer"));
+        assert!(messages.contains("cargo test -p octopus-core"));
+        assert!(prompt.contains("mode: rewrite"));
+        assert!(command.contains("brain --rewrite --apply"));
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        assert_eq!(restored.pending_need_queue_count(), 0);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -9718,7 +9995,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
         assert!(usage().contains(
-            "brain [--goal] [--live] [--save] [--session] [--apply path|-] [--apply-json json] [prompt]"
+            "brain [--goal] [--live] [--save] [--session] [--rewrite] [--apply path|-] [--apply-json json] [prompt]"
         ));
         assert!(usage().contains("explore [--save] [prompt]"));
         assert!(usage().contains("needs [take|drop|script [path]|session [--live] [prompt]]"));

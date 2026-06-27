@@ -485,9 +485,11 @@
             <button type="button" id="runBrainGoalSession">Goal Session</button>
             <button type="button" id="runBrainLiveSession">Live Session</button>
             <button type="button" id="runBrainGoalLiveSession">Goal Live Session</button>
+            <button type="button" id="runBrainRewriteSession">Rewrite Session</button>
             <button type="button" id="runBrainLive">Brain Live</button>
             <button type="button" id="runBrainGoal">Brain Goal</button>
             <button type="button" id="applyBrainReply">Apply Reply</button>
+            <button type="button" id="rewriteBrainReply">Rewrite Reply</button>
             <button type="button" id="applyBrainGoal">Apply Goal</button>
             <button type="button" id="runExplore">Explore</button>
             <button type="button" id="saveExplore">Save Explore</button>
@@ -846,6 +848,26 @@
         }
       }
 
+      async function runBrainRewriteSessionReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        const reply = $("brainReply").value.trim();
+        if (!reply) {
+          $("brainPromptReport").textContent = "empty brain reply";
+          return;
+        }
+        $("brainPromptReport").textContent = "writing rewrite session...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "brain", "--rewrite", "--session", "--apply-json", reply, goal]);
+          currentBrainSessionReport = report;
+          renderBrainSessionReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("brainPromptReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runGoalStatusReport() {
         const state = $("state").value.trim() || ".octopus/state.json";
         $("goalReport").textContent = "loading...";
@@ -923,7 +945,7 @@
         }
       }
 
-      async function applyBrainReply(refineGoal = false) {
+      async function applyBrainReply(refineGoal = false, rewrite = false) {
         const state = $("state").value.trim() || ".octopus/state.json";
         const goal = $("goal").value.trim() || "build a clean-brain agent";
         const reply = $("brainReply").value.trim();
@@ -931,11 +953,13 @@
           $("exploreReport").textContent = "empty brain reply";
           return;
         }
-        $("exploreReport").textContent = refineGoal ? "applying goal..." : "applying reply...";
+        $("exploreReport").textContent = refineGoal ? "applying goal..." : rewrite ? "rewriting reply..." : "applying reply...";
         try {
           const args = refineGoal
             ? ["--state", state, "--json", "brain", "--goal", "--apply-json", reply, "--save", goal]
-            : ["--state", state, "--json", "brain", "--apply-json", reply, "--save", goal];
+            : rewrite
+              ? ["--state", state, "--json", "brain", "--rewrite", "--live", "--apply-json", reply, "--save", goal]
+              : ["--state", state, "--json", "brain", "--apply-json", reply, "--save", goal];
           const report = await runBridgeJson(args);
           if (refineGoal) {
             currentExploreReport = report.goal || null;
@@ -2939,10 +2963,12 @@
       $("runBrainGoalSession").addEventListener("click", () => runBrainSessionReport(true));
       $("runBrainLiveSession").addEventListener("click", () => runBrainSessionReport(false, true));
       $("runBrainGoalLiveSession").addEventListener("click", () => runBrainSessionReport(true, true));
+      $("runBrainRewriteSession").addEventListener("click", runBrainRewriteSessionReport);
       $("runGoalStatus").addEventListener("click", runGoalStatusReport);
       $("runBrainLive").addEventListener("click", () => runBrainLiveReport(false));
       $("runBrainGoal").addEventListener("click", runBrainGoalReport);
       $("applyBrainReply").addEventListener("click", () => applyBrainReply(false));
+      $("rewriteBrainReply").addEventListener("click", () => applyBrainReply(false, true));
       $("applyBrainGoal").addEventListener("click", () => applyBrainReply(true));
       $("runExplore").addEventListener("click", () => runExploreReport(false));
       $("saveExplore").addEventListener("click", () => runExploreReport(true));
