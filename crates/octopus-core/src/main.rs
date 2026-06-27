@@ -4105,20 +4105,40 @@ fn write_sse_event(
 }
 
 fn bridge_static(path: &str) -> Result<(&'static str, Vec<u8>), String> {
-    let file = match path {
-        "/" | "/app.html" => "app.html",
-        "/index.html" => "index.html",
-        "/pet.html" => "pet.html",
-        "/quickstart.html" => "quickstart.html",
-        "/about.html" => "about.html",
-        "/references.html" => "references.html",
-        "/self-iteration.html" => "self-iteration.html",
-        _ => return Err("bridge page not found".to_string()),
+    let Some((file, embedded)) = bridge_static_asset(path) else {
+        return Err("bridge page not found".to_string());
     };
     let path = repo_root().join("docs").join(file);
-    fs::read(path)
-        .map(|body| ("text/html", body))
-        .map_err(|error| format!("bridge static file unavailable: {error}"))
+    let body = fs::read(path).unwrap_or_else(|_| embedded.to_vec());
+    Ok(("text/html", body))
+}
+
+fn bridge_static_asset(path: &str) -> Option<(&'static str, &'static [u8])> {
+    match path {
+        "/" | "/app.html" => Some(("app.html", &include_bytes!("../../../docs/app.html")[..])),
+        "/index.html" => Some((
+            "index.html",
+            &include_bytes!("../../../docs/index.html")[..],
+        )),
+        "/pet.html" => Some(("pet.html", &include_bytes!("../../../docs/pet.html")[..])),
+        "/quickstart.html" => Some((
+            "quickstart.html",
+            &include_bytes!("../../../docs/quickstart.html")[..],
+        )),
+        "/about.html" => Some((
+            "about.html",
+            &include_bytes!("../../../docs/about.html")[..],
+        )),
+        "/references.html" => Some((
+            "references.html",
+            &include_bytes!("../../../docs/references.html")[..],
+        )),
+        "/self-iteration.html" => Some((
+            "self-iteration.html",
+            &include_bytes!("../../../docs/self-iteration.html")[..],
+        )),
+        _ => None,
+    }
 }
 
 fn run_bridge_command(args: &[String]) -> Result<BridgeRunResponse, String> {
@@ -11022,10 +11042,10 @@ fn parse_status(value: &str) -> Result<Status, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bridge_command_allowed, bridge_command_name, check_report, http_content_length,
-        install_report, is_broken_pipe_panic, localize_summary, parse_bridge_env_overlay,
-        percent_encode_path, pet_report, pet_report_for_state, preflight_report,
-        prepare_bridge_state, product_report, provider_status_report,
+        bridge_command_allowed, bridge_command_name, bridge_static, bridge_static_asset,
+        check_report, http_content_length, install_report, is_broken_pipe_panic, localize_summary,
+        parse_bridge_env_overlay, percent_encode_path, pet_report, pet_report_for_state,
+        preflight_report, prepare_bridge_state, product_report, provider_status_report,
         real_machine_record_status_from_parts, repair_report, run, skill_reports, starter_report,
         usage, write_pet_image_report, Language,
     };
@@ -12892,6 +12912,19 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn bridge_static_has_embedded_app_fallback() {
+        let (content_type, app) = bridge_static("/app.html").unwrap();
+        let (_, index) = bridge_static("/").unwrap();
+        let (_, pet_embedded) = bridge_static_asset("/pet.html").unwrap();
+
+        assert_eq!(content_type, "text/html");
+        assert!(String::from_utf8_lossy(&app).contains("Command Surface"));
+        assert!(String::from_utf8_lossy(&index).contains("Command Surface"));
+        assert!(String::from_utf8_lossy(pet_embedded).contains("pixel-pet"));
+        assert!(bridge_static("/missing.html").is_err());
     }
 
     #[test]

@@ -53,4 +53,4 @@ octopus brain --live --save "what should the brain ask next?"
 - Tool-side LLM planning with grants, traces, route scores, feedback scoring, and reviewable harness evolution drafts.
 - Native HTML app, local bridge, install reports, provider setup, preflight gates, and pixel pet SVG export.
 
-Pre-release line: `0.0.11`. `0.1.0` waits for recorded real-machine testing.
+Pre-release line: `0.0.12`. `0.1.0` waits for recorded real-machine testing.

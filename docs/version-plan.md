@@ -1,6 +1,6 @@
 # Version Plan
 
-Current version: `0.0.11`.
+Current version: `0.0.12`.
 
 Cadence from this plan forward:
 
@@ -13,7 +13,7 @@ Release checklist:
 - `docs/product-gap.md` records current shape, filled gaps, and next fill.
 - CI stays green for Rust, Python, manifests, tentacle runtime checks, pet page, and install path.
 - `octopus preflight --live` is the release-readiness summary before `0.1.0` tags.
-- Pages deploys `index.html`, `app.html`, `pet.html`, quickstart, architecture, research, and self-iteration docs.
+- Pages deploys `index.html`, `app.html`, `pet.html`, quickstart, architecture, references, and self-iteration docs.
 - Version changes land together in `crates/octopus-core/Cargo.toml` and `pyproject.toml`.
 - `0.1.0` is reserved for the first release-ready build after recorded real-machine testing.
 - Every tag from `0.1.0` onward requires real-machine testing before the tag is pushed.
@@ -25,8 +25,8 @@ Real-machine test gate for `0.1.0` and later tags:
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
-Last cleanup/version correction: `0.0.11` on 2026-06-27. Scope: repair action plans, heartbeat plan pickup, repair plan/report/app surfacing, REVIEW.md bundles, trace-aware repair scoring, starter choice feedback, README product landing polish, and version consistency; no tag cut.
+Last cleanup/version correction: `0.0.12` on 2026-06-27. Scope: clean-brain clarification/reflection/memory/council/synthesis, full local bridge startup, embedded HTML app fallback, and version consistency; no tag cut.
 
-Product commits toward `0.0.12`: 8/8.
+Product commits toward `0.0.13`: 0/8.
 
-Next planned cleanup/version commit: `0.0.12`.
+Next planned cleanup/version commit: `0.0.13`.

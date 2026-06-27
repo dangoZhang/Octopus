@@ -20,6 +20,7 @@ Updated: 2026-06-27
 - `provider save` writes reusable provider env to `.octopus/llm.env` by default, and bridge overlays that file onto child Octopus commands.
 - The native HTML app can generate or save provider env, render provider layer readiness, and run an explicit live provider check through the bridge.
 - `bridge` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
+- `bridge` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
 - `bootstrap` creates local state files, adapts to the project, installs seed tentacles, pulses heartbeat, and returns a product report plus next commands.
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
@@ -207,9 +208,11 @@ Updated: 2026-06-27
 - Reworked README into a product-page share surface with a first-screen story, edge-intelligence insight, differentiators, install/use path, and usable pre-release boundary.
 - Added starter choice feedback so accepted, ignored, and failed starter picks become compact harness records, influence later recommendation ranking, update pet state, and show in the native HTML app.
 - Rolled the cleanup/version cadence to `0.0.11` after repair action plans, heartbeat plan pickup, repair plan/report/app surfacing, REVIEW.md bundles, trace-aware repair scoring, starter choice feedback, and README product landing polish.
+- Rolled the cleanup/version cadence to `0.0.12` after clean-brain clarification/reflection/memory/council/synthesis, full local bridge startup, embedded HTML app fallback, and version consistency.
 - Tightened README to story plus Quick Install & Use, and kept English and Chinese docs homepages as shorter product pages with the value promise, first clean loop, usable surface, and pre-`0.1.0` boundary visible before deep docs.
 - Added `pet image [state] [path]` so the color-changing pixel Octopus can be exported as SVG from the same state mapping used by CLI and HTML.
 - Made `octopus bridge` start the whole local project surface by bootstrapping state and seed tentacles before serving the native app.
+- Embedded native HTML pages into the Rust binary as a bridge fallback so installed binaries can serve the app even when source docs are unavailable.
 
 ## Remaining Gaps
 
