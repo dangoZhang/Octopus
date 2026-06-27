@@ -44,6 +44,7 @@ Updated: 2026-06-27
 - `preflight [--live]` turns the `0.1.0` readiness gate into CLI, JSON, and native HTML checks without live provider calls unless requested.
 - `preflight script [path]` writes a reviewable local release-gate script that runs bootstrap, Feed, checks, feedback, beat, pet, report, and optional live provider/PR dry-run gates.
 - `preflight record [path]` writes a real-machine evidence template with GitHub install, core loop, bridge/app, live provider, and PR dry-run commands.
+- The real-machine record gate accepts a current recorded head, or a docs-only record commit whose parent head is recorded.
 - Context policy is explicit: clean brain sees `Goal + Mem + Need + Feed`; tentacles see `Need + Tool + Action + Tool + Action -> Feed`.
 - `context [kind query]` now renders the clean-brain context slots, memory summary, recent Need/Feed, and installed tentacle tool/action context as CLI, JSON, and native HTML output.
 - `think <tentacle> <kind> <query>` exposes tool-side planning and planned actions without executing tools.
@@ -140,7 +141,9 @@ Updated: 2026-06-27
 - Added `preflight [--live]` so release readiness can check state, seed tentacles, manifests, context boundary, docs/pet, LLM layers, live provider, feedback data, GitHub PR path, current-head real-machine record, desktop adapters, and harness repair.
 - Added `preflight script [path]` plus native HTML access so release-gate commands can be generated, reviewed, and run on a real machine.
 - Added `preflight record [path]` plus native HTML access so real-machine evidence can be generated as a reviewable Markdown record before appending to the gate log.
+- Made the real-machine record gate self-reference-safe for docs-only record commits.
 - Added `repair [query]` plus native HTML access so harness-repair Feed can become a queued clean-brain Need without exposing tools to the brain.
+- Rebuilt README into a product-page first share surface with the Octopus story, fast install path, current usable surface, and proof kept above the links.
 - Rolled the cleanup/version cadence to `0.0.7` after bootstrap, clean-brain exploration, harness-repair state paths, preflight gates, product README polish, and remote deployment cleanup.
 
 ## Remaining Gaps
@@ -149,7 +152,7 @@ Updated: 2026-06-27
 - LLM evolution can generate candidates and provider-assisted patch drafts from manifest surfaces, scored outcomes, recent Feed traces, and check history; local candidates now also target traced or failing runtime files, and harness beat can start from Feed trace or check feedback while app and CLI patch writes stay review/grant-bound.
 - Harness-repair diagnosis can now queue its next Need; closing the loop still needs real scored repairs from provider-backed apply/review runs.
 - Product reporting is available in CLI and app; report quality still needs feedback from real project states.
-- Preflight now exposes the release gate and record template; current readiness still depends on running that gate with live provider, OAuth PR publishing, scored feedback data, and appending the current-head result.
+- Preflight now exposes the release gate and record template; current readiness still depends on running that gate with live provider, OAuth PR publishing, scored feedback data, and appending a current-head or docs-only parent-recorded result.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, clean-brain layer diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.

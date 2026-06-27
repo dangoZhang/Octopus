@@ -330,6 +330,12 @@ struct PreflightCheck {
     next: String,
 }
 
+#[derive(Debug)]
+struct RealMachineRecordStatus {
+    passed: bool,
+    evidence: String,
+}
+
 #[derive(Debug, serde::Serialize)]
 struct PreflightScriptReport {
     path: String,
@@ -4428,9 +4434,8 @@ fn preflight_report(
     let current_head = git_short_head();
     let real_machine_doc = repo_root().join("docs/real-machine-test.md");
     let real_machine_log = fs::read_to_string(&real_machine_doc).unwrap_or_default();
-    let recorded_current_head = current_head
-        .as_ref()
-        .is_some_and(|head| real_machine_log.contains(head));
+    let real_machine_record =
+        real_machine_record_status(current_head.as_deref(), &real_machine_log);
     let seed_tentacles = bootstrap_seed_tentacles();
     let missing_seed_tentacles = seed_tentacles
         .iter()
@@ -4579,12 +4584,9 @@ fn preflight_report(
         ),
         preflight_check(
             "real_machine_record",
-            recorded_current_head,
+            real_machine_record.passed,
             true,
-            current_head
-                .as_ref()
-                .map(|head| format!("head {head} recorded={recorded_current_head}"))
-                .unwrap_or_else(|| "git head unavailable".to_string()),
+            real_machine_record.evidence,
             "octopus preflight record",
         ),
         preflight_check(
@@ -4874,14 +4876,98 @@ fn preflight_record_commands(state_path: &Path, current_head: Option<&str>) -> V
 }
 
 fn git_short_head() -> Option<String> {
+    git_short_rev("HEAD")
+}
+
+fn real_machine_record_status(current_head: Option<&str>, log: &str) -> RealMachineRecordStatus {
+    let parent_head = git_short_rev("HEAD^");
+    let changed_files = git_changed_files("HEAD^", "HEAD");
+    real_machine_record_status_from_parts(
+        current_head,
+        parent_head.as_deref(),
+        changed_files.as_deref(),
+        log,
+    )
+}
+
+fn real_machine_record_status_from_parts(
+    current_head: Option<&str>,
+    parent_head: Option<&str>,
+    changed_files: Option<&[String]>,
+    log: &str,
+) -> RealMachineRecordStatus {
+    let Some(head) = current_head else {
+        return RealMachineRecordStatus {
+            passed: false,
+            evidence: "git head unavailable".to_string(),
+        };
+    };
+
+    if log.contains(head) {
+        return RealMachineRecordStatus {
+            passed: true,
+            evidence: format!("head {head} recorded=true"),
+        };
+    }
+
+    let parent_recorded = parent_head.is_some_and(|parent| log.contains(parent));
+    let docs_only = changed_files.is_some_and(|files| {
+        !files.is_empty()
+            && files
+                .iter()
+                .all(|path| real_machine_record_doc_path(path.as_str()))
+    });
+
+    if parent_recorded && docs_only {
+        return RealMachineRecordStatus {
+            passed: true,
+            evidence: format!(
+                "head {head} recorded=false; parent {} recorded=true; docs_only=true",
+                parent_head.unwrap_or("unknown")
+            ),
+        };
+    }
+
+    RealMachineRecordStatus {
+        passed: false,
+        evidence: format!(
+            "head {head} recorded=false; parent {} recorded={parent_recorded}; docs_only={docs_only}",
+            parent_head.unwrap_or("unknown")
+        ),
+    }
+}
+
+fn real_machine_record_doc_path(path: &str) -> bool {
+    matches!(
+        path,
+        "docs/real-machine-test.md" | "docs/product-gap.md" | "docs/version-plan.md"
+    )
+}
+
+fn git_short_rev(rev: &str) -> Option<String> {
     let output = Command::new("git")
-        .args(["rev-parse", "--short", "HEAD"])
+        .args(["rev-parse", "--short", rev])
         .output()
         .ok()?;
     output
         .status
         .success()
         .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn git_changed_files(base: &str, head: &str) -> Option<Vec<String>> {
+    let output = Command::new("git")
+        .args(["diff", "--name-only", base, head])
+        .output()
+        .ok()?;
+    output.status.success().then(|| {
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect()
+    })
 }
 
 fn print_product_report(report: &ProductReport, language: Language) {
@@ -6985,7 +7071,8 @@ mod tests {
         bridge_command_allowed, bridge_command_name, check_report, http_content_length,
         install_report, is_broken_pipe_panic, localize_summary, parse_bridge_env_overlay,
         percent_encode_path, pet_report, pet_report_for_state, preflight_report, product_report,
-        provider_status_report, run, skill_reports, usage, Language,
+        provider_status_report, real_machine_record_status_from_parts, run, skill_reports, usage,
+        Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
@@ -7007,6 +7094,43 @@ mod tests {
         } else {
             std::env::remove_var(key);
         }
+    }
+
+    #[test]
+    fn real_machine_record_accepts_current_or_docs_only_parent_record() {
+        let current = real_machine_record_status_from_parts(
+            Some("abc1234"),
+            Some("def5678"),
+            Some(&["crates/octopus-core/src/main.rs".to_string()]),
+            "tested abc1234",
+        );
+        assert!(current.passed);
+        assert!(current.evidence.contains("head abc1234 recorded=true"));
+
+        let docs_only = real_machine_record_status_from_parts(
+            Some("abc1234"),
+            Some("def5678"),
+            Some(&[
+                "docs/real-machine-test.md".to_string(),
+                "docs/product-gap.md".to_string(),
+                "docs/version-plan.md".to_string(),
+            ]),
+            "tested def5678",
+        );
+        assert!(docs_only.passed);
+        assert!(docs_only.evidence.contains("parent def5678 recorded=true"));
+
+        let code_change = real_machine_record_status_from_parts(
+            Some("abc1234"),
+            Some("def5678"),
+            Some(&[
+                "docs/real-machine-test.md".to_string(),
+                "crates/octopus-core/src/main.rs".to_string(),
+            ]),
+            "tested def5678",
+        );
+        assert!(!code_change.passed);
+        assert!(code_change.evidence.contains("docs_only=false"));
     }
 
     struct CwdGuard {
