@@ -325,6 +325,21 @@ struct NeedQueueScriptReport {
 }
 
 #[derive(Debug, serde::Serialize)]
+struct NeedQueueReviewSessionReport {
+    policy: String,
+    prompt: String,
+    pending_count: usize,
+    session_dir: String,
+    prompt_path: String,
+    messages_path: String,
+    review_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    draft_path: Option<String>,
+    command_path: String,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
 struct PreflightReport {
     version: String,
     target: String,
@@ -974,6 +989,33 @@ fn run(args: Vec<String>) -> Result<(), String> {
                         );
                     } else {
                         print_need_queue_script(&report, language);
+                    }
+                    Ok(())
+                }
+                Some("session") => {
+                    let mut live = false;
+                    let mut prompt = Vec::new();
+                    for value in rest.iter().skip(2) {
+                        if value == "--live" {
+                            live = true;
+                        } else {
+                            prompt.push(value.clone());
+                        }
+                    }
+                    let prompt = if prompt.is_empty() {
+                        "review pending clean-brain Needs".to_string()
+                    } else {
+                        prompt.join(" ")
+                    };
+                    let report = write_need_queue_review_session(&loaded, &state, &prompt, live)?;
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&report)
+                                .map_err(|error| error.to_string())?
+                        );
+                    } else {
+                        print_need_queue_review_session(&report, language);
                     }
                     Ok(())
                 }
@@ -4299,6 +4341,12 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             Some("octopus needs script"),
         ),
         product_capability(
+            "need_queue_review",
+            "ready",
+            "writes prompt, messages, review template, and optional live draft for pending Needs",
+            Some("octopus needs session"),
+        ),
+        product_capability(
             "harness_repair_queue",
             if state
                 .installed_tentacles
@@ -5481,6 +5529,43 @@ fn print_need_queue_script(report: &NeedQueueScriptReport, language: Language) {
             println!("主脑: {}", report.policy);
             println!("路径: {}", report.script_path);
             println!("命令数: {}", report.command_count);
+        }
+    }
+    for next in &report.next {
+        match language {
+            Language::En => println!("next: {next}"),
+            Language::Zh => println!("下一步: {next}"),
+        }
+    }
+}
+
+fn print_need_queue_review_session(report: &NeedQueueReviewSessionReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus Need review session");
+            println!("brain: {}", report.policy);
+            println!("pending: {}", report.pending_count);
+            println!("session: {}", report.session_dir);
+            println!("prompt: {}", report.prompt_path);
+            println!("messages: {}", report.messages_path);
+            println!("review: {}", report.review_path);
+            if let Some(draft_path) = &report.draft_path {
+                println!("draft: {draft_path}");
+            }
+            println!("commands: {}", report.command_path);
+        }
+        Language::Zh => {
+            println!("章鱼 Need 审阅会话");
+            println!("主脑: {}", report.policy);
+            println!("待处理: {}", report.pending_count);
+            println!("会话: {}", report.session_dir);
+            println!("提示词: {}", report.prompt_path);
+            println!("消息: {}", report.messages_path);
+            println!("审阅: {}", report.review_path);
+            if let Some(draft_path) = &report.draft_path {
+                println!("草稿: {draft_path}");
+            }
+            println!("命令: {}", report.command_path);
         }
     }
     for next in &report.next {
@@ -7448,6 +7533,169 @@ fn default_need_queue_script_path(state_path: &Path) -> PathBuf {
         .join("RUN.sh")
 }
 
+fn write_need_queue_review_session(
+    state: &HarnessState,
+    state_path: &Path,
+    prompt: &str,
+    live: bool,
+) -> Result<NeedQueueReviewSessionReport, String> {
+    let queue = state.need_queue_report(1000);
+    let brain = state.clean_brain_prompt(prompt.to_string(), 6);
+    let messages = need_queue_review_messages(&brain, &queue);
+    let session_dir = next_need_queue_session_dir(state_path)?;
+    fs::create_dir_all(&session_dir).map_err(|error| error.to_string())?;
+
+    let prompt_path = session_dir.join("PROMPT.md");
+    let messages_path = session_dir.join("messages.json");
+    let review_path = session_dir.join("REVIEW.json");
+    let draft_path = session_dir.join("DRAFT.json");
+    let command_path = session_dir.join("COMMANDS.sh");
+    let state_arg = shell_arg(state_path.to_string_lossy().as_ref());
+    let review_arg = shell_arg(review_path.to_string_lossy().as_ref());
+    let prompt_arg = shell_arg(prompt);
+    let apply_command =
+        format!("octopus --state {state_arg} brain --apply {review_arg} --save {prompt_arg}");
+    let script_command = format!("octopus --state {state_arg} needs script");
+    let review_template = serde_json::json!({
+        "summary": "short Need queue review",
+        "keep": [1],
+        "drop": [],
+        "needs": [
+            {"kind": "verify", "query": "short cognitive request"}
+        ]
+    });
+
+    fs::write(
+        &prompt_path,
+        need_queue_review_prompt_markdown(
+            &brain,
+            &queue,
+            &messages,
+            &apply_command,
+            &script_command,
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        &messages_path,
+        serde_json::to_string_pretty(&messages).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        &review_path,
+        serde_json::to_string_pretty(&review_template).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    let draft_path = if live {
+        let mut client = clean_brain_llm_client()?;
+        let response = client.chat(&messages)?;
+        let draft = clean_brain_session_draft_json(&response.content)?;
+        fs::write(&draft_path, draft).map_err(|error| error.to_string())?;
+        Some(draft_path)
+    } else {
+        None
+    };
+    fs::write(
+        &command_path,
+        format!(
+            "#!/usr/bin/env sh\nset -eu\n# Review REVIEW.json before running these commands.\n{apply_command}\n{script_command}\n"
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    make_executable(&command_path)?;
+    let draft_path_string = draft_path
+        .as_ref()
+        .map(|path| path.to_string_lossy().to_string());
+    let mut next = Vec::new();
+    if draft_path_string.is_some() {
+        next.push("review DRAFT.json, then copy accepted JSON into REVIEW.json".to_string());
+    } else {
+        next.push("paste PROMPT.md or messages.json into a chat model".to_string());
+        next.push("replace REVIEW.json with the model JSON reply".to_string());
+    }
+    next.push(apply_command.clone());
+    next.push(script_command.clone());
+
+    Ok(NeedQueueReviewSessionReport {
+        policy: queue.policy,
+        prompt: prompt.to_string(),
+        pending_count: queue.pending.len(),
+        session_dir: session_dir.to_string_lossy().to_string(),
+        prompt_path: prompt_path.to_string_lossy().to_string(),
+        messages_path: messages_path.to_string_lossy().to_string(),
+        review_path: review_path.to_string_lossy().to_string(),
+        draft_path: draft_path_string,
+        command_path: command_path.to_string_lossy().to_string(),
+        next,
+    })
+}
+
+fn need_queue_review_messages(
+    brain: &BrainPromptReport,
+    queue: &NeedQueueReport,
+) -> Vec<ChatMessage> {
+    let context = serde_json::json!({
+        "policy": brain.policy,
+        "slots": ["Goal", "Mem", "Need", "Feed"],
+        "goal": brain.goal,
+        "mem": brain.mem,
+        "recent_need_feed": brain.recent,
+        "pending_needs": queue.pending,
+    });
+    vec![
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain Need queue reviewer. You see only Goal, Mem, Need, Feed, and pending Needs. Keep, drop, or suggest cognitive Needs only. Do not choose tools, APIs, files, commands, routes, tentacles, or implementation. Return only JSON: {\"summary\":\"short queue review\",\"keep\":[1],\"drop\":[2],\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!(
+                "Clean brain Need queue review prompt: {}\nClean brain context JSON: {context}",
+                brain.prompt
+            ),
+        ),
+    ]
+}
+
+fn need_queue_review_prompt_markdown(
+    brain: &BrainPromptReport,
+    queue: &NeedQueueReport,
+    messages: &[ChatMessage],
+    apply_command: &str,
+    script_command: &str,
+) -> String {
+    let message_text = messages
+        .iter()
+        .map(|message| format!("{:?}:\n{}", message.role, message.content))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    format!(
+        "# Octopus Need Queue Review\n\npolicy: {}\nprompt: {}\npending: {}\n\n## Messages\n\n{}\n\n## Reply Schema\n\nPaste accepted model JSON into `REVIEW.json`.\n\n## Apply\n\n```sh\n{}\n{}\n```\n",
+        brain.policy,
+        brain.prompt,
+        queue.pending.len(),
+        message_text,
+        apply_command,
+        script_command
+    )
+}
+
+fn next_need_queue_session_dir(state_path: &Path) -> Result<PathBuf, String> {
+    let root = state_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new(".octopus"))
+        .join("needs");
+    fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    for index in 1..10000 {
+        let candidate = root.join(format!("session-{index}"));
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    Err("no available Need queue session slot".to_string())
+}
+
 fn make_executable(path: &Path) -> Result<(), String> {
     #[cfg(unix)]
     {
@@ -7542,7 +7790,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -8096,6 +8344,68 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     }
 
     #[test]
+    fn cli_needs_session_writes_review_artifacts_without_execution() {
+        let _env = env_guard();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-needs-session-{}", std::process::id()));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "goal".to_string(),
+            "set".to_string(),
+            "clean".to_string(),
+            "brain".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "explore".to_string(),
+            "--save".to_string(),
+            "next".to_string(),
+            "need".to_string(),
+        ])
+        .unwrap();
+        let queued = HarnessState::load(&state_path).unwrap();
+        let pending = queued.pending_need_queue_count();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "needs".to_string(),
+            "session".to_string(),
+            "review".to_string(),
+            "queue".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert_eq!(restored.pending_need_queue_count(), pending);
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let session = dir.join("needs").join("session-1");
+        assert!(session.join("PROMPT.md").exists());
+        assert!(session.join("messages.json").exists());
+        assert!(session.join("REVIEW.json").exists());
+        assert!(session.join("COMMANDS.sh").exists());
+        let prompt = fs::read_to_string(session.join("PROMPT.md")).unwrap();
+        assert!(prompt.contains("pending:"));
+        let messages = fs::read_to_string(session.join("messages.json")).unwrap();
+        assert!(messages.contains("pending_needs"));
+        let review = fs::read_to_string(session.join("REVIEW.json")).unwrap();
+        assert!(review.contains("\"keep\""));
+        assert!(review.contains("\"needs\""));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn cli_persists_memory_between_runs() {
         let _env = env_guard();
         let path =
@@ -8319,7 +8629,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "brain [--goal] [--live] [--save] [--session] [--apply path|-] [--apply-json json] [prompt]"
         ));
         assert!(usage().contains("explore [--save] [prompt]"));
-        assert!(usage().contains("needs [take|drop|script [path]]"));
+        assert!(usage().contains("needs [take|drop|script [path]|session [--live] [prompt]]"));
         assert!(usage().contains("repair [query]"));
         assert!(usage().contains("repair score <trace-index>"));
         assert!(usage().contains("context [kind query]"));
