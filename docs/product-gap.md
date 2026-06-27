@@ -175,7 +175,7 @@ Updated: 2026-06-27
 - Added a structured native HTML starter panel with recommendation cards, Use, Install, First Need, and Check actions.
 - Added first-run starter grouping and HTML filters so users can narrow recommendations by repo, desktop, self-iteration, repair, research, script, runtime, memory, or visual work.
 - Added repair-session code context so target tentacle manifests and tool code are written into `CODE_CONTEXT.md` and provider draft context.
-- Rolled the cleanup/version cadence to `0.0.10` after starter recommendations/app cards/filters, clean-brain Need audit, repair-score journals, and repair-session outcome/code context.
+- Rolled the cleanup/version cadence to `0.0.10` after starter recommendation grouping/filtering, product-page README trim, clean-brain Need audit, repair-score journals, repair-session outcome/code context, app/report wording cleanup, and version consistency.
 - Added repair-session action plans so each session writes `REPAIR_PLAN.json` with check, grant, apply, score, code-context, and outcome-memory boundaries.
 
 ## Remaining Gaps

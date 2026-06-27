@@ -83,4 +83,3 @@ Octopus can bootstrap a local state, recommend starter tentacles, run Feed throu
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - Real-machine gate: [docs/real-machine-test.md](docs/real-machine-test.md)
 - Tentacle contract: [tentacles/README.md](tentacles/README.md)
-- License: MIT
