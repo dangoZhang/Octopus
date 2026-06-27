@@ -40,34 +40,21 @@ octopus first-run "make this repo easier to use"
 
 `first-run` sets a clean Goal, installs seed tentacles, asks a safe observe Need, records Feed feedback, pulses the hearts, and returns Doctor plus Preflight evidence. Add `--live` when provider env is ready and you want the same loop to include the live provider gate.
 
-Use Codex login, an API key, a local model, or a LiteLLM/OpenAI-compatible gateway for live clean-brain calls and tool-side planning:
+The public writing surface is the Goal:
 
 ```bash
-codex login
-octopus provider save codex
-source .octopus/llm.env
-octopus provider check
-
-# Or use an API key provider:
-export OPENAI_API_KEY=...
-octopus provider save openai
-source .octopus/llm.env
-octopus provider check
-
-octopus brain --brief --save "compress the clean brain state"
-octopus brain --intent --save "what should the brain ask next?"
-octopus brain --align --save "does this still follow the goal?"
-octopus brain --scout --save "map what the brain should understand next"
-octopus need verify .
+octopus chat "make this repo easier to use"
+octopus goal refine "prefer small reviewable changes"
+octopus brain --goal --save "tighten the current objective"
 ```
 
-`provider save-key` can write a resolved API key into `.octopus/llm.env` with local-only file permissions. Strong-model knobs such as `OCTOPUS_LLM_REASONING_EFFORT`, `OCTOPUS_LLM_MAX_TOKENS`, `OCTOPUS_LLM_RETRIES`, and `OCTOPUS_LLM_EXTRA_BODY` stay in provider env, outside Need text.
+Need, Feed, tool choice, provider routing, repair, and harness evolution are agent-internal. The app and CLI may show them as observable state, but user input only changes brain-goal. Live backends can be Codex login, API keys, local OpenAI-compatible models, or LiteLLM-style gateways through environment config.
 
 ## Works Today
 
-- Clean-brain Goal, Need, Feed, queue, context, intent, brief, focused Need kinds, agenda, scout, clarification, deliberation, reflection, alignment, memory, council, synthesis, and external-chat sessions.
+- One public input path: Goal from CLI, app, or external chat.
 - Seed tentacles for SWE work, computer-use adapters, repo maintenance, harness repair, and write-and-run local execution.
-- Tool-side LLM planning with grants, traces, route scores, feedback scoring, and reviewable feedback-driven harness evolution.
-- Native HTML app server, install reports, provider setup, preflight gates, and pixel pet SVG export.
+- Tool-side LLM planning, grants, traces, route scores, and reviewable feedback-driven harness evolution.
+- Native app server, provider/readiness observation, preflight gates, and pixel pet state.
 
 Pre-release line: `0.0.15`. `0.1.0` waits for recorded real-machine testing.

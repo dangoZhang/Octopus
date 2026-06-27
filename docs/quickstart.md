@@ -43,109 +43,67 @@ octopus first-run "make this repo easier to use"
 
 That command sets a clean Goal, bootstraps seed tentacles, runs a safe observe Feed, scores the latest trace, pulses the hearts, and returns Doctor plus Preflight evidence.
 
-Manual equivalent:
+After launch, the user-writable surface stays limited to brain-goal:
 
 ```bash
-octopus bootstrap
-octopus goal set --constraint "keep tools outside the brain" "make this repo easier to use"
-octopus goal refine "prefer cognitive Needs over tool instructions"
-octopus brain --session "what should the brain ask next?"
-octopus brain --align --save "does this still follow the goal?"
-octopus brain --scout --save "map what the brain should understand next"
-octopus brain --focus verify --save "what proof matters?"
-octopus need observe README.md
-octopus feedback latest satisfied "useful evidence"
-octopus beat 200
-octopus pet
+octopus chat "make this repo easier to use"
+octopus goal refine "prefer small reviewable changes"
+octopus brain --goal --save "tighten the current objective"
 ```
 
-The app can continue the same loop without opening a shell: starter tentacles, provider setup, clean-brain sessions, Need Queue, Feed tests, repair plans, route feedback, preflight, and harness-beat review all run through `octopus start`.
+Need, Feed, route choice, provider routing, repair, and harness evolution are internal agent work. The app can show those states for review, but user input should only change Goal.
 
-## Optional LLM
+## Optional Model Backends
 
-Use whichever credential shape you already have.
+Octopus can use Codex login, API keys, local OpenAI-compatible servers, or LiteLLM-style gateways. Treat this as runtime plumbing; it should not leak into Need text.
 
 Codex login/OAuth:
 
 ```bash
 codex login
-octopus provider save codex
-source .octopus/llm.env
-octopus provider check
+export OCTOPUS_LLM_BACKEND=codex
+export OCTOPUS_LLM_CODEX_COMMAND=codex
 ```
 
-Direct API key:
+OpenAI-compatible API, router, or local server:
 
 ```bash
-export OPENAI_API_KEY=...
-octopus provider save openai
-source .octopus/llm.env
-# Optional when your model/provider supports explicit thinking controls:
-# export OCTOPUS_LLM_REASONING_EFFORT=medium
-# export OCTOPUS_LLM_MAX_TOKENS=2048
-octopus provider check
+export OCTOPUS_LLM_BACKEND=openai-compatible
+export OCTOPUS_LLM_MODEL=gpt-4.1-mini
+export OCTOPUS_LLM_BASE_URL=https://api.openai.com/v1
+export OCTOPUS_LLM_API_KEY="$OPENAI_API_KEY"
 ```
 
-Direct API key saved locally:
+Local example:
 
 ```bash
-export ZAI_API_KEY=...
-octopus provider save-key zai
-source .octopus/llm.env
-octopus provider check
+export OCTOPUS_LLM_BACKEND=openai-compatible
+export OCTOPUS_LLM_MODEL=local-model
+export OCTOPUS_LLM_BASE_URL=http://localhost:1234/v1
+export OCTOPUS_LLM_API_KEY=
 ```
 
-Local OpenAI-compatible model:
+If you launch through `octopus start`, place the same exports in `.octopus/llm.env`. Check readiness without changing state:
 
 ```bash
-octopus provider save lmstudio
-source .octopus/llm.env
-# edit .octopus/llm.env if your server/model id differs
-octopus provider check
+octopus providers
+octopus provider status
 ```
 
-Any provider through a LiteLLM/OpenAI-compatible gateway:
-
-```bash
-# Start LiteLLM separately with your provider key and model routing.
-octopus provider save litellm
-source .octopus/llm.env
-octopus provider check
-```
-
-Then run live Octopus flows:
+Then run the same Goal path live:
 
 ```bash
 octopus first-run --live "make this repo easier to use"
-octopus brain --agenda --save "what matters next?"
-octopus brain --focus compare --save "which path should the brain compare?"
-octopus brain --llm-prefix OCTOPUS_LLM --agenda --save "what matters next?"
-octopus brain --council --models OCTOPUS_LLM --save "ask clean brains"
-octopus brain --live --save "what should the brain ask next?"
+octopus brain --goal --live --save "tighten the current objective"
 ```
 
-OpenAI-compatible profiles include OpenAI, local servers, LiteLLM, Codex CLI OAuth, Z.AI/BigModel, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.
-The same provider env powers clean-brain calls, tool-side tentacle planning, and harness evolution.
-
-## Harness Evolution
+## Observe
 
 ```bash
-octopus install swe-agent
-octopus need observe README.md
-octopus feedback latest partial "feed needs sharper file evidence"
-octopus beat 200
-octopus repair .
+octopus doctor
+octopus report
+octopus preflight
+octopus pet
 ```
 
-Harness changes stay reviewable: plans, patches, repair bundles, and scores are written under `.octopus/` before any high-risk action.
-
-## Release Gate
-
-```bash
-tmp=$(mktemp -d)
-octopus --state "$tmp/state.json" first-run "preflight local evidence"
-octopus --state "$tmp/state.json" preflight
-octopus --state "$tmp/state.json" preflight record "$tmp/real-machine-record.md"
-octopus --state "$tmp/state.json" preflight record check "$tmp/real-machine-record.md"
-octopus --state "$tmp/state.json" preflight record append "$tmp/real-machine-record.md" docs/real-machine-test.md
-```
+These are observation surfaces. They should explain what the agent did without asking the user to drive tools directly.

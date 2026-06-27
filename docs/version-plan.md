@@ -21,12 +21,12 @@ Release checklist:
 Real-machine test gate for `0.1.0` and later tags:
 
 - Install from GitHub with `cargo install --git ... --force`.
-- Run `octopus --version`, `doctor`, `init`, `skills`, `install swe-agent`, `install computer-use-agent`, `install harness-repair-agent`, `install bash-only`, `chat`, `need observe .`, `pet harness`, and `beat 200` on a clean machine.
+- Run `octopus --version`, `doctor`, `first-run`, `chat`, `goal refine`, `brain --goal --save`, `pet harness`, and `preflight` on a clean machine.
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
 Last cleanup/version correction: `0.0.15` on 2026-06-28. Scope: clean-brain brief compaction, live first-run and record append gates, score-to-next harness evolution, README trim, app control-surface cleanup, and version consistency; no tag cut.
 
-Product commits toward `0.0.16`: 4/8.
+Product commits toward `0.0.16`: 5/8.
 
 Next planned cleanup/version commit: `0.0.16`.
