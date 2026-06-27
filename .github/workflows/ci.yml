@@ -23,6 +23,7 @@ jobs:
           grep -q "Provider status" .octopus/provider-status.txt
           cargo run -q -p octopus-core -- --json provider status > .octopus/provider-status.json
           grep -q '"layer": "clean_brain"' .octopus/provider-status.json
+          grep -q '"layer": "clean_brain_clarify"' .octopus/provider-status.json
           grep -q '"layer": "clean_brain_reflect"' .octopus/provider-status.json
           grep -q '"layer": "clean_brain_memory"' .octopus/provider-status.json
           grep -q '"layer": "tentacle_planning"' .octopus/provider-status.json
@@ -172,6 +173,7 @@ jobs:
       - run: grep -q "providerProfile" docs/app.html
       - run: grep -q "Copy env" docs/app.html
       - run: grep -q "OCTOPUS_BRAIN_GOAL_LLM_PREFIX" crates/octopus-core/src/main.rs
+      - run: grep -q "OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX" crates/octopus-core/src/main.rs
       - run: grep -q "OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX" crates/octopus-core/src/main.rs
       - run: grep -q "OCTOPUS_BRAIN_REFLECT_LLM_PREFIX" crates/octopus-core/src/main.rs
       - run: grep -q "OCTOPUS_BRAIN_MEMORY_LLM_PREFIX" crates/octopus-core/src/main.rs
@@ -180,6 +182,8 @@ jobs:
       - run: grep -q "tools think at the edge" README.md
       - run: grep -q "Install & Launch" README.md
       - run: grep -q "Deliberate Session" docs/app.html
+      - run: grep -q "Clarify Session" docs/app.html
+      - run: grep -q "Apply Clarify" docs/app.html
       - run: grep -q "Reflect Session" docs/app.html
       - run: grep -q "Apply Reflect" docs/app.html
       - run: grep -q "Memory Session" docs/app.html
@@ -187,6 +191,7 @@ jobs:
       - run: grep -q "Synthesize Session" docs/app.html
       - run: grep -q "Brain Council" docs/app.html
       - run: grep -q "OCTOPUS_BRAIN_GOAL_LLM_PREFIX" docs/quickstart.md
+      - run: grep -q "OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX" docs/quickstart.md
       - run: grep -q "OCTOPUS_BRAIN_REFLECT_LLM_PREFIX" docs/quickstart.md
       - run: grep -q "OCTOPUS_BRAIN_MEMORY_LLM_PREFIX" docs/quickstart.md
       - run: grep -q "OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX" docs/quickstart.md

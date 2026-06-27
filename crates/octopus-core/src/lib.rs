@@ -1527,6 +1527,35 @@ where
         .map_err(|error| format!("invalid clean-brain memory JSON: {error}"))
 }
 
+fn brain_clarification_from_chat<C>(
+    brain: &BrainContextReport,
+    prompt: &str,
+    client: &mut C,
+) -> Result<BrainDeliberationDraft, String>
+where
+    C: ChatClient,
+{
+    let context = serde_json::json!({
+        "policy": brain.policy,
+        "slots": brain.slots,
+        "goal": brain.goal,
+        "mem": brain.mem,
+        "recent_need_feed": brain.turns,
+    });
+    let response = client.chat(&[
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain clarification layer. You see only Goal, Mem, Need, and Feed. Ask the few human-facing questions that would make the Goal and next cognitive Needs clearer. Express cognitive Needs only. Do not choose tools, APIs, files, commands, routes, tentacles, or implementation. Return only JSON: {\"summary\":\"short clarification focus\",\"observations\":[\"context fact\"],\"questions\":[\"question for the human\"],\"options\":[\"possible cognitive direction\"],\"risks\":[\"ambiguity risk\"],\"needs\":[{\"kind\":\"observe|verify|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!("Clean brain context JSON: {context}\nUser clarification prompt: {prompt}"),
+        ),
+    ])?;
+    serde_json::from_str::<BrainDeliberationDraft>(&response.content)
+        .map_err(|error| format!("invalid clean-brain clarification JSON: {error}"))
+}
+
 fn brain_deliberation_from_chat<C>(
     brain: &BrainContextReport,
     prompt: &str,
@@ -2097,6 +2126,43 @@ impl HarnessState {
         self.brain_memory_report(brain, prompt, "external_memory", draft.summary, draft.needs)
     }
 
+    pub fn clean_brain_clarify(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+    ) -> BrainDeliberationReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let draft = local_brain_clarification(&brain, &prompt);
+        self.brain_clarification_report(brain, prompt, "local_clarify", draft)
+    }
+
+    pub fn clean_brain_clarify_with_client<C>(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        client: &mut C,
+    ) -> Result<BrainDeliberationReport, String>
+    where
+        C: ChatClient,
+    {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let draft = brain_clarification_from_chat(&brain, &prompt, client)?;
+        Ok(self.brain_clarification_report(brain, prompt, "llm_clarify", draft))
+    }
+
+    pub fn clean_brain_clarify_from_draft(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        draft: BrainDeliberationDraft,
+    ) -> BrainDeliberationReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        self.brain_clarification_report(brain, prompt, "external_clarify", draft)
+    }
+
     pub fn clean_brain_deliberate(
         &self,
         prompt: impl Into<String>,
@@ -2563,6 +2629,56 @@ impl HarnessState {
             }));
             next.push(format!(
                 "octopus brain --deliberate --save {}",
+                shell_arg(&prompt)
+            ));
+        }
+        next.sort();
+        next.dedup();
+        BrainDeliberationReport {
+            policy: brain.policy,
+            source: source.to_string(),
+            prompt,
+            goal: brain.goal,
+            mem: brain.mem,
+            recent: brain.turns,
+            summary: draft.summary,
+            observations: draft.observations,
+            questions: draft.questions,
+            options: draft.options,
+            risks: draft.risks,
+            needs: draft.needs,
+            audit,
+            next,
+        }
+    }
+
+    fn brain_clarification_report(
+        &self,
+        brain: BrainContextReport,
+        prompt: String,
+        source: &str,
+        draft: BrainDeliberationDraft,
+    ) -> BrainDeliberationReport {
+        let audit = audit_clean_brain_needs(&draft.needs);
+        let mut next = vec!["octopus brain --clarify --session".to_string()];
+        if audit.clean_needs.is_empty() {
+            if audit.issue_count > 0 {
+                next.push(
+                    "rewrite clarification Needs as cognitive requests before Feed".to_string(),
+                );
+            } else {
+                next.push(format!("octopus goal set {}", shell_arg(&prompt)));
+            }
+        } else {
+            next.extend(audit.clean_needs.iter().map(|need| {
+                format!(
+                    "octopus need {} {}",
+                    kind_key(&need.kind),
+                    shell_arg(&need.query)
+                )
+            }));
+            next.push(format!(
+                "octopus brain --clarify --save {}",
                 shell_arg(&prompt)
             ));
         }
@@ -8336,6 +8452,74 @@ fn clean_focus(brain: &BrainContextReport, prompt: &str) -> String {
         .unwrap_or_else(|| "current goal".to_string())
 }
 
+fn local_brain_clarification(brain: &BrainContextReport, prompt: &str) -> BrainDeliberationDraft {
+    let focus = clean_focus(brain, prompt);
+    let mut observations = Vec::new();
+    if let Some(goal) = &brain.goal {
+        observations.push(format!("active goal: {}", goal.objective));
+        if goal.constraints.is_empty() {
+            observations.push("no durable goal constraints recorded".to_string());
+        } else {
+            observations.push(format!("goal constraints: {}", goal.constraints.join("; ")));
+        }
+    } else {
+        observations.push("no active goal recorded".to_string());
+    }
+    observations.push(format!("memory records: {}", brain.mem.len()));
+    observations.push(format!("recent Need/Feed turns: {}", brain.turns.len()));
+
+    let mut questions = vec![
+        format!("What outcome would prove {focus} is done?"),
+        format!("Which constraint should Octopus preserve while thinking about {focus}?"),
+    ];
+    if brain.turns.is_empty() {
+        questions.push(format!(
+            "Should Octopus explore, verify, or remember first for {focus}?"
+        ));
+    } else {
+        questions.push(format!(
+            "Which recent Feed should matter most for the next Need about {focus}?"
+        ));
+    }
+
+    let mut needs = vec![GoalNeedSuggestion {
+        kind: NeedKind::Verify,
+        query: format!("success criteria for {focus}"),
+    }];
+    if brain.mem.is_empty() {
+        needs.push(GoalNeedSuggestion {
+            kind: NeedKind::Remember,
+            query: format!("human constraints for {focus}"),
+        });
+    } else {
+        needs.push(GoalNeedSuggestion {
+            kind: NeedKind::Recall,
+            query: format!("human constraints for {focus}"),
+        });
+    }
+    if !brain.turns.is_empty() {
+        needs.push(GoalNeedSuggestion {
+            kind: NeedKind::Compare,
+            query: format!("recent Feed against success criteria for {focus}"),
+        });
+    }
+
+    BrainDeliberationDraft {
+        summary: format!("clarify goal and next Need for {focus}"),
+        observations,
+        questions,
+        options: vec![
+            format!("tighten the Goal for {focus}"),
+            format!("queue one verification Need for {focus}"),
+            format!("remember durable human constraints for {focus}"),
+        ],
+        risks: vec![format!(
+            "unclear success criteria can make Feed satisfy the wrong Need for {focus}"
+        )],
+        needs,
+    }
+}
+
 fn local_brain_deliberation(brain: &BrainContextReport, prompt: &str) -> BrainDeliberationDraft {
     let focus = clean_optional(Some(prompt))
         .map(str::to_string)
@@ -9971,6 +10155,44 @@ mod tests {
         assert!(!report.options.is_empty());
         assert!(!report.risks.is_empty());
         assert!(report.audit.issue_count == 0);
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
+
+        let saved = state.queue_deliberation_report(&report);
+
+        assert_eq!(saved.queued.len(), report.needs.len());
+        assert_eq!(state.pending_need_queue_count(), report.needs.len());
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
+    }
+
+    #[test]
+    fn clean_brain_clarifies_human_goal_without_feed() {
+        let mut state = HarnessState {
+            goal: Some(Goal::new("release useful Octopus")),
+            ..HarnessState::default()
+        };
+        state
+            .memory
+            .remember("human goal details should stay durable");
+
+        let report = state.clean_brain_clarify("what should the user clarify?", 5);
+
+        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
+        assert_eq!(report.source, "local_clarify");
+        assert!(report.summary.contains("clarify"));
+        assert!(!report.observations.is_empty());
+        assert!(report
+            .questions
+            .iter()
+            .any(|question| question.contains("outcome")));
+        assert!(!report.options.is_empty());
+        assert!(!report.risks.is_empty());
+        assert_eq!(report.audit.issue_count, 0);
+        assert!(report
+            .next
+            .iter()
+            .any(|next| next.contains("brain --clarify --save")));
         assert!(state.feed_traces.is_empty());
         assert!(state.routes.scores.is_empty());
 

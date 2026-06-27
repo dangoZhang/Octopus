@@ -885,6 +885,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let mut council = false;
             let mut reflect = false;
             let mut memory = false;
+            let mut clarify = false;
             let mut apply_path = None;
             let mut apply_json = None;
             let mut prompt = Vec::new();
@@ -901,6 +902,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     "--council" => council = true,
                     "--reflect" => reflect = true,
                     "--memory" => memory = true,
+                    "--clarify" => clarify = true,
                     "--apply" => {
                         brain_index += 1;
                         let Some(path) = rest.get(brain_index) else {
@@ -993,6 +995,27 @@ fn run(args: Vec<String>) -> Result<(), String> {
             if memory && reflect {
                 return Err("brain --memory cannot be combined with --reflect".to_string());
             }
+            if clarify && refine_goal {
+                return Err("brain --clarify cannot be combined with --goal".to_string());
+            }
+            if clarify && rewrite {
+                return Err("brain --clarify cannot be combined with --rewrite".to_string());
+            }
+            if clarify && deliberate {
+                return Err("brain --clarify cannot be combined with --deliberate".to_string());
+            }
+            if clarify && synthesize {
+                return Err("brain --clarify cannot be combined with --synthesize".to_string());
+            }
+            if clarify && council {
+                return Err("brain --clarify cannot be combined with --council".to_string());
+            }
+            if clarify && reflect {
+                return Err("brain --clarify cannot be combined with --reflect".to_string());
+            }
+            if clarify && memory {
+                return Err("brain --clarify cannot be combined with --memory".to_string());
+            }
             if rewrite && !has_apply_payload {
                 return Err("brain --rewrite requires --apply or --apply-json".to_string());
             }
@@ -1048,6 +1071,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     let input =
                         parse_brain_reply::<BrainSynthesisInput>(payload, "clean-brain synthesis")?;
                     write_brain_synthesis_session(&loaded, &state, &prompt, input, live)?
+                } else if clarify {
+                    write_brain_clarification_session(&loaded, &state, &prompt, live)?
                 } else if reflect {
                     write_brain_reflection_session(&loaded, &state, &prompt, live)?
                 } else if memory {
@@ -1184,6 +1209,33 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     } else {
                         print_brain_memory(&report, language);
                     }
+                } else if clarify {
+                    let draft = parse_brain_reply::<BrainDeliberationDraft>(
+                        &payload,
+                        "clean-brain clarification",
+                    )?;
+                    let report = loaded.clean_brain_clarify_from_draft(prompt.clone(), 6, draft);
+                    if save {
+                        let saved = loaded.queue_deliberation_report(&report);
+                        loaded.save(&state).map_err(|error| error.to_string())?;
+                        if json {
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&saved)
+                                    .map_err(|error| error.to_string())?
+                            );
+                        } else {
+                            print_brain_clarification_save(&saved, language);
+                        }
+                    } else if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&report)
+                                .map_err(|error| error.to_string())?
+                        );
+                    } else {
+                        print_brain_clarification(&report, language);
+                    }
                 } else if deliberate {
                     let draft = parse_brain_reply::<BrainDeliberationDraft>(
                         &payload,
@@ -1304,6 +1356,33 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     );
                 } else {
                     print_brain_memory(&report, language);
+                }
+            } else if clarify {
+                let report = if live || clean_brain_llm_enabled() {
+                    let mut client = clean_brain_clarify_llm_client()?;
+                    loaded.clean_brain_clarify_with_client(prompt.clone(), 6, &mut client)?
+                } else {
+                    loaded.clean_brain_clarify(prompt.clone(), 6)
+                };
+                if save {
+                    let saved = loaded.queue_deliberation_report(&report);
+                    loaded.save(&state).map_err(|error| error.to_string())?;
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&saved)
+                                .map_err(|error| error.to_string())?
+                        );
+                    } else {
+                        print_brain_clarification_save(&saved, language);
+                    }
+                } else if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_brain_clarification(&report, language);
                 }
             } else if deliberate {
                 let report = if live || clean_brain_llm_enabled() {
@@ -3463,6 +3542,7 @@ fn provider_env_report(profile_id: &str, prefix: &str) -> Result<ProviderEnvRepo
         format!("export OCTOPUS_CHAT_LLM_PREFIX={prefix}"),
         format!("export OCTOPUS_BRAIN_LLM_PREFIX={prefix}"),
         format!("export OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX={prefix}"),
+        format!("export OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX={prefix}"),
         format!("export OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX={prefix}"),
         format!("export OCTOPUS_BRAIN_REFLECT_LLM_PREFIX={prefix}"),
         format!("export OCTOPUS_BRAIN_MEMORY_LLM_PREFIX={prefix}"),
@@ -3565,6 +3645,13 @@ fn provider_status_report() -> ProviderStatusReport {
             "Need exploration from Goal/Mem/Need/Feed",
             clean_brain_llm_enabled(),
             clean_brain_explore_llm_prefix(),
+            "export OCTOPUS_BRAIN_LLM=1",
+        ),
+        provider_layer_status(
+            "clean_brain_clarify",
+            "human clarification from Goal/Mem/Need/Feed",
+            clean_brain_llm_enabled(),
+            clean_brain_clarify_llm_prefix(),
             "export OCTOPUS_BRAIN_LLM=1",
         ),
         provider_layer_status(
@@ -7340,6 +7427,72 @@ fn print_brain_deliberation(report: &BrainDeliberationReport, language: Language
     }
 }
 
+fn print_brain_clarification_save(report: &BrainDeliberationSaveReport, language: Language) {
+    print_brain_clarification(&report.deliberation, language);
+    match language {
+        Language::En => println!("queued: {}", report.queued.len()),
+        Language::Zh => println!("已入队: {}", report.queued.len()),
+    }
+    print_need_queue(&report.queue, language);
+}
+
+fn print_brain_clarification(report: &BrainDeliberationReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus clarify");
+            println!("source: {}", report.source);
+            println!("brain: {}", report.policy);
+            println!(
+                "goal: {}",
+                report
+                    .goal
+                    .as_ref()
+                    .map(|goal| goal.objective.as_str())
+                    .unwrap_or("none")
+            );
+            println!("summary: {}", report.summary);
+            print_list("observation", &report.observations);
+            print_list("question", &report.questions);
+            print_list("option", &report.options);
+            print_list("risk", &report.risks);
+            println!("audit: {}", brain_audit_line(&report.audit));
+            for need in clean_brain_print_needs(&report.audit, &report.needs) {
+                println!("need: {} {}", need_label(&need.kind), need.query);
+            }
+            print_polluted_need_count(&report.audit, language);
+            for next in &report.next {
+                println!("next: {next}");
+            }
+        }
+        Language::Zh => {
+            println!("章鱼澄清");
+            println!("来源: {}", report.source);
+            println!("主脑: {}", report.policy);
+            println!(
+                "目标: {}",
+                report
+                    .goal
+                    .as_ref()
+                    .map(|goal| goal.objective.as_str())
+                    .unwrap_or("无")
+            );
+            println!("摘要: {}", report.summary);
+            print_list("观察", &report.observations);
+            print_list("问题", &report.questions);
+            print_list("选项", &report.options);
+            print_list("风险", &report.risks);
+            println!("审计: {}", brain_audit_line(&report.audit));
+            for need in clean_brain_print_needs(&report.audit, &report.needs) {
+                println!("Need: {} {}", need_label(&need.kind), need.query);
+            }
+            print_polluted_need_count(&report.audit, language);
+            for next in &report.next {
+                println!("下一步: {next}");
+            }
+        }
+    }
+}
+
 fn print_brain_reflection_save(report: &BrainReflectionSaveReport, language: Language) {
     print_brain_reflection(&report.reflection, language);
     match language {
@@ -9409,6 +9562,12 @@ fn clean_brain_deliberate_llm_client() -> Result<OpenAiCompatibleChatClient, Str
     ))
 }
 
+fn clean_brain_clarify_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
+    Ok(OpenAiCompatibleChatClient::new(
+        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_clarify_llm_prefix())?,
+    ))
+}
+
 fn clean_brain_reflect_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
     Ok(OpenAiCompatibleChatClient::new(
         OpenAiCompatibleConfig::from_env_prefix(&clean_brain_reflect_llm_prefix())?,
@@ -9483,6 +9642,10 @@ fn clean_brain_llm_prefix() -> String {
 
 fn clean_brain_explore_llm_prefix() -> String {
     clean_brain_slot_llm_prefix("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX")
+}
+
+fn clean_brain_clarify_llm_prefix() -> String {
+    clean_brain_slot_llm_prefix("OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX")
 }
 
 fn clean_brain_deliberate_llm_prefix() -> String {
@@ -9788,6 +9951,98 @@ fn write_brain_deliberation_session(
     Ok(BrainSessionReport {
         policy: prompt_report.policy,
         mode: "deliberate".to_string(),
+        prompt: prompt.to_string(),
+        session_dir: session_dir.to_string_lossy().to_string(),
+        prompt_path: prompt_path.to_string_lossy().to_string(),
+        messages_path: messages_path.to_string_lossy().to_string(),
+        reply_path: reply_path.to_string_lossy().to_string(),
+        draft_path: draft_path_string,
+        command_path: command_path.to_string_lossy().to_string(),
+        apply_command,
+        next,
+    })
+}
+
+fn write_brain_clarification_session(
+    state: &HarnessState,
+    state_path: &Path,
+    prompt: &str,
+    live: bool,
+) -> Result<BrainSessionReport, String> {
+    let prompt_report = state.clean_brain_prompt(prompt.to_string(), 6);
+    let messages = brain_clarification_session_messages(&prompt_report);
+    let reply_template = serde_json::json!({
+        "summary": "short clarification",
+        "observations": ["cognitive observation"],
+        "questions": ["question for the human"],
+        "options": ["possible cognitive direction"],
+        "risks": ["ambiguity risk"],
+        "needs": [
+            {"kind": "verify", "query": "short cognitive request"}
+        ]
+    });
+    let session_dir = next_brain_session_dir(state_path)?;
+    fs::create_dir_all(&session_dir).map_err(|error| error.to_string())?;
+
+    let prompt_path = session_dir.join("PROMPT.md");
+    let messages_path = session_dir.join("messages.json");
+    let reply_path = session_dir.join("REPLY.json");
+    let draft_path = session_dir.join("DRAFT.json");
+    let command_path = session_dir.join("COMMANDS.sh");
+    let state_arg = shell_arg(state_path.to_string_lossy().as_ref());
+    let prompt_arg = shell_arg(prompt);
+    let reply_arg = shell_arg(reply_path.to_string_lossy().as_ref());
+    let apply_command = format!(
+        "octopus --state {state_arg} brain --clarify --apply {reply_arg} --save {prompt_arg}"
+    );
+
+    fs::write(
+        &prompt_path,
+        brain_session_prompt_markdown(&prompt_report, &messages, "clarify", &apply_command),
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        &messages_path,
+        serde_json::to_string_pretty(&messages).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        &reply_path,
+        serde_json::to_string_pretty(&reply_template).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    let draft_path = if live {
+        let mut client = clean_brain_clarify_llm_client()?;
+        let response = client.chat(&messages)?;
+        let draft = clean_brain_session_draft_json(&response.content)?;
+        fs::write(&draft_path, draft).map_err(|error| error.to_string())?;
+        Some(draft_path)
+    } else {
+        None
+    };
+    fs::write(
+        &command_path,
+        format!(
+            "#!/usr/bin/env sh\nset -eu\n# Paste the accepted clarification JSON into REPLY.json first.\n{apply_command}\n"
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    make_executable(&command_path)?;
+    let draft_path_string = draft_path
+        .as_ref()
+        .map(|path| path.to_string_lossy().to_string());
+    let mut next = Vec::new();
+    if draft_path_string.is_some() {
+        next.push("review DRAFT.json, then copy accepted JSON into REPLY.json".to_string());
+    } else {
+        next.push("paste PROMPT.md or messages.json into a chat model".to_string());
+        next.push("replace REPLY.json with clarification JSON".to_string());
+    }
+    next.push(apply_command.clone());
+
+    Ok(BrainSessionReport {
+        policy: prompt_report.policy,
+        mode: "clarify".to_string(),
         prompt: prompt.to_string(),
         session_dir: session_dir.to_string_lossy().to_string(),
         prompt_path: prompt_path.to_string_lossy().to_string(),
@@ -10551,6 +10806,29 @@ fn brain_deliberation_session_messages(report: &BrainPromptReport) -> Vec<ChatMe
     ]
 }
 
+fn brain_clarification_session_messages(report: &BrainPromptReport) -> Vec<ChatMessage> {
+    let context = serde_json::json!({
+        "policy": report.policy,
+        "slots": ["Goal", "Mem", "Need", "Feed"],
+        "goal": report.goal,
+        "mem": report.mem,
+        "recent_need_feed": report.recent,
+    });
+    vec![
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain clarification layer. You see only Goal, Mem, Need, and Feed. Ask the few human-facing questions that would make the Goal and next cognitive Needs clearer. Express cognitive Needs only. Do not choose tools, APIs, files, commands, routes, tentacles, or implementation. Return only JSON: {\"summary\":\"short clarification\",\"observations\":[\"cognitive observation\"],\"questions\":[\"question for the human\"],\"options\":[\"possible cognitive direction\"],\"risks\":[\"ambiguity risk\"],\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!(
+                "Clean brain context JSON: {context}\nUser clarification prompt: {}",
+                report.prompt
+            ),
+        ),
+    ]
+}
+
 fn brain_reflection_session_messages(report: &BrainPromptReport) -> Vec<ChatMessage> {
     let context = serde_json::json!({
         "policy": report.policy,
@@ -10710,7 +10988,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -11302,6 +11580,159 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"rewrite clean\",\
         assert!(content.contains("external deliberation"));
         assert!(content.contains("whether goal evidence is enough"));
         assert!(!content.contains("cargo test"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_brain_clarify_session_writes_external_chat_artifacts_without_feed() {
+        let _env = env_guard();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-brain-clarify-{}", std::process::id()));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--clarify".to_string(),
+            "--session".to_string(),
+            "unclear".to_string(),
+            "launch".to_string(),
+            "goal".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        assert_eq!(restored.pending_need_queue_count(), 0);
+        let session = dir.join("brain").join("session-1");
+        let prompt = fs::read_to_string(session.join("PROMPT.md")).unwrap();
+        let messages = fs::read_to_string(session.join("messages.json")).unwrap();
+        let reply = fs::read_to_string(session.join("REPLY.json")).unwrap();
+        let command = fs::read_to_string(session.join("COMMANDS.sh")).unwrap();
+        assert!(prompt.contains("mode: clarify"));
+        assert!(messages.contains("clarification layer"));
+        assert!(messages.contains("Goal + Mem + Need + Feed"));
+        assert!(reply.contains("\"questions\""));
+        assert!(command.contains("brain --clarify --apply"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_brain_clarify_apply_saves_clean_needs_without_feed() {
+        let _env = env_guard();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-brain-clarify-apply-{}",
+            std::process::id()
+        ));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--clarify".to_string(),
+            "--apply-json".to_string(),
+            "{\"summary\":\"clarify reply\",\"observations\":[\"goal is broad\"],\"questions\":[\"what outcome proves success?\"],\"options\":[\"tighten goal\"],\"risks\":[\"wrong target\"],\"needs\":[{\"kind\":\"verify\",\"query\":\"success criteria for launch goal\"},{\"kind\":\"execute\",\"query\":\"cargo test -p octopus-core\"}]}".to_string(),
+            "--save".to_string(),
+            "clarify".to_string(),
+            "goal".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert_eq!(restored.pending_need_queue_count(), 1);
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let content = fs::read_to_string(&state_path).unwrap();
+        assert!(content.contains("clarify reply"));
+        assert!(content.contains("success criteria for launch goal"));
+        assert!(!content.contains("cargo test"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cli_brain_clarify_live_uses_slot_without_feed() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _env = env_guard();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-brain-clarify-live-{}", std::process::id()));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = dir.join("clarify-curl.sh");
+        fs::write(
+            &curl,
+            r#"#!/bin/sh
+printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"clarify slot reply\",\"observations\":[\"slot observation\"],\"questions\":[\"slot question\"],\"options\":[\"slot option\"],\"risks\":[\"slot risk\"],\"needs\":[{\"kind\":\"verify\",\"query\":\"clarify-slot cognitive need\"}]}"}}]}'
+"#,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+
+        let old_brain = std::env::var("OCTOPUS_BRAIN_LLM").ok();
+        let old_brain_prefix = std::env::var("OCTOPUS_BRAIN_LLM_PREFIX").ok();
+        let old_clarify_prefix = std::env::var("OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX").ok();
+        let old_model = std::env::var("OCTOPUS_SLOT_CLARIFY_MODEL").ok();
+        let old_base_url = std::env::var("OCTOPUS_SLOT_CLARIFY_BASE_URL").ok();
+        let old_api_key = std::env::var("OCTOPUS_SLOT_CLARIFY_API_KEY").ok();
+        let old_curl = std::env::var("OCTOPUS_SLOT_CLARIFY_CURL").ok();
+        std::env::set_var("OCTOPUS_BRAIN_LLM", "1");
+        std::env::set_var("OCTOPUS_BRAIN_LLM_PREFIX", "OCTOPUS_UNUSED_BRAIN");
+        std::env::set_var("OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX", "OCTOPUS_SLOT_CLARIFY");
+        std::env::set_var("OCTOPUS_SLOT_CLARIFY_MODEL", "clarify-model");
+        std::env::set_var(
+            "OCTOPUS_SLOT_CLARIFY_BASE_URL",
+            "https://clarify.example/v1",
+        );
+        std::env::remove_var("OCTOPUS_SLOT_CLARIFY_API_KEY");
+        std::env::set_var(
+            "OCTOPUS_SLOT_CLARIFY_CURL",
+            curl.to_string_lossy().to_string(),
+        );
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--clarify".to_string(),
+            "--live".to_string(),
+            "--save".to_string(),
+            "clarify".to_string(),
+            "goal".to_string(),
+        ])
+        .unwrap();
+
+        restore_env("OCTOPUS_BRAIN_LLM", old_brain);
+        restore_env("OCTOPUS_BRAIN_LLM_PREFIX", old_brain_prefix);
+        restore_env("OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX", old_clarify_prefix);
+        restore_env("OCTOPUS_SLOT_CLARIFY_MODEL", old_model);
+        restore_env("OCTOPUS_SLOT_CLARIFY_BASE_URL", old_base_url);
+        restore_env("OCTOPUS_SLOT_CLARIFY_API_KEY", old_api_key);
+        restore_env("OCTOPUS_SLOT_CLARIFY_CURL", old_curl);
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert_eq!(restored.pending_need_queue_count(), 1);
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let content = fs::read_to_string(&state_path).unwrap();
+        assert!(content.contains("clarify slot reply"));
+        assert!(content.contains("clarify-slot cognitive need"));
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -12378,7 +12809,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
         assert!(usage().contains(
-            "brain [--goal] [--live] [--save] [--session] [--rewrite] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--apply path|-] [--apply-json json] [prompt]"
+            "brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--apply path|-] [--apply-json json] [prompt]"
         ));
         assert!(usage().contains("explore [--save] [prompt]"));
         assert!(usage().contains("needs [take|drop|script [path]|session [--live] [prompt]]"));
@@ -12587,6 +13018,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(content.contains("export OCTOPUS_BRAIN_LLM=1"));
         assert!(content.contains("export OCTOPUS_BRAIN_LLM_PREFIX=OCTOPUS_TEST"));
         assert!(content.contains("export OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX=OCTOPUS_TEST"));
+        assert!(content.contains("export OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX=OCTOPUS_TEST"));
         assert!(content.contains("export OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX=OCTOPUS_TEST"));
         assert!(content.contains("export OCTOPUS_BRAIN_REFLECT_LLM_PREFIX=OCTOPUS_TEST"));
         assert!(content.contains("export OCTOPUS_BRAIN_MEMORY_LLM_PREFIX=OCTOPUS_TEST"));
@@ -12630,6 +13062,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let old_chat_prefix = std::env::var("OCTOPUS_CHAT_LLM_PREFIX").ok();
         let old_brain_prefix = std::env::var("OCTOPUS_BRAIN_LLM_PREFIX").ok();
         let old_brain_explore_prefix = std::env::var("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX").ok();
+        let old_brain_clarify_prefix = std::env::var("OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX").ok();
         let old_brain_deliberate_prefix = std::env::var("OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX").ok();
         let old_brain_reflect_prefix = std::env::var("OCTOPUS_BRAIN_REFLECT_LLM_PREFIX").ok();
         let old_brain_memory_prefix = std::env::var("OCTOPUS_BRAIN_MEMORY_LLM_PREFIX").ok();
@@ -12649,6 +13082,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         std::env::set_var("OCTOPUS_CHAT_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_BRAIN_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
+        std::env::set_var("OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_BRAIN_REFLECT_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_BRAIN_MEMORY_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
@@ -12664,7 +13098,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
 
         let report = provider_status_report();
 
-        assert_eq!(report.layers.len(), 12);
+        assert_eq!(report.layers.len(), 13);
         assert!(report
             .layers
             .iter()
@@ -12679,6 +13113,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         }));
         assert!(report.layers.iter().any(|layer| {
             layer.layer == "clean_brain_explore"
+                && layer.prefix == "OCTOPUS_STATUS_TEST"
+                && layer.enabled
+        }));
+        assert!(report.layers.iter().any(|layer| {
+            layer.layer == "clean_brain_clarify"
                 && layer.prefix == "OCTOPUS_STATUS_TEST"
                 && layer.enabled
         }));
@@ -12728,6 +13167,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         restore_env("OCTOPUS_CHAT_LLM_PREFIX", old_chat_prefix);
         restore_env("OCTOPUS_BRAIN_LLM_PREFIX", old_brain_prefix);
         restore_env("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX", old_brain_explore_prefix);
+        restore_env("OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX", old_brain_clarify_prefix);
         restore_env(
             "OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX",
             old_brain_deliberate_prefix,

@@ -172,6 +172,7 @@ octopus provider save openai OCTOPUS_LLM "$tmp/llm.env"
 . "$tmp/llm.env"
 # Optional: route clean-brain jobs to different provider prefixes.
 export OCTOPUS_BRAIN_GOAL_LLM_PREFIX=OCTOPUS_LLM
+export OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX=OCTOPUS_LLM
 export OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX=OCTOPUS_LLM
 export OCTOPUS_BRAIN_REFLECT_LLM_PREFIX=OCTOPUS_LLM
 export OCTOPUS_BRAIN_MEMORY_LLM_PREFIX=OCTOPUS_LLM
@@ -183,10 +184,12 @@ export OCTOPUS_BRAIN_COUNCIL_LLM_PREFIXES=OCTOPUS_LLM
 octopus provider check
 
 octopus --state "$tmp/state.json" brain --goal --live --save "make the goal sharper"
+octopus --state "$tmp/state.json" brain --clarify --live --save "what should the user clarify?"
 octopus --state "$tmp/state.json" brain --deliberate --live --save "think before the next Need"
 octopus --state "$tmp/state.json" brain --reflect --live --save "what evidence is missing?"
 octopus --state "$tmp/state.json" brain --memory --live --save "what should be remembered?"
 octopus --state "$tmp/state.json" brain --council --save "ask multiple clean brains"
+octopus --state "$tmp/state.json" brain --clarify --session "what should the user clarify?"
 octopus --state "$tmp/state.json" brain --deliberate --session "think before the next Need"
 octopus --state "$tmp/state.json" brain --reflect --session "what evidence is missing?"
 octopus --state "$tmp/state.json" brain --memory --session "what should be remembered?"
