@@ -3255,7 +3255,17 @@ impl ManifestTentacle {
             ]
             .as_slice(),
             NeedKind::Verify if self.route_id == "harness-repair-agent" => {
-                ["heartbeat_repair", "diagnose_harness", "adapter_probe"].as_slice()
+                if is_repair_outcome_query(&need.query) {
+                    [
+                        "repair_outcome",
+                        "heartbeat_repair",
+                        "diagnose_harness",
+                        "adapter_probe",
+                    ]
+                    .as_slice()
+                } else {
+                    ["heartbeat_repair", "diagnose_harness", "adapter_probe"].as_slice()
+                }
             }
             NeedKind::Verify | NeedKind::Reproduce => [
                 "run_tests",
@@ -6135,6 +6145,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "tentacles/harness-repair-agent/tools/diagnose_harness.sh".to_string(),
                     "tentacles/harness-repair-agent/tools/heartbeat_repair.sh".to_string(),
                     "tentacles/harness-repair-agent/tools/repair_session.sh".to_string(),
+                    "tentacles/harness-repair-agent/tools/repair_outcome.sh".to_string(),
                     "tentacles/harness-repair-agent/tools/adapter_probe.sh".to_string(),
                 ],
             }],
@@ -6161,6 +6172,13 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     OCTOPUS_JSON_CONTRACT,
                 ),
                 tool_meta_with_contract(
+                    "repair_outcome",
+                    "Record reviewed harness repair session outcomes for later repair planning.",
+                    "shell",
+                    "tentacles/harness-repair-agent/tools/repair_outcome.sh",
+                    OCTOPUS_JSON_CONTRACT,
+                ),
+                tool_meta_with_contract(
                     "adapter_probe",
                     "Probe provider, MCP, GitHub, desktop, bridge, and command readiness.",
                     "shell",
@@ -6173,11 +6191,13 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "tentacles/harness-repair-agent/tools/diagnose_harness.sh . | python3 -m json.tool > /dev/null",
                     "tentacles/harness-repair-agent/tools/heartbeat_repair.sh . | python3 -m json.tool > /dev/null",
                     "tentacles/harness-repair-agent/tools/repair_session.sh $(mktemp -d) | python3 -m json.tool > /dev/null",
+                    "tmp=$(mktemp -d); tentacles/harness-repair-agent/tools/repair_session.sh \"$tmp\" > /dev/null; tentacles/harness-repair-agent/tools/repair_outcome.sh \"$tmp\" satisfied reviewed | python3 -m json.tool > /dev/null",
                     "tentacles/harness-repair-agent/tools/adapter_probe.sh . | python3 -m json.tool > /dev/null",
                 ],
                 &[
                     "Return repair plans as Feed; do not patch the kernel directly.",
                     "Keep provider repair drafts optional and reviewable.",
+                    "Record reviewed repair outcomes before using them as future repair evidence.",
                     "Prefer reviewable .octopus/evolution artifacts and explicit harness:write grants.",
                 ],
             ),
@@ -7406,6 +7426,21 @@ fn is_desktop_observe(query: &str) -> bool {
 fn is_clipboard_query(query: &str) -> bool {
     let query = query.to_lowercase();
     ["clipboard", "copy", "paste"]
+        .iter()
+        .any(|word| query.contains(word))
+}
+
+fn is_repair_outcome_query(query: &str) -> bool {
+    let query = query.to_lowercase();
+    query.contains("repair")
+        && [
+            "outcome",
+            "score",
+            "review",
+            "satisfied",
+            "partial",
+            "failed",
+        ]
         .iter()
         .any(|word| query.contains(word))
 }
@@ -9632,6 +9667,11 @@ print(json.dumps({
         assert!(installed.tool_meta.iter().any(|tool| {
             tool.id == "diagnose_harness" && tool.contract.as_deref() == Some(OCTOPUS_JSON_CONTRACT)
         }));
+        assert!(installed
+            .tool_meta
+            .iter()
+            .any(|tool| tool.id == "repair_outcome"
+                && tool.contract.as_deref() == Some(OCTOPUS_JSON_CONTRACT)));
 
         let workspace =
             std::env::temp_dir().join(format!("octopus-repair-session-{}", std::process::id()));
@@ -9697,10 +9737,44 @@ print(json.dumps({
             feed.metadata.get("llm_draft_status").map(String::as_str),
             Some("disabled")
         );
+        assert!(feed.metadata.contains_key("outcome_command"));
         assert_eq!(
             feed.metadata.get("next_need_kind").map(String::as_str),
             Some("verify")
         );
+        let session = feed
+            .metadata
+            .get("session")
+            .expect("repair session path")
+            .clone();
+        let outcome_feed = tentacle.feed(&Need::new(
+            NeedKind::Verify,
+            format!(
+                "{} repair outcome {} satisfied reviewed repair draft",
+                workspace.to_string_lossy(),
+                session
+            ),
+        ));
+        assert_eq!(outcome_feed.status, Status::Satisfied);
+        assert_eq!(
+            outcome_feed.metadata.get("tool").map(String::as_str),
+            Some("repair_outcome")
+        );
+        let outcomes_file = outcome_feed
+            .metadata
+            .get("outcomes_file")
+            .map(|path| workspace.join(path))
+            .expect("outcomes file metadata");
+        assert!(outcomes_file.exists());
+        assert!(fs::read_to_string(&outcomes_file)
+            .unwrap()
+            .contains("\"outcome_status\": \"satisfied\""));
+        let outcome_markdown = outcome_feed
+            .metadata
+            .get("outcome")
+            .map(|path| workspace.join(path))
+            .expect("outcome markdown metadata");
+        assert!(outcome_markdown.exists());
         assert!(feed
             .evidence
             .iter()
