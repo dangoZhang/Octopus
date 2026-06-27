@@ -176,6 +176,7 @@ json-feed observe
 Octopus context
 Octopus think
 plan_source: rule
+audit: all Needs stay cognitive
 feed_trace: json-feed/feed via rule
 Feed traces
 Octopus repair

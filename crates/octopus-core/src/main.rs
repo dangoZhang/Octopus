@@ -4326,6 +4326,12 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             Some("octopus explore"),
         ),
         product_capability(
+            "clean_brain_audit",
+            "ready",
+            "clean-brain Goal and exploration reports flag Need text that carries tool or implementation burden",
+            Some("octopus brain --live \"what should the brain ask next?\""),
+        ),
+        product_capability(
             "need_queue",
             "ready",
             format!(
@@ -5375,6 +5381,7 @@ fn print_brain_explore(report: &BrainExploreReport, language: Language) {
                     .unwrap_or("none")
             );
             println!("summary: {}", report.summary);
+            println!("audit: {}", brain_audit_line(&report.audit));
             for need in &report.needs {
                 println!("need: {} {}", need_label(&need.kind), need.query);
             }
@@ -5395,6 +5402,7 @@ fn print_brain_explore(report: &BrainExploreReport, language: Language) {
                     .unwrap_or("无")
             );
             println!("摘要: {}", report.summary);
+            println!("审计: {}", brain_audit_line(&report.audit));
             for need in &report.needs {
                 println!("Need: {} {}", need_label(&need.kind), need.query);
             }
@@ -5423,6 +5431,7 @@ fn print_brain_goal(report: &BrainGoalReport, language: Language) {
             println!("goal: {}", report.goal.objective);
             println!("constraints: {}", report.goal.constraints.len());
             println!("summary: {}", report.summary);
+            println!("audit: {}", brain_audit_line(&report.audit));
             for need in &report.needs {
                 println!("need: {} {}", need_label(&need.kind), need.query);
             }
@@ -5437,6 +5446,7 @@ fn print_brain_goal(report: &BrainGoalReport, language: Language) {
             println!("目标: {}", report.goal.objective);
             println!("约束: {}", report.goal.constraints.len());
             println!("摘要: {}", report.summary);
+            println!("审计: {}", brain_audit_line(&report.audit));
             for need in &report.needs {
                 println!("Need: {} {}", need_label(&need.kind), need.query);
             }
@@ -5445,6 +5455,19 @@ fn print_brain_goal(report: &BrainGoalReport, language: Language) {
             }
         }
     }
+}
+
+fn brain_audit_line(audit: &octopus_core::BrainNeedAudit) -> String {
+    if audit.issue_count == 0 {
+        return audit.summary.clone();
+    }
+    let signals = audit
+        .issues
+        .iter()
+        .map(|issue| format!("#{} {}", issue.index, issue.signal))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{} ({signals})", audit.summary)
 }
 
 fn print_need_queue_save(report: &NeedQueueSaveReport, language: Language) {
