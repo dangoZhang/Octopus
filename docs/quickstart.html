@@ -182,6 +182,7 @@ octopus provider save local OCTOPUS_LOCAL "$tmp/local-llm.env"
 octopus provider save deepseek OCTOPUS_DEEPSEEK "$tmp/deepseek.env"
 octopus provider save gemini OCTOPUS_GEMINI "$tmp/gemini.env"
 octopus doctor</code></pre>
+      <p>If a live or pasted model reply includes tools, commands, APIs, or file paths inside a Need, the audit keeps it out of <code>next</code> commands and <code>--save</code> queues until it is rewritten as a cognitive request.</p>
       <p>The native app can generate or save provider env, show the same provider layers, run an explicit provider check, render <code>octopus report</code>, render <code>octopus preflight</code>, run harness repair into Need Queue, take/drop queued Needs, score repair outcomes, and write local preflight script/record artifacts.</p>
 
       <h2>Self-Iteration</h2>

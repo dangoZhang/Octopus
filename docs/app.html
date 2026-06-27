@@ -1414,10 +1414,15 @@
         const root = $("exploreReport");
         root.className = "stack";
         root.textContent = "";
+        const audit = report.audit || {};
+        const cleanNeeds = audit.clean_needs || report.needs || [];
         root.appendChild(exploreSummary(report));
-        root.appendChild(brainAuditSummary(report.audit || {}));
-        root.appendChild(reportList("Audit Issues", (report.audit && report.audit.issues) || [], brainAuditIssueItem));
-        root.appendChild(reportList("Needs", report.needs || [], exploreNeedItem));
+        root.appendChild(brainAuditSummary(audit));
+        root.appendChild(reportList("Accepted Needs", cleanNeeds, exploreNeedItem));
+        root.appendChild(reportList("Audit Issues", audit.issues || [], brainAuditIssueItem));
+        if ((audit.issue_count || 0) > 0) {
+          root.appendChild(reportList("Raw Needs", report.needs || [], exploreNeedItem));
+        }
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 

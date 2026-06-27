@@ -143,6 +143,8 @@ octopus provider save gemini OCTOPUS_GEMINI "$tmp/gemini.env"
 octopus doctor
 ```
 
+If a live or pasted model reply includes tools, commands, APIs, or file paths inside a Need, the audit keeps it out of `next` commands and `--save` queues until it is rewritten as a cognitive request.
+
 The native app can generate or save provider env, show the same provider layers, run an explicit provider check, render `octopus report`, render `octopus preflight`, run harness repair into Need Queue, take/drop queued Needs, score repair outcomes, and write local preflight script/record artifacts.
 
 ## Self-Iteration
