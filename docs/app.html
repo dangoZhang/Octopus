@@ -491,6 +491,7 @@
             <button type="button" id="runExplore">Explore</button>
             <button type="button" id="saveExplore">Save Explore</button>
             <button type="button" id="runNeedQueue">Need Queue</button>
+            <button type="button" id="runNeedScript">Need Script</button>
             <button type="button" id="runRepair">Repair</button>
             <button type="button" data-run="think">Think</button>
             <button type="button" id="runContext">Context</button>
@@ -626,6 +627,7 @@
           `octopus --state ${shellQuote(state)} --json explore ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json explore --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json needs`,
+          `octopus --state ${shellQuote(state)} --json needs script`,
           `octopus --state ${shellQuote(state)} --json repair ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} --json repair score 1 satisfied ${shellQuote("repair improved harness")}`,
           `octopus --state ${shellQuote(state)} --json need ${need} ${shellQuote(target)}`,
@@ -933,6 +935,19 @@
           const report = await runBridgeJson(["--state", state, "--json", "needs"]);
           currentNeedQueueReport = report;
           renderNeedQueueReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("needQueueReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runNeedScriptReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        $("needQueueReport").textContent = "writing script...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "needs", "script"]);
+          renderNeedQueueScriptReport(report);
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("needQueueReport").textContent = String(error);
@@ -1364,6 +1379,31 @@
         root.appendChild(grid);
         root.appendChild(reportList("Pending", report.pending || [], needQueueItem));
         root.appendChild(reportList("History", report.history || [], needQueueItem));
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function renderNeedQueueScriptReport(report) {
+        const root = $("needQueueReport");
+        root.className = "stack";
+        root.textContent = "";
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Brain", report.policy || "Goal + Mem + Need + Feed"],
+          ["Path", report.script_path || "none"],
+          ["Commands", String(report.command_count || 0)],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        root.appendChild(grid);
+        root.appendChild(reportList("Script Commands", report.commands || [], textItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
@@ -2463,6 +2503,7 @@
       $("runExplore").addEventListener("click", () => runExploreReport(false));
       $("saveExplore").addEventListener("click", () => runExploreReport(true));
       $("runNeedQueue").addEventListener("click", runNeedQueueReport);
+      $("runNeedScript").addEventListener("click", runNeedScriptReport);
       $("runRepair").addEventListener("click", runRepairReport);
       $("runContext").addEventListener("click", runContextReport);
       $("providerEnv").addEventListener("click", runProviderEnv);

@@ -27,6 +27,6 @@ Real-machine test gate for `0.1.0` and later tags:
 
 Last cleanup/version correction: `0.0.8` on 2026-06-27. Scope: clean-brain Goal workflow, external chat reply import, provider-routed clean-brain calls, harness repair queue/drafts, self-reference-safe real-machine record gate, and README/control-surface cleanup; no tag cut.
 
-Product commits toward `0.0.9`: 5/8.
+Product commits toward `0.0.9`: 7/8.
 
 Next planned cleanup/version commit: `0.0.9`.
