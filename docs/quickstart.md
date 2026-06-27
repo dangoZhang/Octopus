@@ -37,6 +37,7 @@ octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" goal set "build a clean-brain agent"
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
 octopus --state "$tmp/state.json" brain "what should the brain ask next?"
+octopus --state "$tmp/state.json" brain --goal --live --save "make the goal sharper"
 octopus --state "$tmp/state.json" brain --live "what should the brain ask next?"
 octopus --state "$tmp/state.json" brain --live --save "what should the brain ask next?"
 octopus --state "$tmp/state.json" explore "what should the brain ask next?"
@@ -106,6 +107,7 @@ octopus provider save openai OCTOPUS_LLM "$tmp/llm.env"
 # set OPENAI_API_KEY first, then:
 . "$tmp/llm.env"
 octopus provider check
+octopus --state "$tmp/state.json" brain --goal --live --save "make the goal sharper"
 octopus --state "$tmp/state.json" brain --live "what should the brain ask next?"
 
 octopus --state "$tmp/state.json" chat "make the harness self-evolve"

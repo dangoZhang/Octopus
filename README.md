@@ -47,6 +47,7 @@ Try the core flow:
 ```bash
 octopus goal set "make this repo easier to use"
 octopus brain "what should the brain ask next?"
+octopus brain --goal --live --save "make the goal sharper"
 octopus brain --live "what should the brain ask next?"
 octopus brain --live --save "what should the brain ask next?"
 octopus explore "what should the brain ask next?"
@@ -85,7 +86,7 @@ next: octopus preflight record, octopus preflight script, octopus report
 ## What Works Today
 
 - Local bootstrap, doctor, report, preflight, release-gate script, and real-machine record template.
-- Goal refinement, clean-brain exploration, context inspection, Feed traces, and feedback scoring.
+- Goal refinement, clean-brain goal tuning, clean-brain exploration, context inspection, Feed traces, and feedback scoring.
 - Seed tentacles for SWE work, computer-use diagnostics, repo maintenance, harness repair, bash-only execution, and structured JSON Feed.
 - OpenAI-compatible chat, live clean-brain exploration, tool-side planning, and harness evolution candidates.
 - Native HTML app for setup, providers, traces, checks, grants, pet state, and harness review.
