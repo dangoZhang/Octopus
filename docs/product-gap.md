@@ -26,13 +26,14 @@ Updated: 2026-06-27
 - The native HTML app renders starter recommendations as action cards with Use, Install, First Need, and Check controls.
 - Starter recommendations are grouped for first-run work: repo, desktop, self-iteration, repair, research, script, runtime, memory, and visual.
 - Starter recommendation cards now include group reasons and manifest-derived signals so first-run users can see why a tentacle was recommended.
+- Starter recommendations now record accepted, ignored, and failed first-run choices as harness feedback, and later ranking uses that feedback score.
 - README now opens as a product landing page: clean-brain story, thinking tentacles, pixel Octopus, install path, usable surface, and maturity line are visible before docs links.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
 - `status --json` exposes recent clean-brain Goal turns so Goal refinement history stays visible without replaying Feed.
 - `brain [prompt]` exports pasteable clean-brain chat messages from Goal/Mem/Need/Feed for any model UI.
 - `brain --session [--live] [--goal] [prompt]` writes local external-chat session files: prompt, messages, reply template, optional provider draft, and apply command.
-- `brain --apply <file|->` and `brain --apply-json <json>` import external chat replies into Goal or Need Queue without running Feed.
+- `brain --apply <file|->` and `brain --apply-json <json>` import external chat replies into Goal or Need Queue without running Feed; `brain --rewrite --session --apply...` writes an external-chat rewrite session, and `brain --rewrite --live --apply...` can rewrite polluted Need candidates through the clean-brain provider before queueing.
 - `brain --goal [--live] [--save] [prompt]` lets the clean brain refine Goal and optional queued Needs without running Feed.
 - `brain --live [--save] [prompt]` calls the clean-brain provider and can store returned Needs without running Feed.
 - `explore [prompt]` lets the clean brain suggest cognitive Needs from Goal/Mem/Need/Feed without running Feed.
@@ -154,6 +155,8 @@ Updated: 2026-06-27
 - Added a separate clean-brain LLM provider layer, `brain --live [--save]`, and more OpenAI-compatible provider profiles for model routing without tool context.
 - Added clean-brain Need audit fields to Goal and exploration reports so external or live model replies can expose implementation leakage before Feed.
 - Added `clean_needs` to the clean-brain Need audit and changed Goal/Explore save paths so polluted Needs are not queued or turned into next Feed commands.
+- Added provider-backed `brain --rewrite` plus native HTML Rewrite Reply so dirty model Needs can be rewritten into cognitive Needs before queueing.
+- Added `brain --rewrite --session` plus native HTML Rewrite Session so any external chat UI can rewrite polluted Need candidates without tool context or Feed execution.
 - Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and bridge API.
 - Polished README and docs homepages into product-page copy with the value story first and runnable install commands kept visible.
 - Added `preflight [--live]` so release readiness can check state, seed tentacles, manifests, context boundary, docs/pet, LLM layers, live provider, feedback data, GitHub PR path, current-head real-machine record, desktop adapters, and harness repair.
@@ -186,7 +189,8 @@ Updated: 2026-06-27
 - Added trace-aware repair score commands so report/app score prompts use the concrete Feed trace instead of a placeholder.
 - Added starter recommendation evidence signals so each card can explain its group, objective matches, Needs, tools, runtimes, evolution surfaces, LLM readiness, and install state.
 - Reworked README into a product-page share surface with a first-screen story, edge-intelligence insight, differentiators, install/use path, and usable pre-release boundary.
-- Rolled the cleanup/version cadence to `0.0.11` after repair action plans, heartbeat plan pickup, repair plan/report/app surfacing, REVIEW.md bundles, trace-aware repair scoring, and README product landing polish.
+- Added starter choice feedback so accepted, ignored, and failed starter picks become compact harness records, influence later recommendation ranking, update pet state, and show in the native HTML app.
+- Rolled the cleanup/version cadence to `0.0.11` after repair action plans, heartbeat plan pickup, repair plan/report/app surfacing, REVIEW.md bundles, trace-aware repair scoring, starter choice feedback, and README product landing polish.
 
 ## Remaining Gaps
 
@@ -199,7 +203,7 @@ Updated: 2026-06-27
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, clean-brain layer diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
 - GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
-- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect repair plans, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, render/filter starter recommendation cards, run starter install/check/first-Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect repair plans, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, render/filter starter recommendation cards with choice feedback, run starter install/check/first-Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
@@ -207,7 +211,7 @@ Updated: 2026-06-27
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
 - Exercise live clean-brain exploration and multi-action tentacle planning with real LLM providers and record provider-specific failures.
 - Exercise Feed feedback outcomes from real tasks against the new route report and tune route choices from that evidence.
-- Add richer first-run ranking feedback so starter cards can learn from accepted, ignored, or failed first choices.
+- Exercise starter ranking feedback with real first-run choices and tune score weights from observed accepts, ignores, and failures.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Apply and score the next Feed-trace- or check-driven seed-tentacle improvement through the app review/grant loop.
 - Run `repair` after bootstrap, take the queued Need, and score whether the resulting Feed improves the harness from the app.

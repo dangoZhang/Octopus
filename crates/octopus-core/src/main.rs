@@ -12,9 +12,10 @@ use octopus_core::{
     HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem,
     NeedQueueReport, NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport,
     OpenAiCompatibleChatClient, OpenAiCompatibleConfig, RepairOutcome, RouteReport,
-    SelfIterationPlan, Status, StatusReport, TentacleEvolutionProposal, TentacleManifestReport,
-    TentacleProfile, TentacleScaffold, TentacleThinkingPlan, TentacleToolAction,
-    TentacleToolCandidate, ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
+    SelfIterationPlan, StarterFeedbackInput, StarterFeedbackRecord, StarterFeedbackStatus, Status,
+    StatusReport, TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile,
+    TentacleScaffold, TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate,
+    ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -256,6 +257,9 @@ struct StarterRecommendation {
     group_reason: String,
     reason: String,
     signals: Vec<String>,
+    feedback_score: f32,
+    feedback_count: usize,
+    last_feedback: Option<StarterFeedbackPreview>,
     installed: bool,
     llm_ready: bool,
     needs: Vec<String>,
@@ -267,6 +271,29 @@ struct StarterRecommendation {
     install_command: String,
     first_need_command: String,
     check_command: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct StarterFeedbackPreview {
+    status: StarterFeedbackStatus,
+    summary: String,
+    objective: String,
+    score: f32,
+}
+
+#[derive(Debug)]
+struct StarterFeedbackSignal {
+    score: f32,
+    count: usize,
+    last: Option<StarterFeedbackPreview>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct StarterFeedbackReport {
+    record: StarterFeedbackRecord,
+    feedback_score: f32,
+    feedback_count: usize,
+    next: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -822,6 +849,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let mut save = false;
             let mut refine_goal = false;
             let mut session = false;
+            let mut rewrite = false;
             let mut apply_path = None;
             let mut apply_json = None;
             let mut prompt = Vec::new();
@@ -832,6 +860,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     "--save" => save = true,
                     "--goal" => refine_goal = true,
                     "--session" => session = true,
+                    "--rewrite" => rewrite = true,
                     "--apply" => {
                         brain_index += 1;
                         let Some(path) = rest.get(brain_index) else {
@@ -850,13 +879,36 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 }
                 brain_index += 1;
             }
+            let has_apply_payload = apply_json.is_some() || apply_path.is_some();
+            if rewrite && refine_goal {
+                return Err("brain --rewrite cannot be combined with --goal".to_string());
+            }
+            if rewrite && !has_apply_payload {
+                return Err("brain --rewrite requires --apply or --apply-json".to_string());
+            }
             let prompt = (!prompt.is_empty()).then(|| prompt.join(" "));
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             let prompt = prompt
                 .or_else(|| loaded.goal.as_ref().map(|goal| goal.objective.clone()))
                 .unwrap_or_else(|| "what should the brain ask next?".to_string());
+            let apply_payload = if let Some(payload) = apply_json {
+                Some(payload)
+            } else if let Some(path) = apply_path {
+                Some(read_brain_apply_payload(&path)?)
+            } else {
+                None
+            };
             if session {
-                let report = write_brain_session(&loaded, &state, &prompt, refine_goal, live)?;
+                let report = if rewrite {
+                    let payload = apply_payload.as_deref().ok_or_else(|| {
+                        "brain --rewrite --session requires a reply payload".to_string()
+                    })?;
+                    let draft =
+                        parse_brain_reply::<BrainExploreDraft>(payload, "clean-brain rewrite")?;
+                    write_brain_rewrite_session(&loaded, &state, &prompt, draft, live)?
+                } else {
+                    write_brain_session(&loaded, &state, &prompt, refine_goal, live)?
+                };
                 if json {
                     println!(
                         "{}",
@@ -865,11 +917,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 } else {
                     print_brain_session(&report, language);
                 }
-            } else if let Some(payload) = apply_json
-                .map(Ok)
-                .or_else(|| apply_path.map(|path| read_brain_apply_payload(&path)))
-                .transpose()?
-            {
+            } else if let Some(payload) = apply_payload {
                 if refine_goal {
                     let refinement =
                         parse_brain_reply::<GoalRefinement>(&payload, "clean-brain goal")?;
@@ -902,7 +950,21 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 } else {
                     let draft =
                         parse_brain_reply::<BrainExploreDraft>(&payload, "clean-brain explore")?;
-                    let report = loaded.clean_brain_explore_from_draft(prompt.clone(), 6, draft);
+                    let report = if rewrite {
+                        if live || clean_brain_llm_enabled() {
+                            let mut client = clean_brain_llm_client()?;
+                            loaded.clean_brain_rewrite_with_client(
+                                prompt.clone(),
+                                6,
+                                draft,
+                                &mut client,
+                            )?
+                        } else {
+                            loaded.clean_brain_rewrite_from_draft(prompt.clone(), 6, draft)
+                        }
+                    } else {
+                        loaded.clean_brain_explore_from_draft(prompt.clone(), 6, draft)
+                    };
                     if save {
                         let saved = loaded.queue_exploration_report(&report);
                         loaded.save(&state).map_err(|error| error.to_string())?;
@@ -1715,6 +1777,74 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("starter") => {
+            if rest.get(1).map(String::as_str) == Some("feedback") {
+                let tentacle_id = rest
+                    .get(2)
+                    .ok_or_else(|| "starter feedback requires a tentacle id".to_string())?;
+                let status = rest
+                    .get(3)
+                    .ok_or_else(|| "starter feedback requires accepted|ignored|failed".to_string())
+                    .and_then(|value| parse_starter_feedback_status(value))?;
+                let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                let objective = rest
+                    .get(4..)
+                    .filter(|values| !values.is_empty())
+                    .map(|values| values.join(" "))
+                    .filter(|value| !value.trim().is_empty())
+                    .or_else(|| loaded.goal.as_ref().map(|goal| goal.objective.clone()))
+                    .unwrap_or_else(|| "start Octopus on this project".to_string());
+                let current_report = starter_report(
+                    &loaded,
+                    &state,
+                    default_tentacles_root(),
+                    Some(objective.clone()),
+                )?;
+                let group = current_report
+                    .recommendations
+                    .iter()
+                    .find(|item| item.id == *tentacle_id)
+                    .map(|item| item.group.clone());
+                let summary = format!(
+                    "{} starter for {}",
+                    starter_feedback_status_label(status),
+                    objective
+                );
+                let record = loaded.record_starter_feedback(StarterFeedbackInput {
+                    tentacle_id: tentacle_id.clone(),
+                    objective: objective.clone(),
+                    group: group.clone(),
+                    status,
+                    summary,
+                });
+                let signal = starter_feedback_signal(
+                    &loaded,
+                    &objective,
+                    tentacle_id,
+                    group.as_deref().unwrap_or(""),
+                );
+                loaded.save(&state).map_err(|error| error.to_string())?;
+                let report = StarterFeedbackReport {
+                    record,
+                    feedback_score: signal.score,
+                    feedback_count: signal.count,
+                    next: vec![
+                        octopus_state_command(
+                            &state,
+                            &["starter".to_string(), shell_value(&objective)],
+                        ),
+                        "octopus bridge".to_string(),
+                    ],
+                };
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_starter_feedback_report(&report, language);
+                }
+                return Ok(());
+            }
             let objective = rest
                 .get(1..)
                 .filter(|values| !values.is_empty())
@@ -2441,6 +2571,13 @@ fn print_starter_report(report: &StarterReport, language: Language) {
                 );
                 println!("  group_reason: {}", item.group_reason);
                 println!("  signals: {}", join_or_none(&item.signals));
+                println!(
+                    "  feedback: score={:+.2}, count={}",
+                    item.feedback_score, item.feedback_count
+                );
+                if let Some(last) = &item.last_feedback {
+                    println!("  last_feedback: {:?} {}", last.status, last.summary);
+                }
                 println!("  install: {}", item.install_command);
                 println!("  first_need: {}", item.first_need_command);
                 println!("  check: {}", item.check_command);
@@ -2475,12 +2612,69 @@ fn print_starter_report(report: &StarterReport, language: Language) {
                 );
                 println!("  分组原因: {}", item.group_reason);
                 println!("  信号: {}", join_or_none(&item.signals));
+                println!(
+                    "  反馈: 分数={:+.2}, 次数={}",
+                    item.feedback_score, item.feedback_count
+                );
+                if let Some(last) = &item.last_feedback {
+                    println!("  最近反馈: {:?} {}", last.status, last.summary);
+                }
                 println!("  安装: {}", item.install_command);
                 println!("  第一条Need: {}", item.first_need_command);
                 println!("  检查: {}", item.check_command);
             }
             println!("下一步: {}", join_or_none(&report.next));
         }
+    }
+}
+
+fn print_starter_feedback_report(report: &StarterFeedbackReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus starter feedback");
+            println!("record: #{}", report.record.index);
+            println!("tentacle: {}", report.record.tentacle_id);
+            println!("status: {:?}", report.record.status);
+            println!("objective: {}", report.record.objective);
+            println!("summary: {}", report.record.summary);
+            println!(
+                "feedback: score={:+.2}, count={}",
+                report.feedback_score, report.feedback_count
+            );
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼启动反馈");
+            println!("记录: #{}", report.record.index);
+            println!("触手: {}", report.record.tentacle_id);
+            println!("状态: {:?}", report.record.status);
+            println!("目标: {}", report.record.objective);
+            println!("摘要: {}", report.record.summary);
+            println!(
+                "反馈: 分数={:+.2}, 次数={}",
+                report.feedback_score, report.feedback_count
+            );
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn parse_starter_feedback_status(value: &str) -> Result<StarterFeedbackStatus, String> {
+    match value {
+        "accepted" | "accept" | "selected" | "used" | "use" => Ok(StarterFeedbackStatus::Accepted),
+        "ignored" | "ignore" | "skip" | "skipped" => Ok(StarterFeedbackStatus::Ignored),
+        "failed" | "fail" | "bad" => Ok(StarterFeedbackStatus::Failed),
+        _ => Err(format!(
+            "unknown starter feedback status: {value}; use accepted|ignored|failed"
+        )),
+    }
+}
+
+fn starter_feedback_status_label(status: StarterFeedbackStatus) -> &'static str {
+    match status {
+        StarterFeedbackStatus::Accepted => "accepted",
+        StarterFeedbackStatus::Ignored => "ignored",
+        StarterFeedbackStatus::Failed => "failed",
     }
 }
 
@@ -4395,21 +4589,32 @@ fn starter_report(
         .into_values()
         .map(|candidate| {
             let matched = starter_matches(&candidate, &keywords);
-            let score = (matched.len() as i32 * 10) + starter_priority_score(&candidate.id);
-            (score, matched, candidate)
+            let needs = candidate.needs.iter().cloned().collect::<Vec<_>>();
+            let tools = candidate.tools.iter().cloned().collect::<Vec<_>>();
+            let evolution_surfaces = candidate
+                .evolution_surfaces
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>();
+            let group = starter_group(&candidate.id, &needs, &tools, &evolution_surfaces);
+            let feedback = starter_feedback_signal(state, &objective, &candidate.id, group.0);
+            let score = ((matched.len() as i32 * 10) + starter_priority_score(&candidate.id))
+                as f32
+                + feedback.score;
+            (score, matched, feedback, candidate)
         })
         .collect::<Vec<_>>();
     scored.sort_by(|left, right| {
         right
             .0
-            .cmp(&left.0)
-            .then_with(|| starter_priority(&left.2.id).cmp(&starter_priority(&right.2.id)))
-            .then_with(|| left.2.id.cmp(&right.2.id))
+            .total_cmp(&left.0)
+            .then_with(|| starter_priority(&left.3.id).cmp(&starter_priority(&right.3.id)))
+            .then_with(|| left.3.id.cmp(&right.3.id))
     });
 
     let state_path_text = state_path.to_string_lossy().to_string();
     let mut recommendations = Vec::new();
-    for (_, matched, candidate) in scored.into_iter().take(6) {
+    for (_, matched, feedback, candidate) in scored.into_iter().take(6) {
         let needs = candidate.needs.iter().cloned().collect::<Vec<_>>();
         let tools = candidate.tools.iter().cloned().collect::<Vec<_>>();
         let runtimes = candidate.runtimes.iter().cloned().collect::<Vec<_>>();
@@ -4426,7 +4631,7 @@ fn starter_report(
             format!("matches {}", matched.join(", "))
         };
         let group_reason = group.2.to_string();
-        let signals = starter_signals(&candidate, &matched, group, &first_need);
+        let signals = starter_signals(&candidate, &matched, group, &first_need, &feedback);
         recommendations.push(StarterRecommendation {
             id: candidate.id.clone(),
             name: candidate.name,
@@ -4436,6 +4641,9 @@ fn starter_report(
             group_reason,
             reason,
             signals,
+            feedback_score: feedback.score,
+            feedback_count: feedback.count,
+            last_feedback: feedback.last,
             installed: candidate.installed,
             llm_ready: candidate.llm_ready,
             needs,
@@ -4589,6 +4797,7 @@ fn starter_signals(
     matched: &[String],
     group: (&str, &str, &str),
     first_need: &str,
+    feedback: &StarterFeedbackSignal,
 ) -> Vec<String> {
     let mut signals = Vec::new();
     signals.push(format!("group: {} - {}", group.1, group.2));
@@ -4622,11 +4831,67 @@ fn starter_signals(
     } else {
         "state: available".to_string()
     });
+    if feedback.count > 0 {
+        signals.push(format!(
+            "feedback: {} event(s), score {:+.2}",
+            feedback.count, feedback.score
+        ));
+    }
     let mut seen = BTreeSet::new();
     signals
         .into_iter()
         .filter(|signal| seen.insert(signal.clone()))
         .collect()
+}
+
+fn starter_feedback_signal(
+    state: &HarnessState,
+    objective: &str,
+    tentacle_id: &str,
+    group: &str,
+) -> StarterFeedbackSignal {
+    let objective_words = words_for_match(objective);
+    let mut score = 0.0;
+    let mut count = 0;
+    let mut last = None;
+    for record in &state.starter_feedback {
+        let same_tentacle = record.tentacle_id == tentacle_id;
+        let same_group = record.group.as_deref() == Some(group);
+        if !same_tentacle && !same_group {
+            continue;
+        }
+        let record_words = words_for_match(&record.objective);
+        let overlap = !objective_words.is_empty()
+            && objective_words
+                .iter()
+                .any(|word| record_words.contains(word));
+        let weight = if same_tentacle && record.objective == objective {
+            1.0
+        } else if same_tentacle && overlap {
+            0.75
+        } else if same_tentacle {
+            0.45
+        } else if same_group && overlap {
+            0.2
+        } else {
+            0.1
+        };
+        score += record.score * weight;
+        count += 1;
+        if same_tentacle {
+            last = Some(StarterFeedbackPreview {
+                status: record.status,
+                summary: record.summary.clone(),
+                objective: record.objective.clone(),
+                score: record.score,
+            });
+        }
+    }
+    StarterFeedbackSignal {
+        score: score.clamp(-8.0, 8.0),
+        count,
+        last,
+    }
 }
 
 fn starter_set_preview(values: &BTreeSet<String>, limit: usize) -> Vec<String> {
@@ -5273,6 +5538,12 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             Some("octopus brain --live \"what should the brain ask next?\""),
         ),
         product_capability(
+            "clean_brain_rewrite",
+            "ready",
+            "provider-backed or external-chat rewrite turns polluted model Needs into cognitive Needs before queueing",
+            Some("octopus brain --rewrite --live --apply reply.json --save"),
+        ),
+        product_capability(
             "need_queue",
             "ready",
             format!(
@@ -5389,7 +5660,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         product_capability(
             "starter_panel",
             if app_exists { "ready" } else { "missing" },
-            "native HTML app renders and filters starter tentacle recommendations with evidence signals, install, check, and first-Need actions",
+            "native HTML app renders starter recommendations with evidence signals, choice feedback, install, check, and first-Need actions",
             Some("octopus starter \"build a clean-brain agent\""),
         ),
         product_capability(
@@ -8446,6 +8717,96 @@ fn write_brain_session(
     })
 }
 
+fn write_brain_rewrite_session(
+    state: &HarnessState,
+    state_path: &Path,
+    prompt: &str,
+    draft: BrainExploreDraft,
+    live: bool,
+) -> Result<BrainSessionReport, String> {
+    let prompt_report = state.clean_brain_prompt(prompt.to_string(), 6);
+    let raw_report = state.clean_brain_explore_from_draft(prompt.to_string(), 6, draft);
+    let messages = brain_rewrite_session_messages(&prompt_report, &raw_report);
+    let reply_template = serde_json::json!({
+        "summary": "rewritten clean Needs",
+        "needs": [
+            {"kind": "verify", "query": "short cognitive request"}
+        ]
+    });
+    let session_dir = next_brain_session_dir(state_path)?;
+    fs::create_dir_all(&session_dir).map_err(|error| error.to_string())?;
+
+    let prompt_path = session_dir.join("PROMPT.md");
+    let messages_path = session_dir.join("messages.json");
+    let reply_path = session_dir.join("REPLY.json");
+    let draft_path = session_dir.join("DRAFT.json");
+    let command_path = session_dir.join("COMMANDS.sh");
+    let state_arg = shell_arg(state_path.to_string_lossy().as_ref());
+    let prompt_arg = shell_arg(prompt);
+    let reply_arg = shell_arg(reply_path.to_string_lossy().as_ref());
+    let apply_command = format!(
+        "octopus --state {state_arg} brain --rewrite --apply {reply_arg} --save {prompt_arg}"
+    );
+
+    fs::write(
+        &prompt_path,
+        brain_session_prompt_markdown(&prompt_report, &messages, "rewrite", &apply_command),
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        &messages_path,
+        serde_json::to_string_pretty(&messages).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        &reply_path,
+        serde_json::to_string_pretty(&reply_template).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    let draft_path = if live {
+        let mut client = clean_brain_llm_client()?;
+        let response = client.chat(&messages)?;
+        let draft = clean_brain_session_draft_json(&response.content)?;
+        fs::write(&draft_path, draft).map_err(|error| error.to_string())?;
+        Some(draft_path)
+    } else {
+        None
+    };
+    fs::write(
+        &command_path,
+        format!(
+            "#!/usr/bin/env sh\nset -eu\n# Paste the rewritten clean Needs into REPLY.json first.\n{apply_command}\n"
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    make_executable(&command_path)?;
+    let draft_path_string = draft_path
+        .as_ref()
+        .map(|path| path.to_string_lossy().to_string());
+    let mut next = Vec::new();
+    if draft_path_string.is_some() {
+        next.push("review DRAFT.json, then copy accepted JSON into REPLY.json".to_string());
+    } else {
+        next.push("paste PROMPT.md or messages.json into a chat model".to_string());
+        next.push("replace REPLY.json with rewritten clean Needs".to_string());
+    }
+    next.push(apply_command.clone());
+
+    Ok(BrainSessionReport {
+        policy: prompt_report.policy,
+        mode: "rewrite".to_string(),
+        prompt: prompt.to_string(),
+        session_dir: session_dir.to_string_lossy().to_string(),
+        prompt_path: prompt_path.to_string_lossy().to_string(),
+        messages_path: messages_path.to_string_lossy().to_string(),
+        reply_path: reply_path.to_string_lossy().to_string(),
+        draft_path: draft_path_string,
+        command_path: command_path.to_string_lossy().to_string(),
+        apply_command,
+        next,
+    })
+}
+
 fn clean_brain_session_draft_json(content: &str) -> Result<String, String> {
     if let Some(object) = extract_json_object(content) {
         return Ok(format!("{}\n", object.trim()));
@@ -8732,6 +9093,35 @@ fn brain_goal_session_messages(report: &BrainPromptReport) -> Vec<ChatMessage> {
     ]
 }
 
+fn brain_rewrite_session_messages(
+    brain: &BrainPromptReport,
+    raw: &BrainExploreReport,
+) -> Vec<ChatMessage> {
+    let context = serde_json::json!({
+        "policy": brain.policy,
+        "slots": ["Goal", "Mem", "Need", "Feed"],
+        "goal": brain.goal,
+        "mem": brain.mem,
+        "recent_need_feed": brain.recent,
+        "raw_summary": raw.summary,
+        "raw_needs": raw.needs,
+        "audit": raw.audit,
+    });
+    vec![
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain Need rewrite layer. You see only Goal, Mem, Need, Feed, and rejected Need candidates. Rewrite tool, API, command, file, route, or implementation details into cognitive Needs only. Do not choose tools or implementation. Return only JSON: {\"summary\":\"short rewrite\",\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!(
+                "Clean brain rewrite prompt: {}\nClean brain context JSON: {context}",
+                brain.prompt
+            ),
+        ),
+    ]
+}
+
 fn brain_session_prompt_markdown(
     report: &BrainPromptReport,
     messages: &[ChatMessage],
@@ -8785,7 +9175,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -8827,7 +9217,8 @@ mod tests {
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
-        GoalStatus, HarnessState, Need, NeedKind, NeedQueueStatus, Status,
+        GoalStatus, HarnessState, Need, NeedKind, NeedQueueStatus, StarterFeedbackInput,
+        StarterFeedbackStatus, Status,
     };
     use std::fs;
     use std::path::Path;
@@ -9080,6 +9471,123 @@ mod tests {
         assert!(content.contains("goal evidence stays clean"));
         assert!(!content.contains("cargo test"));
         let _ = fs::remove_file(path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cli_brain_rewrite_live_saves_rewritten_clean_needs() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _env = env_guard();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-brain-rewrite-state-{}",
+            std::process::id()
+        ));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = dir.join("fake-curl.sh");
+        fs::write(
+            &curl,
+            r#"#!/bin/sh
+printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"rewrite clean\",\"needs\":[{\"kind\":\"verify\",\"query\":\"whether test evidence supports the goal\"}]}"}}]}'
+"#,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+
+        let old_brain = std::env::var("OCTOPUS_BRAIN_LLM").ok();
+        let old_prefix = std::env::var("OCTOPUS_BRAIN_LLM_PREFIX").ok();
+        let old_model = std::env::var("OCTOPUS_BRAIN_REWRITE_MODEL").ok();
+        let old_base_url = std::env::var("OCTOPUS_BRAIN_REWRITE_BASE_URL").ok();
+        let old_api_key = std::env::var("OCTOPUS_BRAIN_REWRITE_API_KEY").ok();
+        let old_curl = std::env::var("OCTOPUS_BRAIN_REWRITE_CURL").ok();
+        std::env::set_var("OCTOPUS_BRAIN_LLM", "1");
+        std::env::set_var("OCTOPUS_BRAIN_LLM_PREFIX", "OCTOPUS_BRAIN_REWRITE");
+        std::env::set_var("OCTOPUS_BRAIN_REWRITE_MODEL", "test-model");
+        std::env::set_var("OCTOPUS_BRAIN_REWRITE_BASE_URL", "https://llm.example/v1");
+        std::env::remove_var("OCTOPUS_BRAIN_REWRITE_API_KEY");
+        std::env::set_var(
+            "OCTOPUS_BRAIN_REWRITE_CURL",
+            curl.to_string_lossy().to_string(),
+        );
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--rewrite".to_string(),
+            "--live".to_string(),
+            "--apply-json".to_string(),
+            "{\"summary\":\"dirty\",\"needs\":[{\"kind\":\"execute\",\"query\":\"cargo test -p octopus-core\"}]}".to_string(),
+            "--save".to_string(),
+            "what".to_string(),
+            "next".to_string(),
+        ])
+        .unwrap();
+
+        restore_env("OCTOPUS_BRAIN_LLM", old_brain);
+        restore_env("OCTOPUS_BRAIN_LLM_PREFIX", old_prefix);
+        restore_env("OCTOPUS_BRAIN_REWRITE_MODEL", old_model);
+        restore_env("OCTOPUS_BRAIN_REWRITE_BASE_URL", old_base_url);
+        restore_env("OCTOPUS_BRAIN_REWRITE_API_KEY", old_api_key);
+        restore_env("OCTOPUS_BRAIN_REWRITE_CURL", old_curl);
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert_eq!(restored.pending_need_queue_count(), 1);
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let content = fs::read_to_string(&state_path).unwrap();
+        assert!(content.contains("rewrite clean"));
+        assert!(content.contains("whether test evidence supports the goal"));
+        assert!(!content.contains("cargo test"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_brain_rewrite_session_writes_external_chat_artifacts_without_feed() {
+        let _env = env_guard();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-brain-rewrite-session-{}",
+            std::process::id()
+        ));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--rewrite".to_string(),
+            "--session".to_string(),
+            "--apply-json".to_string(),
+            "{\"summary\":\"dirty\",\"needs\":[{\"kind\":\"execute\",\"query\":\"cargo test -p octopus-core\"}]}".to_string(),
+            "rewrite".to_string(),
+            "as".to_string(),
+            "Need".to_string(),
+        ])
+        .unwrap();
+
+        let session_dir = dir.join("brain").join("session-1");
+        let messages = fs::read_to_string(session_dir.join("messages.json")).unwrap();
+        let prompt = fs::read_to_string(session_dir.join("PROMPT.md")).unwrap();
+        let command = fs::read_to_string(session_dir.join("COMMANDS.sh")).unwrap();
+        assert!(messages.contains("Need rewrite layer"));
+        assert!(messages.contains("cargo test -p octopus-core"));
+        assert!(prompt.contains("mode: rewrite"));
+        assert!(command.contains("brain --rewrite --apply"));
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        assert_eq!(restored.pending_need_queue_count(), 0);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -9466,6 +9974,42 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     }
 
     #[test]
+    fn cli_records_starter_feedback() {
+        let _env = env_guard();
+        let path = std::env::temp_dir().join(format!(
+            "octopus-starter-feedback-state-{}.json",
+            std::process::id()
+        ));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "starter".to_string(),
+            "feedback".to_string(),
+            "computer-use-agent".to_string(),
+            "accepted".to_string(),
+            "start".to_string(),
+            "Octopus".to_string(),
+        ])
+        .unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("starter_feedback"));
+        assert!(content.contains("computer-use-agent"));
+        assert!(content.contains("accepted"));
+        let loaded = HarnessState::load(&path).unwrap();
+        assert_eq!(loaded.starter_feedback.len(), 1);
+        assert_eq!(
+            loaded.starter_feedback[0].status,
+            StarterFeedbackStatus::Accepted
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn cli_beat_compacts_memory_and_saves_state() {
         let _env = env_guard();
         let path =
@@ -9615,6 +10159,44 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     }
 
     #[test]
+    fn starter_feedback_changes_first_run_ranking() {
+        let mut state = HarnessState::default();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let state_path = Path::new(".octopus/state.json");
+        let objective = "start Octopus on this project";
+
+        let before = starter_report(
+            &state,
+            state_path,
+            root.clone(),
+            Some(objective.to_string()),
+        )
+        .unwrap();
+        assert_ne!(before.recommendations[0].id, "computer-use-agent");
+
+        state.record_starter_feedback(StarterFeedbackInput {
+            tentacle_id: "computer-use-agent".to_string(),
+            objective: objective.to_string(),
+            group: Some("desktop".to_string()),
+            status: StarterFeedbackStatus::Accepted,
+            summary: "selected desktop starter".to_string(),
+        });
+
+        let after = starter_report(&state, state_path, root, Some(objective.to_string())).unwrap();
+        assert_eq!(after.recommendations[0].id, "computer-use-agent");
+        let computer = &after.recommendations[0];
+        assert!(computer.feedback_score > 0.0);
+        assert_eq!(computer.feedback_count, 1);
+        assert!(computer.last_feedback.is_some());
+        assert!(computer
+            .signals
+            .iter()
+            .any(|signal| signal.contains("feedback: 1 event")));
+    }
+
+    #[test]
     fn cli_catalog_and_env_commands_run() {
         let _env = env_guard();
         run(vec!["catalog".to_string()]).unwrap();
@@ -9701,7 +10283,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
         assert!(usage().contains(
-            "brain [--goal] [--live] [--save] [--session] [--apply path|-] [--apply-json json] [prompt]"
+            "brain [--goal] [--live] [--save] [--session] [--rewrite] [--apply path|-] [--apply-json json] [prompt]"
         ));
         assert!(usage().contains("explore [--save] [prompt]"));
         assert!(usage().contains("needs [take|drop|script [path]|session [--live] [prompt]]"));

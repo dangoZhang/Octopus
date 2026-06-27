@@ -47,6 +47,10 @@ jobs:
           "$tmp/root/bin/octopus" --state "$tmp/state.json" --json starter "fix repo tests" | grep -q '"group":'
           "$tmp/root/bin/octopus" --state "$tmp/state.json" --json starter "fix repo tests" | grep -q '"group_reason"'
           "$tmp/root/bin/octopus" --state "$tmp/state.json" --json starter "fix repo tests" | grep -q '"signals"'
+          "$tmp/root/bin/octopus" --state "$tmp/state.json" --json starter "fix repo tests" | grep -q '"feedback_score"'
+          "$tmp/root/bin/octopus" --state "$tmp/state.json" --json starter feedback computer-use-agent accepted "use desktop and browser" | grep -q '"feedback_count"'
+          grep -q '"starter_feedback"' "$tmp/state.json"
+          "$tmp/root/bin/octopus" --state "$tmp/state.json" --json starter "use desktop and browser" | grep -q '"last_feedback"'
           grep -q swe-agent "$tmp/bootstrap-state.json"
           grep -q harness-repair-agent "$tmp/bootstrap-state.json"
           grep -q installed_tentacles "$tmp/state.json"
@@ -142,6 +146,9 @@ jobs:
       - run: grep -q "starterGroupButton" docs/app.html
       - run: grep -q "group_reason" docs/app.html
       - run: grep -q "signals" docs/app.html
+      - run: grep -q "feedback_score" docs/app.html
+      - run: grep -q "recordStarterFeedback" docs/app.html
+      - run: grep -q "starter feedback" docs/app.html
       - run: grep -q "starterItem" docs/app.html
       - run: grep -q "data-run=\"think\"" docs/app.html
       - run: grep -q "data-run=\"traces\"" docs/app.html
@@ -170,6 +177,9 @@ jobs:
       - run: grep -q "renderFeedReport" docs/app.html
       - run: grep -q "needQueueControls" docs/app.html
       - run: grep -q "Accepted Needs" docs/app.html
+      - run: grep -q "Rewrite Reply" docs/app.html
+      - run: grep -q "Rewrite Session" docs/app.html
+      - run: grep -q -- "--rewrite" crates/octopus-core/src/main.rs
       - run: grep -q "takeQueuedNeed" docs/app.html
       - run: grep -q "dropQueuedNeed" docs/app.html
       - run: grep -q "Queue action" docs/app.html

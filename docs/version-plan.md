@@ -25,7 +25,7 @@ Real-machine test gate for `0.1.0` and later tags:
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
-Last cleanup/version correction: `0.0.11` on 2026-06-27. Scope: repair action plans, heartbeat plan pickup, repair plan/report/app surfacing, REVIEW.md bundles, trace-aware repair scoring, README product landing polish, and version consistency; no tag cut.
+Last cleanup/version correction: `0.0.11` on 2026-06-27. Scope: repair action plans, heartbeat plan pickup, repair plan/report/app surfacing, REVIEW.md bundles, trace-aware repair scoring, starter choice feedback, README product landing polish, and version consistency; no tag cut.
 
 Product commits toward `0.0.12`: 0/8.
 
