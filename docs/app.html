@@ -522,6 +522,10 @@
             <h2>Report</h2>
             <div id="productReport" class="metric"><span>No product report yet.</span></div>
           </div>
+          <div class="starter-report stack">
+            <h2>Starter</h2>
+            <div id="starterReport" class="metric"><span>No starter recommendation yet.</span></div>
+          </div>
           <div class="preflight-report stack">
             <h2>Preflight</h2>
             <div id="preflightReport" class="metric"><span>No preflight yet.</span></div>
@@ -586,6 +590,7 @@
       let currentFeedReport = null;
       let currentContextReport = null;
       let currentProductReport = null;
+      let currentStarterReport = null;
       let currentPreflightReport = null;
       let currentGoalStatusReport = null;
       let currentBrainPromptReport = null;
@@ -711,6 +716,21 @@
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("installReport").textContent = String(error);
+        }
+      }
+
+      async function runStarterReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        $("starterReport").textContent = "loading...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "starter", goal]);
+          currentStarterReport = report;
+          renderStarterReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("starterReport").textContent = String(error);
+          $("output").textContent = String(error);
         }
       }
 
@@ -1254,6 +1274,15 @@
         root.appendChild(productSummary(report));
         root.appendChild(reportList("Capabilities", report.capabilities || [], capabilityItem));
         root.appendChild(reportList("Gaps", report.gaps || [], gapItem));
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function renderStarterReport(report) {
+        const root = $("starterReport");
+        root.className = "stack";
+        root.textContent = "";
+        root.appendChild(starterSummary(report));
+        root.appendChild(reportList("Recommendations", report.recommendations || [], starterItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
@@ -1823,6 +1852,141 @@
           grid.appendChild(metric);
         });
         return grid;
+      }
+
+      function starterSummary(report) {
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Objective", report.objective || "none"],
+          ["Policy", report.policy || "metadata only"],
+          ["State", report.state_path || "state"],
+          ["Installed", (report.installed || []).join(", ") || "none"],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        return grid;
+      }
+
+      function starterItem(item) {
+        const element = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = item.installed ? "badge ok" : "badge";
+        badge.textContent = item.installed ? "installed" : "available";
+        const command = document.createElement("span");
+        command.className = "check-command";
+        command.textContent = `${item.id || "tentacle"} · ${item.first_need_kind || "observe"}`;
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        meta.textContent = `${item.reason || "metadata match"} · tools=${(item.tools || []).length} · llm=${item.llm_ready ? "ready" : "optional"}`;
+        element.append(badge, command, meta);
+        const details = document.createElement("details");
+        details.className = "check-output-details";
+        const summary = document.createElement("summary");
+        summary.textContent = item.name || item.id || "starter";
+        const pre = document.createElement("pre");
+        pre.className = "check-output";
+        const code = document.createElement("code");
+        code.textContent = [
+          `needs: ${(item.needs || []).join(", ") || "none"}`,
+          `runtimes: ${(item.runtimes || []).join(", ") || "none"}`,
+          `surfaces: ${(item.evolution_surfaces || []).join(", ") || "none"}`,
+          `install: ${item.install_command || ""}`,
+          `first_need: ${item.first_need_command || ""}`,
+          `check: ${item.check_command || ""}`,
+        ].join("\n");
+        pre.appendChild(code);
+        details.append(summary, pre);
+        element.appendChild(details);
+        element.appendChild(starterControls(item));
+        return element;
+      }
+
+      function starterControls(item) {
+        const wrap = document.createElement("div");
+        wrap.className = "toolbar";
+        [
+          ["Use", () => useStarter(item)],
+          ["Install", () => installStarter(item)],
+          ["First Need", () => runStarterNeed(item)],
+          ["Check", () => checkStarter(item)],
+        ].forEach(([label, handler]) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = label;
+          button.addEventListener("click", handler);
+          wrap.appendChild(button);
+        });
+        return wrap;
+      }
+
+      function useStarter(item) {
+        if (item.id) $("tentacle").value = item.id;
+        if (item.first_need_kind) $("need").value = item.first_need_kind;
+        if (item.first_need_query) $("target").value = item.first_need_query;
+        render(currentPetState);
+      }
+
+      async function installStarter(item) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        if (!item.id) return;
+        useStarter(item);
+        $("installReport").textContent = "installing...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "install", item.id]);
+          currentInstallReport = report;
+          currentCheckReport = null;
+          renderInstallReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+          await runStarterReport();
+        } catch (error) {
+          $("installReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runStarterNeed(item) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const kind = item.first_need_kind || "observe";
+        const query = item.first_need_query || (currentStarterReport && currentStarterReport.objective) || $("goal").value.trim() || ".";
+        useStarter(item);
+        $("feedReport").textContent = "feeding...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "need", kind, query]);
+          currentFeedReport = report;
+          currentFeedTrace = feedTraceFromFeedback(report);
+          renderFeedReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("feedReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function checkStarter(item) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        if (!item.id) return;
+        useStarter(item);
+        $("installReport").textContent = "checking...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "check", item.id]);
+          currentCheckReport = report;
+          if (!currentInstallReport || currentInstallReport.id !== item.id) {
+            currentInstallReport = await runBridgeJson(["--state", state, "--json", "install", item.id]);
+          }
+          renderInstallReport(currentInstallReport);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("installReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
       }
 
       function preflightSummary(report) {
@@ -2549,6 +2713,10 @@
           await runProductReport();
           return;
         }
+        if (action === "starter") {
+          await runStarterReport();
+          return;
+        }
         const args = bridgeArgs(action);
         if (!args) return;
         const base = ($("bridge").value.trim() || defaultBridge()).replace(/\/$/, "");
@@ -2639,6 +2807,8 @@
         $("beatReport").innerHTML = "<span>No beat yet.</span>";
         $("productReport").className = "metric";
         $("productReport").innerHTML = "<span>No product report yet.</span>";
+        $("starterReport").className = "metric";
+        $("starterReport").innerHTML = "<span>No starter recommendation yet.</span>";
         $("preflightReport").className = "metric";
         $("preflightReport").innerHTML = "<span>No preflight yet.</span>";
         $("goalReport").className = "metric";
@@ -2650,6 +2820,7 @@
         currentFeedReport = null;
         currentContextReport = null;
         currentProductReport = null;
+        currentStarterReport = null;
         currentPreflightReport = null;
         currentGoalStatusReport = null;
         currentBrainPromptReport = null;
@@ -2706,6 +2877,7 @@
           currentFeedReport = null;
           currentContextReport = null;
           currentProductReport = null;
+          currentStarterReport = null;
           currentPreflightReport = null;
           currentGoalStatusReport = null;
           currentBrainPromptReport = null;
@@ -2736,6 +2908,8 @@
           $("beatReport").innerHTML = "<span>No beat yet.</span>";
           $("productReport").className = "metric";
           $("productReport").innerHTML = "<span>No product report yet.</span>";
+          $("starterReport").className = "metric";
+          $("starterReport").innerHTML = "<span>No starter recommendation yet.</span>";
           $("preflightReport").className = "metric";
           $("preflightReport").innerHTML = "<span>No preflight yet.</span>";
           $("goalReport").className = "metric";
