@@ -253,7 +253,9 @@ struct StarterRecommendation {
     source_kind: String,
     group: String,
     group_label: String,
+    group_reason: String,
     reason: String,
+    signals: Vec<String>,
     installed: bool,
     llm_ready: bool,
     needs: Vec<String>,
@@ -2390,6 +2392,8 @@ fn print_starter_report(report: &StarterReport, language: Language) {
                     item.llm_ready,
                     item.reason
                 );
+                println!("  group_reason: {}", item.group_reason);
+                println!("  signals: {}", join_or_none(&item.signals));
                 println!("  install: {}", item.install_command);
                 println!("  first_need: {}", item.first_need_command);
                 println!("  check: {}", item.check_command);
@@ -2422,6 +2426,8 @@ fn print_starter_report(report: &StarterReport, language: Language) {
                     item.llm_ready,
                     item.reason
                 );
+                println!("  分组原因: {}", item.group_reason);
+                println!("  信号: {}", join_or_none(&item.signals));
                 println!("  安装: {}", item.install_command);
                 println!("  第一条Need: {}", item.first_need_command);
                 println!("  检查: {}", item.check_command);
@@ -4372,13 +4378,17 @@ fn starter_report(
         } else {
             format!("matches {}", matched.join(", "))
         };
+        let group_reason = group.2.to_string();
+        let signals = starter_signals(&candidate, &matched, group, &first_need);
         recommendations.push(StarterRecommendation {
             id: candidate.id.clone(),
             name: candidate.name,
             source_kind: candidate.source_kind,
             group: group.0.to_string(),
             group_label: group.1.to_string(),
+            group_reason,
             reason,
+            signals,
             installed: candidate.installed,
             llm_ready: candidate.llm_ready,
             needs,
@@ -4525,6 +4535,55 @@ fn starter_group_description(id: &str) -> &'static str {
         "visual" => "pixel state and color interaction layer",
         _ => "starter work",
     }
+}
+
+fn starter_signals(
+    candidate: &StarterCandidate,
+    matched: &[String],
+    group: (&str, &str, &str),
+    first_need: &str,
+) -> Vec<String> {
+    let mut signals = Vec::new();
+    signals.push(format!("group: {} - {}", group.1, group.2));
+    if !matched.is_empty() {
+        signals.push(format!("objective: {}", matched.join(", ")));
+    }
+    signals.push(format!("first Need: {first_need}"));
+    let needs = starter_set_preview(&candidate.needs, 5);
+    if !needs.is_empty() {
+        signals.push(format!("needs: {}", needs.join(", ")));
+    }
+    let tools = starter_set_preview(&candidate.tools, 5);
+    if !tools.is_empty() {
+        signals.push(format!("tools: {}", tools.join(", ")));
+    }
+    let runtimes = starter_set_preview(&candidate.runtimes, 4);
+    if !runtimes.is_empty() {
+        signals.push(format!("runtimes: {}", runtimes.join(", ")));
+    }
+    let surfaces = starter_set_preview(&candidate.evolution_surfaces, 4);
+    if !surfaces.is_empty() {
+        signals.push(format!("evolves: {}", surfaces.join(", ")));
+    }
+    signals.push(if candidate.llm_ready {
+        "tool-side brain: llm".to_string()
+    } else {
+        "tool-side brain: manifest".to_string()
+    });
+    signals.push(if candidate.installed {
+        "state: installed".to_string()
+    } else {
+        "state: available".to_string()
+    });
+    let mut seen = BTreeSet::new();
+    signals
+        .into_iter()
+        .filter(|signal| seen.insert(signal.clone()))
+        .collect()
+}
+
+fn starter_set_preview(values: &BTreeSet<String>, limit: usize) -> Vec<String> {
+    values.iter().take(limit).cloned().collect()
 }
 
 fn starter_groups(recommendations: &[StarterRecommendation]) -> Vec<StarterGroup> {
@@ -5066,7 +5125,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         product_capability(
             "clean_brain_audit",
             "ready",
-            "clean-brain Goal and exploration reports flag Need text that carries tool or implementation burden",
+            "clean-brain Goal and exploration reports flag implementation burden and expose only clean Needs for queueing",
             Some("octopus brain --live \"what should the brain ask next?\""),
         ),
         product_capability(
@@ -5186,7 +5245,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         product_capability(
             "starter_panel",
             if app_exists { "ready" } else { "missing" },
-            "native HTML app renders and filters starter tentacle recommendations with install, check, and first-Need actions",
+            "native HTML app renders and filters starter tentacle recommendations with evidence signals, install, check, and first-Need actions",
             Some("octopus starter \"build a clean-brain agent\""),
         ),
         product_capability(
@@ -6126,9 +6185,10 @@ fn print_brain_explore(report: &BrainExploreReport, language: Language) {
             );
             println!("summary: {}", report.summary);
             println!("audit: {}", brain_audit_line(&report.audit));
-            for need in &report.needs {
+            for need in clean_brain_print_needs(&report.audit, &report.needs) {
                 println!("need: {} {}", need_label(&need.kind), need.query);
             }
+            print_polluted_need_count(&report.audit, language);
             for next in &report.next {
                 println!("next: {next}");
             }
@@ -6147,9 +6207,10 @@ fn print_brain_explore(report: &BrainExploreReport, language: Language) {
             );
             println!("摘要: {}", report.summary);
             println!("审计: {}", brain_audit_line(&report.audit));
-            for need in &report.needs {
+            for need in clean_brain_print_needs(&report.audit, &report.needs) {
                 println!("Need: {} {}", need_label(&need.kind), need.query);
             }
+            print_polluted_need_count(&report.audit, language);
             for next in &report.next {
                 println!("下一步: {next}");
             }
@@ -6176,9 +6237,10 @@ fn print_brain_goal(report: &BrainGoalReport, language: Language) {
             println!("constraints: {}", report.goal.constraints.len());
             println!("summary: {}", report.summary);
             println!("audit: {}", brain_audit_line(&report.audit));
-            for need in &report.needs {
+            for need in clean_brain_print_needs(&report.audit, &report.needs) {
                 println!("need: {} {}", need_label(&need.kind), need.query);
             }
+            print_polluted_need_count(&report.audit, language);
             for next in &report.next {
                 println!("next: {next}");
             }
@@ -6191,13 +6253,35 @@ fn print_brain_goal(report: &BrainGoalReport, language: Language) {
             println!("约束: {}", report.goal.constraints.len());
             println!("摘要: {}", report.summary);
             println!("审计: {}", brain_audit_line(&report.audit));
-            for need in &report.needs {
+            for need in clean_brain_print_needs(&report.audit, &report.needs) {
                 println!("Need: {} {}", need_label(&need.kind), need.query);
             }
+            print_polluted_need_count(&report.audit, language);
             for next in &report.next {
                 println!("下一步: {next}");
             }
         }
+    }
+}
+
+fn clean_brain_print_needs<'a>(
+    audit: &'a octopus_core::BrainNeedAudit,
+    raw_needs: &'a [GoalNeedSuggestion],
+) -> &'a [GoalNeedSuggestion] {
+    if audit.issue_count == 0 {
+        raw_needs
+    } else {
+        &audit.clean_needs
+    }
+}
+
+fn print_polluted_need_count(audit: &octopus_core::BrainNeedAudit, language: Language) {
+    if audit.issue_count == 0 {
+        return;
+    }
+    match language {
+        Language::En => println!("blocked_needs: {}", audit.issue_count),
+        Language::Zh => println!("已阻止Need: {}", audit.issue_count),
     }
 }
 
@@ -8822,6 +8906,39 @@ mod tests {
     }
 
     #[test]
+    fn cli_brain_apply_json_saves_only_clean_needs() {
+        let _env = env_guard();
+        let path = std::env::temp_dir().join(format!(
+            "octopus-brain-clean-apply-state-{}.json",
+            std::process::id()
+        ));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--apply-json".to_string(),
+            "{\"summary\":\"mixed external chat\",\"needs\":[{\"kind\":\"verify\",\"query\":\"goal evidence stays clean\"},{\"kind\":\"execute\",\"query\":\"cargo test -p octopus-core\"}]}".to_string(),
+            "--save".to_string(),
+            "what".to_string(),
+            "next".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&path).unwrap();
+        assert_eq!(restored.pending_need_queue_count(), 1);
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("goal evidence stays clean"));
+        assert!(!content.contains("cargo test"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn cli_brain_apply_goal_file_refines_goal_without_feed() {
         let _env = env_guard();
         let dir =
@@ -9340,6 +9457,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .unwrap();
         assert_eq!(swe.group, "repo");
         assert_eq!(swe.group_label, "Repo");
+        assert!(swe.group_reason.contains("inspect"));
+        assert!(swe.signals.iter().any(|signal| signal.contains("tools:")));
+        assert!(swe
+            .signals
+            .iter()
+            .any(|signal| signal.contains("first Need: execute")));
         assert_eq!(swe.first_need_kind, "execute");
         assert_eq!(swe.first_need_query, "fix repo tests");
         assert!(swe.first_need_command.contains(" need execute "));

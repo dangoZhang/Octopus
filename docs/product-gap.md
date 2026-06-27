@@ -25,6 +25,7 @@ Updated: 2026-06-27
 - `starter [objective]` recommends starter tentacles from profile and manifest metadata, including install, check, and first-Need commands without running tools.
 - The native HTML app renders starter recommendations as action cards with Use, Install, First Need, and Check controls.
 - Starter recommendations are grouped for first-run work: repo, desktop, self-iteration, repair, research, script, runtime, memory, and visual.
+- Starter recommendation cards now include group reasons and manifest-derived signals so first-run users can see why a tentacle was recommended.
 - README now opens as a product landing page: clean-brain value, thinking tentacles, pixel Octopus, install path, and current maturity are visible before docs links.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
@@ -35,8 +36,8 @@ Updated: 2026-06-27
 - `brain --goal [--live] [--save] [prompt]` lets the clean brain refine Goal and optional queued Needs without running Feed.
 - `brain --live [--save] [prompt]` calls the clean-brain provider and can store returned Needs without running Feed.
 - `explore [prompt]` lets the clean brain suggest cognitive Needs from Goal/Mem/Need/Feed without running Feed.
-- Clean-brain Goal and exploration reports now include a Need audit that flags tool/API/command/file burden in returned Need text without running Feed.
-- `explore --save [prompt]` stores suggested Needs in a reviewable Need Queue; `needs session [--live] [prompt]` writes a clean-brain review session, `needs take <index>` returns one command, and `needs script [path]` writes a reviewable Feed script without executing it.
+- Clean-brain Goal and exploration reports now include a Need audit that flags tool/API/command/file burden and exposes only clean Needs for follow-up commands or queueing.
+- `explore --save [prompt]` stores only audit-clean Needs in a reviewable Need Queue; `needs session [--live] [prompt]` writes a clean-brain review session, `needs take <index>` returns one command, and `needs script [path]` writes a reviewable Feed script without executing it.
 - The native HTML app can run `--json bootstrap` through the bridge from the command panel.
 - The native HTML app can show current Goal, status, refinements, and recent clean-brain Goal turns from persisted state.
 - The native HTML app can paste an external brain reply and apply it to Need Queue or Goal through the bridge.
@@ -152,6 +153,7 @@ Updated: 2026-06-27
 - Added `brain --apply` and `brain --apply-json` plus native HTML apply buttons so external Chat UIs can feed clean-brain JSON back into Goal or Need Queue without tool context.
 - Added a separate clean-brain LLM provider layer, `brain --live [--save]`, and more OpenAI-compatible provider profiles for model routing without tool context.
 - Added clean-brain Need audit fields to Goal and exploration reports so external or live model replies can expose implementation leakage before Feed.
+- Added `clean_needs` to the clean-brain Need audit and changed Goal/Explore save paths so polluted Needs are not queued or turned into next Feed commands.
 - Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and bridge API.
 - Polished README and docs homepages into product-page copy with the value story first and runnable install commands kept visible.
 - Added `preflight [--live]` so release readiness can check state, seed tentacles, manifests, context boundary, docs/pet, LLM layers, live provider, feedback data, GitHub PR path, current-head real-machine record, desktop adapters, and harness repair.
@@ -178,6 +180,7 @@ Updated: 2026-06-27
 - Rolled the cleanup/version cadence to `0.0.10` after starter recommendation grouping/filtering, product-page README trim, clean-brain Need audit, repair-score journals, repair-session outcome/code context, app/report wording cleanup, and version consistency.
 - Added repair-session action plans so each session writes `REPAIR_PLAN.json` with check, grant, apply, score, code-context, and outcome-memory boundaries.
 - Added heartbeat repair plan pickup so verify Needs read the latest `REPAIR_PLAN.json` and return the next review/grant/apply/score Feed.
+- Added starter recommendation evidence signals so each card can explain its group, objective matches, Needs, tools, runtimes, evolution surfaces, LLM readiness, and install state.
 
 ## Remaining Gaps
 
@@ -198,7 +201,7 @@ Updated: 2026-06-27
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
 - Exercise live clean-brain exploration and multi-action tentacle planning with real LLM providers and record provider-specific failures.
 - Exercise Feed feedback outcomes from real tasks against the new route report and tune route choices from that evidence.
-- Add richer first-run evidence text so starter cards explain which manifest/tool signals caused each group and recommendation.
+- Add richer first-run ranking feedback so starter cards can learn from accepted, ignored, or failed first choices.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Apply and score the next Feed-trace- or check-driven seed-tentacle improvement through the app review/grant loop.
 - Run `repair` after bootstrap, take the queued Need, and score whether the resulting Feed improves the harness from the app.

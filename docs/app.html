@@ -1414,10 +1414,15 @@
         const root = $("exploreReport");
         root.className = "stack";
         root.textContent = "";
+        const audit = report.audit || {};
+        const cleanNeeds = audit.clean_needs || report.needs || [];
         root.appendChild(exploreSummary(report));
-        root.appendChild(brainAuditSummary(report.audit || {}));
-        root.appendChild(reportList("Audit Issues", (report.audit && report.audit.issues) || [], brainAuditIssueItem));
-        root.appendChild(reportList("Needs", report.needs || [], exploreNeedItem));
+        root.appendChild(brainAuditSummary(audit));
+        root.appendChild(reportList("Accepted Needs", cleanNeeds, exploreNeedItem));
+        root.appendChild(reportList("Audit Issues", audit.issues || [], brainAuditIssueItem));
+        if ((audit.issue_count || 0) > 0) {
+          root.appendChild(reportList("Raw Needs", report.needs || [], exploreNeedItem));
+        }
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
@@ -1924,7 +1929,7 @@
         command.textContent = `${item.id || "tentacle"} · ${item.group_label || "Starter"} · ${item.first_need_kind || "observe"}`;
         const meta = document.createElement("span");
         meta.className = "check-meta";
-        meta.textContent = `${item.reason || "metadata match"} · tools=${(item.tools || []).length} · llm=${item.llm_ready ? "ready" : "optional"}`;
+        meta.textContent = `${item.reason || "metadata match"} · ${item.group_reason || "starter work"} · tools=${(item.tools || []).length} · llm=${item.llm_ready ? "ready" : "optional"}`;
         element.append(badge, command, meta);
         const details = document.createElement("details");
         details.className = "check-output-details";
@@ -1935,6 +1940,8 @@
         const code = document.createElement("code");
         code.textContent = [
           `group: ${item.group_label || item.group || "none"}`,
+          `group_reason: ${item.group_reason || "none"}`,
+          `signals: ${(item.signals || []).join("; ") || "none"}`,
           `needs: ${(item.needs || []).join(", ") || "none"}`,
           `runtimes: ${(item.runtimes || []).join(", ") || "none"}`,
           `surfaces: ${(item.evolution_surfaces || []).join(", ") || "none"}`,

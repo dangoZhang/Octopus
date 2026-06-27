@@ -87,7 +87,7 @@ octopus --state "$tmp/state.json" goal
 octopus bridge
 ```
 
-Open `http://127.0.0.1:8765/app.html`. The app can bootstrap a local state, render and filter starter tentacle cards, install tentacles, inspect context, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run a structured Feed test, score Feed or repair outcomes, show grant/check/next reports, and grant local Octopus tool scopes.
+Open `http://127.0.0.1:8765/app.html`. The app can bootstrap a local state, render and filter starter tentacle cards with evidence signals, install tentacles, inspect context, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run a structured Feed test, score Feed or repair outcomes, show grant/check/next reports, and grant local Octopus tool scopes.
 The Feed panel can score the latest trace as satisfied, partial, or failed; the Repair panel can score repair outcomes through the same harness journal. Both feedback paths update route data and pet color.
 It can also save provider env to `.octopus/llm.env`; bridge reads that file when it runs child Octopus commands.
 
@@ -142,6 +142,8 @@ octopus provider save deepseek OCTOPUS_DEEPSEEK "$tmp/deepseek.env"
 octopus provider save gemini OCTOPUS_GEMINI "$tmp/gemini.env"
 octopus doctor
 ```
+
+If a live or pasted model reply includes tools, commands, APIs, or file paths inside a Need, the audit keeps it out of `next` commands and `--save` queues until it is rewritten as a cognitive request.
 
 The native app can generate or save provider env, show the same provider layers, run an explicit provider check, render `octopus report`, render `octopus preflight`, run harness repair into Need Queue, take/drop queued Needs, score repair outcomes, and write local preflight script/record artifacts.
 

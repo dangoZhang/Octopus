@@ -424,6 +424,7 @@ pub struct BrainNeedAudit {
     pub summary: String,
     pub clean_count: usize,
     pub issue_count: usize,
+    pub clean_needs: Vec<GoalNeedSuggestion>,
     pub issues: Vec<BrainNeedAuditIssue>,
 }
 
@@ -1823,9 +1824,10 @@ impl HarnessState {
         }
         goal.signals
             .insert("brain_goal_source".to_string(), source.to_string());
-        if !refinement.needs.is_empty() {
-            let suggested = refinement
-                .needs
+        let audit = audit_clean_brain_needs(&refinement.needs);
+        if !audit.clean_needs.is_empty() {
+            let suggested = audit
+                .clean_needs
                 .iter()
                 .map(|need| format!("{}: {}", kind_key(&need.kind), need.query))
                 .collect::<Vec<_>>()
@@ -1844,14 +1846,21 @@ impl HarnessState {
         };
         self.goal = Some(goal.clone());
         self.goal_turns.push(turn);
-        let next = if refinement.needs.is_empty() {
-            vec![
+        let next = if audit.clean_needs.is_empty() {
+            let mut next = vec![
                 "octopus brain --live \"what should the brain ask next?\"".to_string(),
                 "octopus context".to_string(),
-            ]
+            ];
+            if audit.issue_count > 0 {
+                next.insert(
+                    0,
+                    "revise Need suggestions as cognitive requests before Feed".to_string(),
+                );
+            }
+            next
         } else {
-            let mut next = refinement
-                .needs
+            let mut next = audit
+                .clean_needs
                 .iter()
                 .map(|need| {
                     format!(
@@ -1874,7 +1883,7 @@ impl HarnessState {
             previous_goal,
             goal,
             summary,
-            audit: audit_clean_brain_needs(&refinement.needs),
+            audit,
             needs: refinement.needs,
             next,
         }
@@ -1889,10 +1898,18 @@ impl HarnessState {
         needs: Vec<GoalNeedSuggestion>,
     ) -> BrainExploreReport {
         let audit = audit_clean_brain_needs(&needs);
-        let next = if needs.is_empty() {
-            vec!["octopus goal set \"describe your goal\"".to_string()]
+        let next = if audit.clean_needs.is_empty() {
+            if audit.issue_count > 0 {
+                vec![
+                    "revise Need suggestions as cognitive requests before Feed".to_string(),
+                    "octopus brain --session \"rewrite these Needs cleanly\"".to_string(),
+                ]
+            } else {
+                vec!["octopus goal set \"describe your goal\"".to_string()]
+            }
         } else {
-            needs
+            audit
+                .clean_needs
                 .iter()
                 .map(|need| {
                     format!(
@@ -1919,7 +1936,7 @@ impl HarnessState {
 
     pub fn queue_goal_report(&mut self, report: &BrainGoalReport) -> BrainGoalSaveReport {
         let mut queued = Vec::new();
-        for need in &report.needs {
+        for need in &report.audit.clean_needs {
             if let Some(existing) = self
                 .need_queue
                 .iter()
@@ -1949,7 +1966,7 @@ impl HarnessState {
 
     pub fn queue_exploration_report(&mut self, report: &BrainExploreReport) -> NeedQueueSaveReport {
         let mut queued = Vec::new();
-        for need in &report.needs {
+        for need in &report.audit.clean_needs {
             queued.push(self.queue_need_suggestion(
                 need.clone(),
                 report.source.clone(),
@@ -7404,7 +7421,13 @@ fn audit_clean_brain_needs(needs: &[GoalNeedSuggestion]) -> BrainNeedAudit {
         })
         .collect::<Vec<_>>();
     let issue_count = issues.len();
-    let clean_count = needs.len().saturating_sub(issue_count);
+    let clean_needs = needs
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !issues.iter().any(|issue| issue.index == index + 1))
+        .map(|(_, need)| need.clone())
+        .collect::<Vec<_>>();
+    let clean_count = clean_needs.len();
     let status = if issue_count == 0 {
         Status::Satisfied
     } else {
@@ -7420,6 +7443,7 @@ fn audit_clean_brain_needs(needs: &[GoalNeedSuggestion]) -> BrainNeedAudit {
         summary,
         clean_count,
         issue_count,
+        clean_needs,
         issues,
     }
 }
@@ -8527,7 +8551,7 @@ mod tests {
 
     #[test]
     fn clean_brain_need_audit_flags_implementation_burden_without_feed() {
-        let state = HarnessState {
+        let mut state = HarnessState {
             goal: Some(Goal::new("keep main brain clean")),
             ..HarnessState::default()
         };
@@ -8556,8 +8580,24 @@ mod tests {
         assert_eq!(report.audit.status, Status::Partial);
         assert_eq!(report.audit.clean_count, 1);
         assert_eq!(report.audit.issue_count, 2);
+        assert_eq!(report.audit.clean_needs.len(), 1);
+        assert_eq!(
+            report.audit.clean_needs[0].query,
+            "check whether the goal is satisfied"
+        );
         assert_eq!(report.audit.issues[0].signal, "command");
         assert_eq!(report.audit.issues[1].signal, "file_or_path");
+        assert_eq!(report.next.len(), 1);
+        assert!(report.next[0].contains("check whether the goal is satisfied"));
+        assert!(!report.next.iter().any(|next| next.contains("cargo test")));
+
+        let saved = state.queue_exploration_report(&report);
+        assert_eq!(saved.queued.len(), 1);
+        assert_eq!(saved.queue.pending.len(), 1);
+        assert_eq!(
+            saved.queue.pending[0].need.query,
+            "check whether the goal is satisfied"
+        );
         assert!(state.feed_traces.is_empty());
         assert!(state.routes.scores.is_empty());
     }
