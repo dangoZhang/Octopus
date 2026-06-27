@@ -84,6 +84,8 @@ struct BridgeRunResponse {
     code: Option<i32>,
     stdout: String,
     stderr: String,
+    policy: Option<String>,
+    suggested_args: Vec<Vec<String>>,
 }
 
 const BUNDLED_TENTACLE_FILES: &[(&str, &[u8])] = &[
@@ -5409,7 +5411,7 @@ fn bridge_static_asset(path: &str) -> Option<(&'static str, &'static [u8])> {
 
 fn run_bridge_command(args: &[String]) -> Result<BridgeRunResponse, String> {
     if !bridge_command_allowed(args) {
-        return Err("local app command not allowed".to_string());
+        return Ok(bridge_denied_response(args));
     }
     let mut command = Command::new(env::current_exe().map_err(|error| error.to_string())?);
     command.args(args);
@@ -5422,12 +5424,30 @@ fn run_bridge_command(args: &[String]) -> Result<BridgeRunResponse, String> {
         code: output.status.code(),
         stdout: String::from_utf8_lossy(&output.stdout).to_string(),
         stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        policy: None,
+        suggested_args: Vec::new(),
     })
 }
 
 fn stream_bridge_command(stream: &mut TcpStream, args: &[String]) -> Result<(), String> {
     if !bridge_command_allowed(args) {
-        return Err("local app command not allowed".to_string());
+        write_http_stream_header(stream)?;
+        let denied = bridge_denied_response(args);
+        write_sse_event(
+            stream,
+            "stderr",
+            &serde_json::json!({ "text": denied.stderr }),
+        )?;
+        return write_sse_event(
+            stream,
+            "done",
+            &serde_json::json!({
+                "ok": denied.ok,
+                "code": denied.code,
+                "policy": denied.policy,
+                "suggested_args": denied.suggested_args,
+            }),
+        );
     }
     write_http_stream_header(stream)?;
     write_sse_event(
@@ -5493,6 +5513,53 @@ fn stream_bridge_command(stream: &mut TcpStream, args: &[String]) -> Result<(), 
             "code": status.code(),
         }),
     )
+}
+
+fn bridge_denied_response(args: &[String]) -> BridgeRunResponse {
+    let command = bridge_command_name(args).unwrap_or("unknown");
+    let state = bridge_state_arg(args).unwrap_or_else(|| ".octopus/state.json".to_string());
+    let message = format!(
+        "local app input is limited to brain-goal. `{command}` is internal, developer-only, or observation-only from this surface. Use chat, goal set/refine, brain --goal, or first-run."
+    );
+    BridgeRunResponse {
+        ok: false,
+        code: None,
+        stdout: String::new(),
+        stderr: message,
+        policy: Some("user_writes_brain_goal_only".to_string()),
+        suggested_args: vec![
+            vec![
+                "--state".to_string(),
+                state.clone(),
+                "--json".to_string(),
+                "chat".to_string(),
+                "describe or refine the goal".to_string(),
+            ],
+            vec![
+                "--state".to_string(),
+                state.clone(),
+                "--json".to_string(),
+                "goal".to_string(),
+                "refine".to_string(),
+                "tighten the current objective".to_string(),
+            ],
+            vec![
+                "--state".to_string(),
+                state,
+                "--json".to_string(),
+                "brain".to_string(),
+                "--goal".to_string(),
+                "--save".to_string(),
+                "tighten the current objective".to_string(),
+            ],
+        ],
+    }
+}
+
+fn bridge_state_arg(args: &[String]) -> Option<String> {
+    args.windows(2)
+        .find(|window| window.first().is_some_and(|arg| arg == "--state"))
+        .and_then(|window| window.get(1).cloned())
 }
 
 fn spawn_stream_reader<R>(kind: &str, reader: R, sender: mpsc::Sender<(String, String)>)
@@ -13837,8 +13904,9 @@ mod tests {
         parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
         preflight_report, prepare_bridge_state, product_report, provider_env_report,
         provider_status_report, real_machine_record_status_from_parts, repair_continue_report,
-        repair_report, run, save_provider_env_report_with_key, skill_reports, starter_report,
-        tentacles_root_ready, update_report, usage, write_pet_image_report, Language,
+        repair_report, run, run_bridge_command, save_provider_env_report_with_key, skill_reports,
+        starter_report, tentacles_root_ready, update_report, usage, write_pet_image_report,
+        Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
@@ -17266,6 +17334,25 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "record".to_string(),
             "append".to_string()
         ]));
+        let denied = run_bridge_command(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "need".to_string(),
+            "observe".to_string(),
+            ".".to_string(),
+        ])
+        .unwrap();
+        assert!(!denied.ok);
+        assert_eq!(
+            denied.policy.as_deref(),
+            Some("user_writes_brain_goal_only")
+        );
+        assert!(denied.stderr.contains("brain-goal"));
+        assert!(denied
+            .suggested_args
+            .iter()
+            .any(|args| args.iter().any(|arg| arg == "--goal")));
         assert_eq!(
             http_content_length("POST /api/run HTTP/1.1\r\nContent-Length: 42\r\n").unwrap(),
             42
