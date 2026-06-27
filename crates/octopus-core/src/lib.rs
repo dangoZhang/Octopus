@@ -279,6 +279,8 @@ pub struct FeedTraceRecord {
     pub route: Option<String>,
     pub evidence_count: usize,
     pub summary: String,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -2309,6 +2311,7 @@ impl HarnessState {
             route: feed.metadata.get("route").cloned(),
             evidence_count: feed.evidence.len(),
             summary: short_text(&feed.summary, FEED_TRACE_SUMMARY_BYTES),
+            metadata: feed.metadata.clone(),
         };
         self.feed_traces.push(trace.clone());
         trace
@@ -10140,7 +10143,13 @@ print(json.dumps({
             Some("repair_session")
         );
         assert!(workspace.join(".octopus/harness-repair").exists());
-        for key in ["prompt", "draft", "next_need_file", "command_script"] {
+        for key in [
+            "prompt",
+            "draft",
+            "next_need_file",
+            "command_script",
+            "code_context",
+        ] {
             let path = feed
                 .metadata
                 .get(key)
@@ -10157,6 +10166,18 @@ print(json.dumps({
             feed.metadata.get("next_need_kind").map(String::as_str),
             Some("verify")
         );
+        assert_eq!(
+            feed.metadata.get("code_context_tool").map(String::as_str),
+            Some("repair_session")
+        );
+        let code_context = feed
+            .metadata
+            .get("code_context")
+            .map(|path| workspace.join(path))
+            .expect("code context metadata path");
+        let code_context_text = fs::read_to_string(&code_context).unwrap();
+        assert!(code_context_text.contains("Harness Repair Code Context"));
+        assert!(code_context_text.contains("repair_session.sh"));
         let session = feed
             .metadata
             .get("session")
@@ -10190,6 +10211,28 @@ print(json.dumps({
             .map(|path| workspace.join(path))
             .expect("outcome markdown metadata");
         assert!(outcome_markdown.exists());
+        let follow_up = tentacle.feed(&Need::new(
+            NeedKind::Execute,
+            workspace.to_string_lossy().to_string(),
+        ));
+        assert_eq!(follow_up.status, Status::Satisfied);
+        let outcome_memory = follow_up
+            .metadata
+            .get("outcome_memory")
+            .map(|path| workspace.join(path))
+            .expect("outcome memory metadata");
+        assert!(outcome_memory.exists());
+        let memory = fs::read_to_string(&outcome_memory).unwrap();
+        assert!(memory.contains("reviewed repair draft"));
+        assert!(memory.contains("satisfied"));
+        let prompt = follow_up
+            .metadata
+            .get("prompt")
+            .map(|path| workspace.join(path))
+            .expect("follow-up prompt metadata");
+        assert!(fs::read_to_string(prompt)
+            .unwrap()
+            .contains("code context excerpt"));
         assert!(feed
             .evidence
             .iter()

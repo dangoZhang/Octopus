@@ -12,7 +12,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo run -q -p octopus-core -- --version | grep -q "octopus 0.0.9"
+      - run: cargo run -q -p octopus-core -- --version | grep -q "octopus 0.0.10"
       - run: cargo run -q -p octopus-core --example thinking_tentacle
       - run: cargo run -q -p octopus-core -- demo dangoZhang/Octopus | grep -q "Octopus demo"
       - run: cargo run -q -p octopus-core -- --json demo dangoZhang/Octopus | grep -q '"probe_summary"'
@@ -192,6 +192,7 @@ jobs:
       - run: grep -q "scoreRepair" docs/app.html
       - run: grep -q "repair score" docs/app.html
       - run: grep -q "Repair outcome" docs/app.html
+      - run: grep -q "Outcome file" docs/app.html
       - run: grep -q "feedEvidenceDetails" docs/app.html
       - run: grep -q "checkOutputDetails" docs/app.html
       - run: grep -q "check-output" docs/app.html
