@@ -25,6 +25,7 @@ Updated: 2026-06-27
 - `starter [objective]` recommends starter tentacles from profile and manifest metadata, including install, check, and first-Need commands without running tools.
 - The native HTML app renders starter recommendations as action cards with Use, Install, First Need, and Check controls.
 - Starter recommendations are grouped for first-run work: repo, desktop, self-iteration, repair, research, script, runtime, memory, and visual.
+- Starter recommendation cards now include group reasons and manifest-derived signals so first-run users can see why a tentacle was recommended.
 - README now opens as a product landing page: clean-brain value, thinking tentacles, pixel Octopus, install path, and current maturity are visible before docs links.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
@@ -172,6 +173,7 @@ Updated: 2026-06-27
 - Added a structured native HTML starter panel with recommendation cards, Use, Install, First Need, and Check actions.
 - Added first-run starter grouping and HTML filters so users can narrow recommendations by repo, desktop, self-iteration, repair, research, script, runtime, memory, or visual work.
 - Rolled the cleanup/version cadence to `0.0.10` after starter recommendation grouping/filtering, product-page README trim, app/report wording cleanup, and version consistency.
+- Added starter recommendation evidence signals so each card can explain its group, objective matches, Needs, tools, runtimes, evolution surfaces, LLM readiness, and install state.
 
 ## Remaining Gaps
 
@@ -192,7 +194,7 @@ Updated: 2026-06-27
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
 - Exercise live clean-brain exploration and multi-action tentacle planning with real LLM providers and record provider-specific failures.
 - Exercise Feed feedback outcomes from real tasks against the new route report and tune route choices from that evidence.
-- Add richer first-run evidence text so starter cards explain which manifest/tool signals caused each group and recommendation.
+- Add richer first-run ranking feedback so starter cards can learn from accepted, ignored, or failed first choices.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Apply and score the next Feed-trace- or check-driven seed-tentacle improvement through the app review/grant loop.
 - Run `repair` after bootstrap, take the queued Need, and score whether the resulting Feed improves the harness from the app.

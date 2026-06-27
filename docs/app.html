@@ -1921,7 +1921,7 @@
         command.textContent = `${item.id || "tentacle"} · ${item.group_label || "Starter"} · ${item.first_need_kind || "observe"}`;
         const meta = document.createElement("span");
         meta.className = "check-meta";
-        meta.textContent = `${item.reason || "metadata match"} · tools=${(item.tools || []).length} · llm=${item.llm_ready ? "ready" : "optional"}`;
+        meta.textContent = `${item.reason || "metadata match"} · ${item.group_reason || "starter work"} · tools=${(item.tools || []).length} · llm=${item.llm_ready ? "ready" : "optional"}`;
         element.append(badge, command, meta);
         const details = document.createElement("details");
         details.className = "check-output-details";
@@ -1932,6 +1932,8 @@
         const code = document.createElement("code");
         code.textContent = [
           `group: ${item.group_label || item.group || "none"}`,
+          `group_reason: ${item.group_reason || "none"}`,
+          `signals: ${(item.signals || []).join("; ") || "none"}`,
           `needs: ${(item.needs || []).join(", ") || "none"}`,
           `runtimes: ${(item.runtimes || []).join(", ") || "none"}`,
           `surfaces: ${(item.evolution_surfaces || []).join(", ") || "none"}`,

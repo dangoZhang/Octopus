@@ -45,6 +45,8 @@ jobs:
           "$tmp/root/bin/octopus" --state "$tmp/state.json" --json starter "fix repo tests" | grep -q '"first_need_kind"'
           "$tmp/root/bin/octopus" --state "$tmp/state.json" --json starter "fix repo tests" | grep -q '"groups"'
           "$tmp/root/bin/octopus" --state "$tmp/state.json" --json starter "fix repo tests" | grep -q '"group":'
+          "$tmp/root/bin/octopus" --state "$tmp/state.json" --json starter "fix repo tests" | grep -q '"group_reason"'
+          "$tmp/root/bin/octopus" --state "$tmp/state.json" --json starter "fix repo tests" | grep -q '"signals"'
           grep -q swe-agent "$tmp/bootstrap-state.json"
           grep -q harness-repair-agent "$tmp/bootstrap-state.json"
           grep -q installed_tentacles "$tmp/state.json"
@@ -138,6 +140,8 @@ jobs:
       - run: grep -q "renderStarterReport" docs/app.html
       - run: grep -q "starterGroupControls" docs/app.html
       - run: grep -q "starterGroupButton" docs/app.html
+      - run: grep -q "group_reason" docs/app.html
+      - run: grep -q "signals" docs/app.html
       - run: grep -q "starterItem" docs/app.html
       - run: grep -q "data-run=\"think\"" docs/app.html
       - run: grep -q "data-run=\"traces\"" docs/app.html
