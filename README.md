@@ -50,13 +50,14 @@ octopus provider save openai
 source .octopus/llm.env
 octopus provider check
 octopus brain --live --save "what should the brain ask next?"
+octopus brain --session --live "what should the brain ask next?"
 ```
 
 ## Use It Today
 
 - Bootstrap a local harness and seed tentacles in one command.
 - Inspect the exact clean-brain context before a model call.
-- Write external Chat session files with prompt, messages, reply template, and apply command.
+- Write external Chat session files with prompt, messages, reply template, optional live draft, and apply command.
 - Import external chat replies into Goal or Need Queue without Feed execution.
 - Let tentacles plan from their own manifest, tools, grants, and optional LLM.
 - Run structured Feed, store traces, score outcomes, and update routing.

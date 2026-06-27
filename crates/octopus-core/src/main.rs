@@ -386,6 +386,7 @@ struct BrainSessionReport {
     prompt_path: String,
     messages_path: String,
     reply_path: String,
+    draft_path: Option<String>,
     command_path: String,
     apply_command: String,
     next: Vec<String>,
@@ -695,7 +696,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .or_else(|| loaded.goal.as_ref().map(|goal| goal.objective.clone()))
                 .unwrap_or_else(|| "what should the brain ask next?".to_string());
             if session {
-                let report = write_brain_session(&loaded, &state, &prompt, refine_goal)?;
+                let report = write_brain_session(&loaded, &state, &prompt, refine_goal, live)?;
                 if json {
                     println!(
                         "{}",
@@ -4191,7 +4192,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         product_capability(
             "brain_session",
             "ready",
-            "writes prompt, messages, reply template, and apply command for external chat",
+            "writes prompt, messages, reply template, optional live draft, and apply command for external chat",
             Some("octopus brain --session"),
         ),
         product_capability(
@@ -5404,6 +5405,9 @@ fn print_brain_session(report: &BrainSessionReport, language: Language) {
             println!("prompt: {}", report.prompt_path);
             println!("messages: {}", report.messages_path);
             println!("reply: {}", report.reply_path);
+            if let Some(draft_path) = &report.draft_path {
+                println!("draft: {draft_path}");
+            }
             println!("commands: {}", report.command_path);
             println!("apply: {}", report.apply_command);
             for next in &report.next {
@@ -5418,6 +5422,9 @@ fn print_brain_session(report: &BrainSessionReport, language: Language) {
             println!("提示词: {}", report.prompt_path);
             println!("消息: {}", report.messages_path);
             println!("回复: {}", report.reply_path);
+            if let Some(draft_path) = &report.draft_path {
+                println!("草稿: {draft_path}");
+            }
             println!("命令: {}", report.command_path);
             println!("应用: {}", report.apply_command);
             for next in &report.next {
@@ -7084,6 +7091,7 @@ fn write_brain_session(
     state_path: &Path,
     prompt: &str,
     refine_goal: bool,
+    live: bool,
 ) -> Result<BrainSessionReport, String> {
     let prompt_report = state.clean_brain_prompt(prompt.to_string(), 6);
     let (mode, messages, reply_template) = if refine_goal {
@@ -7121,6 +7129,7 @@ fn write_brain_session(
     let prompt_path = session_dir.join("PROMPT.md");
     let messages_path = session_dir.join("messages.json");
     let reply_path = session_dir.join("REPLY.json");
+    let draft_path = session_dir.join("DRAFT.json");
     let command_path = session_dir.join("COMMANDS.sh");
     let state_arg = shell_arg(state_path.to_string_lossy().as_ref());
     let prompt_arg = shell_arg(prompt);
@@ -7146,13 +7155,33 @@ fn write_brain_session(
         serde_json::to_string_pretty(&reply_template).map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())?;
+    let draft_path = if live {
+        let mut client = clean_brain_llm_client()?;
+        let response = client.chat(&messages)?;
+        let draft = clean_brain_session_draft_json(&response.content)?;
+        fs::write(&draft_path, draft).map_err(|error| error.to_string())?;
+        Some(draft_path)
+    } else {
+        None
+    };
     fs::write(
         &command_path,
         format!(
-            "#!/usr/bin/env sh\nset -eu\n# Paste the model reply into REPLY.json first.\n{apply_command}\n"
+            "#!/usr/bin/env sh\nset -eu\n# Paste the accepted model reply into REPLY.json first.\n{apply_command}\n"
         ),
     )
     .map_err(|error| error.to_string())?;
+    let draft_path_string = draft_path
+        .as_ref()
+        .map(|path| path.to_string_lossy().to_string());
+    let mut next = Vec::new();
+    if draft_path_string.is_some() {
+        next.push("review DRAFT.json, then copy accepted JSON into REPLY.json".to_string());
+    } else {
+        next.push("paste PROMPT.md or messages.json into a chat model".to_string());
+        next.push("replace REPLY.json with the model JSON reply".to_string());
+    }
+    next.push(apply_command.clone());
 
     Ok(BrainSessionReport {
         policy: prompt_report.policy,
@@ -7162,14 +7191,20 @@ fn write_brain_session(
         prompt_path: prompt_path.to_string_lossy().to_string(),
         messages_path: messages_path.to_string_lossy().to_string(),
         reply_path: reply_path.to_string_lossy().to_string(),
+        draft_path: draft_path_string,
         command_path: command_path.to_string_lossy().to_string(),
         apply_command: apply_command.clone(),
-        next: vec![
-            "paste PROMPT.md or messages.json into a chat model".to_string(),
-            "replace REPLY.json with the model JSON reply".to_string(),
-            apply_command,
-        ],
+        next,
     })
+}
+
+fn clean_brain_session_draft_json(content: &str) -> Result<String, String> {
+    if let Some(object) = extract_json_object(content) {
+        return Ok(format!("{}\n", object.trim()));
+    }
+    serde_json::to_string_pretty(&serde_json::json!({ "content": content }))
+        .map(|json| format!("{json}\n"))
+        .map_err(|error| error.to_string())
 }
 
 fn brain_goal_session_messages(report: &BrainPromptReport) -> Vec<ChatMessage> {
@@ -7609,6 +7644,86 @@ mod tests {
         assert!(reply.contains("\"needs\""));
         let messages = fs::read_to_string(session.join("messages.json")).unwrap();
         assert!(messages.contains("Goal + Mem + Need + Feed"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cli_brain_live_session_writes_draft_without_feed() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _env = env_guard();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-brain-live-session-{}", std::process::id()));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = dir.join("fake-curl.sh");
+        fs::write(
+            &curl,
+            r#"#!/bin/sh
+printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft explored\",\"needs\":[{\"kind\":\"verify\",\"query\":\"draft stays outside Feed\"}]}"}}]}'
+"#,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+
+        let old_brain = std::env::var("OCTOPUS_BRAIN_LLM").ok();
+        let old_prefix = std::env::var("OCTOPUS_BRAIN_LLM_PREFIX").ok();
+        let old_model = std::env::var("OCTOPUS_BRAIN_SESSION_MODEL").ok();
+        let old_base_url = std::env::var("OCTOPUS_BRAIN_SESSION_BASE_URL").ok();
+        let old_api_key = std::env::var("OCTOPUS_BRAIN_SESSION_API_KEY").ok();
+        let old_curl = std::env::var("OCTOPUS_BRAIN_SESSION_CURL").ok();
+        std::env::set_var("OCTOPUS_BRAIN_LLM", "1");
+        std::env::set_var("OCTOPUS_BRAIN_LLM_PREFIX", "OCTOPUS_BRAIN_SESSION");
+        std::env::set_var("OCTOPUS_BRAIN_SESSION_MODEL", "test-model");
+        std::env::set_var("OCTOPUS_BRAIN_SESSION_BASE_URL", "https://llm.example/v1");
+        std::env::remove_var("OCTOPUS_BRAIN_SESSION_API_KEY");
+        std::env::set_var(
+            "OCTOPUS_BRAIN_SESSION_CURL",
+            curl.to_string_lossy().to_string(),
+        );
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "goal".to_string(),
+            "set".to_string(),
+            "clean".to_string(),
+            "brain".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--session".to_string(),
+            "--live".to_string(),
+            "what".to_string(),
+            "next".to_string(),
+        ])
+        .unwrap();
+
+        restore_env("OCTOPUS_BRAIN_LLM", old_brain);
+        restore_env("OCTOPUS_BRAIN_LLM_PREFIX", old_prefix);
+        restore_env("OCTOPUS_BRAIN_SESSION_MODEL", old_model);
+        restore_env("OCTOPUS_BRAIN_SESSION_BASE_URL", old_base_url);
+        restore_env("OCTOPUS_BRAIN_SESSION_API_KEY", old_api_key);
+        restore_env("OCTOPUS_BRAIN_SESSION_CURL", old_curl);
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert_eq!(restored.goal.as_ref().unwrap().objective, "clean brain");
+        assert_eq!(restored.pending_need_queue_count(), 0);
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let session = dir.join("brain").join("session-1");
+        let draft = fs::read_to_string(session.join("DRAFT.json")).unwrap();
+        assert!(draft.contains("session draft explored"));
+        assert!(draft.contains("draft stays outside Feed"));
         let _ = fs::remove_dir_all(dir);
     }
 

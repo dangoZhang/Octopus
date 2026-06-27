@@ -44,6 +44,7 @@ octopus --state "$tmp/state.json" brain --goal --apply-json '{"objective":"build
 octopus --state "$tmp/state.json" brain --goal --live --save "make the goal sharper"
 octopus --state "$tmp/state.json" brain --live "what should the brain ask next?"
 octopus --state "$tmp/state.json" brain --live --save "what should the brain ask next?"
+octopus --state "$tmp/state.json" brain --session --live "what should the brain ask next?"
 octopus --state "$tmp/state.json" explore "what should the brain ask next?"
 octopus --state "$tmp/state.json" explore --save "what should the brain ask next?"
 octopus --state "$tmp/state.json" needs
@@ -118,6 +119,7 @@ octopus provider save openai OCTOPUS_LLM "$tmp/llm.env"
 octopus provider check
 octopus --state "$tmp/state.json" brain --goal --live --save "make the goal sharper"
 octopus --state "$tmp/state.json" brain --live "what should the brain ask next?"
+octopus --state "$tmp/state.json" brain --session --live "what should the brain ask next?"
 octopus --state "$tmp/state.json" brain --apply-json '{"summary":"external chat explored","needs":[{"kind":"compare","query":"provider and external chat paths"}]}' --save "what should the brain ask next?"
 
 octopus --state "$tmp/state.json" chat "make the harness self-evolve"
