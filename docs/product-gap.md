@@ -210,6 +210,7 @@ Updated: 2026-06-27
 - Tightened README to story plus Quick Install & Use, and kept English and Chinese docs homepages as shorter product pages with the value promise, first clean loop, usable surface, and pre-`0.1.0` boundary visible before deep docs.
 - Added `pet image [state] [path]` so the color-changing pixel Octopus can be exported as SVG from the same state mapping used by CLI and HTML.
 - Made `octopus bridge` start the whole local project surface by bootstrapping state and seed tentacles before serving the native app.
+- Rolled the cleanup/version cadence to `0.0.12` after bridge startup, pixel pet SVG export, clean-brain clarification, reflection, memory, council, synthesis, provider slots, native app controls, README/version consistency, and cleanup scan.
 
 ## Remaining Gaps
 
