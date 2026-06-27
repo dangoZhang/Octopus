@@ -143,10 +143,14 @@ jobs:
       - run: grep -q data-state docs/pet.html
       - run: grep -q "pixel-pet" docs/pet.html
       - run: grep -q "think swe-agent" docs/quickstart.md
+      - run: grep -q "goal set --constraint" docs/quickstart.md
+      - run: grep -q "goal refine" docs/quickstart.md
       - run: grep -q "Feed traces" docs/quickstart.md
       - run: grep -q "octopus report" docs/quickstart.md
       - run: grep -q "octopus preflight" docs/quickstart.md
       - run: grep -q "Command Surface" docs/app.html
+      - run: grep -q "goalConstraint" docs/app.html
+      - run: grep -q "Refine Goal" docs/app.html
       - run: grep -q "Starter" docs/app.html
       - run: grep -q "runStarterReport" docs/app.html
       - run: grep -q "renderStarterReport" docs/app.html
@@ -181,6 +185,7 @@ jobs:
       - run: grep -q "OCTOPUS_BRAIN_MEMORY_LLM_PREFIX" crates/octopus-core/src/main.rs
       - run: grep -q "OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX" crates/octopus-core/src/main.rs
       - run: grep -q "OCTOPUS_BRAIN_COUNCIL_LLM_PREFIXES" crates/octopus-core/src/main.rs
+      - run: grep -q "goal refine" crates/octopus-core/src/main.rs
       - run: grep -q -- "--llm-prefix" crates/octopus-core/src/main.rs
       - run: grep -q -- "--models" crates/octopus-core/src/main.rs
       - run: grep -q "tools think at the edge" README.md

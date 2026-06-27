@@ -37,7 +37,7 @@ Updated: 2026-06-27
 - Starter recommendations now record accepted, ignored, and failed first-run choices as harness feedback, and later ranking uses that feedback score.
 - README now stays short with the Octopus story and install path; docs homepages carry the broader product landing copy.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
-- `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
+- `goal set --constraint ...` and `goal refine ...` let a human set or sharpen the clean-brain Goal without running Feed or touching route learning.
 - `status --json` exposes recent clean-brain Goal turns so Goal refinement history stays visible without replaying Feed.
 - `brain [prompt]` exports pasteable clean-brain chat messages from Goal/Mem/Need/Feed for any model UI.
 - `brain --session [--live] [--goal] [prompt]` writes local external-chat session files: prompt, messages, reply template, optional provider draft, and apply command.
@@ -154,7 +154,7 @@ Updated: 2026-06-27
 - Added native HTML Feed feedback buttons so the Feed Test panel can write that harness feedback without shell use.
 - Rolled the cleanup/version cadence to `0.0.6` after the context, report, apply, and Feed feedback product cycle.
 - Added state-aware route reports in CLI, JSON, and the native app so Feed feedback becomes visible route selection evidence.
-- Added direct human `goal set` in CLI and native app so the clean brain can receive an objective without tool execution.
+- Added direct human `goal set --constraint` and `goal refine` in CLI and native app so the clean brain can receive durable constraints without tool execution.
 - Added `bootstrap` so a new local state can install seed tentacles and get a report in one command.
 - Added native HTML Bootstrap access through the local bridge.
 - Added `harness-repair-agent` as a seed tentacle for tool-side diagnosis of the harness feedback and adapter loop.

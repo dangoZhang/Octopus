@@ -398,6 +398,9 @@
           <label>Goal
             <textarea id="goal">build a clean-brain agent</textarea>
           </label>
+          <label>Goal constraint
+            <textarea id="goalConstraint">keep tools outside the brain</textarea>
+          </label>
           <label>Brain reply
             <textarea id="brainReply">{"summary":"external chat explored","needs":[{"kind":"verify","query":"goal evidence stays clean"}]}</textarea>
           </label>
@@ -478,6 +481,7 @@
             <button type="button" id="installGuide">Install Report</button>
             <button type="button" id="runChecks">Run Checks</button>
             <button type="button" data-run="goalset">Set Goal</button>
+            <button type="button" id="refineGoal">Refine Goal</button>
             <button type="button" data-run="chat">Chat</button>
             <button type="button" id="runGoalStatus">Goal Status</button>
             <button type="button" id="runBrainPrompt">Brain Prompt</button>
@@ -636,6 +640,7 @@
         currentPetState = stateName;
         const state = $("state").value.trim() || ".octopus/state.json";
         const goal = $("goal").value.trim() || "build a clean-brain agent";
+        const goalConstraint = $("goalConstraint").value.trim() || "keep tools outside the brain";
         const need = $("need").value;
         const target = $("target").value.trim() || ".";
         const tentacle = $("tentacle").value;
@@ -656,7 +661,8 @@
           `octopus --state ${shellQuote(state)} install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json check ${tentacle}`,
-          `octopus --state ${shellQuote(state)} goal set ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} goal set --constraint ${shellQuote(goalConstraint)} ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} goal refine ${shellQuote(goalConstraint)}`,
           `octopus --state ${shellQuote(state)} --json status`,
           `octopus --state ${shellQuote(state)} --json brain ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --session ${shellQuote(goal)}`,
@@ -713,6 +719,7 @@
       function bridgeArgs(action, stateName = "harness") {
         const state = $("state").value.trim() || ".octopus/state.json";
         const goal = $("goal").value.trim() || "build a clean-brain agent";
+        const goalConstraint = $("goalConstraint").value.trim() || "keep tools outside the brain";
         const need = $("need").value;
         const target = $("target").value.trim() || ".";
         const tentacle = $("tentacle").value;
@@ -722,7 +729,8 @@
           bootstrap: [...base, "--json", "bootstrap"],
           starter: [...base, "--json", "starter", goal],
           install: [...base, "install", tentacle],
-          goalset: [...base, "goal", "set", goal],
+          goalset: [...base, "goal", "set", "--constraint", goalConstraint, goal],
+          goalrefine: [...base, "goal", "refine", goalConstraint],
           chat: [...base, "chat", goal],
           think: [...base, "think", tentacle, need, target],
           context: [...base, "context", need, target],
@@ -3398,6 +3406,9 @@
           if (action === "bootstrap") {
             await runProductReport();
           }
+          if (action === "goalset" || action === "goalrefine") {
+            await runGoalStatusReport();
+          }
         } catch (error) {
           $("output").textContent = String(error);
         }
@@ -3431,6 +3442,7 @@
       $("reset").addEventListener("click", () => {
         $("state").value = ".octopus/state.json";
         $("goal").value = "build a clean-brain agent";
+        $("goalConstraint").value = "keep tools outside the brain";
         $("brainReply").value = "{\"summary\":\"external chat explored\",\"needs\":[{\"kind\":\"verify\",\"query\":\"goal evidence stays clean\"}]}";
         $("need").value = "observe";
         $("target").value = ".";
@@ -3507,6 +3519,7 @@
       $("runBrainReflectSession").addEventListener("click", runBrainReflectSessionReport);
       $("runBrainMemorySession").addEventListener("click", runBrainMemorySessionReport);
       $("runBrainSynthesisSession").addEventListener("click", runBrainSynthesisSessionReport);
+      $("refineGoal").addEventListener("click", () => runBridge("goalrefine"));
       $("runGoalStatus").addEventListener("click", runGoalStatusReport);
       $("runBrainLive").addEventListener("click", () => runBrainLiveReport(false));
       $("runBrainClarify").addEventListener("click", runBrainClarifyReport);
@@ -3549,7 +3562,7 @@
       document.querySelectorAll("[data-run]").forEach((button) => {
         button.addEventListener("click", () => runBridge(button.dataset.run));
       });
-      ["state", "goal", "brainReply", "need", "target", "tentacle", "bridge", "providerPrefix", "providerProfile"].forEach((id) => {
+      ["state", "goal", "goalConstraint", "brainReply", "need", "target", "tentacle", "bridge", "providerPrefix", "providerProfile"].forEach((id) => {
         $(id).addEventListener("input", () => {
           currentInstallReport = null;
           currentCheckReport = null;

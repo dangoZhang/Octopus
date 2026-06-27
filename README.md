@@ -26,7 +26,7 @@ Update later with `octopus update --run`.
 Run a first loop:
 
 ```bash
-octopus goal set "make this repo easier to use"
+octopus goal set --constraint "keep tools outside the brain" "make this repo easier to use"
 octopus brain --session "what should the brain ask next?"
 octopus context observe .
 octopus need observe README.md

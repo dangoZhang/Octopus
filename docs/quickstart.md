@@ -38,7 +38,8 @@ octopus start --open
 Run these from the project you want Octopus to inhabit:
 
 ```bash
-octopus goal set "make this repo easier to use"
+octopus goal set --constraint "keep tools outside the brain" "make this repo easier to use"
+octopus goal refine "prefer cognitive Needs over tool instructions"
 octopus brain --session "what should the brain ask next?"
 octopus need observe README.md
 octopus feedback 1 satisfied "useful evidence"

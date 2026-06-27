@@ -89,7 +89,8 @@ cargo run -p octopus-core --bin octopus -- start</code></pre>
 octopus start --open</code></pre>
 
       <h2>First Loop</h2>
-      <pre><code>octopus goal set "make this repo easier to use"
+      <pre><code>octopus goal set --constraint "keep tools outside the brain" "make this repo easier to use"
+octopus goal refine "prefer cognitive Needs over tool instructions"
 octopus brain --session "what should the brain ask next?"
 octopus need observe README.md
 octopus feedback 1 satisfied "useful evidence"

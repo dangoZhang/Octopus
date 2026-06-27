@@ -2009,14 +2009,32 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         Some("goal") => {
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            if rest.get(1).map(String::as_str) == Some("set") {
-                let objective = rest
-                    .get(2..)
-                    .filter(|values| !values.is_empty())
-                    .map(|values| values.join(" "))
-                    .ok_or_else(|| "goal set requires an objective".to_string())?;
-                loaded.goal = Some(Goal::new(objective));
-                loaded.save(&state).map_err(|error| error.to_string())?;
+            match rest.get(1).map(String::as_str) {
+                Some("set") => {
+                    let (objective, constraints) = parse_goal_set_args(&rest[2..])?;
+                    let mut goal = Goal::new(objective);
+                    for constraint in constraints {
+                        add_goal_constraint(&mut goal, constraint);
+                    }
+                    loaded.goal = Some(goal);
+                    loaded.save(&state).map_err(|error| error.to_string())?;
+                }
+                Some("refine" | "constraint") => {
+                    let constraint = clean_goal_constraint(
+                        &rest
+                            .get(2..)
+                            .filter(|values| !values.is_empty())
+                            .map(|values| values.join(" "))
+                            .ok_or_else(|| "goal refine requires a constraint".to_string())?,
+                    )?;
+                    let goal = loaded
+                        .goal
+                        .as_mut()
+                        .ok_or_else(|| "goal refine requires an active goal".to_string())?;
+                    add_goal_constraint(goal, constraint);
+                    loaded.save(&state).map_err(|error| error.to_string())?;
+                }
+                _ => {}
             }
             if json {
                 println!(
@@ -11728,7 +11746,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | bridge [addr] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | bridge [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -11737,6 +11755,46 @@ fn parse_trace_index(value: &str) -> Result<u64, String> {
         .ok()
         .filter(|index| *index > 0)
         .ok_or_else(|| format!("invalid feed trace index: {value}"))
+}
+
+fn parse_goal_set_args(values: &[String]) -> Result<(String, Vec<String>), String> {
+    let mut objective = Vec::new();
+    let mut constraints = Vec::new();
+    let mut index = 0;
+    while index < values.len() {
+        match values[index].as_str() {
+            "--constraint" | "--refine" => {
+                index += 1;
+                let Some(value) = values.get(index) else {
+                    return Err("goal set --constraint requires text".to_string());
+                };
+                constraints.push(clean_goal_constraint(value)?);
+            }
+            value => objective.push(value.to_string()),
+        }
+        index += 1;
+    }
+    let objective = objective.join(" ").trim().to_string();
+    if objective.is_empty() {
+        return Err("goal set requires an objective".to_string());
+    }
+    Ok((objective, constraints))
+}
+
+fn clean_goal_constraint(value: &str) -> Result<String, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err("goal constraint cannot be empty".to_string());
+    }
+    Ok(value.to_string())
+}
+
+fn add_goal_constraint(goal: &mut Goal, constraint: impl AsRef<str>) {
+    if let Ok(constraint) = clean_goal_constraint(constraint.as_ref()) {
+        if !goal.constraints.iter().any(|item| item == &constraint) {
+            goal.refine(constraint);
+        }
+    }
 }
 
 fn parse_queue_index(value: &str) -> Result<u64, String> {
@@ -11880,6 +11938,10 @@ mod tests {
             state.clone(),
             "goal".to_string(),
             "set".to_string(),
+            "--constraint".to_string(),
+            "Need only".to_string(),
+            "--constraint".to_string(),
+            "keep tools outside the brain".to_string(),
             "keep".to_string(),
             "the".to_string(),
             "brain".to_string(),
@@ -11891,6 +11953,59 @@ mod tests {
         assert_eq!(
             restored.goal.as_ref().unwrap().objective,
             "keep the brain clean"
+        );
+        assert_eq!(
+            restored.goal.as_ref().unwrap().constraints,
+            vec![
+                "Need only".to_string(),
+                "keep tools outside the brain".to_string()
+            ]
+        );
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_goal_refine_appends_human_constraint_without_feed() {
+        let _env = env_guard();
+        let path = std::env::temp_dir().join(format!(
+            "octopus-goal-refine-state-{}.json",
+            std::process::id()
+        ));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "goal".to_string(),
+            "set".to_string(),
+            "build".to_string(),
+            "Octopus".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "goal".to_string(),
+            "refine".to_string(),
+            "keep".to_string(),
+            "the".to_string(),
+            "brain".to_string(),
+            "free".to_string(),
+            "of".to_string(),
+            "tool".to_string(),
+            "context".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&path).unwrap();
+        let goal = restored.goal.as_ref().unwrap();
+        assert_eq!(goal.objective, "build Octopus");
+        assert_eq!(
+            goal.constraints,
+            vec!["keep the brain free of tool context".to_string()]
         );
         assert!(restored.feed_traces.is_empty());
         assert!(restored.routes.scores.is_empty());
@@ -13809,6 +13924,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("provider save <profile>"));
         assert!(usage().contains("provider status"));
         assert!(usage().contains("update [--run]"));
+        assert!(usage().contains("goal [set [--constraint text] objective|refine text]"));
         assert!(usage().contains("starter [objective]"));
         assert!(usage().contains("report"));
         assert!(usage().contains("preflight [--live]"));
