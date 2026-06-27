@@ -664,6 +664,15 @@ struct PreflightRecordReport {
 }
 
 #[derive(Debug, serde::Serialize)]
+struct PreflightRecordCheckReport {
+    path: String,
+    current_head: Option<String>,
+    passed: bool,
+    checks: Vec<PreflightCheck>,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
 struct ProductContextPolicy {
     brain: String,
     tentacle: String,
@@ -956,10 +965,6 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("feedback") => {
-            let trace_index = rest
-                .get(1)
-                .ok_or_else(|| "feedback requires a feed trace index".to_string())
-                .and_then(|value| parse_trace_index(value))?;
             let status = rest
                 .get(2)
                 .ok_or_else(|| "feedback requires a status".to_string())
@@ -970,6 +975,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .map(|values| values.join(" "))
                 .unwrap_or_else(|| "recorded feed feedback".to_string());
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let trace_index = rest
+                .get(1)
+                .ok_or_else(|| "feedback requires a feed trace index or latest".to_string())
+                .and_then(|value| resolve_feed_trace_selector(value, &loaded))?;
             let outcome = loaded.record_feed_feedback(trace_index, status, summary)?;
             loaded.save(&state).map_err(|error| error.to_string())?;
             if json {
@@ -2180,6 +2189,23 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 return Ok(());
             }
             if rest.get(1).map(String::as_str) == Some("record") {
+                if rest.get(2).map(String::as_str) == Some("check") {
+                    let path = rest
+                        .get(3)
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| PathBuf::from(".octopus/real-machine-record.md"));
+                    let report = check_preflight_record(&path)?;
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&report)
+                                .map_err(|error| error.to_string())?
+                        );
+                    } else {
+                        print_preflight_record_check(&report, language);
+                    }
+                    return Ok(());
+                }
                 let path = rest
                     .get(2)
                     .map(PathBuf::from)
@@ -4863,6 +4889,7 @@ fn bridge_preflight_allowed(args: &[String]) -> bool {
     let rest = &args[index + 1..];
     rest.is_empty()
         || (rest.len() == 1 && matches!(rest[0].as_str(), "--live" | "script" | "record"))
+        || (rest.len() == 2 && rest[0] == "record" && rest[1] == "check")
 }
 
 fn bridge_feedback_allowed(args: &[String]) -> bool {
@@ -4875,7 +4902,7 @@ fn bridge_feedback_allowed(args: &[String]) -> bool {
     let Some(status) = args.get(index + 2) else {
         return false;
     };
-    parse_trace_index(trace_index).is_ok()
+    (parse_trace_index(trace_index).is_ok() || trace_index == "latest")
         && parse_status(status).is_ok_and(|status| {
             matches!(status, Status::Satisfied | Status::Partial | Status::Failed)
         })
@@ -6991,9 +7018,12 @@ fn preflight_report(
         && repo_root().join("docs/index.html").exists()
         && repo_root().join("docs/app.html").exists()
         && repo_root().join("docs/pet.html").exists();
-    let feedback_ready = status.feed_trace_count > 0
-        && status.check_history_count > 0
-        && !state.evolution_outcomes.is_empty();
+    let scored_feed_traces = state
+        .feed_traces
+        .iter()
+        .filter(|trace| trace.metadata.contains_key("feedback_status"))
+        .count();
+    let feedback_ready = scored_feed_traces > 0;
     let mut live_provider = None;
     let mut live_provider_error = None;
     if live {
@@ -7014,7 +7044,11 @@ fn preflight_report(
             format!(
                 "{} ({})",
                 state_path.to_string_lossy(),
-                if state_path.exists() { "exists" } else { "missing" }
+                if state_path.exists() {
+                    "exists"
+                } else {
+                    "missing"
+                }
             ),
             "octopus bootstrap",
         ),
@@ -7096,19 +7130,23 @@ fn preflight_report(
                 .map(|report| report.content.clone())
                 .or(live_provider_error)
                 .unwrap_or_else(|| "not run; pass --live to call the provider".to_string()),
-            format!("octopus --state {} preflight --live", shell_arg(&state_path.to_string_lossy())),
+            format!(
+                "octopus --state {} preflight --live",
+                shell_arg(&state_path.to_string_lossy())
+            ),
         ),
         preflight_check(
             "feedback_data",
             feedback_ready,
             true,
             format!(
-                "traces={}, checks={}, evolution_scores={}",
+                "scored_traces={}, traces={}, checks={}, evolution_scores={}",
+                scored_feed_traces,
                 status.feed_trace_count,
                 status.check_history_count,
                 state.evolution_outcomes.len()
             ),
-            "octopus need observe .; octopus check swe-agent; octopus evolve score swe-agent 03-runtime-code partial \"reviewed\"",
+            "octopus need observe README.md; octopus feedback latest satisfied \"reviewed\"",
         ),
         preflight_check(
             "github_pr_path",
@@ -7342,6 +7380,140 @@ Append the completed result to `docs/real-machine-test.md` after the run.
     })
 }
 
+fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, String> {
+    let current_head = git_short_head();
+    let content = fs::read_to_string(path).unwrap_or_default();
+    let file_exists = path.exists();
+    let machine_fields = ["Date", "Tester", "Machine", "OS", "Shell", "Rust", "Python"];
+    let missing_machine = machine_fields
+        .iter()
+        .filter(|field| record_field_value(&content, field).is_none())
+        .map(|field| (*field).to_string())
+        .collect::<Vec<_>>();
+    let result_fields: &[&[&str]] = &[
+        &["Install and doctor"],
+        &["Core loop"],
+        &["Start/app", "Bridge/app"],
+        &["Live provider"],
+        &["PR dry run"],
+    ];
+    let missing_results = result_fields
+        .iter()
+        .filter(|fields| {
+            fields
+                .iter()
+                .all(|field| record_field_value(&content, field).is_none())
+        })
+        .map(|fields| fields[0].to_string())
+        .collect::<Vec<_>>();
+    let pass_decision_value = record_field_value(&content, "Pass or fail");
+    let pass_decision = pass_decision_value
+        .as_deref()
+        .is_some_and(record_pass_decision_ready);
+    let head_ready = current_head
+        .as_ref()
+        .is_some_and(|head| content.contains(&format!("`{head}`")) || content.contains(head));
+    let mut checks = vec![
+        preflight_check(
+            "record_file",
+            file_exists,
+            true,
+            path.to_string_lossy(),
+            "octopus preflight record",
+        ),
+        preflight_check(
+            "current_head",
+            head_ready,
+            true,
+            current_head
+                .as_ref()
+                .map(|head| format!("record must include current head {head}"))
+                .unwrap_or_else(|| "git head unavailable".to_string()),
+            "rerun octopus preflight record on the target head",
+        ),
+        preflight_check(
+            "machine_fields",
+            missing_machine.is_empty(),
+            true,
+            if missing_machine.is_empty() {
+                "machine fields filled".to_string()
+            } else {
+                format!("missing {}", missing_machine.join(", "))
+            },
+            "fill Date, Tester, Machine, OS, Shell, Rust, and Python",
+        ),
+        preflight_check(
+            "result_fields",
+            missing_results.is_empty(),
+            true,
+            if missing_results.is_empty() {
+                "result fields filled".to_string()
+            } else {
+                format!("missing {}", missing_results.join(", "))
+            },
+            "fill Install, Core loop, Start/app, Live provider, and PR dry run results",
+        ),
+        preflight_check(
+            "pass_decision",
+            pass_decision,
+            true,
+            pass_decision_value.unwrap_or_else(|| "missing pass/fail decision".to_string()),
+            "write Pass or fail: pass after real-machine checks pass",
+        ),
+        preflight_check(
+            "command_coverage",
+            content.contains("preflight --live") && content.contains("self-iterate pr"),
+            true,
+            "record should include live provider and PR dry-run commands",
+            "regenerate with octopus preflight record",
+        ),
+    ];
+    checks.sort_by(|left, right| left.id.cmp(&right.id));
+    let passed = checks
+        .iter()
+        .filter(|check| check.required)
+        .all(|check| check.status == "pass");
+    let next = if passed {
+        vec![
+            format!(
+                "append {} to docs/real-machine-test.md",
+                shell_arg(&path.to_string_lossy())
+            ),
+            "octopus preflight".to_string(),
+        ]
+    } else {
+        checks
+            .iter()
+            .filter(|check| check.status != "pass")
+            .map(|check| check.next.clone())
+            .collect::<Vec<_>>()
+    };
+    Ok(PreflightRecordCheckReport {
+        path: path.to_string_lossy().to_string(),
+        current_head,
+        passed,
+        checks,
+        next,
+    })
+}
+
+fn record_field_value(content: &str, label: &str) -> Option<String> {
+    let prefix = format!("- {label}:");
+    content.lines().find_map(|line| {
+        let value = line.trim().strip_prefix(&prefix)?.trim();
+        (!value.is_empty()).then(|| value.to_string())
+    })
+}
+
+fn record_pass_decision_ready(value: &str) -> bool {
+    let normalized = value.trim().to_ascii_lowercase();
+    normalized == "pass"
+        || normalized == "passed"
+        || normalized == "ok"
+        || normalized.starts_with("pass ")
+        || normalized.starts_with("pass:")
+}
+
 fn preflight_script_commands() -> Vec<String> {
     [
         "octopus --version",
@@ -7360,7 +7532,7 @@ fn preflight_script_commands() -> Vec<String> {
         "octopus --state \"$STATE\" repair .",
         "octopus --state \"$STATE\" needs",
         "octopus --state \"$STATE\" check swe-agent",
-        "octopus --state \"$STATE\" feedback 1 satisfied \"preflight feed worked\"",
+        "octopus --state \"$STATE\" feedback latest satisfied \"preflight feed worked\"",
         "octopus --state \"$STATE\" routes observe README.md",
         "octopus --state \"$STATE\" beat 200",
         "octopus --state \"$STATE\" pet harness",
@@ -7664,6 +7836,37 @@ fn print_preflight_record_report(report: &PreflightRecordReport, language: Langu
                 report.current_head.as_deref().unwrap_or("未知")
             );
             println!("命令数: {}", report.commands.len());
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn print_preflight_record_check(report: &PreflightRecordCheckReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus preflight record check");
+            println!("path: {}", report.path);
+            println!(
+                "head: {}",
+                report.current_head.as_deref().unwrap_or("unknown")
+            );
+            println!("passed: {}", report.passed);
+            for check in &report.checks {
+                println!("- {}: {} ({})", check.id, check.status, check.evidence);
+            }
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼实机记录检查");
+            println!("路径: {}", report.path);
+            println!(
+                "当前提交: {}",
+                report.current_head.as_deref().unwrap_or("未知")
+            );
+            println!("通过: {}", report.passed);
+            for check in &report.checks {
+                println!("- {}: {} ({})", check.id, check.status, check.evidence);
+            }
             println!("下一步: {}", join_or_none(&report.next));
         }
     }
@@ -11944,7 +12147,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -11995,6 +12198,18 @@ fn add_goal_constraint(goal: &mut Goal, constraint: impl AsRef<str>) {
     }
 }
 
+fn resolve_feed_trace_selector(value: &str, state: &HarnessState) -> Result<u64, String> {
+    if value == "latest" {
+        state
+            .feed_traces
+            .last()
+            .map(|trace| trace.index)
+            .ok_or_else(|| "no feed traces available".to_string())
+    } else {
+        parse_trace_index(value)
+    }
+}
+
 fn parse_queue_index(value: &str) -> Result<u64, String> {
     value
         .parse::<u64>()
@@ -12019,13 +12234,13 @@ fn parse_status(value: &str) -> Result<Status, String> {
 mod tests {
     use super::{
         app_open_command, bridge_command_allowed, bridge_command_name, bridge_static,
-        bridge_static_asset, check_report, default_tentacles_root_for, http_content_length,
-        install_report, is_broken_pipe_panic, localize_summary, materialize_bundled_tentacles_root,
-        parse_bridge_env_overlay, parse_start_options, percent_encode_path, pet_report,
-        pet_report_for_state, preflight_report, prepare_bridge_state, product_report,
-        provider_status_report, real_machine_record_status_from_parts, repair_report, run,
-        skill_reports, starter_report, tentacles_root_ready, update_report, usage,
-        write_pet_image_report, Language,
+        bridge_static_asset, check_preflight_record, check_report, default_tentacles_root_for,
+        http_content_length, install_report, is_broken_pipe_panic, localize_summary,
+        materialize_bundled_tentacles_root, parse_bridge_env_overlay, parse_start_options,
+        percent_encode_path, pet_report, pet_report_for_state, preflight_report,
+        prepare_bridge_state, product_report, provider_status_report,
+        real_machine_record_status_from_parts, repair_report, run, skill_reports, starter_report,
+        tentacles_root_ready, update_report, usage, write_pet_image_report, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
@@ -14161,8 +14376,9 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("preflight [--live]"));
         assert!(usage().contains("preflight script [path]"));
         assert!(usage().contains("preflight record [path]"));
+        assert!(usage().contains("preflight record check [path]"));
         assert!(usage().contains("traces [limit]"));
-        assert!(usage().contains("feedback <trace-index>"));
+        assert!(usage().contains("feedback <trace-index|latest>"));
         assert!(usage().contains("bootstrap [tentacles-root]"));
     }
 
@@ -15466,6 +15682,16 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             record_path.to_string_lossy().to_string(),
         ])
         .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "preflight".to_string(),
+            "record".to_string(),
+            "check".to_string(),
+            record_path.to_string_lossy().to_string(),
+        ])
+        .unwrap();
 
         let loaded = HarnessState::load(&path).unwrap();
         let report = product_report(&loaded, Path::new(&state)).unwrap();
@@ -15499,6 +15725,25 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("Package version"));
         assert!(record.contains("preflight --live"));
         assert!(record.contains("self-iterate pr"));
+        let audit = check_preflight_record(&record_path).unwrap();
+        assert!(!audit.passed);
+        let filled = record
+            .replace("- Date:", "- Date: 2026-06-27")
+            .replace("- Tester:", "- Tester: local")
+            .replace("- Machine:", "- Machine: mac")
+            .replace("- OS:", "- OS: macOS")
+            .replace("- Shell:", "- Shell: zsh")
+            .replace("- Rust:", "- Rust: stable")
+            .replace("- Python:", "- Python: 3.14")
+            .replace("- Install and doctor:", "- Install and doctor: pass")
+            .replace("- Core loop:", "- Core loop: pass")
+            .replace("- Start/app:", "- Start/app: pass")
+            .replace("- Live provider:", "- Live provider: pass")
+            .replace("- PR dry run:", "- PR dry run: pass")
+            .replace("- Pass or fail:", "- Pass or fail: pass");
+        fs::write(&record_path, filled).unwrap();
+        let audit = check_preflight_record(&record_path).unwrap();
+        assert!(audit.passed);
 
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("swe-agent"));
@@ -16610,7 +16855,7 @@ JSON
             state.clone(),
             "--json".to_string(),
             "feedback".to_string(),
-            "1".to_string(),
+            "latest".to_string(),
             "failed".to_string(),
             "too noisy".to_string(),
         ])
@@ -16618,6 +16863,13 @@ JSON
 
         let restored = HarnessState::load(&path).unwrap();
         assert_eq!(restored.feed_traces[0].status, Status::Failed);
+        assert_eq!(
+            restored.feed_traces[0]
+                .metadata
+                .get("feedback_status")
+                .map(String::as_str),
+            Some("failed")
+        );
         assert_eq!(
             restored.last_pet_event.as_ref().unwrap().source,
             "feed feedback"

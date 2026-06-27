@@ -78,7 +78,11 @@
         "targets": ["evolution.checks", "evolution.constraints", "evolution.surfaces"]
       }
     ],
-    "checks": ["tools/read.sh README.md 1 2", "cargo test"],
+    "checks": [
+      "tools/read.sh tools/read.sh 1 2",
+      "tools/inspect_repo.sh ../.. >/dev/null",
+      "tools/run_tests.sh ../.."
+    ],
     "constraints": ["Keep path safety checks unless a stronger sandbox replaces them."]
   }
 }

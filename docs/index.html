@@ -302,11 +302,11 @@ octopus update
 octopus start --open</code></pre>
           <p class="copy"><code>start --open</code> prepares state, seed tentacles, heartbeats, and opens the native app. Use <code>octopus start</code> on headless machines.</p>
           <pre><code>octopus doctor
-	octopus goal set "build a clean-brain agent"
-	octopus brain --session "what should the brain ask next?"
-	octopus brain --agenda --save "what matters next?"
-	octopus need observe README.md
-octopus feedback 1 satisfied "useful evidence"
+octopus goal set "build a clean-brain agent"
+octopus brain --session "what should the brain ask next?"
+octopus brain --agenda --save "what matters next?"
+octopus need observe README.md
+octopus feedback latest satisfied "useful evidence"
 octopus routes observe .
 octopus beat 200
 octopus pet</code></pre>

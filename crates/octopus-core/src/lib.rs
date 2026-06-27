@@ -3569,6 +3569,14 @@ impl HarnessState {
         let trace = &mut self.feed_traces[position];
         trace.status = status.clone();
         trace.summary = short_text(&format!("feedback: {summary}"), FEED_TRACE_SUMMARY_BYTES);
+        trace.metadata.insert(
+            "feedback_status".to_string(),
+            status_key(&status).to_string(),
+        );
+        trace.metadata.insert(
+            "feedback_summary".to_string(),
+            short_text(&summary, FEED_TRACE_SUMMARY_BYTES),
+        );
         let trace = trace.clone();
         Ok(FeedFeedbackOutcome {
             trace,
@@ -4108,7 +4116,7 @@ impl Harness {
                 need.query
             ));
             next.push("octopus traces".to_string());
-            next.push("octopus feedback <trace-index> satisfied|partial|failed".to_string());
+            next.push("octopus feedback latest satisfied|partial|failed".to_string());
         }
 
         RouteReport {
@@ -9693,7 +9701,7 @@ mod tests {
         );
         assert!(report
             .next
-            .contains(&"octopus feedback <trace-index> satisfied|partial|failed".to_string()));
+            .contains(&"octopus feedback latest satisfied|partial|failed".to_string()));
     }
 
     #[test]

@@ -36,7 +36,7 @@ octopus brain --session "what should the brain ask next?"
 octopus brain --focus verify --save "what proof matters?"
 octopus context observe .
 octopus need observe README.md
-octopus feedback 1 satisfied "useful evidence"
+octopus feedback latest satisfied "useful evidence"
 octopus beat 200
 octopus pet
 ```

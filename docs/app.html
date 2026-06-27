@@ -252,6 +252,15 @@
         padding-top: 14px;
       }
 
+      .first-run {
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 14px;
+      }
+
+      .first-run .toolbar button {
+        min-width: 82px;
+      }
+
       .preflight-report {
         border-top: 1px solid var(--line);
         padding-top: 14px;
@@ -460,6 +469,19 @@
 
         <section class="panel stack">
           <h2>Commands</h2>
+          <section class="first-run stack">
+            <h2>First Run</h2>
+            <div id="firstRunStatus" class="metric"><span>Ready.</span></div>
+            <div class="toolbar">
+              <button class="primary" type="button" id="firstRunAll">Run Path</button>
+              <button type="button" id="firstRunDoctor">Doctor</button>
+              <button type="button" id="firstRunBootstrap">Bootstrap</button>
+              <button type="button" id="firstRunGoal">Goal</button>
+              <button type="button" id="firstRunStarter">Starter</button>
+              <button type="button" id="firstRunPreflight">Preflight</button>
+              <button type="button" id="firstRunBeat">Beat</button>
+            </div>
+          </section>
           <pre><code id="commands"></code></pre>
           <div class="status">
             <div class="beat"><strong>Heartbeat</strong><span>octopus pet heartbeat</span></div>
@@ -543,6 +565,7 @@
             <button type="button" id="runPreflight">Preflight</button>
             <button type="button" id="runPreflightScript">Preflight Script</button>
             <button type="button" id="runPreflightRecord">Preflight Record</button>
+            <button type="button" id="runPreflightRecordCheck">Check Record</button>
             <button type="button" data-run="beat">Beat</button>
           </div>
           <div class="output">
@@ -712,7 +735,7 @@
           `octopus --state ${shellQuote(state)} --json repair score 1 satisfied ${shellQuote("repair improved harness")}`,
           `octopus --state ${shellQuote(state)} --json need ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} --json context ${need} ${shellQuote(target)}`,
-          `octopus --state ${shellQuote(state)} feedback 1 satisfied ${shellQuote("feed worked")}`,
+          `octopus --state ${shellQuote(state)} feedback latest satisfied ${shellQuote("feed worked")}`,
           `octopus --state ${shellQuote(state)} chat ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} think ${tentacle} ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} need ${need} ${shellQuote(target)}`,
@@ -724,6 +747,7 @@
           `octopus --state ${shellQuote(state)} preflight`,
           `octopus --state ${shellQuote(state)} preflight script`,
           `octopus --state ${shellQuote(state)} preflight record`,
+          `octopus --state ${shellQuote(state)} preflight record check`,
           `octopus --state ${shellQuote(state)} preflight --live`,
           `octopus --state ${shellQuote(state)} beat 200`,
         ].join("\n");
@@ -772,6 +796,114 @@
           throw new Error(result.stderr || result.stdout || "Octopus command failed");
         }
         return JSON.parse(result.stdout);
+      }
+
+      function setFirstRunStatus(label, detail) {
+        const root = $("firstRunStatus");
+        root.textContent = "";
+        const strong = document.createElement("strong");
+        strong.textContent = label;
+        const span = document.createElement("span");
+        span.textContent = detail;
+        root.append(strong, span);
+      }
+
+      async function runFirstRunTask(label, task) {
+        setFirstRunStatus(label, "running...");
+        try {
+          const report = await task();
+          setFirstRunStatus(label, "done");
+          return report;
+        } catch (error) {
+          setFirstRunStatus(label, String(error));
+          $("output").textContent = String(error);
+          throw error;
+        }
+      }
+
+      async function runFirstRunDoctor() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        return runFirstRunTask("Doctor", async () => {
+          const report = await runBridgeJson(["--state", state, "--json", "doctor"]);
+          currentDoctorReport = report;
+          renderDoctorReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+          return report;
+        });
+      }
+
+      async function runFirstRunBootstrap() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        return runFirstRunTask("Bootstrap", async () => {
+          const report = await runBridgeJson(["--state", state, "--json", "bootstrap"]);
+          if (report.report) {
+            currentProductReport = report.report;
+            renderProductReport(report.report);
+          }
+          $("output").textContent = JSON.stringify(report, null, 2);
+          return report;
+        });
+      }
+
+      async function runFirstRunGoal() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        const goalConstraint = $("goalConstraint").value.trim() || "keep tools outside the brain";
+        return runFirstRunTask("Goal", async () => {
+          const report = await runBridgeJson(["--state", state, "--json", "goal", "set", "--constraint", goalConstraint, goal]);
+          $("output").textContent = JSON.stringify(report, null, 2);
+          await runGoalStatusReport(false);
+          return report;
+        });
+      }
+
+      async function runFirstRunStarter() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        return runFirstRunTask("Starter", async () => {
+          const report = await runBridgeJson(["--state", state, "--json", "starter", goal]);
+          currentStarterReport = report;
+          renderStarterReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+          return report;
+        });
+      }
+
+      async function runFirstRunPreflight() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        return runFirstRunTask("Preflight", async () => {
+          const report = await runBridgeJson(["--state", state, "--json", "preflight"]);
+          currentPreflightReport = report;
+          renderPreflightReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+          return report;
+        });
+      }
+
+      async function runFirstRunBeat() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        return runFirstRunTask("Beat", async () => {
+          const report = await runBridgeJson(["--state", state, "--json", "beat", "200"]);
+          currentBeatReport = report;
+          renderBeatReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+          return report;
+        });
+      }
+
+      async function runFirstRunPath() {
+        try {
+          await runFirstRunDoctor();
+          await runFirstRunBootstrap();
+          await runFirstRunGoal();
+          await runFirstRunStarter();
+          await runFirstRunPreflight();
+          await runFirstRunBeat();
+          await runFirstRunDoctor();
+          setFirstRunStatus("First Run", "complete");
+        } catch (_) {
+          // The current step has already rendered the actionable error.
+        }
       }
 
       async function runInstallReport() {
@@ -1045,17 +1177,18 @@
         }
       }
 
-      async function runGoalStatusReport() {
+      async function runGoalStatusReport(updateOutput = true) {
         const state = $("state").value.trim() || ".octopus/state.json";
         $("goalReport").textContent = "loading...";
         try {
           const report = await runBridgeJson(["--state", state, "--json", "status"]);
           currentGoalStatusReport = report;
           renderGoalStatusReport(report);
-          $("output").textContent = JSON.stringify(report, null, 2);
+          if (updateOutput) $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("goalReport").textContent = String(error);
-          $("output").textContent = String(error);
+          if (updateOutput) $("output").textContent = String(error);
+          if (!updateOutput) throw error;
         }
       }
 
@@ -1693,6 +1826,20 @@
         }
       }
 
+      async function runPreflightRecordCheck() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        $("preflightReport").textContent = "checking record...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "preflight", "record", "check"]);
+          currentPreflightReport = report;
+          renderPreflightRecordCheckReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("preflightReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runSingleCheck(index) {
         if (!currentInstallReport || currentInstallReport.id !== $("tentacle").value) {
           await runInstallReport();
@@ -1885,6 +2032,19 @@
           `head: ${report.current_head || "unknown"}`,
           `commands: ${(report.commands || []).length}`,
         ], textItem));
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function renderPreflightRecordCheckReport(report) {
+        const root = $("preflightReport");
+        root.className = "stack";
+        root.textContent = "";
+        root.appendChild(reportList("Record Check", [
+          `path: ${report.path || ".octopus/real-machine-record.md"}`,
+          `head: ${report.current_head || "unknown"}`,
+          `passed: ${Boolean(report.passed)}`,
+        ], textItem));
+        root.appendChild(reportList("Checks", report.checks || [], preflightRecordCheckItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
@@ -3425,6 +3585,21 @@
         return item;
       }
 
+      function preflightRecordCheckItem(check) {
+        const item = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = check.status === "pass" ? "badge ok" : "badge failed";
+        badge.textContent = check.status || "fail";
+        const command = document.createElement("span");
+        command.className = "check-command";
+        command.textContent = `${check.id}: ${check.evidence || "no evidence"}`;
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        meta.textContent = check.next || "";
+        item.append(badge, command, meta);
+        return item;
+      }
+
       function checkItem(value, index) {
         const item = document.createElement("li");
         const result = currentCheckReport && currentCheckReport.results && currentCheckReport.results[index];
@@ -3651,6 +3826,10 @@
         $("preflightReport").innerHTML = "<span>No preflight yet.</span>";
         $("goalReport").className = "metric";
         $("goalReport").innerHTML = "<span>No goal status yet.</span>";
+        $("firstRunStatus").textContent = "";
+        const span = document.createElement("span");
+        span.textContent = "Ready.";
+        $("firstRunStatus").appendChild(span);
         currentInstallReport = null;
         currentCheckReport = null;
         currentBeatReport = null;
@@ -3674,6 +3853,13 @@
         currentRepairScoreReport = null;
         render();
       });
+      $("firstRunAll").addEventListener("click", runFirstRunPath);
+      $("firstRunDoctor").addEventListener("click", runFirstRunDoctor);
+      $("firstRunBootstrap").addEventListener("click", runFirstRunBootstrap);
+      $("firstRunGoal").addEventListener("click", runFirstRunGoal);
+      $("firstRunStarter").addEventListener("click", runFirstRunStarter);
+      $("firstRunPreflight").addEventListener("click", runFirstRunPreflight);
+      $("firstRunBeat").addEventListener("click", runFirstRunBeat);
       $("installGuide").addEventListener("click", runInstallReport);
       $("runChecks").addEventListener("click", runChecks);
       $("runFeed").addEventListener("click", runFeedTest);
@@ -3732,6 +3918,7 @@
       $("runPreflight").addEventListener("click", runPreflightReport);
       $("runPreflightScript").addEventListener("click", runPreflightScript);
       $("runPreflightRecord").addEventListener("click", runPreflightRecord);
+      $("runPreflightRecordCheck").addEventListener("click", runPreflightRecordCheck);
       document.querySelectorAll("[data-state]").forEach((button) => {
         button.addEventListener("click", () => render(button.dataset.state));
       });

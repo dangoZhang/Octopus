@@ -43,7 +43,7 @@ octopus goal refine "prefer cognitive Needs over tool instructions"
 octopus brain --session "what should the brain ask next?"
 octopus brain --focus verify --save "what proof matters?"
 octopus need observe README.md
-octopus feedback 1 satisfied "useful evidence"
+octopus feedback latest satisfied "useful evidence"
 octopus beat 200
 octopus pet
 ```
@@ -70,9 +70,21 @@ OpenAI-compatible profiles include OpenAI, local servers, routers, DeepSeek, Gro
 ```bash
 octopus install swe-agent
 octopus need observe README.md
-octopus feedback 1 partial "feed needs sharper file evidence"
+octopus feedback latest partial "feed needs sharper file evidence"
 octopus beat 200
 octopus repair .
 ```
 
 Harness changes stay reviewable: plans, patches, repair bundles, and scores are written under `.octopus/` before any high-risk action.
+
+## Release Gate
+
+```bash
+tmp=$(mktemp -d)
+octopus --state "$tmp/state.json" bootstrap
+octopus --state "$tmp/state.json" need observe README.md
+octopus --state "$tmp/state.json" feedback latest satisfied "feed worked"
+octopus --state "$tmp/state.json" preflight
+octopus --state "$tmp/state.json" preflight record "$tmp/real-machine-record.md"
+octopus --state "$tmp/state.json" preflight record check "$tmp/real-machine-record.md"
+```

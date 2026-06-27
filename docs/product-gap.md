@@ -30,6 +30,7 @@ Updated: 2026-06-27
 - The native HTML app can render the dry-run update report and copy the explicit reinstall command while the local app API blocks `update --run`.
 - The native HTML app can render a structured Doctor panel with state, tentacles, manifests, environment, LLM, pet, warnings, and next actions.
 - The native HTML app Doctor panel has readiness actions for bootstrap, goal setup, provider status/env, starter recommendations, preflight, seed checks, beat, and product report, with Doctor refresh after local actions.
+- The native HTML app now has a First Run path that runs Doctor, Bootstrap, Goal, Starter, Preflight, and Beat through the whole-project local API.
 - `update` reports the current GitHub reinstall command by default, and `update --run` performs the cargo reinstall explicitly.
 - `bootstrap` creates local state files, adapts to the project, installs seed tentacles, pulses heartbeat, and returns a product report plus next commands.
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
@@ -78,7 +79,9 @@ Updated: 2026-06-27
 - The native HTML app can render the same product report from the local app API.
 - `preflight [--live]` turns the `0.1.0` readiness gate into CLI, JSON, and native HTML checks without live provider calls unless requested.
 - `preflight script [path]` writes a reviewable local release-gate script that runs bootstrap, Feed, checks, feedback, beat, pet, report, and optional live provider/PR dry-run gates.
-- `preflight record [path]` writes a real-machine evidence template with GitHub install, core loop, start/app, live provider, and PR dry-run commands.
+- `preflight record [path]` writes a real-machine evidence template with GitHub install, core loop, start/app, live provider, and PR dry-run commands; `preflight record check [path]` audits completed fields before appending it.
+- Real-machine record audit accepts the current `Start/app` result field while keeping legacy `Bridge/app` records valid.
+- The SWE test harness clears outer Octopus state variables before running project tests, so `check swe-agent` validates the target repo without leaking the caller's temporary state.
 - The real-machine record gate accepts a current recorded head, or a docs-only record commit whose parent head is recorded.
 - Context policy is explicit: clean brain sees `Goal + Mem + Need + Feed`; tentacles see `Need + Tool + Action + Tool + Action -> Feed`.
 - `context [kind query]` now renders the clean-brain context slots, memory summary, recent Need/Feed, and installed tentacle tool/action context as CLI, JSON, and native HTML output.
@@ -155,7 +158,7 @@ Updated: 2026-06-27
 - Added first-class context inspection so the product can prove the brain sees only `Goal/Mem/Need/Feed` while tentacles carry `Need/Tool/Action/Feed`.
 - Added `octopus report` and `--json report` for capability/gap review from current harness state.
 - Added a native HTML Report panel that renders capabilities, gaps, and next actions.
-- Added `feedback <trace-index> <status> [summary]` so human review can score a Feed trace, update route learning, and change pet color.
+- Added `feedback <trace-index|latest> <status> [summary]` so human review can score a Feed trace, update route learning, and change pet color.
 - Added native HTML Feed feedback buttons so the Feed Test panel can write that harness feedback without shell use.
 - Rolled the cleanup/version cadence to `0.0.6` after the context, report, apply, and Feed feedback product cycle.
 - Added state-aware route reports in CLI, JSON, and the native app so Feed feedback becomes visible route selection evidence.
@@ -164,6 +167,7 @@ Updated: 2026-06-27
 - Added native HTML Bootstrap access through the local app API.
 - Added `harness-repair-agent` as a seed tentacle for tool-side diagnosis of the harness feedback and adapter loop.
 - Fixed the GitHub install command and passed `OCTOPUS_STATE_PATH` into tool runtimes so harness diagnostics can read temporary or custom state paths.
+- Isolated `swe-agent` project tests from inherited `OCTOPUS_STATE_PATH`/`OCTOPUS_STATE`, keeping manifest checks stable when Octopus tests itself.
 - Added clean-brain `explore` in CLI, JSON, and native app so the main brain can suggest Needs without tool execution.
 - Added clean-brain Need Queue in CLI, JSON, status/report, and native app so exploration can become reviewable pending Needs without Feed execution.
 - Added `brain [prompt]` in CLI, JSON, product report, and native app so clean-brain context can be used with any chat model without provider setup.
@@ -241,6 +245,7 @@ Updated: 2026-06-27
 - Added the biological Octopus research angle to README, Research Map, and Architecture: Liang lab cephalopod control, flexible chromatophore components, and segmented arm nervous systems now ground the local-nervous-system tentacle model.
 - Added a native HTML Doctor panel and startup snapshot check so local app users can see readiness without reading raw command output.
 - Added Doctor readiness actions so local app users can move from warnings to bootstrap, goal, provider, starter, preflight, seed checks, beat, or report flows without hunting through the command toolbar.
+- Added a First Run path to the native app so the local product can move from launch to readiness evidence without creating a separate MVP route.
 
 ## Remaining Gaps
 

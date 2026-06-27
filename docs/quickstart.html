@@ -91,10 +91,10 @@ octopus start --open</code></pre>
       <h2>First Loop</h2>
       <pre><code>octopus goal set --constraint "keep tools outside the brain" "make this repo easier to use"
 octopus goal refine "prefer cognitive Needs over tool instructions"
-	octopus brain --session "what should the brain ask next?"
-	octopus brain --focus verify --save "what proof matters?"
-	octopus need observe README.md
-octopus feedback 1 satisfied "useful evidence"
+octopus brain --session "what should the brain ask next?"
+octopus brain --focus verify --save "what proof matters?"
+octopus need observe README.md
+octopus feedback latest satisfied "useful evidence"
 octopus beat 200
 octopus pet</code></pre>
       <p>The app can continue the same loop: starter tentacles, provider setup, clean-brain sessions, Need Queue, Feed tests, repair plans, route feedback, preflight, and harness-beat review all run through <code>octopus start</code>.</p>
@@ -113,10 +113,19 @@ octopus brain --live --save "what should the brain ask next?"</code></pre>
       <h2>Harness Evolution</h2>
       <pre><code>octopus install swe-agent
 octopus need observe README.md
-octopus feedback 1 partial "feed needs sharper file evidence"
+octopus feedback latest partial "feed needs sharper file evidence"
 octopus beat 200
 octopus repair .</code></pre>
       <p>Harness changes stay reviewable: plans, patches, repair bundles, and scores are written under <code>.octopus/</code> before any high-risk action.</p>
+
+      <h2>Release Gate</h2>
+      <pre><code>tmp=$(mktemp -d)
+octopus --state "$tmp/state.json" bootstrap
+octopus --state "$tmp/state.json" need observe README.md
+octopus --state "$tmp/state.json" feedback latest satisfied "feed worked"
+octopus --state "$tmp/state.json" preflight
+octopus --state "$tmp/state.json" preflight record "$tmp/real-machine-record.md"
+octopus --state "$tmp/state.json" preflight record check "$tmp/real-machine-record.md"</code></pre>
 
       <p><a href="./index.html">Back to Octopus</a></p>
     </main>
