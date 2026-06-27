@@ -27,6 +27,6 @@ Real-machine test gate for `0.1.0` and later tags:
 
 Last cleanup/version correction: `0.0.13` on 2026-06-27. Scope: launch-and-open startup, bundled seed startup, dry-run update, native update report, human Goal constraints, clean-brain agenda/model routing, removed stale demo CI checks, removed secondary startup route, README/docs route cleanup, and version consistency; no tag cut.
 
-Product commits toward `0.0.14`: 2/8.
+Product commits toward `0.0.14`: 3/8.
 
 Next planned cleanup/version commit: `0.0.14`.

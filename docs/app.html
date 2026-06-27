@@ -1772,6 +1772,7 @@
         root.className = "stack";
         root.textContent = "";
         root.appendChild(doctorSummary(report));
+        root.appendChild(doctorActions(report));
         root.appendChild(reportList("Warnings", report.warnings || [], textItem));
         root.appendChild(reportList("Broken Manifests", report.broken_manifests || [], textItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
@@ -2861,6 +2862,52 @@
           grid.appendChild(metric);
         });
         return grid;
+      }
+
+      function doctorActions(report) {
+        const status = report.status || {};
+        const llm = report.llm || {};
+        const wrap = document.createElement("div");
+        wrap.className = "toolbar";
+        [
+          ["Bootstrap", async () => {
+            await runBridge("bootstrap");
+            await runDoctorReport(false);
+          }],
+          ["Set Goal", async () => {
+            await runBridge("goalset");
+            await runDoctorReport(false);
+          }],
+          ["Provider", async () => {
+            await runProviderStatus();
+            await runDoctorReport(false);
+          }],
+          ["Provider Env", async () => {
+            await runProviderEnv();
+          }],
+          ["Starter", async () => {
+            await runStarterReport();
+            await runDoctorReport(false);
+          }],
+          ["Report", async () => {
+            await runProductReport();
+            await runDoctorReport(false);
+          }],
+        ].forEach(([label, run]) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = label;
+          button.addEventListener("click", run);
+          if (
+            (label === "Bootstrap" && (status.tentacles || []).length > 0) ||
+            (label === "Set Goal" && status.goal) ||
+            (label === "Provider" && llm.configured)
+          ) {
+            button.className = "secondary";
+          }
+          wrap.appendChild(button);
+        });
+        return wrap;
       }
 
       function feedSummary(report, feed) {

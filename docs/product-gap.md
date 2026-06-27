@@ -29,6 +29,7 @@ Updated: 2026-06-27
 - The native HTML app defaults its local API URL to Octopus when opened from docs pages, and auto-renders a read-only startup snapshot when served by `octopus start`.
 - The native HTML app can render the dry-run update report and copy the explicit reinstall command while the local app API blocks `update --run`.
 - The native HTML app can render a structured Doctor panel with state, tentacles, manifests, environment, LLM, pet, warnings, and next actions.
+- The native HTML app Doctor panel has readiness actions for bootstrap, goal setup, provider status/env, starter recommendations, and product report, with Doctor refresh after local actions.
 - `update` reports the current GitHub reinstall command by default, and `update --run` performs the cargo reinstall explicitly.
 - `bootstrap` creates local state files, adapts to the project, installs seed tentacles, pulses heartbeat, and returns a product report plus next commands.
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
@@ -237,6 +238,7 @@ Updated: 2026-06-27
 - Rolled the cleanup/version cadence to `0.0.13` after launch-and-open startup, bundled seed startup, dry-run update, native update reports, human Goal constraints, clean-brain agenda/model routing, removed stale demo CI checks, removed secondary startup route, README/docs route cleanup, and version consistency.
 - Added the biological Octopus research angle to README, Research Map, and Architecture: Liang lab cephalopod control, flexible chromatophore components, and segmented arm nervous systems now ground the local-nervous-system tentacle model.
 - Added a native HTML Doctor panel and startup snapshot check so local app users can see readiness without reading raw command output.
+- Added Doctor readiness actions so local app users can move from warnings to bootstrap, goal, provider, starter, or report flows without hunting through the command toolbar.
 
 ## Remaining Gaps
 
