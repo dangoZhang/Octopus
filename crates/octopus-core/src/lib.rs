@@ -10055,6 +10055,28 @@ print(json.dumps({
             .map(|path| workspace.join(path))
             .expect("outcome markdown metadata");
         assert!(outcome_markdown.exists());
+        let follow_up = tentacle.feed(&Need::new(
+            NeedKind::Execute,
+            workspace.to_string_lossy().to_string(),
+        ));
+        assert_eq!(follow_up.status, Status::Satisfied);
+        let outcome_memory = follow_up
+            .metadata
+            .get("outcome_memory")
+            .map(|path| workspace.join(path))
+            .expect("outcome memory metadata");
+        assert!(outcome_memory.exists());
+        let memory = fs::read_to_string(&outcome_memory).unwrap();
+        assert!(memory.contains("reviewed repair draft"));
+        assert!(memory.contains("satisfied"));
+        let prompt = follow_up
+            .metadata
+            .get("prompt")
+            .map(|path| workspace.join(path))
+            .expect("follow-up prompt metadata");
+        assert!(fs::read_to_string(prompt)
+            .unwrap()
+            .contains("repair outcome memory"));
         assert!(feed
             .evidence
             .iter()

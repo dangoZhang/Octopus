@@ -62,6 +62,86 @@ def load_jsonl(path, limit=5):
     return rows[-limit:]
 
 
+def outcome_status(item):
+    return str(
+        item.get("outcome_status")
+        or item.get("status")
+        or item.get("state")
+        or "unknown"
+    ).lower()
+
+
+def normalized_outcome(item, origin):
+    return {
+        "origin": origin,
+        "index": item.get("index", ""),
+        "trace_index": item.get("trace_index", ""),
+        "timestamp": item.get("timestamp") or item.get("timestamp_secs") or "",
+        "session": str(item.get("session") or ""),
+        "target_tentacle": str(
+            item.get("target_tentacle") or item.get("tentacle_id") or "unknown"
+        ),
+        "candidate": str(item.get("candidate") or item.get("candidate_id") or "none"),
+        "tool": str(item.get("tool") or ""),
+        "source": str(item.get("source") or origin),
+        "next_need": str(item.get("next_need") or ""),
+        "draft_status": str(item.get("draft_status") or ""),
+        "outcome_status": outcome_status(item),
+        "summary": compact(item.get("summary") or item.get("content") or "", 500),
+    }
+
+
+def merge_repair_outcomes(state_items, journal_items, limit=8):
+    merged = []
+    seen = set()
+    for origin, items in [("state", state_items), ("journal", journal_items)]:
+        for item in items if isinstance(items, list) else []:
+            if not isinstance(item, dict):
+                continue
+            outcome = normalized_outcome(item, origin)
+            key = (
+                outcome["session"],
+                str(outcome["trace_index"]),
+                outcome["target_tentacle"],
+                outcome["candidate"],
+                outcome["outcome_status"],
+                outcome["summary"],
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(outcome)
+    return merged[-limit:]
+
+
+def outcome_memory_markdown(outcomes, workspace, outcomes_file):
+    lines = [
+        "# Harness Repair Outcome Memory",
+        "",
+        "This file is local tentacle memory. It is fed to repair-session planning, not to the clean brain.",
+        "",
+        f"journal: `{rel(outcomes_file, workspace)}`",
+        f"count: `{len(outcomes)}`",
+        "",
+    ]
+    if not outcomes:
+        lines.append("No repair outcomes recorded yet.")
+        return "\n".join(lines) + "\n"
+    for item in outcomes[-8:]:
+        session = item.get("session") or "none"
+        target = item.get("target_tentacle") or "unknown"
+        candidate = item.get("candidate") or "none"
+        status = item.get("outcome_status") or "unknown"
+        origin = item.get("origin") or "unknown"
+        lines.extend(
+            [
+                f"- `{status}` target=`{target}` candidate=`{candidate}` origin=`{origin}` session=`{session}`",
+                f"  summary: {compact(item.get('summary', ''), 320)}",
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
 def rel(path, root):
     try:
         return str(path.relative_to(root))
@@ -288,8 +368,9 @@ state_path = Path(
 state = load_json(state_path)
 repair_root = workspace / ".octopus" / "harness-repair"
 state_repair_outcomes = state.get("repair_outcomes") or []
-file_repair_outcomes = load_jsonl(repair_root / "outcomes.jsonl", 6)
-repair_outcomes = (state_repair_outcomes or file_repair_outcomes)[-6:]
+outcomes_file = repair_root / "outcomes.jsonl"
+file_repair_outcomes = load_jsonl(outcomes_file, 12)
+repair_outcomes = merge_repair_outcomes(state_repair_outcomes, file_repair_outcomes)
 latest_repair_outcome = repair_outcomes[-1] if repair_outcomes else {}
 feed_traces = state.get("feed_traces") or []
 check_history = state.get("check_history") or []
@@ -369,10 +450,12 @@ prompt_md = session_dir / "PROMPT.md"
 draft_md = session_dir / "DRAFT.md"
 next_need_json = session_dir / "NEXT_NEED.json"
 command_script = session_dir / "COMMANDS.sh"
+outcome_memory_md = session_dir / "OUTCOME_MEMORY.md"
 outcome_command = (
     "octopus repair score <trace-index> satisfied \"repair improved Feed\""
 )
 next_need_kind, next_need_query = need_parts(next_need)
+outcome_sources = sorted({str(item.get("origin") or "unknown") for item in repair_outcomes})
 session = {
     "schema_version": "octopus-harness-repair-session-v1",
     "workspace": str(workspace),
@@ -382,12 +465,14 @@ session = {
     "source": source,
     "next_need": next_need,
     "commands": commands,
+    "outcome_memory": rel(outcome_memory_md, workspace),
     "signals": {
         "feed_traces": len(feed_traces),
         "check_history": len(check_history),
         "apply_plans": len(apply_plans),
         "proposals": len(proposals),
         "repair_outcomes": len(repair_outcomes),
+        "repair_outcome_sources": outcome_sources,
         "latest_repair_outcome": latest_repair_outcome,
         "provider_ready": provider_ready,
         "provider_env_loaded": loaded_provider_keys,
@@ -404,6 +489,10 @@ next_need_payload = {
 }
 session_json.write_text(json.dumps(session, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
 next_need_json.write_text(json.dumps(next_need_payload, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
+outcome_memory_md.write_text(
+    outcome_memory_markdown(repair_outcomes, workspace, outcomes_file),
+    encoding="utf-8",
+)
 command_script.write_text(
     "\n".join(
         [
@@ -421,6 +510,16 @@ command_script.write_text(
     encoding="utf-8",
 )
 command_script.chmod(0o755)
+recent_outcome_lines = [
+    (
+        f"- {compact(item.get('outcome_status') or 'unknown')}"
+        f" target={compact(item.get('target_tentacle') or 'unknown')}"
+        f" candidate={compact(item.get('candidate') or 'none')}"
+        f" origin={compact(item.get('origin') or 'unknown')}:"
+        f" {compact(item.get('summary', ''), 260)}"
+    )
+    for item in repair_outcomes[-4:]
+] or ["- none"]
 prompt_md.write_text(
     "\n".join(
         [
@@ -448,19 +547,19 @@ prompt_md.write_text(
             f"- apply plans: {len(apply_plans)}",
             f"- proposals: {len(proposals)}",
             f"- repair outcomes: {len(repair_outcomes)}",
+            f"- repair outcome sources: {', '.join(outcome_sources) if outcome_sources else 'none'}",
             f"- provider ready: {provider_ready}",
             "",
-            "recent repair outcomes:",
-            *[
-                f"- {compact(item.get('status') or item.get('outcome_status') or 'unknown')}: {compact(item.get('summary', ''))}"
-                for item in repair_outcomes[-3:]
-            ],
+            "repair outcome memory:",
+            f"- memory artifact: `{rel(outcome_memory_md, workspace)}`",
+            *recent_outcome_lines,
             "",
             "artifacts:",
             f"- session: `{rel(session_json, workspace)}`",
             f"- next need: `{rel(next_need_json, workspace)}`",
             f"- commands: `{rel(command_script, workspace)}`",
             f"- draft: `{rel(draft_md, workspace)}`",
+            f"- outcome memory: `{rel(outcome_memory_md, workspace)}`",
         ]
     )
     + "\n",
@@ -493,6 +592,7 @@ session_md.write_text(
             f"draft: `{rel(draft_md, workspace)}`",
             f"next need: `{rel(next_need_json, workspace)}`",
             f"commands: `{rel(command_script, workspace)}`",
+            f"outcome memory: `{rel(outcome_memory_md, workspace)}`",
             f"outcome command: `{outcome_command}`",
         ]
     )
@@ -512,8 +612,10 @@ metadata = {
     "llm_prefix": draft["prefix"],
     "next_need_file": rel(next_need_json, workspace),
     "command_script": rel(command_script, workspace),
+    "outcome_memory": rel(outcome_memory_md, workspace),
     "outcome_command": outcome_command,
     "repair_outcome_count": str(len(repair_outcomes)),
+    "repair_outcome_sources": ",".join(outcome_sources),
     "target_tentacle": target_tentacle,
     "candidate": candidate,
     "next_need_kind": next_need_kind,
