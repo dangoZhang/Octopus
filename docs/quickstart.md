@@ -87,7 +87,7 @@ octopus --state "$tmp/state.json" goal
 octopus bridge
 ```
 
-Open `http://127.0.0.1:8765/app.html`. The app can bootstrap a local state, install tentacles, inspect context, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run a structured Feed test, score Feed or repair outcomes, show grant/check/next reports, and grant local Octopus tool scopes.
+Open `http://127.0.0.1:8765/app.html`. The app can bootstrap a local state, render starter tentacle cards, install tentacles, inspect context, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run a structured Feed test, score Feed or repair outcomes, show grant/check/next reports, and grant local Octopus tool scopes.
 The Feed panel can score the latest trace as satisfied, partial, or failed; the Repair panel can score repair outcomes through the same harness journal. Both feedback paths update route data and pet color.
 It can also save provider env to `.octopus/llm.env`; bridge reads that file when it runs child Octopus commands.
 
