@@ -1,15 +1,16 @@
 use octopus_core::{
-    default_permissions, default_tentacle_profiles, feed_tentacle, inspect_tentacle_manifests,
-    load_tentacle_manifests, plan_tentacle_evolution_apply, propose_tentacle_evolution_with_client,
-    propose_tentacle_evolution_with_state, recommend_tentacle_evolution_apply, scaffold_tentacle,
-    think_tentacle, write_harness_beat_evolution_artifacts, write_tentacle_apply_artifacts,
+    default_permissions, default_tentacle_profiles, feed_tentacle_with_llm_factory,
+    inspect_tentacle_manifests, load_tentacle_manifests, plan_tentacle_evolution_apply,
+    propose_tentacle_evolution_with_client, propose_tentacle_evolution_with_state,
+    recommend_tentacle_evolution_apply, scaffold_tentacle, think_tentacle_with_llm_factory,
+    write_harness_beat_evolution_artifacts, write_tentacle_apply_artifacts,
     write_tentacle_evolution_artifacts, AdaptReport, BrainDeliberationDraft,
     BrainDeliberationReport, BrainDeliberationSaveReport, BrainExploreDraft, BrainExploreReport,
     BrainGoalReport, BrainGoalSaveReport, BrainPromptReport, BrainReflectionDraft,
     BrainReflectionReport, BrainReflectionSaveReport, BrainSynthesisDraft, BrainSynthesisInput,
-    BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant, ChatClient, ChatMessage,
-    ChatRole, CheckHistoryInput, CheckHistoryRecord, CodexCliChatClient, CodexCliConfig,
-    ContextReport, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan,
+    BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant, ChatClient, ChatClientFactory,
+    ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord, CodexCliChatClient,
+    CodexCliConfig, ContextReport, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan,
     EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed, FeedFeedbackOutcome,
     FeedTraceRecord, Feedback, Goal, GoalChat, GoalNeedSuggestion, GoalRefinement, Harness,
     HarnessBeatEvolution, HarnessState, HeartBeat, HeartbeatReport, InstalledTentacle,
@@ -963,16 +964,16 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .map(|values| values.join(" "))
                 .ok_or_else(|| "think requires a query".to_string())?;
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            let llm_config = if manifest_llm_enabled() {
-                Some(manifest_llm_config()?)
+            let llm_factory = if manifest_llm_enabled() {
+                Some(manifest_llm_factory()?)
             } else {
                 None
             };
-            let plan = think_tentacle(
+            let plan = think_tentacle_with_llm_factory(
                 default_tentacles_root(),
                 tentacle_id,
                 &Need::new(kind, query),
-                llm_config,
+                llm_factory,
                 &loaded.grants,
             )?;
             if json {
@@ -4529,14 +4530,12 @@ fn provider_env_report_inner(
         format!("export OCTOPUS_BRAIN_REWRITE_LLM_PREFIX={prefix}"),
         format!("export OCTOPUS_BRAIN_QUEUE_LLM_PREFIX={prefix}"),
     ]);
-    if profile.backend != "codex" {
-        exports.extend([
-            "export OCTOPUS_LLM_MANIFEST=1".to_string(),
-            "export OCTOPUS_LLM_EVOLVE=1".to_string(),
-            format!("export OCTOPUS_MANIFEST_LLM_PREFIX={prefix}"),
-            format!("export OCTOPUS_EVOLVE_LLM_PREFIX={prefix}"),
-        ]);
-    }
+    exports.extend([
+        "export OCTOPUS_LLM_MANIFEST=1".to_string(),
+        "export OCTOPUS_LLM_EVOLVE=1".to_string(),
+        format!("export OCTOPUS_MANIFEST_LLM_PREFIX={prefix}"),
+        format!("export OCTOPUS_EVOLVE_LLM_PREFIX={prefix}"),
+    ]);
     let shell = exports.join("\n");
     Ok(ProviderEnvReport {
         profile,
@@ -4703,6 +4702,14 @@ fn provider_client(prefix: &str) -> Result<ProviderClient, String> {
     }
 }
 
+fn provider_client_factory(prefix: &str) -> Result<ChatClientFactory, String> {
+    provider_client(prefix)?;
+    let prefix = prefix.to_string();
+    Ok(std::sync::Arc::new(move || {
+        provider_client(&prefix).map(|(_, _, _, _, client)| client)
+    }))
+}
+
 fn provider_status_report() -> ProviderStatusReport {
     let layers = vec![
         provider_layer_status(
@@ -4860,13 +4867,12 @@ fn provider_layer_status(
         return match CodexCliConfig::from_env_prefix(&prefix) {
             Ok(config) => {
                 let command_is_ready = command_ready(&config.command);
-                let harness_layer = matches!(layer, "tentacle_planning" | "harness_evolution");
                 ProviderLayerStatus {
                     layer: layer.to_string(),
                     purpose: purpose.to_string(),
                     enabled,
                     prefix: prefix.clone(),
-                    configured: command_is_ready && !harness_layer,
+                    configured: command_is_ready,
                     model: config.model.or_else(|| Some("codex-default".to_string())),
                     base_url: Some("codex-cli".to_string()),
                     api_key_present: false,
@@ -4874,9 +4880,7 @@ fn provider_layer_status(
                     curl_available: command_is_ready,
                     curl_command: config.command,
                     check_command: format!("octopus provider check {prefix}"),
-                    message: if harness_layer {
-                        "Codex CLI OAuth covers chat and clean-brain; use LiteLLM or an OpenAI-compatible provider for tentacle planning and harness evolution until those adapters are generalized.".to_string()
-                    } else if enabled {
+                    message: if enabled {
                         "configured via Codex CLI login".to_string()
                     } else {
                         format!("configured but disabled; run `{enable_hint}`")
@@ -7286,8 +7290,8 @@ fn repair_report(
     let _ = state.install_profile(tentacle_id);
     state.install_manifest(&root, tentacle_id)?;
     state.save(state_path).map_err(|error| error.to_string())?;
-    let llm_config = if manifest_llm_enabled() {
-        Some(manifest_llm_config()?)
+    let llm_factory = if manifest_llm_enabled() {
+        Some(manifest_llm_factory()?)
     } else {
         None
     };
@@ -7297,7 +7301,8 @@ fn repair_report(
         NeedKind::Observe
     };
     let need = Need::new(need_kind, query.clone());
-    let mut feed = feed_tentacle(&root, tentacle_id, &need, llm_config, &state.grants)?;
+    let mut feed =
+        feed_tentacle_with_llm_factory(&root, tentacle_id, &need, llm_factory, &state.grants)?;
     feed.metadata
         .insert("tentacle".to_string(), tentacle_id.to_string());
     state.record_pet_event_from_feed(&feed);
@@ -11516,9 +11521,9 @@ fn harness_for_need(state: HarnessState, kind: &NeedKind) -> Result<Harness, Str
         return Ok(Harness::with_state(state));
     }
     if manifest_llm_enabled() {
-        return Ok(Harness::with_state_and_manifest_llm(
+        return Ok(Harness::with_state_and_manifest_llm_factory(
             state,
-            manifest_llm_config()?,
+            manifest_llm_factory()?,
         ));
     }
     Ok(Harness::with_state(state))
@@ -11530,9 +11535,7 @@ fn propose_evolution_for_cli(
     state: &HarnessState,
 ) -> Result<TentacleEvolutionProposal, String> {
     if evolve_llm_enabled() {
-        let mut client = OpenAiCompatibleChatClient::new(OpenAiCompatibleConfig::from_env_prefix(
-            &evolve_llm_prefix(),
-        )?);
+        let (_, _, _, _, mut client) = provider_client(&evolve_llm_prefix())?;
         return propose_tentacle_evolution_with_client(
             default_tentacles_root(),
             tentacle_id,
@@ -11661,8 +11664,8 @@ fn clean_brain_queue_llm_client() -> Result<Box<dyn ChatClient>, String> {
     Ok(provider_client(&clean_brain_queue_llm_prefix())?.4)
 }
 
-fn manifest_llm_config() -> Result<OpenAiCompatibleConfig, String> {
-    OpenAiCompatibleConfig::from_env_prefix(&manifest_llm_prefix())
+fn manifest_llm_factory() -> Result<ChatClientFactory, String> {
+    provider_client_factory(&manifest_llm_prefix())
 }
 
 fn doctor_llm_prefix() -> String {
@@ -13051,8 +13054,7 @@ fn run_brain_council(
         .unwrap_or_else(clean_brain_council_llm_prefixes);
     let mut drafts = Vec::new();
     for prefix in &prefixes {
-        let mut client =
-            OpenAiCompatibleChatClient::new(OpenAiCompatibleConfig::from_env_prefix(prefix)?);
+        let (_, _, _, _, mut client) = provider_client(prefix)?;
         let response = client
             .chat(&messages)
             .map_err(|error| format!("clean-brain council {prefix} failed: {error}"))?;
@@ -16936,11 +16938,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(zai
             .shell
             .contains("export OCTOPUS_ZAI_API_KEY=\"${ZAI_API_KEY:-}\""));
-        assert!(!codex.shell.contains("OCTOPUS_LLM_MANIFEST=1"));
+        assert!(codex.shell.contains("export OCTOPUS_LLM_MANIFEST=1"));
+        assert!(codex
+            .shell
+            .contains("export OCTOPUS_MANIFEST_LLM_PREFIX=OCTOPUS_CODEX"));
     }
 
     #[test]
-    fn provider_status_does_not_overclaim_codex_harness_layers() {
+    fn provider_status_reports_codex_harness_layers() {
         let _env = env_guard();
         let old_manifest = std::env::var("OCTOPUS_LLM_MANIFEST").ok();
         let old_evolve = std::env::var("OCTOPUS_LLM_EVOLVE").ok();
@@ -16954,7 +16959,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         std::env::set_var("OCTOPUS_MANIFEST_LLM_PREFIX", "OCTOPUS_CODEX_STATUS");
         std::env::set_var("OCTOPUS_EVOLVE_LLM_PREFIX", "OCTOPUS_CODEX_STATUS");
         std::env::set_var("OCTOPUS_CODEX_STATUS_BACKEND", "codex");
-        std::env::set_var("OCTOPUS_CODEX_STATUS_CODEX_COMMAND", "codex");
+        std::env::set_var("OCTOPUS_CODEX_STATUS_CODEX_COMMAND", "cargo");
 
         let report = provider_status_report();
         let tentacle = report
@@ -16970,9 +16975,9 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
 
         assert!(tentacle.enabled);
         assert!(evolution.enabled);
-        assert!(!tentacle.configured);
-        assert!(!evolution.configured);
-        assert!(tentacle.message.contains("LiteLLM"));
+        assert!(tentacle.configured);
+        assert!(evolution.configured);
+        assert!(tentacle.message.contains("Codex CLI"));
 
         restore_env("OCTOPUS_LLM_MANIFEST", old_manifest);
         restore_env("OCTOPUS_LLM_EVOLVE", old_evolve);

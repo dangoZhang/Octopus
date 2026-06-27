@@ -125,6 +125,7 @@ octopus brain --live --save "what should the brain ask next?"
 ```
 
 OpenAI-compatible profiles include OpenAI, local servers, LiteLLM, Codex CLI OAuth, Z.AI/BigModel, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.
+The same provider env powers clean-brain calls, tool-side tentacle planning, and harness evolution.
 
 ## Harness Evolution
 

@@ -77,6 +77,8 @@ Date: 2026-06-28 CST. Working tree package version `0.0.15`.
 - Direct API key: BigModel/Z.AI OpenAI-compatible endpoint `https://open.bigmodel.cn/api/paas/v4`, model `glm-4.5-flash`, returned `OCTOPUS_ZAI_OK`. The key was used only in the process environment and was not written to project files.
 - Local open-source model: `llama-server` served `/Users/zty/msc/beta/.local_models/qwen35-35b-a3b/Qwen_Qwen3.5-35B-A3B-IQ2_M.gguf` on `http://127.0.0.1:1234/v1`; CPU/low-context settings returned `OCTOPUS_LOCAL_OK`.
 - API-key adapter path: a local OpenAI-compatible test server verified the `Authorization: Bearer ...` header and returned `API_KEY_OK`.
+- Tool-side Codex OAuth: `OCTOPUS_LLM_MANIFEST=1 ... octopus --json think swe-agent observe "Cargo.toml 1 1"` returned an LLM `read` plan under `Need + Tool + Action + Tool + Action -> Feed`.
+- Harness-evolution Codex OAuth: `OCTOPUS_LLM_EVOLVE=1 ... octopus --json evolve swe-agent "tighten observe feed evidence"` generated reviewable candidates and patch drafts under `.octopus/evolution/swe-agent` without applying code.
 
 ## Tag Decision
 

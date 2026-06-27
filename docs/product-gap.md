@@ -15,7 +15,7 @@ Updated: 2026-06-28
 - Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools, repo-maintainer, harness-repair diagnostics, and a write-and-run harness.
 - `json-feed` is a runtime seed for the `octopus-json-v1` contract.
 - Memory is a heart/beat; visual is the color-changing pet layer.
-- LLM adapters support OpenAI-compatible providers for chat goal refinement, clean-brain Goal/Intent/Brief/Align/Clarify/Agenda/Scout/Deliberate/Council/Synthesize/Explore/Rewrite/Queue/Memory jobs, manifest tool planning, and harness evolution candidate generation.
+- LLM adapters support backend-aware providers for chat goal refinement, clean-brain Goal/Intent/Brief/Align/Clarify/Agenda/Scout/Deliberate/Council/Synthesize/Explore/Rewrite/Queue/Memory jobs, manifest tool planning, and harness evolution candidate generation.
 - `providers` and `provider <name> [prefix]` expose reusable LLM profile setup for Codex CLI OAuth, API-key clouds, Z.AI/BigModel, local servers, LiteLLM gateway, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.
 - `provider status` reports chat, clean-brain model slots including intent, brief, alignment, clarification, agenda, scout, memory, and synthesis, tentacle-planning, and harness-evolution LLM readiness without a network call.
 - `provider save` writes reusable provider env to `.octopus/llm.env` by default, and start overlays that file onto child Octopus commands.
@@ -272,6 +272,7 @@ Updated: 2026-06-28
 - Added `repair continue [query]` in CLI and native HTML so a harness-repair Feed can immediately take its queued clean Need, continue through the harness, and return scoreable Feed evidence.
 - Added Codex CLI OAuth and LiteLLM/Z.AI provider profiles, plus a provider backend switch so Octopus can use login sessions, direct API keys, local OpenAI-compatible models, or a universal provider gateway without changing clean-brain context.
 - Hardened the LLM request base with non-streaming chat-completions payloads, retries, provider error parsing, content-array/text/reasoning-only response adaptation, Codex CLI timeout/retry handling, and `provider save-key` secret writes with sanitized output.
+- Generalized manifest tentacle planning, clean-brain council, and harness evolution to the same provider client factory, so Codex OAuth, API-key providers, local models, and LiteLLM gateways can feed tool-side thinking instead of only clean-brain chat.
 
 ## Remaining Gaps
 
@@ -282,7 +283,7 @@ Updated: 2026-06-28
 - Preflight now exposes the release gate and record template; current readiness still depends on running that gate with live provider, OAuth PR publishing, scored feedback data, and appending a current-head or docs-only parent-recorded result.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
-- Provider profiles now include CLI/HTML env generation, env saving, secure key-backed env saving, start env loading, clean-brain slot diagnostics, request retries, live validation, Codex CLI OAuth, direct API-key, local model, and LiteLLM gateway paths; provider-specific edge cases still need broader real-machine feedback.
+- Provider profiles now include CLI/HTML env generation, env saving, secure key-backed env saving, start env loading, clean-brain slot diagnostics, tentacle-planning diagnostics, evolution-provider routing, request retries, live validation, Codex CLI OAuth, direct API-key, local model, and LiteLLM gateway paths; provider-specific edge cases still need broader real-machine feedback.
 - GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
 - The HTML app can run, stream, render update reports, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, draft/apply agenda reports, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect repair plans, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, render/filter starter recommendation cards with choice feedback, run starter install/check/first-Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and render score-to-next evolution feedback through the local app API; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.

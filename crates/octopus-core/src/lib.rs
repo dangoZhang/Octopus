@@ -5,6 +5,7 @@ use std::fs;
 use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -1170,6 +1171,8 @@ pub trait ChatClient {
     fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String>;
 }
 
+pub type ChatClientFactory = Arc<dyn Fn() -> Result<Box<dyn ChatClient>, String>>;
+
 impl<T> ChatClient for Box<T>
 where
     T: ChatClient + ?Sized,
@@ -1455,6 +1458,10 @@ impl ChatClient for OpenAiCompatibleChatClient {
         }
         Err(last_error)
     }
+}
+
+pub fn chat_client_factory_from_openai_config(config: OpenAiCompatibleConfig) -> ChatClientFactory {
+    Arc::new(move || Ok(Box::new(OpenAiCompatibleChatClient::new(config.clone()))))
 }
 
 fn chat_error_message(error: &serde_json::Value) -> String {
@@ -4853,7 +4860,7 @@ impl HarnessState {
 pub struct Harness {
     pub state: HarnessState,
     tentacles: Vec<Box<dyn Tentacle>>,
-    manifest_llm_config: Option<OpenAiCompatibleConfig>,
+    manifest_llm_factory: Option<ChatClientFactory>,
 }
 
 impl Harness {
@@ -4861,7 +4868,7 @@ impl Harness {
         Self {
             state: HarnessState::default(),
             tentacles: Vec::new(),
-            manifest_llm_config: None,
+            manifest_llm_factory: None,
         }
     }
 
@@ -4869,7 +4876,7 @@ impl Harness {
         let mut harness = Self {
             state,
             tentacles: Vec::new(),
-            manifest_llm_config: None,
+            manifest_llm_factory: None,
         };
         harness.add_installed_tentacles_with_grants();
         harness
@@ -4879,10 +4886,20 @@ impl Harness {
         state: HarnessState,
         config: OpenAiCompatibleConfig,
     ) -> Self {
+        Self::with_state_and_manifest_llm_factory(
+            state,
+            chat_client_factory_from_openai_config(config),
+        )
+    }
+
+    pub fn with_state_and_manifest_llm_factory(
+        state: HarnessState,
+        factory: ChatClientFactory,
+    ) -> Self {
         let mut harness = Self {
             state,
             tentacles: Vec::new(),
-            manifest_llm_config: Some(config),
+            manifest_llm_factory: Some(factory),
         };
         harness.add_installed_tentacles_with_grants();
         harness
@@ -5003,7 +5020,7 @@ impl Harness {
         for tentacle in self.state.installed_tentacles.clone() {
             self.add_tentacle(Box::new(ManifestTentacle::new_with_llm_and_grants(
                 tentacle,
-                self.manifest_llm_config.clone(),
+                self.manifest_llm_factory.clone(),
                 grants.clone(),
             )));
         }
@@ -5358,7 +5375,7 @@ pub struct ManifestTentacle {
     route_id: String,
     installed: InstalledTentacle,
     tools: Vec<InstalledToolRef>,
-    llm_config: Option<OpenAiCompatibleConfig>,
+    llm_factory: Option<ChatClientFactory>,
     grants: Vec<CapabilityGrant>,
 }
 
@@ -5371,12 +5388,23 @@ impl ManifestTentacle {
         installed: InstalledTentacle,
         llm_config: Option<OpenAiCompatibleConfig>,
     ) -> Self {
-        Self::new_with_llm_and_grants(installed, llm_config, Vec::new())
+        Self::new_with_llm_and_grants(
+            installed,
+            llm_config.map(chat_client_factory_from_openai_config),
+            Vec::new(),
+        )
+    }
+
+    pub fn new_with_llm_factory(
+        installed: InstalledTentacle,
+        llm_factory: Option<ChatClientFactory>,
+    ) -> Self {
+        Self::new_with_llm_and_grants(installed, llm_factory, Vec::new())
     }
 
     pub fn new_with_llm_and_grants(
         installed: InstalledTentacle,
-        llm_config: Option<OpenAiCompatibleConfig>,
+        llm_factory: Option<ChatClientFactory>,
         grants: Vec<CapabilityGrant>,
     ) -> Self {
         let route_id = installed.id.clone();
@@ -5397,7 +5425,7 @@ impl ManifestTentacle {
             route_id,
             installed,
             tools,
-            llm_config,
+            llm_factory,
             grants,
         }
     }
@@ -5559,7 +5587,7 @@ impl ManifestTentacle {
         need: &Need,
         tools: &[InstalledToolRef],
     ) -> Option<ManifestToolPlan> {
-        let config = self.llm_config.clone()?;
+        let factory = self.llm_factory.clone()?;
         if tools.is_empty() {
             return None;
         }
@@ -5579,7 +5607,7 @@ impl ManifestTentacle {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        let mut client = OpenAiCompatibleChatClient::new(config);
+        let mut client = (factory)().ok()?;
         let response = client
             .chat(&[
                 ChatMessage::new(
@@ -6505,6 +6533,22 @@ pub fn think_tentacle(
     llm_config: Option<OpenAiCompatibleConfig>,
     grants: &[CapabilityGrant],
 ) -> Result<TentacleThinkingPlan, String> {
+    think_tentacle_with_llm_factory(
+        root,
+        tentacle_id,
+        need,
+        llm_config.map(chat_client_factory_from_openai_config),
+        grants,
+    )
+}
+
+pub fn think_tentacle_with_llm_factory(
+    root: impl AsRef<Path>,
+    tentacle_id: &str,
+    need: &Need,
+    llm_factory: Option<ChatClientFactory>,
+    grants: &[CapabilityGrant],
+) -> Result<TentacleThinkingPlan, String> {
     let root = root.as_ref();
     let loaded = load_tentacle_manifests(root)
         .map_err(|error| error.to_string())?
@@ -6513,7 +6557,7 @@ pub fn think_tentacle(
         .ok_or_else(|| format!("unknown tentacle: {tentacle_id}"))?;
     let installed = installed_tentacle_from_manifest(root, loaded)?;
     let mut tentacle =
-        ManifestTentacle::new_with_llm_and_grants(installed, llm_config, grants.to_vec());
+        ManifestTentacle::new_with_llm_and_grants(installed, llm_factory, grants.to_vec());
     tentacle
         .thinking_plan(need)
         .ok_or_else(|| format!("{tentacle_id} cannot feed {}", kind_key(&need.kind)))
@@ -6526,6 +6570,22 @@ pub fn feed_tentacle(
     llm_config: Option<OpenAiCompatibleConfig>,
     grants: &[CapabilityGrant],
 ) -> Result<Feed, String> {
+    feed_tentacle_with_llm_factory(
+        root,
+        tentacle_id,
+        need,
+        llm_config.map(chat_client_factory_from_openai_config),
+        grants,
+    )
+}
+
+pub fn feed_tentacle_with_llm_factory(
+    root: impl AsRef<Path>,
+    tentacle_id: &str,
+    need: &Need,
+    llm_factory: Option<ChatClientFactory>,
+    grants: &[CapabilityGrant],
+) -> Result<Feed, String> {
     let root = root.as_ref();
     let loaded = load_tentacle_manifests(root)
         .map_err(|error| error.to_string())?
@@ -6534,7 +6594,7 @@ pub fn feed_tentacle(
         .ok_or_else(|| format!("unknown tentacle: {tentacle_id}"))?;
     let installed = installed_tentacle_from_manifest(root, loaded)?;
     let mut tentacle =
-        ManifestTentacle::new_with_llm_and_grants(installed, llm_config, grants.to_vec());
+        ManifestTentacle::new_with_llm_and_grants(installed, llm_factory, grants.to_vec());
     Ok(tentacle.feed(need))
 }
 
@@ -14170,6 +14230,41 @@ print(json.dumps({
         assert_eq!(plan.actions[0].tool.id, "read");
         assert!(plan.reason.contains("inspect source"));
         let _ = fs::remove_dir_all(fake);
+    }
+
+    #[test]
+    fn think_tentacle_can_use_provider_factory_plan_without_execution() {
+        struct FactoryChat;
+
+        impl ChatClient for FactoryChat {
+            fn chat(&mut self, _messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                Ok(ChatResponse {
+                    content: r#"{"calls":[{"tool":"read","reason":"factory selected repo read"}],"summary":"planned by provider factory"}"#.to_string(),
+                    metadata: BTreeMap::from([(
+                        "provider".to_string(),
+                        "factory-test".to_string(),
+                    )]),
+                })
+            }
+        }
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let factory: ChatClientFactory = Arc::new(|| Ok(Box::new(FactoryChat)));
+
+        let plan = think_tentacle_with_llm_factory(
+            &root,
+            "swe-agent",
+            &Need::new(NeedKind::Observe, "Cargo.toml 1 1"),
+            Some(factory),
+            &[],
+        )
+        .unwrap();
+
+        assert_eq!(plan.plan_source, "llm");
+        assert_eq!(plan.selected_tool.id, "read");
+        assert!(plan.reason.contains("factory selected repo read"));
     }
 
     #[test]
