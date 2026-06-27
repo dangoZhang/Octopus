@@ -25,7 +25,7 @@ Real-machine test gate for `0.1.0` and later tags:
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
-Last cleanup/version correction: `0.0.8` on 2026-06-27. Scope: external clean-brain reply import, clean-brain goal refinement, provider-routed clean-brain calls, harness repair sessions with optional provider drafts, real-machine record gate correction, and product-page/docs cleanup; no tag cut.
+Last cleanup/version correction: `0.0.8` on 2026-06-27. Scope: clean-brain Goal workflow, external chat reply import, provider-routed clean-brain calls, harness repair queue/drafts, self-reference-safe real-machine record gate, and README/control-surface cleanup; no tag cut.
 
 Product commits toward `0.0.9`: 0/8.
 
