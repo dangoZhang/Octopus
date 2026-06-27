@@ -37,11 +37,14 @@ octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" goal set "build a clean-brain agent"
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
 octopus --state "$tmp/state.json" brain "what should the brain ask next?"
+octopus --state "$tmp/state.json" brain --session "what should the brain ask next?"
+octopus --state "$tmp/state.json" brain --goal --session "make the goal sharper"
 octopus --state "$tmp/state.json" brain --apply-json '{"summary":"external chat explored","needs":[{"kind":"verify","query":"goal evidence stays clean"}]}' --save "what should the brain ask next?"
 octopus --state "$tmp/state.json" brain --goal --apply-json '{"objective":"build a clean-brain agent","constraints":["Need only"],"summary":"external goal refined","needs":[{"kind":"observe","query":"goal history"}]}' --save "make the goal sharper"
 octopus --state "$tmp/state.json" brain --goal --live --save "make the goal sharper"
 octopus --state "$tmp/state.json" brain --live "what should the brain ask next?"
 octopus --state "$tmp/state.json" brain --live --save "what should the brain ask next?"
+octopus --state "$tmp/state.json" brain --session --live "what should the brain ask next?"
 octopus --state "$tmp/state.json" explore "what should the brain ask next?"
 octopus --state "$tmp/state.json" explore --save "what should the brain ask next?"
 octopus --state "$tmp/state.json" needs
@@ -117,6 +120,7 @@ octopus provider save openai OCTOPUS_LLM "$tmp/llm.env"
 octopus provider check
 octopus --state "$tmp/state.json" brain --goal --live --save "make the goal sharper"
 octopus --state "$tmp/state.json" brain --live "what should the brain ask next?"
+octopus --state "$tmp/state.json" brain --session --live "what should the brain ask next?"
 octopus --state "$tmp/state.json" brain --apply-json '{"summary":"external chat explored","needs":[{"kind":"compare","query":"provider and external chat paths"}]}' --save "what should the brain ask next?"
 
 octopus --state "$tmp/state.json" chat "make the harness self-evolve"

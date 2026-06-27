@@ -26,6 +26,7 @@ Updated: 2026-06-27
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
 - `status --json` exposes recent clean-brain Goal turns so Goal refinement history stays visible without replaying Feed.
 - `brain [prompt]` exports pasteable clean-brain chat messages from Goal/Mem/Need/Feed for any model UI.
+- `brain --session [--live] [--goal] [prompt]` writes local external-chat session files: prompt, messages, reply template, optional provider draft, and apply command.
 - `brain --apply <file|->` and `brain --apply-json <json>` import external chat replies into Goal or Need Queue without running Feed.
 - `brain --goal [--live] [--save] [prompt]` lets the clean brain refine Goal and optional queued Needs without running Feed.
 - `brain --live [--save] [prompt]` calls the clean-brain provider and can store returned Needs without running Feed.
@@ -133,6 +134,8 @@ Updated: 2026-06-27
 - Added clean-brain `explore` in CLI, JSON, and native app so the main brain can suggest Needs without tool execution.
 - Added clean-brain Need Queue in CLI, JSON, status/report, and native app so exploration can become reviewable pending Needs without Feed execution.
 - Added `brain [prompt]` in CLI, JSON, product report, and native app so clean-brain context can be used with any chat model without provider setup.
+- Added `brain --session [--goal] [prompt]` in CLI, JSON, product report, and native app so external Chat work has local prompt/reply/apply artifacts.
+- Added `brain --session --live [--goal] [prompt]` so a clean-brain provider can write `DRAFT.json` into the same reviewable session without mutating state or running Feed.
 - Added `brain --goal [--live] [--save]` in CLI, JSON, and native app so the clean brain can maintain Goal and queue Needs without Feed execution.
 - Added recent Goal turns to JSON status and the native HTML Goal panel so users can inspect Goal changes without running another Feed.
 - Added `brain --apply` and `brain --apply-json` plus native HTML apply buttons so external Chat UIs can feed clean-brain JSON back into Goal or Need Queue without tool context.
