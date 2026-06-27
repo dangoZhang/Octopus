@@ -2940,6 +2940,18 @@
             await runStarterReport();
             await runDoctorReport(false);
           }],
+          ["Preflight", async () => {
+            await runPreflightReport();
+            await runDoctorReport(false);
+          }],
+          ["Run Checks", async () => {
+            await runChecks();
+            await runDoctorReport(false);
+          }],
+          ["Beat", async () => {
+            await runBeat();
+            await runDoctorReport(false);
+          }],
           ["Report", async () => {
             await runProductReport();
             await runDoctorReport(false);
