@@ -171,6 +171,7 @@ Updated: 2026-06-27
 - Added `starter [objective]` so first-run users can choose common agent tool-combo tentacles from Goal/objective metadata before any Feed execution.
 - Added a structured native HTML starter panel so first-run users can choose tentacles from rendered recommendations.
 - Added repair-session code context so target tentacle manifests and tool code are written into `CODE_CONTEXT.md` and provider draft context.
+- Rolled the cleanup/version cadence to `0.0.10` after starter recommendations/app cards, clean-brain Need audit, repair-score journals, and repair-session outcome/code context.
 
 ## Remaining Gaps
 
