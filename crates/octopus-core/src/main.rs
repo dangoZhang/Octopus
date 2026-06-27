@@ -6704,8 +6704,8 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         product_capability(
             "goal_setting",
             "ready",
-            "human goals can be set directly without Feed execution",
-            Some("octopus goal set \"build a clean-brain agent\""),
+            "human goals and constraints can be set or refined without Feed execution",
+            Some("octopus goal set --constraint \"keep tools outside the brain\" \"build a clean-brain agent\""),
         ),
         product_capability(
             "route_report",

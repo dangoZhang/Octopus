@@ -1,6 +1,6 @@
 # Version Plan
 
-Current version: `0.0.12`.
+Current version: `0.0.13`.
 
 Cadence from this plan forward:
 
@@ -14,7 +14,7 @@ Release checklist:
 - CI stays green for Rust, Python, manifests, tentacle runtime checks, pet page, and install path.
 - `octopus preflight --live` is the release-readiness summary before `0.1.0` tags.
 - Pages deploys `index.html`, `app.html`, `pet.html`, quickstart, architecture, references, and self-iteration docs.
-- Version changes land together in `crates/octopus-core/Cargo.toml` and `pyproject.toml`.
+- Version changes land together in `crates/octopus-core/Cargo.toml`, `Cargo.lock`, and `pyproject.toml`.
 - `0.1.0` is reserved for the first release-ready build after recorded real-machine testing.
 - Every tag from `0.1.0` onward requires real-machine testing before the tag is pushed.
 
@@ -25,8 +25,8 @@ Real-machine test gate for `0.1.0` and later tags:
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
-Last cleanup/version correction: `0.0.12` on 2026-06-27. Scope: bridge startup, pixel pet SVG export, clean-brain clarification, reflection, memory, council, synthesis, provider slots, native app controls, embedded HTML app fallback, README/version consistency, and cleanup scan; no tag cut.
+Last cleanup/version correction: `0.0.13` on 2026-06-27. Scope: launch-and-open startup, native update report, human Goal constraints, clean-brain model routing, removed stale demo CI checks, README/version consistency, and cleanup scan; no tag cut.
 
-Product commits toward `0.0.13`: 8/8.
+Product commits toward `0.0.14`: 0/8.
 
-Next planned cleanup/version commit: `0.0.13`.
+Next planned cleanup/version commit: `0.0.14`.
