@@ -475,6 +475,7 @@
             <button type="button" id="runChecks">Run Checks</button>
             <button type="button" data-run="goalset">Set Goal</button>
             <button type="button" data-run="chat">Chat</button>
+            <button type="button" id="runGoalStatus">Goal Status</button>
             <button type="button" id="runBrainPrompt">Brain Prompt</button>
             <button type="button" id="runBrainLive">Brain Live</button>
             <button type="button" id="runBrainGoal">Brain Goal</button>
@@ -518,6 +519,10 @@
           <div class="provider-report stack">
             <h2>Provider</h2>
             <div id="providerReport" class="metric"><span>No provider status yet.</span></div>
+          </div>
+          <div class="goal-report stack">
+            <h2>Goal</h2>
+            <div id="goalReport" class="metric"><span>No goal status yet.</span></div>
           </div>
           <div class="feed-report stack">
             <h2>Feed</h2>
@@ -564,6 +569,7 @@
       let currentContextReport = null;
       let currentProductReport = null;
       let currentPreflightReport = null;
+      let currentGoalStatusReport = null;
       let currentBrainPromptReport = null;
       let currentFeedTrace = null;
       let currentRouteReport = null;
@@ -592,7 +598,9 @@
           `octopus --state ${shellQuote(state)} --json install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json check ${tentacle}`,
           `octopus --state ${shellQuote(state)} goal set ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json status`,
           `octopus --state ${shellQuote(state)} --json brain ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --goal --live --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json explore ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json explore --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json needs`,
@@ -758,6 +766,20 @@
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("brainPromptReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runGoalStatusReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        $("goalReport").textContent = "loading...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "status"]);
+          currentGoalStatusReport = report;
+          renderGoalStatusReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("goalReport").textContent = String(error);
           $("output").textContent = String(error);
         }
       }
@@ -1169,6 +1191,16 @@
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
+      function renderGoalStatusReport(report) {
+        const root = $("goalReport");
+        root.className = "stack";
+        root.textContent = "";
+        root.appendChild(goalSummary(report));
+        const goal = report.goal || {};
+        root.appendChild(reportList("Goal Turns", goal.turns || [], goalTurnItem));
+        root.appendChild(reportList("Warnings", report.warnings || [], textItem));
+      }
+
       function renderExploreReport(report) {
         const root = $("exploreReport");
         root.className = "stack";
@@ -1241,6 +1273,44 @@
           grid.appendChild(metric);
         });
         return grid;
+      }
+
+      function goalSummary(report) {
+        const goal = report.goal || {};
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["State", report.state_path || "state"],
+          ["Objective", goal.objective || "none"],
+          ["Status", goal.status || "unknown"],
+          ["Refinements", String(goal.refinements || 0)],
+          ["Turns", String((goal.turns || []).length)],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        return grid;
+      }
+
+      function goalTurnItem(turn) {
+        const item = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = turn.status === "satisfied" ? "badge ok" : "badge";
+        badge.textContent = turn.status || "goal";
+        const command = document.createElement("span");
+        command.className = "check-command";
+        command.textContent = `#${turn.index || "?"} · ${turn.summary || "goal update"}`;
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        meta.textContent = turn.message || "";
+        item.append(badge, command, meta);
+        return item;
       }
 
       function exploreNeedItem(need) {
@@ -2104,6 +2174,8 @@
         $("productReport").innerHTML = "<span>No product report yet.</span>";
         $("preflightReport").className = "metric";
         $("preflightReport").innerHTML = "<span>No preflight yet.</span>";
+        $("goalReport").className = "metric";
+        $("goalReport").innerHTML = "<span>No goal status yet.</span>";
         currentInstallReport = null;
         currentCheckReport = null;
         currentBeatReport = null;
@@ -2112,6 +2184,7 @@
         currentContextReport = null;
         currentProductReport = null;
         currentPreflightReport = null;
+        currentGoalStatusReport = null;
         currentBrainPromptReport = null;
         currentFeedTrace = null;
         currentRouteReport = null;
@@ -2124,6 +2197,7 @@
       $("runFeed").addEventListener("click", runFeedTest);
       $("runRoutes").addEventListener("click", runRouteReport);
       $("runBrainPrompt").addEventListener("click", runBrainPromptReport);
+      $("runGoalStatus").addEventListener("click", runGoalStatusReport);
       $("runBrainLive").addEventListener("click", () => runBrainLiveReport(false));
       $("runBrainGoal").addEventListener("click", runBrainGoalReport);
       $("runExplore").addEventListener("click", () => runExploreReport(false));
@@ -2153,6 +2227,7 @@
           currentContextReport = null;
           currentProductReport = null;
           currentPreflightReport = null;
+          currentGoalStatusReport = null;
           currentBrainPromptReport = null;
           currentFeedTrace = null;
           currentRouteReport = null;
@@ -2178,6 +2253,8 @@
           $("productReport").innerHTML = "<span>No product report yet.</span>";
           $("preflightReport").className = "metric";
           $("preflightReport").innerHTML = "<span>No preflight yet.</span>";
+          $("goalReport").className = "metric";
+          $("goalReport").innerHTML = "<span>No goal status yet.</span>";
           render(currentPetState);
         });
       });

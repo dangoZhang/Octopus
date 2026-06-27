@@ -353,6 +353,7 @@ pub struct GoalSnapshot {
     pub objective: String,
     pub refinements: usize,
     pub status: GoalStatus,
+    pub turns: Vec<GoalTurn>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -2010,6 +2011,17 @@ impl HarnessState {
             objective: goal.objective.clone(),
             refinements: goal.constraints.len(),
             status: goal.status.clone(),
+            turns: {
+                let mut turns = self
+                    .goal_turns
+                    .iter()
+                    .rev()
+                    .take(6)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                turns.reverse();
+                turns
+            },
         });
         let mut warnings = Vec::new();
         if self.installed_tentacles.is_empty() {
@@ -7888,6 +7900,11 @@ mod tests {
         assert_eq!(
             report.goal.as_ref().unwrap().objective,
             "build a clean-brain agent"
+        );
+        assert_eq!(report.goal.as_ref().unwrap().turns.len(), 1);
+        assert_eq!(
+            report.goal.as_ref().unwrap().turns[0].summary,
+            "remembered m1"
         );
         assert_eq!(
             report.active_grants,
