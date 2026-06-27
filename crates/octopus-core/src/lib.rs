@@ -279,6 +279,8 @@ pub struct FeedTraceRecord {
     pub route: Option<String>,
     pub evidence_count: usize,
     pub summary: String,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -2286,6 +2288,7 @@ impl HarnessState {
             route: feed.metadata.get("route").cloned(),
             evidence_count: feed.evidence.len(),
             summary: short_text(&feed.summary, FEED_TRACE_SUMMARY_BYTES),
+            metadata: feed.metadata.clone(),
         };
         self.feed_traces.push(trace.clone());
         trace
