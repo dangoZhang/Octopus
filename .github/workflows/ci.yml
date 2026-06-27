@@ -26,6 +26,8 @@ jobs:
           grep -q '"layer": "clean_brain_reflect"' .octopus/provider-status.json
           grep -q '"layer": "clean_brain_memory"' .octopus/provider-status.json
           grep -q '"layer": "tentacle_planning"' .octopus/provider-status.json
+          OCTOPUS_LLM_MODEL=test-model OCTOPUS_LLM_REASONING_EFFORT=high cargo run -q -p octopus-core -- --json provider status > .octopus/provider-status-tuned.json
+          grep -q '"reasoning_effort": "high"' .octopus/provider-status-tuned.json
       - run: cargo run -q -p octopus-core -- provider local OCTOPUS_LOCAL | grep -q "OCTOPUS_LOCAL_BASE_URL"
       - run: |
           tmp=$(mktemp -d)
@@ -35,7 +37,9 @@ jobs:
           SH
           chmod +x "$tmp/fake-curl"
           OCTOPUS_LLM_MODEL=test-model OCTOPUS_LLM_BASE_URL=https://llm.example/v1 OCTOPUS_LLM_CURL="$tmp/fake-curl" cargo run -q -p octopus-core -- provider check | grep -q "Provider check: ok"
-          OCTOPUS_LLM_MODEL=test-model OCTOPUS_LLM_BASE_URL=https://llm.example/v1 OCTOPUS_LLM_CURL="$tmp/fake-curl" cargo run -q -p octopus-core -- --json provider check | grep -q '"ok": true'
+          OCTOPUS_LLM_MODEL=test-model OCTOPUS_LLM_BASE_URL=https://llm.example/v1 OCTOPUS_LLM_REASONING_EFFORT=high OCTOPUS_LLM_CURL="$tmp/fake-curl" cargo run -q -p octopus-core -- --json provider check > .octopus/provider-check.json
+          grep -q '"ok": true' .octopus/provider-check.json
+          grep -q '"reasoning_effort": "high"' .octopus/provider-check.json
       - run: |
           tmp=$(mktemp -d)
           cargo install --path crates/octopus-core --bin octopus --root "$tmp/root"
@@ -174,6 +178,8 @@ jobs:
       - run: grep -q "providerPrefix" docs/app.html
       - run: grep -q "providerProfile" docs/app.html
       - run: grep -q "Copy env" docs/app.html
+      - run: grep -q "tuningSummary" docs/app.html
+      - run: grep -q "OCTOPUS_LLM_REASONING_EFFORT" crates/octopus-core/src/main.rs
       - run: grep -q "OCTOPUS_BRAIN_GOAL_LLM_PREFIX" crates/octopus-core/src/main.rs
       - run: grep -q "OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX" crates/octopus-core/src/main.rs
       - run: grep -q "OCTOPUS_BRAIN_AGENDA_LLM_PREFIX" crates/octopus-core/src/main.rs
@@ -209,6 +215,7 @@ jobs:
       - run: grep -q "OCTOPUS_BRAIN_MEMORY_LLM_PREFIX" docs/quickstart.md
       - run: grep -q "OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX" docs/quickstart.md
       - run: grep -q "OCTOPUS_BRAIN_COUNCIL_LLM_PREFIXES" docs/quickstart.md
+      - run: grep -q "OCTOPUS_LLM_REASONING_EFFORT" docs/quickstart.md
       - run: grep -q "brain --focus verify" docs/quickstart.md
       - run: grep -q -- "--llm-prefix" docs/quickstart.md
       - run: grep -q -- "--models" docs/quickstart.md

@@ -19,6 +19,7 @@ Updated: 2026-06-27
 - `providers` and `provider <name> [prefix]` expose reusable LLM profile setup for OpenAI, local servers, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.
 - `provider status` reports chat, clean-brain model slots including clarification, agenda, memory, and synthesis, tentacle-planning, and harness-evolution LLM readiness without a network call.
 - `provider save` writes reusable provider env to `.octopus/llm.env` by default, and start overlays that file onto child Octopus commands.
+- Provider env supports optional model thinking controls: reasoning effort, token budget, temperature, top_p, and provider-specific JSON body keys.
 - The native HTML app can generate or save provider env, render provider layer readiness, and run an explicit live provider check through start.
 - `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
 - `start` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
@@ -246,6 +247,7 @@ Updated: 2026-06-27
 - Added a native HTML Doctor panel and startup snapshot check so local app users can see readiness without reading raw command output.
 - Added Doctor readiness actions so local app users can move from warnings to bootstrap, goal, provider, starter, preflight, seed checks, beat, or report flows without hunting through the command toolbar.
 - Added a First Run path to the native app so the local product can move from launch to readiness evidence without creating a separate MVP route.
+- Added OpenAI-compatible provider tuning env so clean-brain and tentacle LLM calls can pass reasoning effort, token budget, sampling knobs, and provider-native extra JSON without changing Need text.
 
 ## Remaining Gaps
 

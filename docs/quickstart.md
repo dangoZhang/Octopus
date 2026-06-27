@@ -55,6 +55,9 @@ The app can continue the same loop without opening a shell: starter tentacles, p
 ```bash
 octopus provider save openai
 source .octopus/llm.env
+# Optional when your model/provider supports explicit thinking controls:
+# export OCTOPUS_LLM_REASONING_EFFORT=medium
+# export OCTOPUS_LLM_MAX_TOKENS=2048
 octopus provider check
 octopus brain --agenda --save "what matters next?"
 octopus brain --focus compare --save "which path should the brain compare?"

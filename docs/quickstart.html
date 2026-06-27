@@ -102,10 +102,13 @@ octopus pet</code></pre>
       <h2>Optional LLM</h2>
       <pre><code>octopus provider save openai
 source .octopus/llm.env
+# Optional when your model/provider supports explicit thinking controls:
+# export OCTOPUS_LLM_REASONING_EFFORT=medium
+# export OCTOPUS_LLM_MAX_TOKENS=2048
 octopus provider check
-	octopus brain --agenda --save "what matters next?"
-	octopus brain --focus compare --save "which path should the brain compare?"
-	octopus brain --llm-prefix OCTOPUS_LLM --agenda --save "what matters next?"
+octopus brain --agenda --save "what matters next?"
+octopus brain --focus compare --save "which path should the brain compare?"
+octopus brain --llm-prefix OCTOPUS_LLM --agenda --save "what matters next?"
 octopus brain --council --models OCTOPUS_LLM --save "ask clean brains"
 octopus brain --live --save "what should the brain ask next?"</code></pre>
       <p>OpenAI-compatible profiles include OpenAI, local servers, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.</p>

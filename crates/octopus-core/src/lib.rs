@@ -1176,6 +1176,22 @@ pub struct OpenAiCompatibleConfig {
     pub base_url: String,
     pub timeout_seconds: u64,
     pub curl_command: String,
+    #[serde(default)]
+    pub tuning: OpenAiCompatibleTuning,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct OpenAiCompatibleTuning {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra_body: BTreeMap<String, serde_json::Value>,
 }
 
 impl OpenAiCompatibleConfig {
@@ -1203,17 +1219,80 @@ impl OpenAiCompatibleConfig {
             .unwrap_or(60);
         let curl_command =
             env::var(format!("{prefix}_CURL")).unwrap_or_else(|_| "curl".to_string());
+        let tuning = OpenAiCompatibleTuning::from_env_prefix(prefix)?;
         Ok(Self {
             model,
             api_key,
             base_url,
             timeout_seconds,
             curl_command,
+            tuning,
         })
     }
 
     pub fn endpoint(&self) -> String {
         format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
+    }
+}
+
+impl OpenAiCompatibleTuning {
+    fn from_env_prefix(prefix: &str) -> Result<Self, String> {
+        Ok(Self {
+            temperature: optional_f64_env(prefix, "TEMPERATURE")?,
+            top_p: optional_f64_env(prefix, "TOP_P")?,
+            max_tokens: optional_u64_env(prefix, "MAX_TOKENS")?,
+            reasoning_effort: env::var(format!("{prefix}_REASONING_EFFORT"))
+                .ok()
+                .filter(|value| !value.trim().is_empty()),
+            extra_body: optional_json_object_env(prefix, "EXTRA_BODY")?,
+        })
+    }
+}
+
+fn optional_f64_env(prefix: &str, suffix: &str) -> Result<Option<f64>, String> {
+    let key = format!("{prefix}_{suffix}");
+    env::var(&key)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| {
+            let parsed = value
+                .parse::<f64>()
+                .map_err(|_| format!("{key} must be a number"))?;
+            if parsed.is_finite() {
+                Ok(parsed)
+            } else {
+                Err(format!("{key} must be finite"))
+            }
+        })
+        .transpose()
+}
+
+fn optional_u64_env(prefix: &str, suffix: &str) -> Result<Option<u64>, String> {
+    let key = format!("{prefix}_{suffix}");
+    env::var(&key)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| {
+            value
+                .parse::<u64>()
+                .map_err(|_| format!("{key} must be an integer"))
+        })
+        .transpose()
+}
+
+fn optional_json_object_env(
+    prefix: &str,
+    suffix: &str,
+) -> Result<BTreeMap<String, serde_json::Value>, String> {
+    let key = format!("{prefix}_{suffix}");
+    let Some(payload) = env::var(&key).ok().filter(|value| !value.trim().is_empty()) else {
+        return Ok(BTreeMap::new());
+    };
+    match serde_json::from_str::<serde_json::Value>(&payload)
+        .map_err(|error| format!("{key} must be JSON: {error}"))?
+    {
+        serde_json::Value::Object(object) => Ok(object.into_iter().collect()),
+        _ => Err(format!("{key} must be a JSON object")),
     }
 }
 
@@ -1231,11 +1310,47 @@ impl OpenAiCompatibleChatClient {
     }
 
     fn request_body(&self, messages: &[ChatMessage]) -> Result<String, String> {
-        serde_json::to_string(&serde_json::json!({
-            "model": self.config.model.as_str(),
-            "messages": messages,
-        }))
-        .map_err(|error| error.to_string())
+        let mut body = serde_json::Map::new();
+        for (key, value) in &self.config.tuning.extra_body {
+            body.insert(key.clone(), value.clone());
+        }
+        body.insert(
+            "model".to_string(),
+            serde_json::Value::String(self.config.model.clone()),
+        );
+        body.insert(
+            "messages".to_string(),
+            serde_json::to_value(messages).map_err(|error| error.to_string())?,
+        );
+        if let Some(temperature) = self.config.tuning.temperature {
+            body.insert(
+                "temperature".to_string(),
+                serde_json::Number::from_f64(temperature)
+                    .map(serde_json::Value::Number)
+                    .ok_or_else(|| "temperature must be finite".to_string())?,
+            );
+        }
+        if let Some(top_p) = self.config.tuning.top_p {
+            body.insert(
+                "top_p".to_string(),
+                serde_json::Number::from_f64(top_p)
+                    .map(serde_json::Value::Number)
+                    .ok_or_else(|| "top_p must be finite".to_string())?,
+            );
+        }
+        if let Some(max_tokens) = self.config.tuning.max_tokens {
+            body.insert(
+                "max_tokens".to_string(),
+                serde_json::Value::Number(max_tokens.into()),
+            );
+        }
+        if let Some(reasoning_effort) = &self.config.tuning.reasoning_effort {
+            body.insert(
+                "reasoning_effort".to_string(),
+                serde_json::Value::String(reasoning_effort.clone()),
+            );
+        }
+        serde_json::to_string(&serde_json::Value::Object(body)).map_err(|error| error.to_string())
     }
 }
 
@@ -10914,6 +11029,16 @@ mod tests {
             base_url: "https://llm.example/v1/".to_string(),
             timeout_seconds: 3,
             curl_command: "curl".to_string(),
+            tuning: OpenAiCompatibleTuning {
+                temperature: Some(0.2),
+                top_p: Some(0.9),
+                max_tokens: Some(512),
+                reasoning_effort: Some("medium".to_string()),
+                extra_body: BTreeMap::from([(
+                    "response_format".to_string(),
+                    serde_json::json!({"type": "json_object"}),
+                )]),
+            },
         };
         let client = OpenAiCompatibleChatClient::new(config.clone());
         let body = client
@@ -10927,6 +11052,62 @@ mod tests {
         assert!(body.contains("\"model\":\"test-model\""));
         assert!(body.contains("\"role\":\"system\""));
         assert!(body.contains("\"role\":\"user\""));
+        assert!(body.contains("\"temperature\":0.2"));
+        assert!(body.contains("\"top_p\":0.9"));
+        assert!(body.contains("\"max_tokens\":512"));
+        assert!(body.contains("\"reasoning_effort\":\"medium\""));
+        assert!(body.contains("\"response_format\":{\"type\":\"json_object\"}"));
+    }
+
+    #[test]
+    fn openai_compatible_config_reads_tuning_env_without_context_override() {
+        let prefix = format!("OCTOPUS_TEST_TUNING_{}", std::process::id());
+        let keys = [
+            "MODEL",
+            "BASE_URL",
+            "API_KEY",
+            "TEMPERATURE",
+            "TOP_P",
+            "MAX_TOKENS",
+            "REASONING_EFFORT",
+            "EXTRA_BODY",
+        ]
+        .into_iter()
+        .map(|suffix| format!("{prefix}_{suffix}"))
+        .collect::<Vec<_>>();
+        for key in &keys {
+            std::env::remove_var(key);
+        }
+        std::env::set_var(format!("{prefix}_MODEL"), "clean-model");
+        std::env::set_var(format!("{prefix}_BASE_URL"), "https://llm.example/v1");
+        std::env::set_var(format!("{prefix}_API_KEY"), "token");
+        std::env::set_var(format!("{prefix}_TEMPERATURE"), "0.3");
+        std::env::set_var(format!("{prefix}_TOP_P"), "0.8");
+        std::env::set_var(format!("{prefix}_MAX_TOKENS"), "1024");
+        std::env::set_var(format!("{prefix}_REASONING_EFFORT"), "high");
+        std::env::set_var(
+            format!("{prefix}_EXTRA_BODY"),
+            r#"{"metadata":{"purpose":"clean-brain"},"model":"dirty-model","messages":[{"role":"user","content":"dirty"}]}"#,
+        );
+
+        let config = OpenAiCompatibleConfig::from_env_prefix(&prefix).unwrap();
+        let client = OpenAiCompatibleChatClient::new(config.clone());
+        let body = client
+            .request_body(&[ChatMessage::new(ChatRole::User, "clean need")])
+            .unwrap();
+
+        assert_eq!(config.tuning.temperature, Some(0.3));
+        assert_eq!(config.tuning.top_p, Some(0.8));
+        assert_eq!(config.tuning.max_tokens, Some(1024));
+        assert_eq!(config.tuning.reasoning_effort.as_deref(), Some("high"));
+        assert!(body.contains("\"model\":\"clean-model\""));
+        assert!(body.contains("\"content\":\"clean need\""));
+        assert!(!body.contains("dirty-model"));
+        assert!(!body.contains("\"content\":\"dirty\""));
+        assert!(body.contains("\"metadata\":{\"purpose\":\"clean-brain\"}"));
+        for key in &keys {
+            std::env::remove_var(key);
+        }
     }
 
     #[cfg(unix)]
@@ -10952,6 +11133,7 @@ mod tests {
             base_url: "https://llm.example/v1".to_string(),
             timeout_seconds: 1,
             curl_command: curl.to_string_lossy().to_string(),
+            tuning: OpenAiCompatibleTuning::default(),
         });
 
         let response = client
@@ -12516,6 +12698,7 @@ print(json.dumps({
             base_url: "https://llm.example/v1".to_string(),
             timeout_seconds: 1,
             curl_command: curl.to_string_lossy().to_string(),
+            tuning: OpenAiCompatibleTuning::default(),
         };
 
         let plan = think_tentacle(
@@ -12635,6 +12818,7 @@ print(json.dumps({
             base_url: "https://llm.example/v1".to_string(),
             timeout_seconds: 1,
             curl_command: curl.to_string_lossy().to_string(),
+            tuning: OpenAiCompatibleTuning::default(),
         };
         let mut harness = Harness::with_state_and_manifest_llm(state, config);
 
@@ -12697,6 +12881,7 @@ print(json.dumps({
             base_url: "https://llm.example/v1".to_string(),
             timeout_seconds: 1,
             curl_command: curl.to_string_lossy().to_string(),
+            tuning: OpenAiCompatibleTuning::default(),
         };
         let mut harness = Harness::with_state_and_manifest_llm(state, config);
 

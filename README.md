@@ -58,6 +58,8 @@ octopus brain --focus compare --save "which path should the brain compare?"
 octopus brain --live --save "what should the brain ask next?"
 ```
 
+Strong-model knobs such as `OCTOPUS_LLM_REASONING_EFFORT`, `OCTOPUS_LLM_MAX_TOKENS`, and `OCTOPUS_LLM_EXTRA_BODY` stay in provider env, outside Need text.
+
 ## Works Today
 
 - Clean-brain Goal, Need, Feed, queue, context, focused Need kinds, agenda, clarification, deliberation, reflection, memory, council, synthesis, and external-chat sessions.

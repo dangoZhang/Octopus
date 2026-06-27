@@ -2953,7 +2953,7 @@
         const baseUrl = layer.base_url || "none";
         const key = layer.api_key_present ? "key present" : "key empty";
         const curl = layer.curl_available ? `curl ${layer.curl_command}` : `missing ${layer.curl_command}`;
-        meta.textContent = `${layer.prefix} · ${model} · ${baseUrl} · ${key} · ${curl}`;
+        meta.textContent = `${layer.prefix} · ${model} · ${baseUrl} · ${key} · ${tuningSummary(layer.tuning)} · ${curl}`;
         const note = document.createElement("span");
         note.className = "check-meta";
         note.textContent = layer.message || layer.check_command || "";
@@ -2969,6 +2969,7 @@
           ["Model", report.model || "unknown"],
           ["Base URL", report.base_url || "unknown"],
           ["API key", report.api_key_present ? "present" : "empty"],
+          ["Tuning", tuningSummary(report.tuning)],
           ["Reply", report.content || "none"],
         ].forEach(([label, value]) => {
           const metric = document.createElement("div");
@@ -2981,6 +2982,17 @@
           grid.appendChild(metric);
         });
         return grid;
+      }
+
+      function tuningSummary(tuning) {
+        if (!tuning) return "default";
+        const parts = [];
+        if (tuning.reasoning_effort) parts.push(`reasoning ${tuning.reasoning_effort}`);
+        if (tuning.max_tokens) parts.push(`${tuning.max_tokens} tokens`);
+        if (tuning.temperature !== undefined && tuning.temperature !== null) parts.push(`temp ${tuning.temperature}`);
+        if (tuning.top_p !== undefined && tuning.top_p !== null) parts.push(`top_p ${tuning.top_p}`);
+        if (tuning.extra_body && Object.keys(tuning.extra_body).length) parts.push(`${Object.keys(tuning.extra_body).length} extra`);
+        return parts.length ? parts.join(" · ") : "default";
       }
 
       function providerEnvSummary(report) {

@@ -14,11 +14,11 @@ use octopus_core::{
     GoalNeedSuggestion, GoalRefinement, Harness, HarnessBeatEvolution, HarnessState, HeartBeat,
     HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem,
     NeedQueueReport, NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport,
-    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, RepairOutcome, RouteReport,
-    SelfIterationPlan, StarterFeedbackInput, StarterFeedbackRecord, StarterFeedbackStatus, Status,
-    StatusReport, TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile,
-    TentacleScaffold, TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate,
-    ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
+    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, OpenAiCompatibleTuning, RepairOutcome,
+    RouteReport, SelfIterationPlan, StarterFeedbackInput, StarterFeedbackRecord,
+    StarterFeedbackStatus, Status, StatusReport, TentacleEvolutionProposal, TentacleManifestReport,
+    TentacleProfile, TentacleScaffold, TentacleThinkingPlan, TentacleToolAction,
+    TentacleToolCandidate, ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -491,6 +491,7 @@ struct ProviderCheckReport {
     model: String,
     base_url: String,
     api_key_present: bool,
+    tuning: OpenAiCompatibleTuning,
     content: String,
     metadata: std::collections::BTreeMap<String, String>,
     next: Vec<String>,
@@ -512,6 +513,7 @@ struct ProviderLayerStatus {
     model: Option<String>,
     base_url: Option<String>,
     api_key_present: bool,
+    tuning: Option<OpenAiCompatibleTuning>,
     curl_command: String,
     curl_available: bool,
     check_command: String,
@@ -3955,6 +3957,15 @@ fn provider_env_report(profile_id: &str, prefix: &str) -> Result<ProviderEnvRepo
         ));
     }
     exports.extend([
+        "# Optional model thinking controls. Leave blank unless the provider supports them."
+            .to_string(),
+        format!("# export {prefix}_REASONING_EFFORT=medium"),
+        format!("# export {prefix}_MAX_TOKENS=2048"),
+        format!("# export {prefix}_TEMPERATURE=0.2"),
+        format!("# export {prefix}_TOP_P=0.9"),
+        format!(
+            "# export {prefix}_EXTRA_BODY='{{\"response_format\":{{\"type\":\"json_object\"}}}}'"
+        ),
         "export OCTOPUS_CHAT_LLM=1".to_string(),
         "export OCTOPUS_BRAIN_LLM=1".to_string(),
         "export OCTOPUS_LLM_MANIFEST=1".to_string(),
@@ -4029,6 +4040,7 @@ fn provider_check_report(prefix: &str, message: &str) -> Result<ProviderCheckRep
         model: config.model,
         base_url: config.base_url,
         api_key_present: config.api_key.is_some(),
+        tuning: config.tuning,
         content: response.content,
         metadata: response.metadata,
         next: vec![
@@ -4180,6 +4192,7 @@ fn provider_layer_status(
             model: Some(config.model),
             base_url: Some(config.base_url),
             api_key_present: config.api_key.is_some(),
+            tuning: Some(config.tuning),
             curl_available: command_ready(&config.curl_command),
             curl_command: config.curl_command,
             check_command: format!("octopus provider check {prefix}"),
@@ -4201,6 +4214,7 @@ fn provider_layer_status(
                 model: None,
                 base_url: None,
                 api_key_present: false,
+                tuning: None,
                 curl_available: command_ready(&curl_command),
                 curl_command,
                 check_command: format!("octopus provider check {prefix}"),
@@ -4281,6 +4295,7 @@ fn print_provider_check(report: &ProviderCheckReport, language: Language) {
                     "empty"
                 }
             );
+            println!("tuning: {}", tuning_summary(Some(&report.tuning)));
             println!("reply: {}", report.content);
             println!("next: {}", join_or_none(&report.next));
         }
@@ -4297,6 +4312,7 @@ fn print_provider_check(report: &ProviderCheckReport, language: Language) {
                     "空"
                 }
             );
+            println!("思考参数: {}", tuning_summary(Some(&report.tuning)));
             println!("回复: {}", report.content);
             println!("下一步: {}", join_or_none(&report.next));
         }
@@ -4311,9 +4327,10 @@ fn print_provider_status(report: &ProviderStatusReport, language: Language) {
     for layer in &report.layers {
         let model = layer.model.as_deref().unwrap_or("none");
         let base_url = layer.base_url.as_deref().unwrap_or("none");
+        let tuning = tuning_summary(layer.tuning.as_ref());
         match language {
             Language::En => println!(
-                "- {}: enabled={} configured={} prefix={} model={} base_url={} api_key={} curl={}({}) check=\"{}\" message={}",
+                "- {}: enabled={} configured={} prefix={} model={} base_url={} api_key={} tuning={} curl={}({}) check=\"{}\" message={}",
                 layer.layer,
                 layer.enabled,
                 layer.configured,
@@ -4321,13 +4338,14 @@ fn print_provider_status(report: &ProviderStatusReport, language: Language) {
                 model,
                 base_url,
                 if layer.api_key_present { "present" } else { "empty" },
+                tuning,
                 layer.curl_command,
                 if layer.curl_available { "ok" } else { "missing" },
                 layer.check_command,
                 layer.message,
             ),
             Language::Zh => println!(
-                "- {}: 启用={} 已配置={} 前缀={} 模型={} 地址={} 密钥={} curl={}({}) 检查=\"{}\" 说明={}",
+                "- {}: 启用={} 已配置={} 前缀={} 模型={} 地址={} 密钥={} 思考参数={} curl={}({}) 检查=\"{}\" 说明={}",
                 layer.layer,
                 layer.enabled,
                 layer.configured,
@@ -4335,6 +4353,7 @@ fn print_provider_status(report: &ProviderStatusReport, language: Language) {
                 model,
                 base_url,
                 if layer.api_key_present { "已设置" } else { "空" },
+                tuning,
                 layer.curl_command,
                 if layer.curl_available { "可用" } else { "缺失" },
                 layer.check_command,
@@ -4345,6 +4364,33 @@ fn print_provider_status(report: &ProviderStatusReport, language: Language) {
     match language {
         Language::En => println!("next: {}", join_or_none(&report.next)),
         Language::Zh => println!("下一步: {}", join_or_none(&report.next)),
+    }
+}
+
+fn tuning_summary(tuning: Option<&OpenAiCompatibleTuning>) -> String {
+    let Some(tuning) = tuning else {
+        return "default".to_string();
+    };
+    let mut parts = Vec::new();
+    if let Some(value) = tuning.reasoning_effort.as_deref() {
+        parts.push(format!("reasoning_effort={value}"));
+    }
+    if let Some(value) = tuning.max_tokens {
+        parts.push(format!("max_tokens={value}"));
+    }
+    if let Some(value) = tuning.temperature {
+        parts.push(format!("temperature={value}"));
+    }
+    if let Some(value) = tuning.top_p {
+        parts.push(format!("top_p={value}"));
+    }
+    if !tuning.extra_body.is_empty() {
+        parts.push(format!("extra_body_keys={}", tuning.extra_body.len()));
+    }
+    if parts.is_empty() {
+        "default".to_string()
+    } else {
+        parts.join(",")
     }
 }
 
@@ -5187,6 +5233,12 @@ const LLM_ENV_EXAMPLE: &str = r#"# Copy to llm.env, fill the key, then source th
 export OCTOPUS_LLM_MODEL=gpt-4.1-mini
 export OCTOPUS_LLM_BASE_URL=https://api.openai.com/v1
 export OCTOPUS_LLM_API_KEY=
+# Optional model thinking controls. Leave blank unless the provider supports them.
+# export OCTOPUS_LLM_REASONING_EFFORT=medium
+# export OCTOPUS_LLM_MAX_TOKENS=2048
+# export OCTOPUS_LLM_TEMPERATURE=0.2
+# export OCTOPUS_LLM_TOP_P=0.9
+# export OCTOPUS_LLM_EXTRA_BODY='{"response_format":{"type":"json_object"}}'
 export OCTOPUS_CHAT_LLM=1
 export OCTOPUS_BRAIN_LLM=1
 export OCTOPUS_LLM_MANIFEST=1
@@ -14741,6 +14793,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let old_model = std::env::var("OCTOPUS_STATUS_TEST_MODEL").ok();
         let old_base_url = std::env::var("OCTOPUS_STATUS_TEST_BASE_URL").ok();
         let old_api_key = std::env::var("OCTOPUS_STATUS_TEST_API_KEY").ok();
+        let old_reasoning = std::env::var("OCTOPUS_STATUS_TEST_REASONING_EFFORT").ok();
         std::env::set_var("OCTOPUS_CHAT_LLM", "1");
         std::env::set_var("OCTOPUS_BRAIN_LLM", "1");
         std::env::set_var("OCTOPUS_LLM_MANIFEST", "1");
@@ -14761,6 +14814,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         std::env::set_var("OCTOPUS_EVOLVE_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_STATUS_TEST_MODEL", "test-model");
         std::env::set_var("OCTOPUS_STATUS_TEST_BASE_URL", "https://llm.example/v1");
+        std::env::set_var("OCTOPUS_STATUS_TEST_REASONING_EFFORT", "high");
         std::env::remove_var("OCTOPUS_STATUS_TEST_API_KEY");
 
         let report = provider_status_report();
@@ -14777,6 +14831,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         }));
         assert!(report.layers.iter().any(|layer| {
             layer.layer == "clean_brain" && layer.prefix == "OCTOPUS_STATUS_TEST" && layer.enabled
+        }));
+        assert!(report.layers.iter().any(|layer| {
+            layer.layer == "clean_brain"
+                && layer
+                    .tuning
+                    .as_ref()
+                    .and_then(|tuning| tuning.reasoning_effort.as_deref())
+                    == Some("high")
         }));
         assert!(report.layers.iter().any(|layer| {
             layer.layer == "clean_brain_explore"
@@ -14859,6 +14921,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         restore_env("OCTOPUS_STATUS_TEST_MODEL", old_model);
         restore_env("OCTOPUS_STATUS_TEST_BASE_URL", old_base_url);
         restore_env("OCTOPUS_STATUS_TEST_API_KEY", old_api_key);
+        restore_env("OCTOPUS_STATUS_TEST_REASONING_EFFORT", old_reasoning);
     }
 
     #[test]
@@ -15408,6 +15471,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(dir.join(".gitignore").exists());
         let env_example = fs::read_to_string(dir.join("llm.env.example")).unwrap();
         assert!(env_example.contains("OCTOPUS_LLM_MANIFEST"));
+        assert!(env_example.contains("OCTOPUS_LLM_REASONING_EFFORT"));
         let _ = fs::remove_dir_all(dir);
     }
 
