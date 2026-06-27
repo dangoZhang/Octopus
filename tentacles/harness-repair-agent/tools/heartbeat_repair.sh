@@ -78,10 +78,14 @@ if evolution_root.exists():
 if not tentacles:
     status = "partial"
     next_need = "run beat after failed check or scored Feed"
+    next_need_kind = "execute"
+    next_need_query = "octopus beat 200 after failed check or scored Feed"
     output = "heartbeat repair: no evolution artifacts yet; collect failed or partial feedback, then run octopus beat 200"
 else:
     status = "satisfied"
     next_need = "review harness apply plan"
+    next_need_kind = "verify"
+    next_need_query = "review harness apply plan"
     output = (
         f"heartbeat repair: tentacles={','.join(tentacles)}; "
         f"plans={len(plans)}; recommendations={len(recommendations)}; "
@@ -94,6 +98,8 @@ metadata = {
     "plans": ",".join(plans),
     "recommendations": ",".join(recommendations),
     "next_need": next_need,
+    "next_need_kind": next_need_kind,
+    "next_need_query": next_need_query,
     "grant_boundary": "octopus oauth octopus evolve:<tentacle> harness:write",
 }
 

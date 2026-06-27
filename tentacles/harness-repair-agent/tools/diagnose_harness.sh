@@ -113,15 +113,23 @@ summary = (
 )
 
 next_need = "verify harness feedback loop"
+next_need_kind = "verify"
+next_need_query = "harness feedback loop"
 status = "satisfied"
 if not state:
     status = "partial"
     next_need = "bootstrap local state"
+    next_need_kind = "execute"
+    next_need_query = "octopus bootstrap"
 elif not installed:
     status = "partial"
     next_need = "install seed tentacles"
+    next_need_kind = "execute"
+    next_need_query = "octopus bootstrap"
 elif not traces and not history:
     next_need = "collect Feed trace or check history"
+    next_need_kind = "verify"
+    next_need_query = "collect Feed trace or check history"
 
 metadata = {
     "workspace": str(root),
@@ -133,6 +141,8 @@ metadata = {
     "evolution_tentacles": ",".join(evolution_dirs),
     "provider_env": "present" if provider_env.exists() else "missing",
     "next_need": next_need,
+    "next_need_kind": next_need_kind,
+    "next_need_query": next_need_query,
 }
 
 print(json.dumps({

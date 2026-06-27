@@ -480,6 +480,7 @@
             <button type="button" id="runExplore">Explore</button>
             <button type="button" id="saveExplore">Save Explore</button>
             <button type="button" id="runNeedQueue">Need Queue</button>
+            <button type="button" id="runRepair">Repair</button>
             <button type="button" data-run="think">Think</button>
             <button type="button" id="runContext">Context</button>
             <button type="button" data-run="need">Need</button>
@@ -538,6 +539,10 @@
             <h2>Need Queue</h2>
             <div id="needQueueReport" class="metric"><span>No queued Need yet.</span></div>
           </div>
+          <div class="repair-report stack">
+            <h2>Repair</h2>
+            <div id="repairReport" class="metric"><span>No repair yet.</span></div>
+          </div>
           <div class="context-report stack">
             <h2>Context</h2>
             <div id="contextReport" class="metric"><span>No context yet.</span></div>
@@ -568,6 +573,7 @@
       let currentRouteReport = null;
       let currentExploreReport = null;
       let currentNeedQueueReport = null;
+      let currentRepairReport = null;
 
       function render(stateName = "harness") {
         currentPetState = stateName;
@@ -595,6 +601,7 @@
           `octopus --state ${shellQuote(state)} --json explore ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json explore --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json needs`,
+          `octopus --state ${shellQuote(state)} --json repair ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} --json need ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} --json context ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} feedback 1 satisfied ${shellQuote("feed worked")}`,
@@ -817,6 +824,23 @@
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("needQueueReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runRepairReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const target = $("target").value.trim() || ".";
+        $("repairReport").textContent = "repairing...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "repair", target]);
+          currentRepairReport = report;
+          currentNeedQueueReport = report.queue || null;
+          renderRepairReport(report);
+          if (report.queue) renderNeedQueueReport(report.queue);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("repairReport").textContent = String(error);
           $("output").textContent = String(error);
         }
       }
@@ -1183,6 +1207,16 @@
         root.appendChild(grid);
         root.appendChild(reportList("Pending", report.pending || [], needQueueItem));
         root.appendChild(reportList("History", report.history || [], needQueueItem));
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function renderRepairReport(report) {
+        const root = $("repairReport");
+        root.className = "stack";
+        root.textContent = "";
+        root.appendChild(feedSummary({ status: report.feed && report.feed.status }, report.feed));
+        root.appendChild(reportList("Feed", report.feed ? [report.feed] : [], feedItem));
+        root.appendChild(reportList("Queued Need", report.queued || [], needQueueItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
@@ -2077,6 +2111,8 @@
         $("exploreReport").innerHTML = "<span>No exploration yet.</span>";
         $("needQueueReport").className = "metric";
         $("needQueueReport").innerHTML = "<span>No queued Need yet.</span>";
+        $("repairReport").className = "metric";
+        $("repairReport").innerHTML = "<span>No repair yet.</span>";
         $("contextReport").className = "metric";
         $("contextReport").innerHTML = "<span>No context yet.</span>";
         $("beatReport").className = "metric";
@@ -2098,6 +2134,7 @@
         currentRouteReport = null;
         currentExploreReport = null;
         currentNeedQueueReport = null;
+        currentRepairReport = null;
         render();
       });
       $("installGuide").addEventListener("click", runInstallReport);
@@ -2109,6 +2146,7 @@
       $("runExplore").addEventListener("click", () => runExploreReport(false));
       $("saveExplore").addEventListener("click", () => runExploreReport(true));
       $("runNeedQueue").addEventListener("click", runNeedQueueReport);
+      $("runRepair").addEventListener("click", runRepairReport);
       $("runContext").addEventListener("click", runContextReport);
       $("providerEnv").addEventListener("click", runProviderEnv);
       $("providerSave").addEventListener("click", runProviderSave);
@@ -2138,6 +2176,7 @@
           currentRouteReport = null;
           currentExploreReport = null;
           currentNeedQueueReport = null;
+          currentRepairReport = null;
           $("providerReport").className = "metric";
           $("providerReport").innerHTML = "<span>No provider status yet.</span>";
           $("feedReport").className = "metric";
@@ -2150,6 +2189,8 @@
           $("exploreReport").innerHTML = "<span>No exploration yet.</span>";
           $("needQueueReport").className = "metric";
           $("needQueueReport").innerHTML = "<span>No queued Need yet.</span>";
+          $("repairReport").className = "metric";
+          $("repairReport").innerHTML = "<span>No repair yet.</span>";
           $("contextReport").className = "metric";
           $("contextReport").innerHTML = "<span>No context yet.</span>";
           $("beatReport").className = "metric";

@@ -1,5 +1,5 @@
 use octopus_core::{
-    default_permissions, default_tentacle_profiles, inspect_tentacle_manifests,
+    default_permissions, default_tentacle_profiles, feed_tentacle, inspect_tentacle_manifests,
     load_tentacle_manifests, plan_tentacle_evolution_apply, propose_tentacle_evolution_with_client,
     propose_tentacle_evolution_with_state, recommend_tentacle_evolution_apply, scaffold_tentacle,
     think_tentacle, write_harness_beat_evolution_artifacts, write_tentacle_apply_artifacts,
@@ -7,13 +7,13 @@ use octopus_core::{
     CapabilityGrant, ChatClient, ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord,
     ContextReport, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan,
     EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed, FeedFeedbackOutcome,
-    FeedTraceRecord, Goal, GoalChat, Harness, HarnessBeatEvolution, HarnessState, HeartBeat,
-    HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem,
-    NeedQueueReport, NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport,
-    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, RouteReport, SelfIterationPlan, Status,
-    StatusReport, TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile,
-    TentacleScaffold, TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate,
-    ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
+    FeedTraceRecord, Goal, GoalChat, GoalNeedSuggestion, Harness, HarnessBeatEvolution,
+    HarnessState, HeartBeat, HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need,
+    NeedKind, NeedQueueItem, NeedQueueReport, NeedQueueSaveReport, NeedQueueStatus,
+    NeedQueueTakeReport, OpenAiCompatibleChatClient, OpenAiCompatibleConfig, RouteReport,
+    SelfIterationPlan, Status, StatusReport, TentacleEvolutionProposal, TentacleManifestReport,
+    TentacleProfile, TentacleScaffold, TentacleThinkingPlan, TentacleToolAction,
+    TentacleToolCandidate, ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -298,6 +298,16 @@ struct ProductReport {
 }
 
 #[derive(Debug, serde::Serialize)]
+struct RepairReport {
+    state_path: String,
+    tentacle: String,
+    feed: Feed,
+    queued: Vec<NeedQueueItem>,
+    queue: NeedQueueReport,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
 struct PreflightReport {
     version: String,
     target: String,
@@ -462,6 +472,25 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_feedback(&feedback, language);
+            }
+            Ok(())
+        }
+        Some("repair") => {
+            let query = rest
+                .get(1..)
+                .filter(|values| !values.is_empty())
+                .map(|values| values.join(" "))
+                .unwrap_or_else(|| ".".to_string());
+            let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let report = repair_report(&state, &mut loaded, query)?;
+            loaded.save(&state).map_err(|error| error.to_string())?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_repair_report(&report, language);
             }
             Ok(())
         }
@@ -1556,6 +1585,49 @@ fn print_feedback(feedback: &octopus_core::Feedback, language: Language) {
                 Language::En => println!("feed_trace: {trace}"),
                 Language::Zh => println!("Feed轨迹: {trace}"),
             }
+        }
+    }
+}
+
+fn print_repair_report(report: &RepairReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus repair");
+            println!("tentacle: {}", report.tentacle);
+            println!("state: {}", report.state_path);
+            println!("feed: {:?} {}", report.feed.status, report.feed.summary);
+            if let Some(index) = report.feed.metadata.get("feed_trace_index") {
+                println!("trace_index: {index}");
+            }
+            println!("queued: {}", report.queued.len());
+            for item in &report.queued {
+                println!(
+                    "- #{} {}:{}",
+                    item.index,
+                    need_label(&item.need.kind),
+                    item.need.query
+                );
+            }
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼修复");
+            println!("触手: {}", report.tentacle);
+            println!("状态文件: {}", report.state_path);
+            println!("Feed: {:?} {}", report.feed.status, report.feed.summary);
+            if let Some(index) = report.feed.metadata.get("feed_trace_index") {
+                println!("Feed轨迹编号: {index}");
+            }
+            println!("排队Need: {}", report.queued.len());
+            for item in &report.queued {
+                println!(
+                    "- #{} {}:{}",
+                    item.index,
+                    need_label(&item.need.kind),
+                    item.need.query
+                );
+            }
+            println!("下一步: {}", join_or_none(&report.next));
         }
     }
 }
@@ -2871,6 +2943,7 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "brain"
             | "explore"
             | "needs"
+            | "repair"
             | "think"
             | "need"
             | "bootstrap"
@@ -3800,6 +3873,78 @@ fn print_context_report(report: &ContextReport, language: Language) {
     }
 }
 
+fn repair_report(
+    state_path: &Path,
+    state: &mut HarnessState,
+    query: String,
+) -> Result<RepairReport, String> {
+    let tentacle_id = "harness-repair-agent";
+    let root = default_tentacles_root();
+    let _ = state.install_profile(tentacle_id);
+    state.install_manifest(&root, tentacle_id)?;
+    state.save(state_path).map_err(|error| error.to_string())?;
+    let llm_config = if manifest_llm_enabled() {
+        Some(manifest_llm_config()?)
+    } else {
+        None
+    };
+    let need = Need::new(NeedKind::Observe, query.clone());
+    let mut feed = feed_tentacle(&root, tentacle_id, &need, llm_config, &state.grants)?;
+    feed.metadata
+        .insert("tentacle".to_string(), tentacle_id.to_string());
+    state.record_pet_event_from_feed(&feed);
+    let trace = state.record_feed_trace_from_feed(&feed);
+    feed.metadata
+        .insert("feed_trace_index".to_string(), trace.index.to_string());
+    let mut queued = Vec::new();
+    if let Some(next_need) = repair_next_need_from_feed(&feed) {
+        queued.push(state.queue_need_suggestion(
+            next_need,
+            tentacle_id,
+            query,
+            feed.summary.clone(),
+        ));
+    }
+    let queue = state.need_queue_report(8);
+    let mut next = queued
+        .iter()
+        .map(|item| format!("octopus needs take {}", item.index))
+        .collect::<Vec<_>>();
+    next.push("octopus needs".to_string());
+    next.push("octopus beat 200".to_string());
+    next.push("octopus traces".to_string());
+    next.sort();
+    next.dedup();
+    Ok(RepairReport {
+        state_path: state_path.to_string_lossy().to_string(),
+        tentacle: tentacle_id.to_string(),
+        feed,
+        queued,
+        queue,
+        next,
+    })
+}
+
+fn repair_next_need_from_feed(feed: &Feed) -> Option<GoalNeedSuggestion> {
+    let query = feed
+        .metadata
+        .get("next_need_query")
+        .or_else(|| feed.metadata.get("next_need"))?
+        .trim();
+    if query.is_empty() {
+        return None;
+    }
+    let kind = feed
+        .metadata
+        .get("next_need_kind")
+        .and_then(|value| parse_kind(value).ok())
+        .unwrap_or(NeedKind::Verify);
+    Some(GoalNeedSuggestion {
+        kind,
+        query: query.to_string(),
+    })
+}
+
 fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductReport, String> {
     let status = state.status_report_with_state(Some(state_path));
     let cwd = env::current_dir().map_err(|error| error.to_string())?;
@@ -3867,6 +4012,20 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
                 status.need_queue_count
             ),
             Some("octopus explore --save"),
+        ),
+        product_capability(
+            "harness_repair_queue",
+            if state
+                .installed_tentacles
+                .iter()
+                .any(|tentacle| tentacle.id == "harness-repair-agent")
+            {
+                "ready"
+            } else {
+                "available"
+            },
+            "harness-repair Feed can queue the next clean-brain Need",
+            Some("octopus repair ."),
         ),
         product_capability(
             "clean_brain_prompt",
@@ -4524,6 +4683,8 @@ fn preflight_script_commands() -> Vec<String> {
         "octopus --state \"$STATE\" think swe-agent observe README.md",
         "octopus --state \"$STATE\" need observe README.md",
         "octopus --state \"$STATE\" traces",
+        "octopus --state \"$STATE\" repair .",
+        "octopus --state \"$STATE\" needs",
         "octopus --state \"$STATE\" check swe-agent",
         "octopus --state \"$STATE\" feedback 1 satisfied \"preflight feed worked\"",
         "octopus --state \"$STATE\" routes observe README.md",
@@ -6578,7 +6739,7 @@ fn evolve_llm_enabled() -> bool {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--live] [--save] [prompt] | explore [--save] [prompt] | needs [take|drop index] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--live] [--save] [prompt] | explore [--save] [prompt] | needs [take|drop index] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -7050,6 +7211,7 @@ mod tests {
         assert!(usage().contains("brain [--live] [--save] [prompt]"));
         assert!(usage().contains("explore [--save] [prompt]"));
         assert!(usage().contains("needs [take|drop index]"));
+        assert!(usage().contains("repair [query]"));
         assert!(usage().contains("context [kind query]"));
         assert!(usage().contains("provider save <profile>"));
         assert!(usage().contains("provider status"));
@@ -7095,6 +7257,51 @@ mod tests {
         assert!(installed.contains(&"harness-repair-agent"));
         assert!(dir.join(".octopus/llm.env.example").exists());
         assert!(restored.last_pet_event.is_some());
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_repair_queues_next_need_from_harness_feed() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!("octopus-repair-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let state = dir
+            .join(".octopus/state.json")
+            .to_string_lossy()
+            .to_string();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "repair".to_string(),
+            ".".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&state).unwrap();
+        assert!(restored
+            .installed_tentacles
+            .iter()
+            .any(|tentacle| tentacle.id == "harness-repair-agent"));
+        assert_eq!(restored.feed_traces.len(), 1);
+        assert_eq!(
+            restored.feed_traces[0].tentacle.as_deref(),
+            Some("harness-repair-agent")
+        );
+        assert_eq!(restored.pending_need_queue_count(), 1);
+        let queued = restored
+            .need_queue
+            .iter()
+            .find(|item| item.status == NeedQueueStatus::Pending)
+            .unwrap();
+        assert_eq!(queued.source, "harness-repair-agent");
+        assert_eq!(queued.need.kind, NeedKind::Verify);
+        assert!(queued.need.query.contains("Feed trace"));
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
     }
@@ -7268,6 +7475,13 @@ mod tests {
             "needs".to_string(),
             "take".to_string(),
             "1".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "repair".to_string(),
+            ".".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),

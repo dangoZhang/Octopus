@@ -56,6 +56,8 @@ octopus needs take 1
 octopus context observe .
 octopus need observe README.md
 octopus traces
+octopus repair .
+octopus needs
 octopus feedback 1 satisfied "useful evidence"
 octopus beat 200
 octopus pet
@@ -86,6 +88,7 @@ next: octopus preflight record, octopus preflight script, octopus report
 
 - Local bootstrap, doctor, report, preflight, release-gate script, and real-machine record template.
 - Goal refinement, clean-brain exploration, context inspection, Feed traces, and feedback scoring.
+- Harness repair can turn tool-side diagnosis into a queued Need.
 - Seed tentacles for SWE work, computer-use diagnostics, repo maintenance, harness repair, bash-only execution, and structured JSON Feed.
 - OpenAI-compatible chat, live clean-brain exploration, tool-side planning, and harness evolution candidates.
 - Native HTML app for setup, providers, traces, checks, grants, pet state, and harness review.

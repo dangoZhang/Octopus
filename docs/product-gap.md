@@ -29,6 +29,7 @@ Updated: 2026-06-27
 - `explore --save [prompt]` stores suggested Needs in a reviewable Need Queue; `needs take <index>` returns the command without executing Feed.
 - The native HTML app can run `--json bootstrap` through the bridge from the command panel.
 - `harness-repair-agent` can diagnose state, traces, check history, evolution artifacts, repo dirtiness, provider env, and local adapters as structured Feed.
+- `repair [query]` runs the harness-repair tentacle, records the Feed trace, and queues the tentacle's structured next Need for review.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
 - The HTML install guide can expand each check to inspect stdout, stderr, exit code, and recent harness check history.
 - `check <tentacle> [index]` records compact harness history and the HTML install guide can rerun one check at a time.
@@ -129,13 +130,14 @@ Updated: 2026-06-27
 - Added `preflight [--live]` so release readiness can check state, seed tentacles, manifests, context boundary, docs/pet, LLM layers, live provider, feedback data, GitHub PR path, current-head real-machine record, desktop adapters, and harness repair.
 - Added `preflight script [path]` plus native HTML access so release-gate commands can be generated, reviewed, and run on a real machine.
 - Added `preflight record [path]` plus native HTML access so real-machine evidence can be generated as a reviewable Markdown record before appending to the gate log.
+- Added `repair [query]` plus native HTML access so harness-repair Feed can become a queued clean-brain Need without exposing tools to the brain.
 - Rolled the cleanup/version cadence to `0.0.7` after bootstrap, clean-brain exploration, harness-repair state paths, preflight gates, product README polish, and remote deployment cleanup.
 
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
 - LLM evolution can generate candidates and provider-assisted patch drafts from manifest surfaces, scored outcomes, recent Feed traces, and check history; local candidates now also target traced or failing runtime files, and harness beat can start from Feed trace or check feedback while app and CLI patch writes stay review/grant-bound.
-- Harness-repair diagnosis is available as a seed tentacle; closing the loop still needs real scored repairs from provider-backed runs.
+- Harness-repair diagnosis can now queue its next Need; closing the loop still needs real scored repairs from provider-backed apply/review runs.
 - Product reporting is available in CLI and app; report quality still needs feedback from real project states.
 - Preflight now exposes the release gate and record template; current readiness still depends on running that gate with live provider, OAuth PR publishing, scored feedback data, and appending the current-head result.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
@@ -152,7 +154,7 @@ Updated: 2026-06-27
 - Exercise Feed feedback outcomes from real tasks against the new route report and tune route choices from that evidence.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Apply and score the next Feed-trace- or check-driven seed-tentacle improvement through the app review/grant loop.
-- Run `harness-repair-agent` after bootstrap and use its Feed to choose the next self-repair action.
+- Run `repair` after bootstrap, take the queued Need, and score whether the resulting Feed improves the harness.
 - Use `octopus report` after every product cycle to pick the next highest-impact gap.
 - Exercise provider-assisted patch drafts with a real LLM provider and score the result through the review/grant loop.
 - Turn window/browser diagnostics into richer native control adapters.

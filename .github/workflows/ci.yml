@@ -56,6 +56,8 @@ jobs:
           "$tmp/root/bin/octopus" --state "$tmp/state.json" doctor | grep -q "Octopus doctor"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" report | grep -q "Octopus report"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" --json report | grep -q '"capabilities"'
+          "$tmp/root/bin/octopus" --state "$tmp/state.json" --json repair . | grep -q '"queued"'
+          grep -q '"need_queue"' "$tmp/state.json"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" preflight | grep -q "Octopus preflight"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" --json preflight | grep -q '"release_ready"'
           "$tmp/root/bin/octopus" --state "$tmp/state.json" preflight script "$tmp/preflight.sh" | grep -q "Octopus preflight script"
@@ -169,6 +171,9 @@ jobs:
       - run: grep -q "Preflight Record" docs/app.html
       - run: grep -q "runPreflightRecord" docs/app.html
       - run: grep -q "renderPreflightRecordReport" docs/app.html
+      - run: grep -q "Repair" docs/app.html
+      - run: grep -q "runRepairReport" docs/app.html
+      - run: grep -q "renderRepairReport" docs/app.html
       - run: grep -q "feedEvidenceDetails" docs/app.html
       - run: grep -q "checkOutputDetails" docs/app.html
       - run: grep -q "check-output" docs/app.html
@@ -271,6 +276,8 @@ jobs:
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json doctor | grep -q '"llm"'
           cargo run -q -p octopus-core -- --state "$tmp/state.json" report | grep -q "Octopus report"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json report | grep -q '"gaps"'
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" repair . | grep -q "Octopus repair"
+          cargo run -q -p octopus-core -- --state "$tmp/state.json" --json needs | grep -q '"pending"'
           cargo run -q -p octopus-core -- --state "$tmp/state.json" preflight | grep -q "Octopus preflight"
           cargo run -q -p octopus-core -- --state "$tmp/state.json" --json preflight | grep -q '"checks"'
           cargo run -q -p octopus-core -- --state "$tmp/state.json" preflight script "$tmp/preflight.sh" | grep -q "Octopus preflight script"

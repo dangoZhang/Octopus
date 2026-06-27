@@ -22,7 +22,7 @@
       "id": "diagnose_harness",
       "description": "Summarize state, installed tentacles, recent traces, check history, evolution artifacts, and repo dirtiness.",
       "input": "octopus-json-v1 tool call or workspace root",
-      "output": "JSON Feed with diagnosis and next Need",
+      "output": "JSON Feed with diagnosis, next_need_kind, and next_need_query",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/diagnose_harness.sh",
@@ -33,7 +33,7 @@
       "id": "heartbeat_repair",
       "description": "Inspect harness-beat evolution artifacts and suggest the next grant, apply, or score action.",
       "input": "octopus-json-v1 tool call or workspace root",
-      "output": "JSON Feed with repair plan and review boundary",
+      "output": "JSON Feed with repair plan, review boundary, next_need_kind, and next_need_query",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/heartbeat_repair.sh",
@@ -44,7 +44,7 @@
       "id": "adapter_probe",
       "description": "Probe local command, provider, desktop, and GitHub adapters needed by common tentacles.",
       "input": "octopus-json-v1 tool call or workspace root",
-      "output": "JSON Feed with adapter readiness and missing pieces",
+      "output": "JSON Feed with adapter readiness, missing pieces, next_need_kind, and next_need_query",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/adapter_probe.sh",

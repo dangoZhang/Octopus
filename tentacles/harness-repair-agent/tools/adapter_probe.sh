@@ -81,8 +81,12 @@ for command in ["open", "osascript", "screencapture", "xdg-open"]:
 
 status = "satisfied" if not missing_core else "partial"
 next_need = "run provider check" if provider_keys else "save provider env"
+next_need_kind = "verify" if provider_keys else "execute"
+next_need_query = "octopus provider check" if provider_keys else "octopus provider save openai"
 if missing_core:
     next_need = "install missing core adapters"
+    next_need_kind = "execute"
+    next_need_query = "install missing core adapters"
 
 available_labels = [command for command, path in available.items() if path]
 output = (
@@ -100,6 +104,8 @@ metadata = {
     "provider_keys": ",".join(provider_keys),
     "desktop_adapters": ",".join(desktop),
     "next_need": next_need,
+    "next_need_kind": next_need_kind,
+    "next_need_query": next_need_query,
 }
 
 print(json.dumps({

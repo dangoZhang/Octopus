@@ -1678,31 +1678,45 @@ impl HarnessState {
     pub fn queue_exploration_report(&mut self, report: &BrainExploreReport) -> NeedQueueSaveReport {
         let mut queued = Vec::new();
         for need in &report.needs {
-            if let Some(existing) = self
-                .need_queue
-                .iter()
-                .find(|item| item.status == NeedQueueStatus::Pending && item.need == *need)
-            {
-                queued.push(existing.clone());
-                continue;
-            }
-            self.next_need_queue_index += 1;
-            let item = NeedQueueItem {
-                index: self.next_need_queue_index,
-                need: need.clone(),
-                source: report.source.clone(),
-                prompt: report.prompt.clone(),
-                summary: report.summary.clone(),
-                status: NeedQueueStatus::Pending,
-            };
-            self.need_queue.push(item.clone());
-            queued.push(item);
+            queued.push(self.queue_need_suggestion(
+                need.clone(),
+                report.source.clone(),
+                report.prompt.clone(),
+                report.summary.clone(),
+            ));
         }
         NeedQueueSaveReport {
             explore: report.clone(),
             queued,
             queue: self.need_queue_report(8),
         }
+    }
+
+    pub fn queue_need_suggestion(
+        &mut self,
+        need: GoalNeedSuggestion,
+        source: impl Into<String>,
+        prompt: impl Into<String>,
+        summary: impl Into<String>,
+    ) -> NeedQueueItem {
+        if let Some(existing) = self
+            .need_queue
+            .iter()
+            .find(|item| item.status == NeedQueueStatus::Pending && item.need == need)
+        {
+            return existing.clone();
+        }
+        self.next_need_queue_index += 1;
+        let item = NeedQueueItem {
+            index: self.next_need_queue_index,
+            need,
+            source: source.into(),
+            prompt: prompt.into(),
+            summary: summary.into(),
+            status: NeedQueueStatus::Pending,
+        };
+        self.need_queue.push(item.clone());
+        item
     }
 
     pub fn need_queue_report(&self, limit: usize) -> NeedQueueReport {
@@ -4007,6 +4021,25 @@ pub fn think_tentacle(
     tentacle
         .thinking_plan(need)
         .ok_or_else(|| format!("{tentacle_id} cannot feed {}", kind_key(&need.kind)))
+}
+
+pub fn feed_tentacle(
+    root: impl AsRef<Path>,
+    tentacle_id: &str,
+    need: &Need,
+    llm_config: Option<OpenAiCompatibleConfig>,
+    grants: &[CapabilityGrant],
+) -> Result<Feed, String> {
+    let root = root.as_ref();
+    let loaded = load_tentacle_manifests(root)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find(|loaded| loaded.manifest.id == tentacle_id)
+        .ok_or_else(|| format!("unknown tentacle: {tentacle_id}"))?;
+    let installed = installed_tentacle_from_manifest(root, loaded)?;
+    let mut tentacle =
+        ManifestTentacle::new_with_llm_and_grants(installed, llm_config, grants.to_vec());
+    Ok(tentacle.feed(need))
 }
 
 pub fn inspect_tentacle_manifests(
