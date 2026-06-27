@@ -116,6 +116,7 @@ octopus --state "$tmp/state.json" brain --session --live "what should the brain 
 octopus --state "$tmp/state.json" explore "what should the brain ask next?"
 octopus --state "$tmp/state.json" explore --save "what should the brain ask next?"
 octopus --state "$tmp/state.json" needs
+octopus --state "$tmp/state.json" needs script "$tmp/run-needs.sh"
 octopus --state "$tmp/state.json" needs take 1
 octopus --state "$tmp/state.json" context observe .
 octopus --state "$tmp/state.json" think swe-agent observe README.md
