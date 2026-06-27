@@ -368,6 +368,7 @@ struct RepairReport {
 #[derive(Debug, serde::Serialize)]
 struct RepairPlanReport {
     path: String,
+    review: String,
     status: String,
     schema: String,
     session: String,
@@ -1965,6 +1966,7 @@ fn print_repair_report(report: &RepairReport, language: Language) {
             }
             if let Some(plan) = &report.repair_plan {
                 println!("repair_plan: {}", plan.path);
+                print_optional_line("review", &plan.review);
                 println!("plan_status: {}", plan.status);
                 println!("target: {}/{}", plan.target_tentacle, plan.target_tool);
                 print_optional_line("check", &plan.check_command);
@@ -1993,6 +1995,7 @@ fn print_repair_report(report: &RepairReport, language: Language) {
             }
             if let Some(plan) = &report.repair_plan {
                 println!("修复计划: {}", plan.path);
+                print_optional_line("审阅", &plan.review);
                 println!("计划状态: {}", plan.status);
                 println!("目标: {}/{}", plan.target_tentacle, plan.target_tool);
                 print_optional_line("检查", &plan.check_command);
@@ -5154,6 +5157,7 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
     let path = metadata.get("repair_plan")?.to_string();
     Some(RepairPlanReport {
         path,
+        review: metadata_value(metadata, "review"),
         status: metadata_value(metadata, "repair_plan_status"),
         schema: metadata_value(metadata, "repair_plan_schema"),
         session: metadata_value(metadata, "repair_plan_session"),
@@ -9826,6 +9830,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         );
         let plan = report.repair_plan.expect("repair plan report");
         assert!(plan.path.ends_with("REPAIR_PLAN.json"));
+        assert!(plan.review.ends_with("REVIEW.md"));
         assert_eq!(plan.status, "review_required");
         assert_eq!(plan.target_tool, "repair_session");
         assert!(plan.grant_command.contains("harness:write"));

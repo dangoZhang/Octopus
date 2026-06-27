@@ -125,6 +125,7 @@ repair_metadata = {}
 
 if latest_repair_plan:
     commands = repair_plan.get("commands") if isinstance(repair_plan.get("commands"), dict) else {}
+    inputs = repair_plan.get("inputs") if isinstance(repair_plan.get("inputs"), dict) else {}
     checks = as_list(commands.get("checks"))
     suggested = as_list(commands.get("suggested"))
     next_need_kind, next_need_query = plan_next_need(repair_plan)
@@ -144,6 +145,7 @@ if latest_repair_plan:
         "repair_plan_status": plan_status,
         "repair_plan_schema": str(repair_plan.get("schema_version") or ""),
         "repair_plan_session": str(repair_plan.get("session") or ""),
+        "review": str(inputs.get("review") or ""),
         "target_tentacle": target_tentacle,
         "target_tool": target_tool,
         "candidate": candidate,

@@ -6369,7 +6369,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 ),
                 tool_meta_with_contract(
                     "repair_session",
-                    "Write a reviewable local self-repair session plus optional provider repair draft.",
+                    "Write a reviewable local self-repair session, REVIEW.md bundle, and optional provider repair draft.",
                     "shell",
                     "tentacles/harness-repair-agent/tools/repair_session.sh",
                     OCTOPUS_JSON_CONTRACT,
@@ -6401,6 +6401,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "Return repair plans as Feed; do not patch the kernel directly.",
                     "Keep provider repair drafts optional and reviewable.",
                     "Record reviewed repair outcomes before using them as future repair evidence.",
+                    "Write REVIEW.md as the user-facing repair review bundle for each session.",
                     "Read latest REPAIR_PLAN before older evolution artifacts.",
                     "Prefer reviewable .octopus/evolution artifacts and explicit harness:write grants.",
                 ],
@@ -10187,6 +10188,7 @@ print(json.dumps({
         for key in [
             "prompt",
             "draft",
+            "review",
             "next_need_file",
             "command_script",
             "code_context",
@@ -10220,6 +10222,14 @@ print(json.dumps({
         let code_context_text = fs::read_to_string(&code_context).unwrap();
         assert!(code_context_text.contains("Harness Repair Code Context"));
         assert!(code_context_text.contains("repair_session.sh"));
+        let review = feed
+            .metadata
+            .get("review")
+            .map(|path| workspace.join(path))
+            .expect("review metadata path");
+        let review_text = fs::read_to_string(&review).unwrap();
+        assert!(review_text.contains("Harness Repair Review"));
+        assert!(review_text.contains("harness:write"));
         assert_eq!(
             feed.metadata.get("repair_plan_status").map(String::as_str),
             Some("review_required")
@@ -10275,6 +10285,13 @@ print(json.dumps({
             .get("grant_command")
             .unwrap()
             .contains("harness:write"));
+        assert_eq!(
+            heartbeat_feed
+                .metadata
+                .get("review")
+                .map(|path| workspace.join(path)),
+            Some(review)
+        );
         let session = feed
             .metadata
             .get("session")

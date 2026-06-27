@@ -42,9 +42,9 @@
     },
     {
       "id": "repair_session",
-      "description": "Write a reviewable self-repair session, local outcome memory, target code context, action plan, and optional provider-generated repair draft from heartbeat, evolution, adapter, and reviewed-outcome signals.",
+      "description": "Write a reviewable self-repair session, local outcome memory, target code context, review bundle, action plan, and optional provider-generated repair draft from heartbeat, evolution, adapter, and reviewed-outcome signals.",
       "input": "workspace root or octopus-json-v1 Need",
-      "output": "JSON Feed with SESSION, PROMPT, DRAFT, NEXT_NEED, COMMANDS, OUTCOME_MEMORY, CODE_CONTEXT, REPAIR_PLAN paths, and the next repair Need",
+      "output": "JSON Feed with SESSION, PROMPT, DRAFT, REVIEW, NEXT_NEED, COMMANDS, OUTCOME_MEMORY, CODE_CONTEXT, REPAIR_PLAN paths, and the next repair Need",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/repair_session.sh",
@@ -111,6 +111,7 @@
       "Record repair outcomes before using them as future repair evidence.",
       "Feed repair-session planning with local OUTCOME_MEMORY, never raw tool logs in clean-brain context.",
       "Feed repair-session planning with CODE_CONTEXT from the target tentacle manifest and tool code.",
+      "Write REVIEW.md as the user-facing repair review bundle for each session.",
       "Keep REPAIR_PLAN commands reviewable and grant-bound before any harness write.",
       "Let heartbeat_repair read the latest REPAIR_PLAN before older evolution artifacts.",
       "Require explicit harness:write grants before apply artifacts.",

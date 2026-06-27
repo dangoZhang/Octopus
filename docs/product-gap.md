@@ -69,7 +69,7 @@ Updated: 2026-06-27
 - LLM-generated evolution candidates can carry a provider-assisted unified diff into drafts and authorized apply artifacts.
 - Harness beat turns recent failed or partial check history, Feed traces, or repair outcomes into a written evolution proposal, recommendation, and apply plan.
 - Harness beat recommendations can be granted, written as reviewable apply artifacts, reviewed, and scored from the native HTML app.
-- `harness-repair-agent` can read heartbeat/evolution/state signals, probe adapter readiness, write `.octopus/harness-repair/SESSION.*`, `PROMPT.md`, optional provider-backed `DRAFT.md`, `NEXT_NEED.json`, `COMMANDS.sh`, `OUTCOME_MEMORY.md`, `CODE_CONTEXT.md`, and `REPAIR_PLAN.json`, continue from the latest repair plan through `heartbeat_repair`, record reviewed `OUTCOME.md` plus `.octopus/harness-repair/outcomes.jsonl`, then feed merged outcome memory and target code context into later reviewable repair plans.
+- `harness-repair-agent` can read heartbeat/evolution/state signals, probe adapter readiness, write `.octopus/harness-repair/SESSION.*`, `PROMPT.md`, optional provider-backed `DRAFT.md`, `REVIEW.md`, `NEXT_NEED.json`, `COMMANDS.sh`, `OUTCOME_MEMORY.md`, `CODE_CONTEXT.md`, and `REPAIR_PLAN.json`, continue from the latest repair plan through `heartbeat_repair`, record reviewed `OUTCOME.md` plus `.octopus/harness-repair/outcomes.jsonl`, then feed merged outcome memory and target code context into later reviewable repair plans.
 - The SWE read tool now returns a compact file/range header and line-numbered evidence.
 
 ## Filled So Far
@@ -181,6 +181,7 @@ Updated: 2026-06-27
 - Added repair-session action plans so each session writes `REPAIR_PLAN.json` with check, grant, apply, score, code-context, and outcome-memory boundaries.
 - Added heartbeat repair plan pickup so verify Needs read the latest `REPAIR_PLAN.json` and return the next review/grant/apply/score Feed.
 - Added repair-plan surfacing in `octopus repair` and the native Repair panel so users can see the latest plan path and review commands without digging into metadata.
+- Added repair-session review bundles so each session writes `REVIEW.md` and report surfaces can link the user-facing repair review.
 - Added starter recommendation evidence signals so each card can explain its group, objective matches, Needs, tools, runtimes, evolution surfaces, LLM readiness, and install state.
 - Reworked README into a product-page share surface with a first-screen story, edge-intelligence insight, differentiators, install/use path, and usable pre-release boundary.
 

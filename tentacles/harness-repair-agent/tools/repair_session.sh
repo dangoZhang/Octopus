@@ -642,6 +642,7 @@ session_json = session_dir / "SESSION.json"
 session_md = session_dir / "SESSION.md"
 prompt_md = session_dir / "PROMPT.md"
 draft_md = session_dir / "DRAFT.md"
+review_md = session_dir / "REVIEW.md"
 next_need_json = session_dir / "NEXT_NEED.json"
 command_script = session_dir / "COMMANDS.sh"
 outcome_memory_md = session_dir / "OUTCOME_MEMORY.md"
@@ -671,6 +672,7 @@ session = {
     "commands": commands,
     "outcome_memory": rel(outcome_memory_md, workspace),
     "code_context": rel(code_context_md, workspace),
+    "review": rel(review_md, workspace),
     "repair_plan": rel(repair_plan_json, workspace),
     "code_context_target": {
         "tentacle": code_context["tentacle"],
@@ -821,8 +823,53 @@ session["draft"] = {
     "model": draft.get("model", ""),
 }
 repair_plan["inputs"]["draft"] = rel(draft_md, workspace)
+repair_plan["inputs"]["review"] = rel(review_md, workspace)
 repair_plan_json.write_text(
     json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
+    encoding="utf-8",
+)
+review_md.write_text(
+    "\n".join(
+        [
+            "# Harness Repair Review",
+            "",
+            "This is the human-facing review bundle for the repair session.",
+            "The clean brain still receives only compact Need and Feed.",
+            "",
+            f"session: `{rel(session_json, workspace)}`",
+            f"target: `{code_context['tentacle']}/{code_context['tool']}`",
+            f"candidate: `{candidate}`",
+            f"source: `{source}`",
+            f"next Need: `{next_need_kind} {next_need_query}`",
+            "",
+            "## Evidence",
+            "",
+            f"- code context: `{rel(code_context_md, workspace)}`",
+            f"- outcome memory: `{rel(outcome_memory_md, workspace)}`",
+            f"- provider draft: `{rel(draft_md, workspace)}`",
+            f"- repair plan: `{rel(repair_plan_json, workspace)}`",
+            f"- commands: `{rel(command_script, workspace)}`",
+            "",
+            "## Review Boundary",
+            "",
+            repair_plan["review_boundary"],
+            "",
+            "## Commands",
+            "",
+            "checks:",
+            *[f"- `{command}`" for command in repair_plan["commands"]["checks"]],
+            f"- grant: `{repair_plan['commands']['grant']}`",
+            f"- apply: `{repair_plan['commands']['apply']}`",
+            f"- score: `{repair_plan['commands']['score']}`",
+            "",
+            "## Draft Status",
+            "",
+            f"- status: `{draft['status']}`",
+            f"- prefix: `{draft['prefix']}`",
+            f"- model: `{draft.get('model', '') or 'none'}`",
+            "",
+        ]
+    ),
     encoding="utf-8",
 )
 session_json.write_text(json.dumps(session, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
@@ -842,6 +889,7 @@ session_md.write_text(
             f"json: `{rel(session_json, workspace)}`",
             f"prompt: `{rel(prompt_md, workspace)}`",
             f"draft: `{rel(draft_md, workspace)}`",
+            f"review: `{rel(review_md, workspace)}`",
             f"next need: `{rel(next_need_json, workspace)}`",
             f"commands: `{rel(command_script, workspace)}`",
             f"outcome memory: `{rel(outcome_memory_md, workspace)}`",
@@ -862,6 +910,7 @@ metadata = {
     "session_markdown": rel(session_md, workspace),
     "prompt": rel(prompt_md, workspace),
     "draft": rel(draft_md, workspace),
+    "review": rel(review_md, workspace),
     "llm_draft_status": draft["status"],
     "llm_prefix": draft["prefix"],
     "next_need_file": rel(next_need_json, workspace),
@@ -887,7 +936,7 @@ print(
     json.dumps(
         {
             "status": "satisfied",
-            "output": f"harness repair session: {rel(session_md, workspace)}; draft: {draft['status']}; next Need: {next_need}",
+            "output": f"harness repair session: {rel(session_md, workspace)}; review: {rel(review_md, workspace)}; draft: {draft['status']}; next Need: {next_need}",
             "evidence": [
                 {
                     "source": "harness-repair-agent/repair_session",
