@@ -4877,6 +4877,12 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             Some("octopus bridge"),
         ),
         product_capability(
+            "starter_panel",
+            if app_exists { "ready" } else { "missing" },
+            "native HTML app renders starter tentacle recommendations with install, check, and first-Need actions",
+            Some("octopus starter \"build a clean-brain agent\""),
+        ),
+        product_capability(
             "local_bootstrap",
             "ready",
             "init, environment adaptation, seed tentacle install, heartbeat, and report in one command",
@@ -8281,8 +8287,8 @@ mod tests {
         bridge_command_allowed, bridge_command_name, check_report, http_content_length,
         install_report, is_broken_pipe_panic, localize_summary, parse_bridge_env_overlay,
         percent_encode_path, pet_report, pet_report_for_state, preflight_report, product_report,
-        provider_status_report, real_machine_record_status_from_parts, run, skill_reports, usage,
-        Language,
+        provider_status_report, real_machine_record_status_from_parts, run, skill_reports,
+        starter_report, usage, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
@@ -9005,6 +9011,29 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             localize_summary("nothing recalled", Language::Zh),
             "没有召回内容"
         );
+    }
+
+    #[test]
+    fn starter_report_returns_gui_ready_first_need_without_feed() {
+        let state = HarnessState::default();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let state_path = Path::new(".octopus/state.json");
+
+        let report =
+            starter_report(&state, state_path, root, Some("fix repo tests".to_string())).unwrap();
+
+        let swe = report
+            .recommendations
+            .iter()
+            .find(|item| item.id == "swe-agent")
+            .unwrap();
+        assert_eq!(swe.first_need_kind, "execute");
+        assert_eq!(swe.first_need_query, "fix repo tests");
+        assert!(swe.first_need_command.contains(" need execute "));
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
     }
 
     #[test]

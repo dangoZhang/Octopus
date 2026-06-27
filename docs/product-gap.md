@@ -23,7 +23,7 @@ Updated: 2026-06-27
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
 - `starter [objective]` recommends starter tentacles from profile and manifest metadata, including install, check, and first-Need commands without running tools.
-- The native HTML app can fetch `--json starter` recommendations as cards, then run install, check, or the first Need from each recommendation.
+- The native HTML app renders starter recommendations as action cards with Use, Install, First Need, and Check controls.
 - README now opens as a product landing page: clean-brain value, thinking tentacles, pixel Octopus, install path, and current maturity are visible before docs links.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
@@ -167,8 +167,8 @@ Updated: 2026-06-27
 - Added repair-outcome-driven harness beat evolution so failed or partial repair reviews can start the next reviewable apply plan.
 - Rolled the cleanup/version cadence to `0.0.9` after reviewable Need Queue scripts, app queue review controls, repair-outcome-driven harness beat evolution, and README/control-surface polish.
 - Added `starter [objective]` so first-run users can choose common agent tool-combo tentacles from Goal/objective metadata before any Feed execution.
-- Added a structured native HTML starter panel so first-run users can choose tentacles from rendered recommendations.
 - Rebuilt README as a shorter product landing page with the Octopus loop, differentiators, install path, runnable first loop, and pre-release line kept above the links.
+- Added a structured native HTML starter panel with recommendation cards, Use, Install, First Need, and Check actions.
 
 ## Remaining Gaps
 
@@ -181,7 +181,7 @@ Updated: 2026-06-27
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, clean-brain layer diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
 - GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
-- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show starter cards with install/check/Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, render starter recommendation cards, run starter install/check/first-Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
