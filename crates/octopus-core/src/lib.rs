@@ -12,6 +12,8 @@ const OCTOPUS_TOOL_CALL_SCHEMA: &str = "octopus-tool-call-v1";
 const FEED_TRACE_QUERY_BYTES: usize = 160;
 const FEED_TRACE_SUMMARY_BYTES: usize = 240;
 const CHECK_HISTORY_OUTPUT_BYTES: usize = 480;
+const STARTER_FEEDBACK_OBJECTIVE_BYTES: usize = 180;
+const STARTER_FEEDBACK_SUMMARY_BYTES: usize = 220;
 const MAX_TENTACLE_ACTIONS: usize = 2;
 pub const CLEAN_BRAIN_CONTEXT_POLICY: &str = "Goal + Mem + Need + Feed";
 pub const TENTACLE_CONTEXT_POLICY: &str = "Need + Tool + Action + Tool + Action -> Feed";
@@ -36,6 +38,44 @@ pub enum Status {
     Partial,
     Failed,
     Unsupported,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StarterFeedbackStatus {
+    Accepted,
+    Ignored,
+    Failed,
+}
+
+impl StarterFeedbackStatus {
+    pub fn score(&self) -> f32 {
+        match self {
+            StarterFeedbackStatus::Accepted => 6.0,
+            StarterFeedbackStatus::Ignored => -1.5,
+            StarterFeedbackStatus::Failed => -4.0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct StarterFeedbackRecord {
+    pub index: u64,
+    pub tentacle_id: String,
+    pub objective: String,
+    pub group: Option<String>,
+    pub status: StarterFeedbackStatus,
+    pub score: f32,
+    pub summary: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct StarterFeedbackInput {
+    pub tentacle_id: String,
+    pub objective: String,
+    pub group: Option<String>,
+    pub status: StarterFeedbackStatus,
+    pub summary: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -336,6 +376,7 @@ pub struct StatusReport {
     pub feed_trace_count: usize,
     pub check_history_count: usize,
     pub repair_outcome_count: usize,
+    pub starter_feedback_count: usize,
     pub installed_profiles: Vec<String>,
     pub tentacles: Vec<TentacleStatus>,
     pub goal: Option<GoalSnapshot>,
@@ -345,6 +386,7 @@ pub struct StatusReport {
     pub latest_need_queue_item: Option<NeedQueueItem>,
     pub latest_check: Option<CheckHistoryRecord>,
     pub latest_repair_outcome: Option<RepairOutcome>,
+    pub latest_starter_feedback: Option<StarterFeedbackRecord>,
     pub warnings: Vec<String>,
     pub next_action: String,
 }
@@ -1488,6 +1530,10 @@ pub struct HarnessState {
     pub repair_outcomes: Vec<RepairOutcome>,
     #[serde(default)]
     pub next_repair_outcome_index: u64,
+    #[serde(default)]
+    pub starter_feedback: Vec<StarterFeedbackRecord>,
+    #[serde(default)]
+    pub next_starter_feedback_index: u64,
 }
 
 impl HarnessState {
@@ -1556,7 +1602,8 @@ impl HarnessState {
         let trace_dropped = self.compact_feed_traces(memory_keep);
         let check_dropped = self.compact_check_history(memory_keep);
         let repair_dropped = self.compact_repair_outcomes(memory_keep);
-        let compacted = trace_dropped + check_dropped + repair_dropped;
+        let starter_dropped = self.compact_starter_feedback(memory_keep);
+        let compacted = trace_dropped + check_dropped + repair_dropped + starter_dropped;
         let harness_summary = if routes_changed > 0 && compacted > 0 {
             format!("evolved {routes_changed} routes, compacted {compacted} harness records")
         } else if compacted > 0 {
@@ -1607,6 +1654,14 @@ impl HarnessState {
                         (
                             "repair_outcomes_dropped".to_string(),
                             repair_dropped.to_string(),
+                        ),
+                        (
+                            "starter_feedback".to_string(),
+                            self.starter_feedback.len().to_string(),
+                        ),
+                        (
+                            "starter_feedback_dropped".to_string(),
+                            starter_dropped.to_string(),
                         ),
                     ]),
                 },
@@ -2270,6 +2325,7 @@ impl HarnessState {
             feed_trace_count: self.feed_traces.len(),
             check_history_count: self.check_history.len(),
             repair_outcome_count: self.repair_outcomes.len(),
+            starter_feedback_count: self.starter_feedback.len(),
             installed_profiles: self.installed_profiles.clone(),
             tentacles,
             goal,
@@ -2279,6 +2335,7 @@ impl HarnessState {
             latest_need_queue_item: self.need_queue.last().cloned(),
             latest_check: self.check_history.last().cloned(),
             latest_repair_outcome: self.repair_outcomes.last().cloned(),
+            latest_starter_feedback: self.starter_feedback.last().cloned(),
             warnings,
             next_action,
         }
@@ -2484,6 +2541,64 @@ impl HarnessState {
             summary,
             pet_event,
         })
+    }
+
+    pub fn record_starter_feedback(
+        &mut self,
+        input: StarterFeedbackInput,
+    ) -> StarterFeedbackRecord {
+        self.next_starter_feedback_index += 1;
+        let record = StarterFeedbackRecord {
+            index: self.next_starter_feedback_index,
+            tentacle_id: short_text(&input.tentacle_id, 96),
+            objective: short_text(&input.objective, STARTER_FEEDBACK_OBJECTIVE_BYTES),
+            group: input.group.map(|group| short_text(&group, 64)),
+            score: input.status.score(),
+            status: input.status,
+            summary: short_text(&input.summary, STARTER_FEEDBACK_SUMMARY_BYTES),
+        };
+        let event_state = match record.status {
+            StarterFeedbackStatus::Accepted => "success",
+            StarterFeedbackStatus::Ignored => "harness",
+            StarterFeedbackStatus::Failed => "blocked",
+        };
+        self.record_pet_event(
+            event_state,
+            "starter feedback",
+            format!("{} {}", record.tentacle_id, record.summary),
+            match record.status {
+                StarterFeedbackStatus::Accepted => Status::Satisfied,
+                StarterFeedbackStatus::Ignored => Status::Partial,
+                StarterFeedbackStatus::Failed => Status::Failed,
+            },
+        );
+        self.starter_feedback.push(record.clone());
+        record
+    }
+
+    pub fn recent_starter_feedback_for_tentacle(
+        &self,
+        tentacle_id: &str,
+        limit: usize,
+    ) -> Vec<StarterFeedbackRecord> {
+        let mut records = self
+            .starter_feedback
+            .iter()
+            .filter(|record| record.tentacle_id == tentacle_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        let start = records.len().saturating_sub(limit);
+        records.drain(0..start);
+        records
+    }
+
+    pub fn compact_starter_feedback(&mut self, keep: usize) -> usize {
+        if self.starter_feedback.len() <= keep {
+            return 0;
+        }
+        let dropped = self.starter_feedback.len() - keep;
+        self.starter_feedback.drain(0..dropped);
+        dropped
     }
 
     pub fn recent_feed_traces(&self, limit: usize) -> Vec<FeedTraceRecord> {
