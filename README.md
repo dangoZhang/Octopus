@@ -34,6 +34,7 @@ octopus brain "what should the brain ask next?"
 octopus brain --apply-json '{"summary":"external chat explored","needs":[{"kind":"verify","query":"goal evidence stays clean"}]}' --save "what should the brain ask next?"
 octopus explore --save "what should the brain ask next?"
 octopus needs
+octopus context observe .
 octopus need observe README.md
 octopus repair .
 octopus feedback 1 satisfied "useful evidence"
