@@ -171,6 +171,7 @@ jobs:
       - run: grep -q "needQueueControls" docs/app.html
       - run: grep -q "Accepted Needs" docs/app.html
       - run: grep -q "Rewrite Reply" docs/app.html
+      - run: grep -q "Rewrite Session" docs/app.html
       - run: grep -q -- "--rewrite" crates/octopus-core/src/main.rs
       - run: grep -q "takeQueuedNeed" docs/app.html
       - run: grep -q "dropQueuedNeed" docs/app.html
