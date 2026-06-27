@@ -591,6 +591,7 @@
       let currentContextReport = null;
       let currentProductReport = null;
       let currentStarterReport = null;
+      let starterFilter = "all";
       let currentPreflightReport = null;
       let currentGoalStatusReport = null;
       let currentBrainPromptReport = null;
@@ -1281,8 +1282,13 @@
         const root = $("starterReport");
         root.className = "stack";
         root.textContent = "";
+        const recommendations = report.recommendations || [];
+        const filtered = starterFilter === "all"
+          ? recommendations
+          : recommendations.filter((item) => (item.group || "other") === starterFilter);
         root.appendChild(starterSummary(report));
-        root.appendChild(reportList("Recommendations", report.recommendations || [], starterItem));
+        root.appendChild(starterGroupControls(recommendations));
+        root.appendChild(reportList("Recommendations", filtered, starterItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
@@ -1862,6 +1868,7 @@
           ["Policy", report.policy || "metadata only"],
           ["State", report.state_path || "state"],
           ["Installed", (report.installed || []).join(", ") || "none"],
+          ["Filter", starterFilter],
         ].forEach(([label, value]) => {
           const metric = document.createElement("div");
           metric.className = "metric";
@@ -1875,11 +1882,29 @@
         return grid;
       }
 
+      function starterGroupControls(items) {
+        const wrap = document.createElement("div");
+        wrap.className = "toolbar";
+        const groups = ["all", ...new Set(items.map((item) => item.group || "other"))];
+        groups.forEach((group) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = group.replaceAll("_", " ");
+          if (group === starterFilter) button.className = "primary";
+          button.addEventListener("click", () => {
+            starterFilter = group;
+            if (currentStarterReport) renderStarterReport(currentStarterReport);
+          });
+          wrap.appendChild(button);
+        });
+        return wrap;
+      }
+
       function starterItem(item) {
         const element = document.createElement("li");
         const badge = document.createElement("span");
         badge.className = item.installed ? "badge ok" : "badge";
-        badge.textContent = item.installed ? "installed" : "available";
+        badge.textContent = item.installed ? `installed · ${item.group || "other"}` : item.group || "available";
         const command = document.createElement("span");
         command.className = "check-command";
         command.textContent = `${item.id || "tentacle"} · ${item.first_need_kind || "observe"}`;
@@ -2821,6 +2846,7 @@
         currentContextReport = null;
         currentProductReport = null;
         currentStarterReport = null;
+        starterFilter = "all";
         currentPreflightReport = null;
         currentGoalStatusReport = null;
         currentBrainPromptReport = null;
@@ -2878,6 +2904,7 @@
           currentContextReport = null;
           currentProductReport = null;
           currentStarterReport = null;
+          starterFilter = "all";
           currentPreflightReport = null;
           currentGoalStatusReport = null;
           currentBrainPromptReport = null;

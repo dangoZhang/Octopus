@@ -241,6 +241,7 @@ struct StarterReport {
 struct StarterRecommendation {
     id: String,
     name: String,
+    group: String,
     source_kind: String,
     reason: String,
     installed: bool,
@@ -4201,6 +4202,7 @@ fn starter_report(
         recommendations.push(StarterRecommendation {
             id: candidate.id.clone(),
             name: candidate.name,
+            group: starter_group(&candidate.id).to_string(),
             source_kind: candidate.source_kind,
             reason,
             installed: candidate.installed,
@@ -4415,6 +4417,21 @@ fn starter_priority(id: &str) -> i32 {
 
 fn starter_priority_score(id: &str) -> i32 {
     20 - starter_priority(id)
+}
+
+fn starter_group(id: &str) -> &'static str {
+    match id {
+        "swe-agent" => "repo",
+        "computer-use-agent" => "desktop",
+        "harness-repair-agent" => "repair",
+        "repo-maintainer" => "self_iteration",
+        "research" => "research",
+        "bash-only" => "script",
+        "json-feed" => "runtime",
+        "memory" => "memory",
+        "visual" => "visual",
+        _ => "other",
+    }
 }
 
 fn starter_need_kind(objective: &str, needs: &[String]) -> String {
@@ -4879,7 +4896,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         product_capability(
             "starter_panel",
             if app_exists { "ready" } else { "missing" },
-            "native HTML app renders starter tentacle recommendations with install, check, and first-Need actions",
+            "native HTML app renders grouped starter tentacle recommendations with install, check, and first-Need actions",
             Some("octopus starter \"build a clean-brain agent\""),
         ),
         product_capability(
@@ -9031,6 +9048,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .unwrap();
         assert_eq!(swe.first_need_kind, "execute");
         assert_eq!(swe.first_need_query, "fix repo tests");
+        assert_eq!(swe.group, "repo");
         assert!(swe.first_need_command.contains(" need execute "));
         assert!(state.feed_traces.is_empty());
         assert!(state.routes.scores.is_empty());
