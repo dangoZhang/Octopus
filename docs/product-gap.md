@@ -170,6 +170,7 @@ Updated: 2026-06-27
 - Rebuilt README as a shorter product landing page with the Octopus loop, differentiators, install path, runnable first loop, and pre-release line kept above the links.
 - Added a structured native HTML starter panel with recommendation cards, Use, Install, First Need, and Check actions.
 - Added starter grouping and app-side filters for repo, desktop, repair, self-iteration, research, runtime, memory, visual, and script work.
+- Rolled the cleanup/version cadence to `0.0.10` after grouped starter filters, first-run chooser wording, clean-brain Need audit continuity, repair outcome loop, and README/current-line cleanup.
 
 ## Remaining Gaps
 

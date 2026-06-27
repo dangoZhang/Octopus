@@ -1,6 +1,6 @@
 # Version Plan
 
-Current version: `0.0.9`.
+Current version: `0.0.10`.
 
 Cadence from this plan forward:
 
@@ -25,8 +25,8 @@ Real-machine test gate for `0.1.0` and later tags:
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
-Last cleanup/version correction: `0.0.9` on 2026-06-27. Scope: reviewable Need Queue scripts, app queue review controls, repair-outcome-driven harness beat evolution, and README/control-surface polish; no tag cut.
+Last cleanup/version correction: `0.0.10` on 2026-06-27. Scope: grouped starter filters, first-run chooser wording, clean-brain Need audit continuity, repair outcome loop, and README/current-line cleanup; no tag cut.
 
-Product commits toward `0.0.10`: 8/8.
+Product commits toward `0.0.11`: 0/8.
 
-Next planned cleanup/version commit: `0.0.10`.
+Next planned cleanup/version commit: `0.0.11`.
