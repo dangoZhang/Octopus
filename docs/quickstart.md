@@ -50,6 +50,7 @@ octopus bootstrap
 octopus goal set --constraint "keep tools outside the brain" "make this repo easier to use"
 octopus goal refine "prefer cognitive Needs over tool instructions"
 octopus brain --session "what should the brain ask next?"
+octopus brain --align --save "does this still follow the goal?"
 octopus brain --focus verify --save "what proof matters?"
 octopus need observe README.md
 octopus feedback latest satisfied "useful evidence"

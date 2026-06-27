@@ -46,6 +46,7 @@ source .octopus/llm.env
 octopus provider check
 octopus brain --brief --save "compress the clean brain state"
 octopus brain --intent --save "what should the brain ask next?"
+octopus brain --align --save "does this still follow the goal?"
 octopus need verify .
 ```
 
@@ -53,7 +54,7 @@ Strong-model knobs such as `OCTOPUS_LLM_REASONING_EFFORT`, `OCTOPUS_LLM_MAX_TOKE
 
 ## Works Today
 
-- Clean-brain Goal, Need, Feed, queue, context, intent, brief, focused Need kinds, agenda, clarification, deliberation, reflection, memory, council, synthesis, and external-chat sessions.
+- Clean-brain Goal, Need, Feed, queue, context, intent, brief, focused Need kinds, agenda, clarification, deliberation, reflection, alignment, memory, council, synthesis, and external-chat sessions.
 - Seed tentacles for SWE work, computer-use adapters, repo maintenance, harness repair, and write-and-run local execution.
 - Tool-side LLM planning with grants, traces, route scores, feedback scoring, and reviewable feedback-driven harness evolution.
 - Native HTML app server, install reports, provider setup, preflight gates, and pixel pet SVG export.

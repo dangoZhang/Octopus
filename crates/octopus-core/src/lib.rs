@@ -1850,6 +1850,35 @@ where
         .map_err(|error| format!("invalid clean-brain reflection JSON: {error}"))
 }
 
+fn brain_alignment_from_chat<C>(
+    brain: &BrainContextReport,
+    prompt: &str,
+    client: &mut C,
+) -> Result<BrainReflectionDraft, String>
+where
+    C: ChatClient,
+{
+    let context = serde_json::json!({
+        "policy": brain.policy,
+        "slots": brain.slots,
+        "goal": brain.goal,
+        "mem": brain.mem,
+        "recent_need_feed": brain.turns,
+    });
+    let response = client.chat(&[
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain alignment layer. You see only Goal, Mem, Need, and Feed. Judge whether the current cognitive direction follows the Goal and constraints, name supporting evidence, name alignment gaps, ask goal-facing questions, and express only cognitive Needs. Do not choose tools, APIs, files, commands, routes, tentacles, or implementation. Return only JSON: {\"summary\":\"short alignment check\",\"goal_state\":\"aligned|partial|uncertain|blocked\",\"evidence\":[\"evidence from Goal/Mem/Need/Feed\"],\"gaps\":[\"goal alignment gap\"],\"questions\":[\"open goal-facing question\"],\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!("Clean brain context JSON: {context}\nUser alignment prompt: {prompt}"),
+        ),
+    ])?;
+    serde_json::from_str::<BrainReflectionDraft>(&response.content)
+        .map_err(|error| format!("invalid clean-brain alignment JSON: {error}"))
+}
+
 fn brain_synthesis_from_chat<C>(
     brain: &BrainContextReport,
     prompt: &str,
@@ -2651,6 +2680,43 @@ impl HarnessState {
         self.brain_reflection_report(brain, prompt, "external_reflection", draft)
     }
 
+    pub fn clean_brain_align(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+    ) -> BrainReflectionReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let draft = local_brain_alignment(&brain, &prompt);
+        self.brain_alignment_report(brain, prompt, "local_align", draft)
+    }
+
+    pub fn clean_brain_align_with_client<C>(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        client: &mut C,
+    ) -> Result<BrainReflectionReport, String>
+    where
+        C: ChatClient,
+    {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let draft = brain_alignment_from_chat(&brain, &prompt, client)?;
+        Ok(self.brain_alignment_report(brain, prompt, "llm_align", draft))
+    }
+
+    pub fn clean_brain_align_from_draft(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        draft: BrainReflectionDraft,
+    ) -> BrainReflectionReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        self.brain_alignment_report(brain, prompt, "external_align", draft)
+    }
+
     pub fn clean_brain_synthesize_from_input(
         &self,
         prompt: impl Into<String>,
@@ -3279,6 +3345,54 @@ impl HarnessState {
             }));
             next.push(format!(
                 "octopus brain --reflect --save {}",
+                shell_arg(&prompt)
+            ));
+        }
+        next.sort();
+        next.dedup();
+        BrainReflectionReport {
+            policy: brain.policy,
+            source: source.to_string(),
+            prompt,
+            goal: brain.goal,
+            mem: brain.mem,
+            recent: brain.turns,
+            summary: draft.summary,
+            goal_state: draft.goal_state,
+            evidence: draft.evidence,
+            gaps: draft.gaps,
+            questions: draft.questions,
+            needs: draft.needs,
+            audit,
+            next,
+        }
+    }
+
+    fn brain_alignment_report(
+        &self,
+        brain: BrainContextReport,
+        prompt: String,
+        source: &str,
+        draft: BrainReflectionDraft,
+    ) -> BrainReflectionReport {
+        let audit = audit_clean_brain_needs(&draft.needs);
+        let mut next = vec!["octopus brain --align --session".to_string()];
+        if audit.clean_needs.is_empty() {
+            if audit.issue_count > 0 {
+                next.push("rewrite alignment Needs as cognitive requests before Feed".to_string());
+            } else {
+                next.push("octopus brain --align \"does this still follow the goal?\"".to_string());
+            }
+        } else {
+            next.extend(audit.clean_needs.iter().map(|need| {
+                format!(
+                    "octopus need {} {}",
+                    kind_key(&need.kind),
+                    shell_arg(&need.query)
+                )
+            }));
+            next.push(format!(
+                "octopus brain --align --save {}",
                 shell_arg(&prompt)
             ));
         }
@@ -9383,6 +9497,88 @@ fn local_brain_reflection(brain: &BrainContextReport, prompt: &str) -> BrainRefl
     }
 }
 
+fn local_brain_alignment(brain: &BrainContextReport, prompt: &str) -> BrainReflectionDraft {
+    let focus = clean_optional(Some(prompt))
+        .map(str::to_string)
+        .or_else(|| brain.goal.as_ref().map(|goal| goal.objective.clone()))
+        .unwrap_or_else(|| "current cognitive direction".to_string());
+    let mut evidence = Vec::new();
+    if let Some(goal) = &brain.goal {
+        evidence.push(format!("goal: {}", goal.objective));
+        if !goal.constraints.is_empty() {
+            evidence.push(format!("constraints: {}", goal.constraints.join("; ")));
+        }
+    }
+    if let Some(turn) = brain.turns.last() {
+        evidence.push(format!(
+            "latest Need/Feed: {} -> {}",
+            turn.need.query, turn.feed.summary
+        ));
+    }
+    if !brain.mem.is_empty() {
+        evidence.push(format!("memory records available: {}", brain.mem.len()));
+    }
+    if evidence.is_empty() {
+        evidence.push("no Goal/Mem/Need/Feed evidence for alignment yet".to_string());
+    }
+
+    let mut gaps = Vec::new();
+    if brain.goal.is_none() {
+        gaps.push("alignment cannot be judged without an explicit Goal".to_string());
+    }
+    if brain.turns.is_empty() {
+        gaps.push("no recent Need/Feed turn to compare against the Goal".to_string());
+    }
+    if brain
+        .goal
+        .as_ref()
+        .is_some_and(|goal| goal.constraints.is_empty())
+    {
+        gaps.push("Goal has no durable constraints to check".to_string());
+    }
+    if gaps.is_empty() {
+        gaps.push(format!("alignment evidence for {focus} should be verified"));
+    }
+
+    let questions = vec![
+        format!("which part of {focus} most directly serves the Goal?"),
+        format!("which constraint could {focus} violate?"),
+    ];
+    let goal_state = if brain.goal.is_none() {
+        "uncertain".to_string()
+    } else if brain.turns.is_empty() {
+        "partial".to_string()
+    } else {
+        "aligned".to_string()
+    };
+    let mut needs = local_brain_explore_needs(brain, &focus);
+    needs.push(GoalNeedSuggestion {
+        kind: NeedKind::Verify,
+        query: format!("whether {focus} follows the active Goal and constraints"),
+    });
+    needs.push(GoalNeedSuggestion {
+        kind: NeedKind::Remember,
+        query: format!("alignment signal for {focus}"),
+    });
+    let mut seen = BTreeMap::new();
+    let needs = needs
+        .into_iter()
+        .filter(|need| {
+            let key = format!("{}:{}", kind_key(&need.kind), need.query);
+            seen.insert(key, ()).is_none()
+        })
+        .collect();
+
+    BrainReflectionDraft {
+        summary: format!("clean-brain alignment for {focus}"),
+        goal_state,
+        evidence,
+        gaps,
+        questions,
+        needs,
+    }
+}
+
 type BrainSynthesisParts = (
     usize,
     String,
@@ -11238,6 +11434,84 @@ mod tests {
 
         assert_eq!(saved.queued.len(), report.needs.len());
         assert_eq!(state.pending_need_queue_count(), report.needs.len());
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
+    }
+
+    #[test]
+    fn clean_brain_aligns_goal_without_feed() {
+        let mut goal = Goal::new("ship a clean-brain product");
+        goal.refine("keep tools outside the main brain".to_string());
+        let mut state = HarnessState {
+            goal: Some(goal),
+            ..HarnessState::default()
+        };
+        state
+            .memory
+            .remember("alignment should check Goal constraints only");
+
+        let report = state.clean_brain_align("does this still serve the goal?", 5);
+
+        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
+        assert_eq!(report.source, "local_align");
+        assert!(report.summary.contains("alignment"));
+        assert!(!report.evidence.is_empty());
+        assert!(!report.gaps.is_empty());
+        assert!(!report.questions.is_empty());
+        assert!(report
+            .needs
+            .iter()
+            .any(|need| need.kind == NeedKind::Verify));
+        assert_eq!(report.audit.issue_count, 0);
+        assert!(report
+            .next
+            .iter()
+            .any(|next| next.contains("brain --align --save")));
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
+
+        let saved = state.queue_reflection_report(&report);
+
+        assert_eq!(saved.queued.len(), report.needs.len());
+        assert_eq!(state.pending_need_queue_count(), report.needs.len());
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
+    }
+
+    #[test]
+    fn clean_brain_align_with_client_keeps_context_clean() {
+        struct FakeChat;
+
+        impl ChatClient for FakeChat {
+            fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                let combined = messages
+                    .iter()
+                    .map(|message| message.content.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert!(combined.contains("clean-brain alignment layer"));
+                assert!(combined.contains("Goal, Mem, Need, and Feed"));
+                assert!(combined.contains("Do not choose tools"));
+                assert!(!combined.contains("ToolSpec"));
+                Ok(ChatResponse {
+                    content: r#"{"summary":"alignment ok","goal_state":"aligned","evidence":["goal is explicit"],"gaps":["need proof"],"questions":["which Need best serves the goal?"],"needs":[{"kind":"verify","query":"whether the next Need follows the Goal"}]}"#.to_string(),
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
+        let state = HarnessState {
+            goal: Some(Goal::new("align clean-brain Needs")),
+            ..HarnessState::default()
+        };
+        let mut client = FakeChat;
+        let report = state
+            .clean_brain_align_with_client("check alignment", 5, &mut client)
+            .unwrap();
+
+        assert_eq!(report.source, "llm_align");
+        assert_eq!(report.goal_state, "aligned");
+        assert_eq!(report.audit.status, Status::Satisfied);
         assert!(state.feed_traces.is_empty());
         assert!(state.routes.scores.is_empty());
     }

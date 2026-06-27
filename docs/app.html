@@ -523,6 +523,7 @@
             <button type="button" id="runBrainAgendaSession">Agenda Session</button>
             <button type="button" id="runBrainDeliberateSession">Deliberate Session</button>
             <button type="button" id="runBrainReflectSession">Reflect Session</button>
+            <button type="button" id="runBrainAlignSession">Align Session</button>
             <button type="button" id="runBrainMemorySession">Memory Session</button>
             <button type="button" id="runBrainSynthesisSession">Synthesize Session</button>
             <button type="button" id="runBrainIntentSession">Intent Session</button>
@@ -543,6 +544,7 @@
             <button type="button" id="runBrainPrefixAgenda">Agenda Model</button>
             <button type="button" id="runBrainDeliberate">Deliberate</button>
             <button type="button" id="runBrainReflect">Reflect</button>
+            <button type="button" id="runBrainAlign">Align</button>
             <button type="button" id="runBrainMemory">Memory</button>
             <button type="button" id="runBrainCouncil">Brain Council</button>
             <button type="button" id="runBrainCouncilModels">Council Models</button>
@@ -552,6 +554,7 @@
             <button type="button" id="applyBrainAgenda">Apply Agenda</button>
             <button type="button" id="applyBrainDeliberation">Apply Deliberate</button>
             <button type="button" id="applyBrainReflection">Apply Reflect</button>
+            <button type="button" id="applyBrainAlignment">Apply Align</button>
             <button type="button" id="applyBrainMemory">Apply Memory</button>
             <button type="button" id="applyBrainSynthesis">Apply Synthesis</button>
             <button type="button" id="rewriteBrainReply">Rewrite Reply</button>
@@ -732,6 +735,9 @@
           `octopus --state ${shellQuote(state)} --json brain --llm-prefix ${shellQuote(providerPrefix)} --agenda --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --reflect --session ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --reflect --save ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --align --session ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --align --save ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --llm-prefix ${shellQuote(providerPrefix)} --align --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --memory --session ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --memory --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --intent --session ${shellQuote(goal)}`,
@@ -750,6 +756,7 @@
           `octopus --state ${shellQuote(state)} --json brain --clarify --apply clarification.json --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --agenda --apply agenda.json --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --reflect --apply reflection.json --save ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --align --apply alignment.json --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --memory --apply memory.json --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --intent --apply intent.json --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --brief --apply brief.json --save ${shellQuote(goal)}`,
@@ -1292,6 +1299,21 @@
         }
       }
 
+      async function runBrainAlignSessionReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        $("brainPromptReport").textContent = "writing alignment session...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "brain", "--align", "--session", goal]);
+          currentBrainSessionReport = report;
+          renderBrainSessionReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("brainPromptReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runBrainMemorySessionReport() {
         const state = $("state").value.trim() || ".octopus/state.json";
         const goal = $("goal").value.trim() || "build a clean-brain agent";
@@ -1553,6 +1575,23 @@
         }
       }
 
+      async function runBrainAlignReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        $("exploreReport").textContent = "checking alignment...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "brain", "--align", "--save", goal]);
+          currentExploreReport = report.reflection || null;
+          currentNeedQueueReport = report.queue || null;
+          renderExploreReport(report.reflection || {});
+          renderNeedQueueReport(report.queue || {});
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("exploreReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runBrainMemoryReport() {
         const state = $("state").value.trim() || ".octopus/state.json";
         const goal = $("goal").value.trim() || "build a clean-brain agent";
@@ -1692,6 +1731,28 @@
         $("exploreReport").textContent = "applying reflection...";
         try {
           const report = await runBridgeJson(["--state", state, "--json", "brain", "--reflect", "--apply-json", reply, "--save", goal]);
+          currentExploreReport = report.reflection || null;
+          currentNeedQueueReport = report.queue || null;
+          renderExploreReport(report.reflection || {});
+          renderNeedQueueReport(report.queue || {});
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("exploreReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function applyBrainAlignment() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        const reply = $("brainReply").value.trim();
+        if (!reply) {
+          $("exploreReport").textContent = "empty alignment reply";
+          return;
+        }
+        $("exploreReport").textContent = "applying alignment...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "brain", "--align", "--apply-json", reply, "--save", goal]);
           currentExploreReport = report.reflection || null;
           currentNeedQueueReport = report.queue || null;
           renderExploreReport(report.reflection || {});
@@ -4159,6 +4220,7 @@
       $("runBrainAgendaSession").addEventListener("click", runBrainAgendaSessionReport);
       $("runBrainDeliberateSession").addEventListener("click", runBrainDeliberateSessionReport);
       $("runBrainReflectSession").addEventListener("click", runBrainReflectSessionReport);
+      $("runBrainAlignSession").addEventListener("click", runBrainAlignSessionReport);
       $("runBrainMemorySession").addEventListener("click", runBrainMemorySessionReport);
       $("runBrainSynthesisSession").addEventListener("click", runBrainSynthesisSessionReport);
       $("runBrainIntentSession").addEventListener("click", runBrainIntentSessionReport);
@@ -4181,6 +4243,7 @@
       $("runBrainPrefixAgenda").addEventListener("click", runBrainPrefixAgendaReport);
       $("runBrainDeliberate").addEventListener("click", runBrainDeliberateReport);
       $("runBrainReflect").addEventListener("click", runBrainReflectReport);
+      $("runBrainAlign").addEventListener("click", runBrainAlignReport);
       $("runBrainMemory").addEventListener("click", runBrainMemoryReport);
       $("runBrainCouncil").addEventListener("click", runBrainCouncilReport);
       $("runBrainCouncilModels").addEventListener("click", runBrainCouncilModelsReport);
@@ -4190,6 +4253,7 @@
       $("applyBrainAgenda").addEventListener("click", applyBrainAgenda);
       $("applyBrainDeliberation").addEventListener("click", applyBrainDeliberation);
       $("applyBrainReflection").addEventListener("click", applyBrainReflection);
+      $("applyBrainAlignment").addEventListener("click", applyBrainAlignment);
       $("applyBrainMemory").addEventListener("click", applyBrainMemory);
       $("applyBrainSynthesis").addEventListener("click", applyBrainSynthesis);
       $("rewriteBrainReply").addEventListener("click", () => applyBrainReply(false, true));
