@@ -26,7 +26,7 @@ Updated: 2026-06-27
 - The native HTML app renders starter recommendations as action cards with Use, Install, First Need, and Check controls.
 - Starter recommendations are grouped for first-run work: repo, desktop, self-iteration, repair, research, script, runtime, memory, and visual.
 - Starter recommendation cards now include group reasons and manifest-derived signals so first-run users can see why a tentacle was recommended.
-- README now opens as a product landing page: clean-brain value, thinking tentacles, pixel Octopus, install path, and current maturity are visible before docs links.
+- README now opens as a product landing page: clean-brain story, thinking tentacles, pixel Octopus, install path, usable surface, and maturity line are visible before docs links.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
 - `status --json` exposes recent clean-brain Goal turns so Goal refinement history stays visible without replaying Feed.
@@ -182,6 +182,7 @@ Updated: 2026-06-27
 - Added heartbeat repair plan pickup so verify Needs read the latest `REPAIR_PLAN.json` and return the next review/grant/apply/score Feed.
 - Added repair-plan surfacing in `octopus repair` and the native Repair panel so users can see the latest plan path and review commands without digging into metadata.
 - Added starter recommendation evidence signals so each card can explain its group, objective matches, Needs, tools, runtimes, evolution surfaces, LLM readiness, and install state.
+- Reworked README into a product-page share surface with a first-screen story, edge-intelligence insight, differentiators, install/use path, and usable pre-release boundary.
 
 ## Remaining Gaps
 
