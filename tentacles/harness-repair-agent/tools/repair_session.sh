@@ -7,7 +7,8 @@ if [ ! -t 0 ]; then
   cat > "$payload_file" || true
 fi
 
-python3 - "$payload_file" "$@" <<'PY'
+tool_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+OCTOPUS_REPAIR_TOOL_PATH="$tool_path" python3 - "$payload_file" "$@" <<'PY'
 import json
 import os
 import re
@@ -142,7 +143,129 @@ def outcome_memory_markdown(outcomes, workspace, outcomes_file):
     return "\n".join(lines) + "\n"
 
 
+def read_text(path, limit=12000):
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "\n\n[truncated]\n"
+
+
+def source_tentacle_roots(workspace):
+    roots = []
+    workspace_root = workspace / "tentacles"
+    if workspace_root.is_dir():
+        roots.append(workspace_root)
+    tool_path = os.environ.get("OCTOPUS_REPAIR_TOOL_PATH", "")
+    if tool_path:
+        for parent in Path(tool_path).resolve().parents:
+            if parent.name == "tentacles" and parent.is_dir():
+                roots.append(parent)
+            nested = parent / "tentacles"
+            if nested.is_dir():
+                roots.append(nested)
+    unique = []
+    seen = set()
+    for root in roots:
+        key = str(root)
+        if key not in seen:
+            unique.append(root)
+            seen.add(key)
+    return unique
+
+
+def tool_from_trace(trace):
+    if not isinstance(trace, dict):
+        return ""
+    metadata = trace.get("metadata") if isinstance(trace.get("metadata"), dict) else {}
+    return str(trace.get("tool") or metadata.get("tool") or "")
+
+
+def tool_from_check(record):
+    if not isinstance(record, dict):
+        return ""
+    command = str(record.get("command") or "")
+    match = re.search(r"tools/([A-Za-z0-9_-]+)\.(?:sh|py|js|ts|rb|go)", command)
+    return match.group(1) if match else ""
+
+
+def manifest_tool_entrypoint(manifest, tool_id):
+    for tool in manifest.get("tools") or []:
+        if not isinstance(tool, dict) or tool.get("id") != tool_id:
+            continue
+        implementation = tool.get("implementation") or {}
+        return str(implementation.get("entrypoint") or "")
+    return ""
+
+
+def build_code_context(workspace, target_tentacle, target_tool, latest_trace, latest_check, latest_outcome):
+    tentacle_id = target_tentacle if target_tentacle and target_tentacle != "unknown" else "harness-repair-agent"
+    tool_id = target_tool or tool_from_trace(latest_trace) or tool_from_check(latest_check)
+    if not tool_id and tentacle_id == "harness-repair-agent":
+        tool_id = "repair_session"
+    roots = source_tentacle_roots(workspace)
+    tentacle_dir = next((root / tentacle_id for root in roots if (root / tentacle_id).is_dir()), None)
+    manifest_path = tentacle_dir / "manifest.json" if tentacle_dir else None
+    manifest = load_json(manifest_path) if manifest_path and manifest_path.exists() else {}
+    entrypoint = manifest_tool_entrypoint(manifest, tool_id) if tool_id else ""
+    tool_path = None
+    if tentacle_dir and entrypoint:
+        tool_path = (tentacle_dir / entrypoint).resolve()
+    elif tentacle_dir and tool_id:
+        for extension in ["sh", "py", "js", "ts"]:
+            candidate = tentacle_dir / "tools" / f"{tool_id}.{extension}"
+            if candidate.exists():
+                tool_path = candidate.resolve()
+                break
+    manifest_text = read_text(manifest_path, 10000) if manifest_path and manifest_path.exists() else ""
+    tool_text = read_text(tool_path, 14000) if tool_path and tool_path.exists() else ""
+    lines = [
+        "# Harness Repair Code Context",
+        "",
+        "This file is local tentacle code evidence for repair-session planning.",
+        "It is used by the harness-repair tentacle, not by clean-brain context.",
+        "",
+        f"workspace: `{workspace}`",
+        f"tentacle: `{tentacle_id}`",
+        f"tool: `{tool_id or 'unknown'}`",
+        f"manifest: `{rel(manifest_path, workspace) if manifest_path else 'missing'}`",
+        f"tool_path: `{rel(tool_path, workspace) if tool_path else 'missing'}`",
+        "",
+        "latest signals:",
+        f"- trace: {compact(latest_trace, 260)}",
+        f"- check: {compact(latest_check, 260)}",
+        f"- repair outcome: {compact(latest_outcome, 260)}",
+        "",
+    ]
+    if manifest_text:
+        lines.extend(["## Manifest", "", "```json", manifest_text.rstrip(), "```", ""])
+    else:
+        lines.extend(["## Manifest", "", "No manifest found for target tentacle.", ""])
+    if tool_text:
+        lines.extend(["## Target Tool Code", "", "```", tool_text.rstrip(), "```", ""])
+    elif tool_id:
+        lines.extend(["## Target Tool Code", "", f"No local code found for tool `{tool_id}`.", ""])
+    prompt_excerpt = "\n".join(lines[:18])
+    if tool_text:
+        prompt_excerpt += "\n\nTARGET_TOOL_EXCERPT:\n" + tool_text[:3600]
+    elif manifest_text:
+        prompt_excerpt += "\n\nMANIFEST_EXCERPT:\n" + manifest_text[:2400]
+    return {
+        "tentacle": tentacle_id,
+        "tool": tool_id or "unknown",
+        "manifest": str(manifest_path) if manifest_path else "",
+        "tool_path": str(tool_path) if tool_path else "",
+        "roots": [str(root) for root in roots],
+        "markdown": "\n".join(lines) + "\n",
+        "prompt_excerpt": prompt_excerpt,
+    }
+
+
 def rel(path, root):
+    if path is None:
+        return "missing"
     try:
         return str(path.relative_to(root))
     except ValueError:
@@ -395,12 +518,14 @@ candidate = "none"
 source = "none"
 next_need = "execute octopus beat 200"
 commands = ["octopus beat 200", "octopus report", "octopus traces"]
+target_tool = ""
 
 if apply_plans:
     plan = apply_plans[-1]
     data = load_json(plan)
     target_tentacle = str(data.get("tentacle_id") or plan.parent.parent.name)
     candidate = str(data.get("candidate_id") or "runtime_code")
+    target_tool = str(data.get("tool") or data.get("tool_id") or "")
     source = rel(plan, workspace)
     next_need = f"verify apply plan {target_tentacle}/{candidate}"
     commands = [
@@ -418,10 +543,12 @@ elif proposals:
     commands = [f"octopus evolve recommend {target_tentacle}", "octopus beat 200"]
 elif latest_check and str(latest_check.get("status", "")).lower() in {"failed", "partial"}:
     target_tentacle = str(latest_check.get("tentacle_id") or "unknown")
+    target_tool = tool_from_check(latest_check)
     source = compact(latest_check.get("command", "check"))
     next_need = f"execute beat repair for {target_tentacle}"
 elif latest_trace and str(latest_trace.get("status", "")).lower() in {"failed", "partial"}:
     target_tentacle = str(latest_trace.get("tentacle") or "unknown")
+    target_tool = tool_from_trace(latest_trace)
     source = compact(latest_trace.get("summary", "feed_trace"))
     next_need = f"execute beat repair for {target_tentacle}"
 elif str(latest_repair_outcome.get("status") or latest_repair_outcome.get("outcome_status") or "").lower() in {"failed", "partial"}:
@@ -451,11 +578,20 @@ draft_md = session_dir / "DRAFT.md"
 next_need_json = session_dir / "NEXT_NEED.json"
 command_script = session_dir / "COMMANDS.sh"
 outcome_memory_md = session_dir / "OUTCOME_MEMORY.md"
+code_context_md = session_dir / "CODE_CONTEXT.md"
 outcome_command = (
     "octopus repair score <trace-index> satisfied \"repair improved Feed\""
 )
 next_need_kind, next_need_query = need_parts(next_need)
 outcome_sources = sorted({str(item.get("origin") or "unknown") for item in repair_outcomes})
+code_context = build_code_context(
+    workspace,
+    target_tentacle,
+    target_tool,
+    latest_trace,
+    latest_check,
+    latest_repair_outcome,
+)
 session = {
     "schema_version": "octopus-harness-repair-session-v1",
     "workspace": str(workspace),
@@ -466,6 +602,13 @@ session = {
     "next_need": next_need,
     "commands": commands,
     "outcome_memory": rel(outcome_memory_md, workspace),
+    "code_context": rel(code_context_md, workspace),
+    "code_context_target": {
+        "tentacle": code_context["tentacle"],
+        "tool": code_context["tool"],
+        "manifest": code_context["manifest"],
+        "tool_path": code_context["tool_path"],
+    },
     "signals": {
         "feed_traces": len(feed_traces),
         "check_history": len(check_history),
@@ -493,6 +636,7 @@ outcome_memory_md.write_text(
     outcome_memory_markdown(repair_outcomes, workspace, outcomes_file),
     encoding="utf-8",
 )
+code_context_md.write_text(code_context["markdown"], encoding="utf-8")
 command_script.write_text(
     "\n".join(
         [
@@ -554,12 +698,22 @@ prompt_md.write_text(
             f"- memory artifact: `{rel(outcome_memory_md, workspace)}`",
             *recent_outcome_lines,
             "",
+            "code context:",
+            f"- artifact: `{rel(code_context_md, workspace)}`",
+            f"- tentacle: `{code_context['tentacle']}`",
+            f"- tool: `{code_context['tool']}`",
+            f"- tool path: `{rel(Path(code_context['tool_path']), workspace) if code_context['tool_path'] else 'missing'}`",
+            "",
+            "code context excerpt:",
+            code_context["prompt_excerpt"],
+            "",
             "artifacts:",
             f"- session: `{rel(session_json, workspace)}`",
             f"- next need: `{rel(next_need_json, workspace)}`",
             f"- commands: `{rel(command_script, workspace)}`",
             f"- draft: `{rel(draft_md, workspace)}`",
             f"- outcome memory: `{rel(outcome_memory_md, workspace)}`",
+            f"- code context: `{rel(code_context_md, workspace)}`",
         ]
     )
     + "\n",
@@ -593,6 +747,7 @@ session_md.write_text(
             f"next need: `{rel(next_need_json, workspace)}`",
             f"commands: `{rel(command_script, workspace)}`",
             f"outcome memory: `{rel(outcome_memory_md, workspace)}`",
+            f"code context: `{rel(code_context_md, workspace)}`",
             f"outcome command: `{outcome_command}`",
         ]
     )
@@ -613,6 +768,10 @@ metadata = {
     "next_need_file": rel(next_need_json, workspace),
     "command_script": rel(command_script, workspace),
     "outcome_memory": rel(outcome_memory_md, workspace),
+    "code_context": rel(code_context_md, workspace),
+    "code_context_tentacle": code_context["tentacle"],
+    "code_context_tool": code_context["tool"],
+    "code_context_tool_path": code_context["tool_path"],
     "outcome_command": outcome_command,
     "repair_outcome_count": str(len(repair_outcomes)),
     "repair_outcome_sources": ",".join(outcome_sources),

@@ -10143,7 +10143,13 @@ print(json.dumps({
             Some("repair_session")
         );
         assert!(workspace.join(".octopus/harness-repair").exists());
-        for key in ["prompt", "draft", "next_need_file", "command_script"] {
+        for key in [
+            "prompt",
+            "draft",
+            "next_need_file",
+            "command_script",
+            "code_context",
+        ] {
             let path = feed
                 .metadata
                 .get(key)
@@ -10160,6 +10166,18 @@ print(json.dumps({
             feed.metadata.get("next_need_kind").map(String::as_str),
             Some("verify")
         );
+        assert_eq!(
+            feed.metadata.get("code_context_tool").map(String::as_str),
+            Some("repair_session")
+        );
+        let code_context = feed
+            .metadata
+            .get("code_context")
+            .map(|path| workspace.join(path))
+            .expect("code context metadata path");
+        let code_context_text = fs::read_to_string(&code_context).unwrap();
+        assert!(code_context_text.contains("Harness Repair Code Context"));
+        assert!(code_context_text.contains("repair_session.sh"));
         let session = feed
             .metadata
             .get("session")
@@ -10214,7 +10232,7 @@ print(json.dumps({
             .expect("follow-up prompt metadata");
         assert!(fs::read_to_string(prompt)
             .unwrap()
-            .contains("repair outcome memory"));
+            .contains("code context excerpt"));
         assert!(feed
             .evidence
             .iter()
