@@ -67,4 +67,4 @@ Strong-model knobs such as `OCTOPUS_LLM_REASONING_EFFORT`, `OCTOPUS_LLM_MAX_TOKE
 - Tool-side LLM planning with grants, traces, route scores, feedback scoring, and reviewable harness evolution drafts.
 - Native HTML app server, install reports, provider setup, preflight gates, and pixel pet SVG export.
 
-Pre-release line: `0.0.13`. `0.1.0` waits for recorded real-machine testing.
+Pre-release line: `0.0.14`. `0.1.0` waits for recorded real-machine testing.

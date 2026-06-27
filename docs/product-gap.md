@@ -1,6 +1,6 @@
 # Product Gap Log
 
-Updated: 2026-06-27
+Updated: 2026-06-28
 
 ## Current Shape
 
@@ -248,6 +248,7 @@ Updated: 2026-06-27
 - Added Doctor readiness actions so local app users can move from warnings to bootstrap, goal, provider, starter, preflight, seed checks, beat, or report flows without hunting through the command toolbar.
 - Added OpenAI-compatible provider tuning env so clean-brain and tentacle LLM calls can pass reasoning effort, token budget, sampling knobs, and provider-native extra JSON without changing Need text.
 - Added a First Run path to the native app so the local product can move from launch to a scored Need -> Feed -> Feedback readiness trace without creating a separate MVP route.
+- Rolled the cleanup/version cadence to `0.0.14` after biological research grounding, Doctor readiness, provider reasoning controls, release-gate hardening, seed check stability, First Run scored Feed feedback, app wording cleanup, and version consistency.
 
 ## Remaining Gaps
 

@@ -14602,10 +14602,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
 
         assert_eq!(content_type, "text/html");
         let app_text = String::from_utf8_lossy(&app);
-        assert!(app_text.contains("Command Surface"));
+        assert!(app_text.contains("Octopus App"));
         assert!(app_text.contains("127.0.0.1:8765"));
         assert!(app_text.contains("runStartupSnapshot"));
-        assert!(String::from_utf8_lossy(&index).contains("Command Surface"));
+        assert!(String::from_utf8_lossy(&index).contains("Octopus App"));
         assert!(String::from_utf8_lossy(pet_embedded).contains("pixel-pet"));
         assert!(bridge_static("/missing.html").is_err());
     }
