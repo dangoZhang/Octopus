@@ -496,7 +496,11 @@
             <button type="button" id="runBrainReflectSession">Reflect Session</button>
             <button type="button" id="runBrainMemorySession">Memory Session</button>
             <button type="button" id="runBrainSynthesisSession">Synthesize Session</button>
+            <button type="button" id="runBrainFocusSession">Focus Session</button>
             <button type="button" id="runBrainLive">Brain Live</button>
+            <button type="button" id="runBrainFocus">Focus Need</button>
+            <button type="button" id="runBrainFocusLive">Focus Live</button>
+            <button type="button" id="saveBrainFocus">Save Focus</button>
             <button type="button" id="runBrainClarify">Clarify</button>
             <button type="button" id="runBrainAgenda">Agenda</button>
             <button type="button" id="runBrainPrefixAgenda">Agenda Model</button>
@@ -684,6 +688,9 @@
           `octopus --state ${shellQuote(state)} --json brain --reflect --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --memory --session ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --memory --save ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --focus ${need} --session ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --focus ${need} --save ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --llm-prefix ${shellQuote(providerPrefix)} --focus ${need} --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --council --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --council --models ${shellQuote(providerPrefix)} --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --synthesize --session --apply drafts.json ${shellQuote(goal)}`,
@@ -692,6 +699,7 @@
           `octopus --state ${shellQuote(state)} --json brain --agenda --apply agenda.json --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --reflect --apply reflection.json --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --memory --apply memory.json --save ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --focus ${need} --apply focus.json --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --apply reply.json --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --goal --apply reply.json --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json explore ${shellQuote(goal)}`,
@@ -906,6 +914,22 @@
         }
       }
 
+      async function runBrainFocusSessionReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        const need = $("need").value;
+        $("brainPromptReport").textContent = "writing focus session...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "brain", "--focus", need, "--session", goal]);
+          currentBrainSessionReport = report;
+          renderBrainSessionReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("brainPromptReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runBrainRewriteSessionReport() {
         const state = $("state").value.trim() || ".octopus/state.json";
         const goal = $("goal").value.trim() || "build a clean-brain agent";
@@ -1064,6 +1088,33 @@
         $("exploreReport").textContent = save ? "saving live brain..." : "thinking...";
         try {
           const args = save ? ["--state", state, "--json", "brain", "--live", "--save", goal] : ["--state", state, "--json", "brain", "--live", goal];
+          const report = await runBridgeJson(args);
+          if (save) {
+            currentExploreReport = report.explore || null;
+            currentNeedQueueReport = report.queue || null;
+            renderExploreReport(report.explore || {});
+            renderNeedQueueReport(report.queue || {});
+          } else {
+            currentExploreReport = report;
+            renderExploreReport(report);
+          }
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("exploreReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runBrainFocusReport(save = false, live = false) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        const need = $("need").value;
+        $("exploreReport").textContent = save ? "saving focus..." : live ? "focusing live..." : "focusing...";
+        try {
+          const args = ["--state", state, "--json", "brain", "--focus", need];
+          if (live) args.push("--live");
+          if (save) args.push("--save");
+          args.push(goal);
           const report = await runBridgeJson(args);
           if (save) {
             currentExploreReport = report.explore || null;
@@ -3627,9 +3678,13 @@
       $("runBrainReflectSession").addEventListener("click", runBrainReflectSessionReport);
       $("runBrainMemorySession").addEventListener("click", runBrainMemorySessionReport);
       $("runBrainSynthesisSession").addEventListener("click", runBrainSynthesisSessionReport);
+      $("runBrainFocusSession").addEventListener("click", runBrainFocusSessionReport);
       $("refineGoal").addEventListener("click", () => runBridge("goalrefine"));
       $("runGoalStatus").addEventListener("click", runGoalStatusReport);
       $("runBrainLive").addEventListener("click", () => runBrainLiveReport(false));
+      $("runBrainFocus").addEventListener("click", () => runBrainFocusReport(false));
+      $("runBrainFocusLive").addEventListener("click", () => runBrainFocusReport(false, true));
+      $("saveBrainFocus").addEventListener("click", () => runBrainFocusReport(true));
       $("runBrainClarify").addEventListener("click", runBrainClarifyReport);
       $("runBrainAgenda").addEventListener("click", runBrainAgendaReport);
       $("runBrainPrefixAgenda").addEventListener("click", runBrainPrefixAgendaReport);

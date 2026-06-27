@@ -33,6 +33,7 @@ Run a first loop:
 ```bash
 octopus goal set --constraint "keep tools outside the brain" "make this repo easier to use"
 octopus brain --session "what should the brain ask next?"
+octopus brain --focus verify --save "what proof matters?"
 octopus context observe .
 octopus need observe README.md
 octopus feedback 1 satisfied "useful evidence"
@@ -53,12 +54,13 @@ octopus brain --clarify --save "what should the user clarify?"
 octopus brain --deliberate --save "think before the next Need"
 octopus brain --reflect --save "what evidence is missing?"
 octopus brain --memory --save "what should be remembered?"
+octopus brain --focus compare --save "which path should the brain compare?"
 octopus brain --live --save "what should the brain ask next?"
 ```
 
 ## Works Today
 
-- Clean-brain Goal, Need, Feed, queue, context, agenda, clarification, deliberation, reflection, memory, council, synthesis, and external-chat sessions.
+- Clean-brain Goal, Need, Feed, queue, context, focused Need kinds, agenda, clarification, deliberation, reflection, memory, council, synthesis, and external-chat sessions.
 - Seed tentacles for SWE work, computer-use adapters, repo maintenance, harness repair, and write-and-run local execution.
 - Tool-side LLM planning with grants, traces, route scores, feedback scoring, and reviewable harness evolution drafts.
 - Native HTML app server, install reports, provider setup, preflight gates, and pixel pet SVG export.

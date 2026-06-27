@@ -41,6 +41,7 @@ Run these from the project you want Octopus to inhabit:
 octopus goal set --constraint "keep tools outside the brain" "make this repo easier to use"
 octopus goal refine "prefer cognitive Needs over tool instructions"
 octopus brain --session "what should the brain ask next?"
+octopus brain --focus verify --save "what proof matters?"
 octopus need observe README.md
 octopus feedback 1 satisfied "useful evidence"
 octopus beat 200
@@ -56,6 +57,7 @@ octopus provider save openai
 source .octopus/llm.env
 octopus provider check
 octopus brain --agenda --save "what matters next?"
+octopus brain --focus compare --save "which path should the brain compare?"
 octopus brain --llm-prefix OCTOPUS_LLM --agenda --save "what matters next?"
 octopus brain --council --models OCTOPUS_LLM --save "ask clean brains"
 octopus brain --live --save "what should the brain ask next?"

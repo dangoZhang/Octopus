@@ -183,6 +183,7 @@ jobs:
       - run: grep -q "OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX" crates/octopus-core/src/main.rs
       - run: grep -q "OCTOPUS_BRAIN_COUNCIL_LLM_PREFIXES" crates/octopus-core/src/main.rs
       - run: grep -q "goal refine" crates/octopus-core/src/main.rs
+      - run: grep -q -- "--focus kind" crates/octopus-core/src/main.rs
       - run: grep -q -- "--llm-prefix" crates/octopus-core/src/main.rs
       - run: grep -q -- "--models" crates/octopus-core/src/main.rs
       - run: grep -q "tools think at the edge" README.md
@@ -196,6 +197,7 @@ jobs:
       - run: grep -q "Apply Reflect" docs/app.html
       - run: grep -q "Memory Session" docs/app.html
       - run: grep -q "Apply Memory" docs/app.html
+      - run: grep -q "Focus Need" docs/app.html
       - run: grep -q "Synthesize Session" docs/app.html
       - run: grep -q "Brain Council" docs/app.html
       - run: grep -q "Agenda Model" docs/app.html
@@ -207,6 +209,7 @@ jobs:
       - run: grep -q "OCTOPUS_BRAIN_MEMORY_LLM_PREFIX" docs/quickstart.md
       - run: grep -q "OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX" docs/quickstart.md
       - run: grep -q "OCTOPUS_BRAIN_COUNCIL_LLM_PREFIXES" docs/quickstart.md
+      - run: grep -q "brain --focus verify" docs/quickstart.md
       - run: grep -q -- "--llm-prefix" docs/quickstart.md
       - run: grep -q -- "--models" docs/quickstart.md
       - run: grep -q "Install Report" docs/app.html

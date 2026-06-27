@@ -52,6 +52,7 @@ Updated: 2026-06-27
 - `brain --deliberate [--live] [--save] [prompt]` lets the clean brain produce observations, questions, options, risks, and cognitive Needs before Feed.
 - `brain --reflect [--live] [--save] [prompt]` lets the clean brain reflect on goal state, evidence, gaps, questions, and cognitive Needs before Feed.
 - `brain --memory [--live] [--save] [prompt]` lets the clean brain turn Goal/Mem/Need/Feed into remember, recall, forget, or verify Needs for the memory heart before Feed.
+- `brain --focus <kind> [--live] [--save] [prompt]` lets the clean brain request one cognitive Need shape while preserving the same Goal/Mem/Need/Feed boundary.
 - `brain --council [--live] [--save] [prompt]` asks multiple configured clean-brain models for deliberation drafts, then synthesizes the draft Feed into one audited Need set.
 - `brain --llm-prefix PREFIX ...` temporarily routes one clean-brain call through a provider env group, and `brain --council --models A,B ...` picks council models per call without changing clean-brain context.
 - `brain --synthesize --apply-json <json> [--live] [--save] [prompt]` treats multiple clean-brain model drafts as Feed for a synthesis Need, then returns one audited Need set, with `brain --synthesize --session --apply-json <json>` for reviewable external-chat synthesis.
@@ -185,6 +186,7 @@ Updated: 2026-06-27
 - Added `brain --deliberate` plus native HTML Deliberate controls so strong LLMs can spend tokens on pure cognitive observations, questions, options, risks, and Needs without tool context.
 - Added `brain --reflect` plus native HTML Reflect controls so the clean brain can inspect goal state, evidence, gaps, and next Needs without tool context.
 - Added `brain --memory` plus native HTML Memory controls so the clean brain can draft remember, recall, forget, and verify Needs for the memory heart without Feed execution.
+- Added `brain --focus <kind>` plus native HTML Focus controls so users can ask for verify, compare, recall, execute, or other Need shapes without exposing tool context.
 - Added `brain --synthesize` plus native HTML Synthesize controls so multiple model drafts can be merged or provider-synthesized into one audited clean-brain Need set without Feed execution.
 - Added `brain --council` plus native HTML Brain Council so multiple configured clean-brain models can draft separately and feed synthesis without exposing tools to the brain.
 - Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and local app API.
