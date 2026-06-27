@@ -480,6 +480,10 @@
             <button type="button" data-run="chat">Chat</button>
             <button type="button" id="runGoalStatus">Goal Status</button>
             <button type="button" id="runBrainPrompt">Brain Prompt</button>
+            <button type="button" id="runBrainSession">Brain Session</button>
+            <button type="button" id="runBrainGoalSession">Goal Session</button>
+            <button type="button" id="runBrainLiveSession">Live Session</button>
+            <button type="button" id="runBrainGoalLiveSession">Goal Live Session</button>
             <button type="button" id="runBrainLive">Brain Live</button>
             <button type="button" id="runBrainGoal">Brain Goal</button>
             <button type="button" id="applyBrainReply">Apply Reply</button>
@@ -612,6 +616,10 @@
           `octopus --state ${shellQuote(state)} goal set ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json status`,
           `octopus --state ${shellQuote(state)} --json brain ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --session ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --goal --session ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --session --live ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --goal --session --live ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --goal --live --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --apply reply.json --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --goal --apply reply.json --save ${shellQuote(goal)}`,
@@ -779,6 +787,26 @@
           const report = await runBridgeJson(["--state", state, "--json", "brain", goal]);
           currentBrainPromptReport = report;
           renderBrainPromptReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("brainPromptReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runBrainSessionReport(refineGoal = false, live = false) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        $("brainPromptReport").textContent = live ? "writing live session..." : "writing session...";
+        try {
+          const args = ["--state", state, "--json", "brain"];
+          if (refineGoal) args.push("--goal");
+          args.push("--session");
+          if (live) args.push("--live");
+          args.push(goal);
+          const report = await runBridgeJson(args);
+          currentBrainPromptReport = report;
+          renderBrainSessionReport(report);
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("brainPromptReport").textContent = String(error);
@@ -1257,6 +1285,40 @@
         pre.appendChild(code);
         root.appendChild(grid);
         root.appendChild(pre);
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function renderBrainSessionReport(report) {
+        const root = $("brainPromptReport");
+        root.className = "stack";
+        root.textContent = "";
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Mode", report.mode || "explore"],
+          ["Brain", report.policy || "Goal + Mem + Need + Feed"],
+          ["Session", report.session_dir || "none"],
+          ["Reply", report.reply_path || "none"],
+          ["Draft", report.draft_path || "none"],
+          ["Apply", report.apply_command || "none"],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        root.appendChild(grid);
+        root.appendChild(reportList("Files", [
+          report.prompt_path,
+          report.messages_path,
+          report.reply_path,
+          report.draft_path,
+          report.command_path,
+        ].filter(Boolean), textItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
@@ -2375,6 +2437,10 @@
       $("runFeed").addEventListener("click", runFeedTest);
       $("runRoutes").addEventListener("click", runRouteReport);
       $("runBrainPrompt").addEventListener("click", runBrainPromptReport);
+      $("runBrainSession").addEventListener("click", () => runBrainSessionReport(false));
+      $("runBrainGoalSession").addEventListener("click", () => runBrainSessionReport(true));
+      $("runBrainLiveSession").addEventListener("click", () => runBrainSessionReport(false, true));
+      $("runBrainGoalLiveSession").addEventListener("click", () => runBrainSessionReport(true, true));
       $("runGoalStatus").addEventListener("click", runGoalStatusReport);
       $("runBrainLive").addEventListener("click", () => runBrainLiveReport(false));
       $("runBrainGoal").addEventListener("click", runBrainGoalReport);
