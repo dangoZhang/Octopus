@@ -591,6 +591,7 @@
       let currentContextReport = null;
       let currentProductReport = null;
       let currentStarterReport = null;
+      let currentStarterGroup = "all";
       let currentPreflightReport = null;
       let currentGoalStatusReport = null;
       let currentBrainPromptReport = null;
@@ -1281,8 +1282,14 @@
         const root = $("starterReport");
         root.className = "stack";
         root.textContent = "";
+        const groups = report.groups || [];
+        if (currentStarterGroup !== "all" && !groups.some((group) => group.id === currentStarterGroup)) {
+          currentStarterGroup = "all";
+        }
+        const recommendations = (report.recommendations || []).filter((item) => currentStarterGroup === "all" || item.group === currentStarterGroup);
         root.appendChild(starterSummary(report));
-        root.appendChild(reportList("Recommendations", report.recommendations || [], starterItem));
+        root.appendChild(starterGroupControls(report, recommendations.length));
+        root.appendChild(reportList("Recommendations", recommendations, starterItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
@@ -1861,6 +1868,7 @@
           ["Objective", report.objective || "none"],
           ["Policy", report.policy || "metadata only"],
           ["State", report.state_path || "state"],
+          ["Groups", (report.groups || []).map((group) => `${group.label} ${group.count}`).join(", ") || "none"],
           ["Installed", (report.installed || []).join(", ") || "none"],
         ].forEach(([label, value]) => {
           const metric = document.createElement("div");
@@ -1875,6 +1883,34 @@
         return grid;
       }
 
+      function starterGroupControls(report, visibleCount) {
+        const wrap = document.createElement("div");
+        wrap.className = "toolbar";
+        const total = (report.recommendations || []).length;
+        wrap.appendChild(starterGroupButton("all", `All ${total}`));
+        (report.groups || []).forEach((group) => {
+          wrap.appendChild(starterGroupButton(group.id, `${group.label} ${group.count}`, group.description));
+        });
+        const status = document.createElement("span");
+        status.className = "check-meta";
+        status.textContent = `${visibleCount} shown`;
+        wrap.appendChild(status);
+        return wrap;
+      }
+
+      function starterGroupButton(groupId, label, title = "") {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.title = title || label;
+        if (currentStarterGroup === groupId) button.className = "primary";
+        button.addEventListener("click", () => {
+          currentStarterGroup = groupId;
+          if (currentStarterReport) renderStarterReport(currentStarterReport);
+        });
+        return button;
+      }
+
       function starterItem(item) {
         const element = document.createElement("li");
         const badge = document.createElement("span");
@@ -1882,7 +1918,7 @@
         badge.textContent = item.installed ? "installed" : "available";
         const command = document.createElement("span");
         command.className = "check-command";
-        command.textContent = `${item.id || "tentacle"} · ${item.first_need_kind || "observe"}`;
+        command.textContent = `${item.id || "tentacle"} · ${item.group_label || "Starter"} · ${item.first_need_kind || "observe"}`;
         const meta = document.createElement("span");
         meta.className = "check-meta";
         meta.textContent = `${item.reason || "metadata match"} · tools=${(item.tools || []).length} · llm=${item.llm_ready ? "ready" : "optional"}`;
@@ -1895,6 +1931,7 @@
         pre.className = "check-output";
         const code = document.createElement("code");
         code.textContent = [
+          `group: ${item.group_label || item.group || "none"}`,
           `needs: ${(item.needs || []).join(", ") || "none"}`,
           `runtimes: ${(item.runtimes || []).join(", ") || "none"}`,
           `surfaces: ${(item.evolution_surfaces || []).join(", ") || "none"}`,
@@ -2821,6 +2858,7 @@
         currentContextReport = null;
         currentProductReport = null;
         currentStarterReport = null;
+        currentStarterGroup = "all";
         currentPreflightReport = null;
         currentGoalStatusReport = null;
         currentBrainPromptReport = null;
@@ -2878,6 +2916,7 @@
           currentContextReport = null;
           currentProductReport = null;
           currentStarterReport = null;
+          currentStarterGroup = "all";
           currentPreflightReport = null;
           currentGoalStatusReport = null;
           currentBrainPromptReport = null;

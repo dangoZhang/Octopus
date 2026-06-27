@@ -233,8 +233,17 @@ struct StarterReport {
     policy: String,
     state_path: String,
     installed: Vec<String>,
+    groups: Vec<StarterGroup>,
     recommendations: Vec<StarterRecommendation>,
     next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct StarterGroup {
+    id: String,
+    label: String,
+    description: String,
+    count: usize,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -242,6 +251,8 @@ struct StarterRecommendation {
     id: String,
     name: String,
     source_kind: String,
+    group: String,
+    group_label: String,
     reason: String,
     installed: bool,
     llm_ready: bool,
@@ -2215,6 +2226,10 @@ fn print_starter_report(report: &StarterReport, language: Language) {
             println!("policy: {}", report.policy);
             println!("state: {}", report.state_path);
             println!("installed: {}", join_or_none(&report.installed));
+            println!("groups:");
+            for group in &report.groups {
+                println!("- {} ({}) {}", group.label, group.count, group.description);
+            }
             println!("recommendations:");
             for item in &report.recommendations {
                 let status = if item.installed {
@@ -2223,8 +2238,13 @@ fn print_starter_report(report: &StarterReport, language: Language) {
                     "available"
                 };
                 println!(
-                    "- {} [{}; {}; llm={}] {}",
-                    item.id, item.source_kind, status, item.llm_ready, item.reason
+                    "- {} [{}; {}; group={}; llm={}] {}",
+                    item.id,
+                    item.source_kind,
+                    status,
+                    item.group_label,
+                    item.llm_ready,
+                    item.reason
                 );
                 println!("  install: {}", item.install_command);
                 println!("  first_need: {}", item.first_need_command);
@@ -2238,6 +2258,10 @@ fn print_starter_report(report: &StarterReport, language: Language) {
             println!("策略: {}", report.policy);
             println!("状态文件: {}", report.state_path);
             println!("已安装: {}", join_or_none(&report.installed));
+            println!("分组:");
+            for group in &report.groups {
+                println!("- {} ({}) {}", group.label, group.count, group.description);
+            }
             println!("推荐:");
             for item in &report.recommendations {
                 let status = if item.installed {
@@ -2246,8 +2270,13 @@ fn print_starter_report(report: &StarterReport, language: Language) {
                     "可安装"
                 };
                 println!(
-                    "- {} [{}; {}; LLM={}] {}",
-                    item.id, item.source_kind, status, item.llm_ready, item.reason
+                    "- {} [{}; {}; 分组={}; LLM={}] {}",
+                    item.id,
+                    item.source_kind,
+                    status,
+                    item.group_label,
+                    item.llm_ready,
+                    item.reason
                 );
                 println!("  安装: {}", item.install_command);
                 println!("  第一条Need: {}", item.first_need_command);
@@ -4193,6 +4222,7 @@ fn starter_report(
             .cloned()
             .collect::<Vec<_>>();
         let first_need = starter_need_kind(&objective, &needs);
+        let group = starter_group(&candidate.id, &needs, &tools, &evolution_surfaces);
         let reason = if matched.is_empty() {
             "starter coverage from manifest metadata".to_string()
         } else {
@@ -4202,6 +4232,8 @@ fn starter_report(
             id: candidate.id.clone(),
             name: candidate.name,
             source_kind: candidate.source_kind,
+            group: group.0.to_string(),
+            group_label: group.1.to_string(),
             reason,
             installed: candidate.installed,
             llm_ready: candidate.llm_ready,
@@ -4225,6 +4257,7 @@ fn starter_report(
             ),
         });
     }
+    let groups = starter_groups(&recommendations);
 
     let mut installed = state.installed_profiles.clone();
     installed.extend(
@@ -4254,9 +4287,139 @@ fn starter_report(
             .to_string(),
         state_path: state_path_text,
         installed,
+        groups,
         recommendations,
         next,
     })
+}
+
+fn starter_group<'a>(
+    id: &str,
+    needs: &[String],
+    tools: &[String],
+    evolution_surfaces: &[String],
+) -> (&'a str, &'a str, &'a str) {
+    let has_need = |value: &str| needs.iter().any(|need| need == value);
+    let has_tool = |value: &str| tools.iter().any(|tool| tool.contains(value));
+    let has_surface = |value: &str| {
+        evolution_surfaces
+            .iter()
+            .any(|surface| surface.contains(value))
+    };
+    match id {
+        "swe-agent" => ("repo", "Repo", "inspect, edit, and verify code work"),
+        "computer-use-agent" => (
+            "desktop",
+            "Desktop",
+            "browser, screen, clipboard, and MCP work",
+        ),
+        "repo-maintainer" => (
+            "self_iteration",
+            "Self-Iteration",
+            "GitHub, PR, release, and repository maintenance",
+        ),
+        "harness-repair-agent" => (
+            "repair",
+            "Repair",
+            "diagnose and repair harness feedback loops",
+        ),
+        "bash-only" => ("script", "Script", "write-and-run local execution harness"),
+        "json-feed" => (
+            "runtime",
+            "Runtime",
+            "structured Feed adapter and non-shell runtime seed",
+        ),
+        "research" => (
+            "research",
+            "Research",
+            "source, compare, and evidence gathering",
+        ),
+        "memory" => (
+            "memory",
+            "Memory",
+            "remember, recall, forget, and compact context",
+        ),
+        "visual" => (
+            "visual",
+            "Visual",
+            "pixel state and color interaction layer",
+        ),
+        _ if has_tool("github") || has_need("publish") => (
+            "self_iteration",
+            "Self-Iteration",
+            "GitHub, PR, release, and repository maintenance",
+        ),
+        _ if has_tool("browser") || has_tool("screen") || has_tool("clipboard") => (
+            "desktop",
+            "Desktop",
+            "browser, screen, clipboard, and MCP work",
+        ),
+        _ if has_surface("runtime_code") || has_need("repair") => (
+            "repair",
+            "Repair",
+            "diagnose and repair harness feedback loops",
+        ),
+        _ if has_need("compare") || has_need("verify") => (
+            "research",
+            "Research",
+            "source, compare, and evidence gathering",
+        ),
+        _ => ("repo", "Repo", "inspect, edit, and verify code work"),
+    }
+}
+
+fn starter_group_description(id: &str) -> &'static str {
+    match id {
+        "repo" => "inspect, edit, and verify code work",
+        "desktop" => "browser, screen, clipboard, and MCP work",
+        "self_iteration" => "GitHub, PR, release, and repository maintenance",
+        "repair" => "diagnose and repair harness feedback loops",
+        "script" => "write-and-run local execution harness",
+        "runtime" => "structured Feed adapter and non-shell runtime seed",
+        "research" => "source, compare, and evidence gathering",
+        "memory" => "remember, recall, forget, and compact context",
+        "visual" => "pixel state and color interaction layer",
+        _ => "starter work",
+    }
+}
+
+fn starter_groups(recommendations: &[StarterRecommendation]) -> Vec<StarterGroup> {
+    let mut counts = BTreeMap::<(String, String), usize>::new();
+    for item in recommendations {
+        *counts
+            .entry((item.group.clone(), item.group_label.clone()))
+            .or_insert(0) += 1;
+    }
+    let mut groups = counts
+        .into_iter()
+        .map(|((id, label), count)| StarterGroup {
+            description: starter_group_description(&id).to_string(),
+            id,
+            label,
+            count,
+        })
+        .collect::<Vec<_>>();
+    groups.sort_by(|left, right| {
+        starter_group_priority(&left.id)
+            .cmp(&starter_group_priority(&right.id))
+            .then_with(|| left.label.cmp(&right.label))
+    });
+    groups
+}
+
+fn starter_group_priority(id: &str) -> i32 {
+    match id {
+        "repo" => 0,
+        "desktop" => 1,
+        "self_iteration" => 2,
+        "repair" => 3,
+        "research" => 4,
+        "script" => 5,
+        "runtime" => 6,
+        "memory" => 7,
+        "visual" => 8,
+        _ => 20,
+    }
 }
 
 fn starter_keywords(objective: &str) -> BTreeSet<String> {
@@ -4879,7 +5042,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         product_capability(
             "starter_panel",
             if app_exists { "ready" } else { "missing" },
-            "native HTML app renders starter tentacle recommendations with install, check, and first-Need actions",
+            "native HTML app renders and filters starter tentacle recommendations with install, check, and first-Need actions",
             Some("octopus starter \"build a clean-brain agent\""),
         ),
         product_capability(
@@ -9024,11 +9187,15 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let report =
             starter_report(&state, state_path, root, Some("fix repo tests".to_string())).unwrap();
 
+        assert!(report.groups.iter().any(|group| group.id == "repo"));
+        assert!(report.groups.iter().any(|group| group.count > 0));
         let swe = report
             .recommendations
             .iter()
             .find(|item| item.id == "swe-agent")
             .unwrap();
+        assert_eq!(swe.group, "repo");
+        assert_eq!(swe.group_label, "Repo");
         assert_eq!(swe.first_need_kind, "execute");
         assert_eq!(swe.first_need_query, "fix repo tests");
         assert!(swe.first_need_command.contains(" need execute "));
