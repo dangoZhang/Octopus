@@ -63,7 +63,7 @@ Strong-model knobs such as `OCTOPUS_LLM_REASONING_EFFORT`, `OCTOPUS_LLM_MAX_TOKE
 
 - Clean-brain Goal, Need, Feed, queue, context, intent, brief, focused Need kinds, agenda, clarification, deliberation, reflection, memory, council, synthesis, and external-chat sessions.
 - Seed tentacles for SWE work, computer-use adapters, repo maintenance, harness repair, and write-and-run local execution.
-- Tool-side LLM planning with grants, traces, route scores, feedback scoring, and reviewable harness evolution drafts.
+- Tool-side LLM planning with grants, traces, route scores, feedback scoring, and reviewable feedback-driven harness evolution.
 - Native HTML app server, install reports, provider setup, preflight gates, and pixel pet SVG export.
 
 Pre-release line: `0.0.14`. `0.1.0` waits for recorded real-machine testing.

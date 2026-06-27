@@ -652,6 +652,10 @@
             <h2>Harness Beat</h2>
             <div id="beatReport" class="metric"><span>No beat yet.</span></div>
           </div>
+          <div class="evolution-report stack">
+            <h2>Evolution</h2>
+            <div id="evolutionReport" class="metric"><span>No evolution feedback yet.</span></div>
+          </div>
         </section>
       </div>
     </main>
@@ -683,6 +687,7 @@
       let currentNeedQueueActionReport = null;
       let currentRepairReport = null;
       let currentRepairScoreReport = null;
+      let currentEvolutionScoreReport = null;
 
       function render(stateName = "harness") {
         currentPetState = stateName;
@@ -3762,7 +3767,7 @@
       async function scoreEvolution(data, status, summary) {
         const state = $("state").value.trim() || ".octopus/state.json";
         try {
-          const outcome = await runBridgeJson([
+          const report = await runBridgeJson([
             "--state",
             state,
             "--json",
@@ -3773,11 +3778,44 @@
             status,
             summary || "reviewed from harness beat",
           ]);
-          $("output").textContent = JSON.stringify(outcome, null, 2);
+          currentEvolutionScoreReport = report;
+          renderEvolutionScoreReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
           await runBeat(false);
         } catch (error) {
+          $("evolutionReport").textContent = String(error);
           $("output").textContent = String(error);
         }
+      }
+
+      function renderEvolutionScoreReport(report) {
+        const root = $("evolutionReport");
+        root.className = "stack";
+        root.textContent = "";
+        const outcome = report.outcome || report;
+        const recommendation = report.recommendation || {};
+        const applyArtifact = report.apply_artifact || {};
+        root.appendChild(reportList("Outcome", [
+          `tentacle: ${outcome.tentacle_id || "unknown"}`,
+          `candidate: ${outcome.candidate_id || "unknown"}`,
+          `status: ${outcome.status || "unknown"}`,
+          `score: ${outcome.score == null ? "none" : Number(outcome.score).toFixed(2)}`,
+          `summary: ${outcome.summary || "none"}`,
+        ], textItem));
+        if (report.recommendation) {
+          root.appendChild(reportList("Next Recommendation", [
+            `candidate: ${recommendation.candidate_id || "unknown"}`,
+            `surface: ${recommendation.surface_id || "unknown"}`,
+            `score: ${recommendation.recommendation_score == null ? "none" : Number(recommendation.recommendation_score).toFixed(2)}`,
+            `reason: ${recommendation.reason || "none"}`,
+            `plan: ${applyArtifact.plan_path || "none"}`,
+            `patch: ${applyArtifact.patch_path || "none"}`,
+          ], textItem));
+        }
+        if (report.recommendation_error) {
+          root.appendChild(reportList("Recommendation Error", [report.recommendation_error], textItem));
+        }
+        root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
       function reportSummary(report) {

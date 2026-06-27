@@ -607,6 +607,17 @@ struct RepairScoreReport {
 }
 
 #[derive(Debug, serde::Serialize)]
+struct EvolutionScoreReport {
+    outcome: EvolutionOutcome,
+    recent: Vec<EvolutionOutcome>,
+    recommendation: Option<EvolutionRecommendation>,
+    apply_artifact: Option<EvolutionApplyArtifact>,
+    evolution_artifact: Option<EvolutionArtifact>,
+    recommendation_error: Option<String>,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
 struct RepairOutcomeJournalReport {
     session_path: String,
     outcome_path: String,
@@ -2697,13 +2708,17 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     summary,
                 );
                 loaded.save(&state).map_err(|error| error.to_string())?;
+                let cwd = env::current_dir().map_err(|error| error.to_string())?;
+                let objective_summary = outcome.summary.clone();
+                let report =
+                    evolution_score_report(tentacle_id, &objective_summary, &loaded, &cwd, outcome);
                 if json {
                     println!(
                         "{}",
-                        serde_json::to_string_pretty(&outcome).map_err(|error| error.to_string())?
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
                     );
                 } else {
-                    print_evolution_outcome(&outcome, language);
+                    print_evolution_score_report(&report, language);
                 }
                 return Ok(());
             }
@@ -9905,6 +9920,48 @@ fn print_evolution_recommendation(
     }
 }
 
+fn print_evolution_score_report(report: &EvolutionScoreReport, language: Language) {
+    print_evolution_outcome(&report.outcome, language);
+    match language {
+        Language::En => {
+            println!("recent outcomes: {}", report.recent.len());
+            if let Some(recommendation) = &report.recommendation {
+                println!("next recommended: {}", recommendation.candidate_id);
+                println!("next score: {:.2}", recommendation.recommendation_score);
+                println!("next reason: {}", recommendation.reason);
+                if let Some(artifact) = &report.apply_artifact {
+                    println!("next plan: {}", artifact.plan_path);
+                    if let Some(path) = &artifact.patch_path {
+                        println!("next patch: {path}");
+                    }
+                }
+            }
+            if let Some(error) = &report.recommendation_error {
+                println!("recommendation error: {error}");
+            }
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("近期结果: {}", report.recent.len());
+            if let Some(recommendation) = &report.recommendation {
+                println!("下一推荐: {}", recommendation.candidate_id);
+                println!("下一分数: {:.2}", recommendation.recommendation_score);
+                println!("下一原因: {}", recommendation.reason);
+                if let Some(artifact) = &report.apply_artifact {
+                    println!("下一计划: {}", artifact.plan_path);
+                    if let Some(path) = &artifact.patch_path {
+                        println!("下一补丁: {path}");
+                    }
+                }
+            }
+            if let Some(error) = &report.recommendation_error {
+                println!("推荐错误: {error}");
+            }
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
 fn print_evolution_outcome(outcome: &EvolutionOutcome, language: Language) {
     match language {
         Language::En => {
@@ -10933,6 +10990,63 @@ fn propose_evolution_for_cli(
         );
     }
     propose_tentacle_evolution_with_state(default_tentacles_root(), tentacle_id, objective, state)
+}
+
+fn evolution_score_report(
+    tentacle_id: &str,
+    summary: &str,
+    state: &HarnessState,
+    cwd: &Path,
+    outcome: EvolutionOutcome,
+) -> EvolutionScoreReport {
+    let objective = format!("continue from scored evolution feedback: {summary}");
+    let recent = state.recent_evolution_outcomes(tentacle_id, 5);
+    let mut next = vec![
+        format!(
+            "octopus evolve recommend {tentacle_id} {}",
+            shell_arg(&objective)
+        ),
+        "review the generated apply plan before granting harness write".to_string(),
+    ];
+    let mut recommendation = None;
+    let mut apply_artifact = None;
+    let mut evolution_artifact = None;
+    let mut recommendation_error = None;
+    match propose_evolution_for_cli(tentacle_id, &objective, state).and_then(|proposal| {
+        let artifact = write_tentacle_evolution_artifacts(cwd, &proposal)?;
+        let recommendation = recommend_tentacle_evolution_apply(&proposal, state)?;
+        let apply_artifact = write_tentacle_apply_artifacts(cwd, &recommendation.apply)?;
+        Ok((recommendation, apply_artifact, artifact))
+    }) {
+        Ok((recommended, apply, artifact)) => {
+            next = recommended.apply.next_steps.clone();
+            next.push(format!(
+                "octopus evolve apply {} {}",
+                recommended.tentacle_id, recommended.candidate_id
+            ));
+            next.push(format!(
+                "octopus evolve score {} {} satisfied {}",
+                recommended.tentacle_id,
+                recommended.candidate_id,
+                shell_arg("reviewed follow-up harness change")
+            ));
+            recommendation = Some(recommended);
+            apply_artifact = Some(apply);
+            evolution_artifact = Some(artifact);
+        }
+        Err(error) => {
+            recommendation_error = Some(error);
+        }
+    }
+    EvolutionScoreReport {
+        outcome,
+        recent,
+        recommendation,
+        apply_artifact,
+        evolution_artifact,
+        recommendation_error,
+        next,
+    }
 }
 
 fn chat_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
@@ -17760,7 +17874,7 @@ JSON
             "03-runtime-code".to_string(),
         ])
         .unwrap();
-        assert!(fs::read_to_string(apply_plan)
+        assert!(fs::read_to_string(&apply_plan)
             .unwrap()
             .contains("authorized: true"));
         let patch = fs::read_to_string(apply_patch).unwrap();
@@ -17783,6 +17897,8 @@ JSON
         let state_content = fs::read_to_string(&state_path).unwrap();
         assert!(state_content.contains("evolution_outcomes"));
         assert!(state_content.contains("patch improved feed"));
+        let scored_plan = fs::read_to_string(&apply_plan).unwrap();
+        assert!(scored_plan.contains("continue from scored evolution feedback"));
         run(vec![
             "--state".to_string(),
             state.clone(),
