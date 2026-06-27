@@ -693,6 +693,18 @@ struct PreflightRecordCheckReport {
 }
 
 #[derive(Debug, serde::Serialize)]
+struct PreflightRecordAppendReport {
+    record_path: String,
+    log_path: String,
+    current_head: Option<String>,
+    appended: bool,
+    already_present: bool,
+    bytes: usize,
+    check: PreflightRecordCheckReport,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
 struct ProductContextPolicy {
     brain: String,
     tentacle: String,
@@ -2292,6 +2304,27 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 return Ok(());
             }
             if rest.get(1).map(String::as_str) == Some("record") {
+                if rest.get(2).map(String::as_str) == Some("append") {
+                    let record_path = rest
+                        .get(3)
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| PathBuf::from(".octopus/real-machine-record.md"));
+                    let log_path = rest
+                        .get(4)
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| PathBuf::from("docs/real-machine-test.md"));
+                    let report = append_preflight_record(&record_path, &log_path)?;
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&report)
+                                .map_err(|error| error.to_string())?
+                        );
+                    } else {
+                        print_preflight_record_append(&report, language);
+                    }
+                    return Ok(());
+                }
                 if rest.get(2).map(String::as_str) == Some("check") {
                     let path = rest
                         .get(3)
@@ -5056,7 +5089,9 @@ fn bridge_preflight_allowed(args: &[String]) -> bool {
     let rest = &args[index + 1..];
     rest.is_empty()
         || (rest.len() == 1 && matches!(rest[0].as_str(), "--live" | "script" | "record"))
-        || (rest.len() == 2 && rest[0] == "record" && rest[1] == "check")
+        || (rest.len() == 2
+            && rest[0] == "record"
+            && matches!(rest[1].as_str(), "check" | "append"))
 }
 
 fn bridge_feedback_allowed(args: &[String]) -> bool {
@@ -7759,7 +7794,7 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
     let next = if passed {
         vec![
             format!(
-                "append {} to docs/real-machine-test.md",
+                "octopus preflight record append {}",
                 shell_arg(&path.to_string_lossy())
             ),
             "octopus preflight".to_string(),
@@ -7777,6 +7812,71 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
         passed,
         checks,
         next,
+    })
+}
+
+fn append_preflight_record(
+    record_path: &Path,
+    log_path: &Path,
+) -> Result<PreflightRecordAppendReport, String> {
+    let check = check_preflight_record(record_path)?;
+    if !check.passed {
+        let missing = check
+            .checks
+            .iter()
+            .filter(|item| item.status != "pass")
+            .map(|item| item.id.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!(
+            "preflight record is not ready: {}; run octopus preflight record check",
+            if missing.is_empty() {
+                "unknown checks failed".to_string()
+            } else {
+                missing
+            }
+        ));
+    }
+    let record = fs::read_to_string(record_path).map_err(|error| error.to_string())?;
+    let record_body = record.trim();
+    if record_body.is_empty() {
+        return Err("preflight record is empty".to_string());
+    }
+    if let Some(parent) = log_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let mut log = fs::read_to_string(log_path).unwrap_or_else(|_| {
+        "# Real-Machine Test Gate\n\nRequired before `0.1.0` and every later version tag.\n"
+            .to_string()
+    });
+    let already_present = log.contains(record_body);
+    let mut appended = false;
+    if !already_present {
+        if !log.ends_with('\n') {
+            log.push('\n');
+        }
+        log.push_str("\n---\n\n## Appended Real-Machine Record\n\n");
+        log.push_str(record_body);
+        log.push('\n');
+        fs::write(log_path, &log).map_err(|error| error.to_string())?;
+        appended = true;
+    }
+    Ok(PreflightRecordAppendReport {
+        record_path: record_path.to_string_lossy().to_string(),
+        log_path: log_path.to_string_lossy().to_string(),
+        current_head: check.current_head.clone(),
+        appended,
+        already_present,
+        bytes: record_body.len(),
+        check,
+        next: vec![
+            "octopus preflight".to_string(),
+            format!("git add {}", shell_arg(&log_path.to_string_lossy())),
+            "git commit -m \"Record real-machine preflight\"".to_string(),
+        ],
     })
 }
 
@@ -9001,6 +9101,37 @@ fn print_context_tentacles(report: &ContextReport, language: Language) {
                 action.status,
                 action.summary
             );
+        }
+    }
+}
+
+fn print_preflight_record_append(report: &PreflightRecordAppendReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus preflight record append");
+            println!("record: {}", report.record_path);
+            println!("log: {}", report.log_path);
+            println!(
+                "head: {}",
+                report.current_head.as_deref().unwrap_or("unknown")
+            );
+            println!("appended: {}", report.appended);
+            println!("already_present: {}", report.already_present);
+            println!("bytes: {}", report.bytes);
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼实机记录追加");
+            println!("记录: {}", report.record_path);
+            println!("日志: {}", report.log_path);
+            println!(
+                "当前提交: {}",
+                report.current_head.as_deref().unwrap_or("未知")
+            );
+            println!("已追加: {}", report.appended);
+            println!("已存在: {}", report.already_present);
+            println!("字节: {}", report.bytes);
+            println!("下一步: {}", join_or_none(&report.next));
         }
     }
 }
@@ -12618,7 +12749,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -12704,15 +12835,15 @@ fn parse_status(value: &str) -> Result<Status, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        app_open_command, bridge_command_allowed, bridge_command_name, bridge_static,
-        bridge_static_asset, check_preflight_record, check_report, default_first_run_objective,
-        default_tentacles_root_for, first_run_report, http_content_length, install_report,
-        is_broken_pipe_panic, localize_summary, materialize_bundled_tentacles_root,
-        parse_bridge_env_overlay, parse_first_run_args, parse_start_options, percent_encode_path,
-        pet_report, pet_report_for_state, preflight_report, prepare_bridge_state, product_report,
-        provider_status_report, real_machine_record_status_from_parts, repair_report, run,
-        skill_reports, starter_report, tentacles_root_ready, update_report, usage,
-        write_pet_image_report, Language,
+        app_open_command, append_preflight_record, bridge_command_allowed, bridge_command_name,
+        bridge_static, bridge_static_asset, check_preflight_record, check_report,
+        default_first_run_objective, default_tentacles_root_for, first_run_report,
+        http_content_length, install_report, is_broken_pipe_panic, localize_summary,
+        materialize_bundled_tentacles_root, parse_bridge_env_overlay, parse_first_run_args,
+        parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
+        preflight_report, prepare_bridge_state, product_report, provider_status_report,
+        real_machine_record_status_from_parts, repair_report, run, skill_reports, starter_report,
+        tentacles_root_ready, update_report, usage, write_pet_image_report, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
@@ -14922,6 +15053,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("preflight script [path]"));
         assert!(usage().contains("preflight record [path]"));
         assert!(usage().contains("preflight record check [path]"));
+        assert!(usage().contains("preflight record append [path] [log]"));
         assert!(usage().contains("traces [limit]"));
         assert!(usage().contains("feedback <trace-index|latest>"));
         assert!(usage().contains("bootstrap [tentacles-root]"));
@@ -15657,6 +15789,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "preflight".to_string(),
             "record".to_string()
         ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "preflight".to_string(),
+            "record".to_string(),
+            "append".to_string()
+        ]));
         assert!(!bridge_command_allowed(&[
             "--state".to_string(),
             "state.json".to_string(),
@@ -15671,6 +15811,15 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "--json".to_string(),
             "preflight".to_string(),
             "record".to_string(),
+            "/tmp/record.md".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "preflight".to_string(),
+            "record".to_string(),
+            "append".to_string(),
             "/tmp/record.md".to_string()
         ]));
         assert!(bridge_command_allowed(&[
@@ -16389,11 +16538,22 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         fs::write(&record_path, filled).unwrap();
         let audit = check_preflight_record(&record_path).unwrap();
         assert!(audit.passed);
+        let log_path = path.with_file_name("real-machine-test.md");
+        let append = append_preflight_record(&record_path, &log_path).unwrap();
+        assert!(append.appended);
+        assert!(!append.already_present);
+        let appended_log = fs::read_to_string(&log_path).unwrap();
+        assert!(appended_log.contains("# Real-Machine Record"));
+        assert!(appended_log.contains("Pass or fail: pass"));
+        let append_again = append_preflight_record(&record_path, &log_path).unwrap();
+        assert!(!append_again.appended);
+        assert!(append_again.already_present);
 
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("swe-agent"));
         let _ = fs::remove_file(path);
         let _ = fs::remove_file(script_path);
+        let _ = fs::remove_file(log_path);
     }
 
     #[cfg(unix)]

@@ -84,6 +84,7 @@ Updated: 2026-06-28
 - `preflight [--live]` turns the `0.1.0` readiness gate into CLI, JSON, and native HTML checks without live provider calls unless requested.
 - `preflight script [path]` writes a reviewable local release-gate script that starts from `first-run`, then runs context, thinking, trace, repair, check, route, beat, pet, report, and optional live provider/PR dry-run gates.
 - `preflight record [path]` writes a real-machine evidence template with GitHub install, core loop, start/app, live provider, and PR dry-run commands; `preflight record check [path]` audits completed fields before appending it.
+- `preflight record append [path] [log]` appends a passed real-machine record to `docs/real-machine-test.md` idempotently, and the native app exposes the same default-path action.
 - Real-machine record audit accepts the current `Start/app` result field while keeping legacy `Bridge/app` records valid.
 - The SWE test harness clears outer Octopus state variables before running project tests, so `check swe-agent` validates the target repo without leaking the caller's temporary state.
 - The real-machine record gate accepts a current recorded head, or a docs-only record commit whose parent head is recorded.
@@ -257,6 +258,7 @@ Updated: 2026-06-28
 - Added CLI `first-run [objective]` so headless installs and real-machine records can run the same scored local loop without manually copying eight commands.
 - Tightened the biological research grounding around Liang's cephalopod program, flexible cuttlefish camouflage, and segmented cephalopod arms, then connected preflight feedback evidence to `first-run`.
 - Added `first-run --live` plus native app CLI/live loop buttons so the whole-project first run can include live provider readiness without making network calls the default.
+- Added `preflight record append` plus native app append buttons so checked real-machine evidence can move into the release log without manual copy/paste.
 
 ## Remaining Gaps
 
@@ -285,4 +287,4 @@ Updated: 2026-06-28
 - Exercise provider-assisted patch drafts with a real LLM provider and score the result through the review/grant loop.
 - Turn window/browser diagnostics into richer native control adapters.
 - Add provider-specific fixes from real-machine feedback.
-- Generate `octopus preflight record`, run it with live LLM provider, OAuth PR publishing, and richer desktop control, then append the result before the `0.1.0` tag.
+- Generate and append a current `octopus preflight record` with live LLM provider, OAuth PR publishing, and richer desktop control before the `0.1.0` tag.

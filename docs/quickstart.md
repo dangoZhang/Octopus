@@ -98,4 +98,5 @@ octopus --state "$tmp/state.json" first-run "preflight local evidence"
 octopus --state "$tmp/state.json" preflight
 octopus --state "$tmp/state.json" preflight record "$tmp/real-machine-record.md"
 octopus --state "$tmp/state.json" preflight record check "$tmp/real-machine-record.md"
+octopus --state "$tmp/state.json" preflight record append "$tmp/real-machine-record.md" docs/real-machine-test.md
 ```

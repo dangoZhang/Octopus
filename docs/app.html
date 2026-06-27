@@ -485,6 +485,7 @@
               <button type="button" id="firstRunPreflight">Preflight</button>
               <button type="button" id="firstRunRecord">Record</button>
               <button type="button" id="firstRunRecordCheck">Check Record</button>
+              <button type="button" id="firstRunRecordAppend">Append Record</button>
               <button type="button" id="firstRunBeat">Beat</button>
             </div>
           </section>
@@ -576,6 +577,7 @@
             <button type="button" id="runPreflightScript">Preflight Script</button>
             <button type="button" id="runPreflightRecord">Preflight Record</button>
             <button type="button" id="runPreflightRecordCheck">Check Record</button>
+            <button type="button" id="runPreflightRecordAppend">Append Record</button>
             <button type="button" data-run="beat">Beat</button>
           </div>
           <div class="output">
@@ -764,6 +766,7 @@
           `octopus --state ${shellQuote(state)} preflight script`,
           `octopus --state ${shellQuote(state)} preflight record`,
           `octopus --state ${shellQuote(state)} preflight record check`,
+          `octopus --state ${shellQuote(state)} preflight record append`,
           `octopus --state ${shellQuote(state)} preflight --live`,
           `octopus --state ${shellQuote(state)} beat 200`,
         ].join("\n");
@@ -965,6 +968,17 @@
           const report = await runBridgeJson(["--state", state, "--json", "preflight", "record", "check"]);
           currentPreflightReport = report;
           renderPreflightRecordCheckReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+          return report;
+        });
+      }
+
+      async function runFirstRunRecordAppend() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        return runFirstRunTask("Append Record", async () => {
+          const report = await runBridgeJson(["--state", state, "--json", "preflight", "record", "append"]);
+          currentPreflightReport = report;
+          renderPreflightRecordAppendReport(report);
           $("output").textContent = JSON.stringify(report, null, 2);
           return report;
         });
@@ -1974,6 +1988,20 @@
         }
       }
 
+      async function runPreflightRecordAppend() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        $("preflightReport").textContent = "appending record...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "preflight", "record", "append"]);
+          currentPreflightReport = report;
+          renderPreflightRecordAppendReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("preflightReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runSingleCheck(index) {
         if (!currentInstallReport || currentInstallReport.id !== $("tentacle").value) {
           await runInstallReport();
@@ -2179,6 +2207,23 @@
           `passed: ${Boolean(report.passed)}`,
         ], textItem));
         root.appendChild(reportList("Checks", report.checks || [], preflightRecordCheckItem));
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function renderPreflightRecordAppendReport(report) {
+        const root = $("preflightReport");
+        root.className = "stack";
+        root.textContent = "";
+        root.appendChild(reportList("Record Append", [
+          `record: ${report.record_path || ".octopus/real-machine-record.md"}`,
+          `log: ${report.log_path || "docs/real-machine-test.md"}`,
+          `head: ${report.current_head || "unknown"}`,
+          `appended: ${Boolean(report.appended)}`,
+          `already present: ${Boolean(report.already_present)}`,
+        ], textItem));
+        if (report.check) {
+          root.appendChild(reportList("Checks", report.check.checks || [], preflightRecordCheckItem));
+        }
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
@@ -4011,6 +4056,7 @@
       $("firstRunPreflight").addEventListener("click", runFirstRunPreflight);
       $("firstRunRecord").addEventListener("click", runFirstRunRecord);
       $("firstRunRecordCheck").addEventListener("click", runFirstRunRecordCheck);
+      $("firstRunRecordAppend").addEventListener("click", runFirstRunRecordAppend);
       $("firstRunBeat").addEventListener("click", runFirstRunBeat);
       $("installGuide").addEventListener("click", runInstallReport);
       $("runChecks").addEventListener("click", runChecks);
@@ -4075,6 +4121,7 @@
       $("runPreflightScript").addEventListener("click", runPreflightScript);
       $("runPreflightRecord").addEventListener("click", runPreflightRecord);
       $("runPreflightRecordCheck").addEventListener("click", runPreflightRecordCheck);
+      $("runPreflightRecordAppend").addEventListener("click", runPreflightRecordAppend);
       document.querySelectorAll("[data-state]").forEach((button) => {
         button.addEventListener("click", () => render(button.dataset.state));
       });
