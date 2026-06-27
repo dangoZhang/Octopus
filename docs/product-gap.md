@@ -24,6 +24,7 @@ Updated: 2026-06-27
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
 - `starter [objective]` recommends starter tentacles from profile and manifest metadata, including install, check, and first-Need commands without running tools.
 - The native HTML app can fetch `--json starter` recommendations as cards, then run install, check, or the first Need from each recommendation.
+- README now opens as a product landing page: clean-brain value, thinking tentacles, pixel Octopus, install path, and current maturity are visible before docs links.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
 - `status --json` exposes recent clean-brain Goal turns so Goal refinement history stays visible without replaying Feed.
@@ -167,6 +168,7 @@ Updated: 2026-06-27
 - Rolled the cleanup/version cadence to `0.0.9` after reviewable Need Queue scripts, app queue review controls, repair-outcome-driven harness beat evolution, and README/control-surface polish.
 - Added `starter [objective]` so first-run users can choose common agent tool-combo tentacles from Goal/objective metadata before any Feed execution.
 - Added a structured native HTML starter panel so first-run users can choose tentacles from rendered recommendations.
+- Rebuilt README as a shorter product landing page with the Octopus loop, differentiators, install path, runnable first loop, and pre-release line kept above the links.
 
 ## Remaining Gaps
 
