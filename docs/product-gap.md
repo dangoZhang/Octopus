@@ -31,11 +31,11 @@ Updated: 2026-06-27
 - `brain --goal [--live] [--save] [prompt]` lets the clean brain refine Goal and optional queued Needs without running Feed.
 - `brain --live [--save] [prompt]` calls the clean-brain provider and can store returned Needs without running Feed.
 - `explore [prompt]` lets the clean brain suggest cognitive Needs from Goal/Mem/Need/Feed without running Feed.
-- `explore --save [prompt]` stores suggested Needs in a reviewable Need Queue; `needs take <index>` returns one command and `needs script [path]` writes a reviewable Feed script without executing it.
+- `explore --save [prompt]` stores suggested Needs in a reviewable Need Queue; `needs session [--live] [prompt]` writes a clean-brain review session, `needs take <index>` returns one command, and `needs script [path]` writes a reviewable Feed script without executing it.
 - The native HTML app can run `--json bootstrap` through the bridge from the command panel.
 - The native HTML app can show current Goal, status, refinements, and recent clean-brain Goal turns from persisted state.
 - The native HTML app can paste an external brain reply and apply it to Need Queue or Goal through the bridge.
-- The native HTML app can take or drop individual queued Needs and write the pending Need Queue into a local reviewable Feed script.
+- The native HTML app can take or drop individual queued Needs, write the pending Need Queue into a local reviewable Feed script, and write offline or live clean-brain review sessions.
 - `harness-repair-agent` can diagnose state, traces, check history, evolution artifacts, repo dirtiness, provider env, and local adapters as structured Feed.
 - `repair [query]` runs the harness-repair tentacle, records the Feed trace, and queues the tentacle's structured next Need for review.
 - The native HTML app can score a repair Feed as satisfied, partial, or failed, then render the recent repair outcome memory.
@@ -141,6 +141,7 @@ Updated: 2026-06-27
 - Added `brain --session --live [--goal] [prompt]` so a clean-brain provider can write `DRAFT.json` into the same reviewable session without mutating state or running Feed.
 - Added `needs script [path]` plus native HTML access so pending clean-brain Needs can become one reviewable Feed script while the queue remains unexecuted until a human runs it.
 - Added native HTML Need Queue take/drop controls so one clean-brain Need can become a reviewable Feed command without running tools.
+- Added `needs session [--live] [prompt]` plus native HTML access so pending Needs can be reviewed by a clean-brain chat session without tool context or Feed execution.
 - Added `brain --goal [--live] [--save]` in CLI, JSON, and native app so the clean brain can maintain Goal and queue Needs without Feed execution.
 - Added recent Goal turns to JSON status and the native HTML Goal panel so users can inspect Goal changes without running another Feed.
 - Added `brain --apply` and `brain --apply-json` plus native HTML apply buttons so external Chat UIs can feed clean-brain JSON back into Goal or Need Queue without tool context.
@@ -157,7 +158,7 @@ Updated: 2026-06-27
 - Rolled the cleanup/version cadence to `0.0.8` after clean-brain Goal history/import, provider-routed clean-brain calls, harness repair queue/drafts, real-machine record gate, and README/control-surface cleanup.
 - Added harness repair outcome memory so reviewed repair sessions can be scored locally and reused by later repair sessions without exposing tool logs to the clean brain.
 - Added `repair score <trace-index> <status>` so reviewed repair Feed can update route learning, pet state, product reports, and heartbeat compaction.
-- Tightened README into a product-page first surface with the clear-brain value, pixel Octopus, runnable install path, and current usable loop above docs links.
+- Tightened README into a product-page first surface with the clean-brain value, pixel Octopus, runnable install path, and current usable loop above docs links.
 - Added native HTML Repair outcome controls so a repair session can be scored from the app without shell use.
 - Added repair-outcome-driven harness beat evolution so failed or partial repair reviews can start the next reviewable apply plan.
 - Rolled the cleanup/version cadence to `0.0.9` after reviewable Need Queue scripts, app queue review controls, repair-outcome-driven harness beat evolution, and README/control-surface polish.

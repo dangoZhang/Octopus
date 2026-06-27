@@ -9,7 +9,7 @@ Cadence from this plan forward:
 
 Release checklist:
 
-- README stays product-page first, with the clean-brain story and install path visible.
+- README stays product-page first, with the clean-brain value and install path visible.
 - `docs/product-gap.md` records current shape, filled gaps, and next fill.
 - CI stays green for Rust, Python, manifests, tentacle runtime checks, pet page, and install path.
 - `octopus preflight --live` is the release-readiness summary before `0.1.0` tags.
@@ -27,6 +27,6 @@ Real-machine test gate for `0.1.0` and later tags:
 
 Last cleanup/version correction: `0.0.9` on 2026-06-27. Scope: reviewable Need Queue scripts, app queue review controls, repair-outcome-driven harness beat evolution, and README/control-surface polish; no tag cut.
 
-Product commits toward `0.0.10`: 1/8.
+Product commits toward `0.0.10`: 3/8.
 
 Next planned cleanup/version commit: `0.0.10`.
