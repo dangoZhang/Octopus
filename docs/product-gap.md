@@ -59,7 +59,7 @@ Updated: 2026-06-27
 - Runtime-code evolution candidates use recent Feed traces and failed checks to target the exact tool entrypoint that produced or broke Feed.
 - Patch candidates, patch drafts, and apply plans carry a feedback focus block from matching traces/checks.
 - LLM-generated evolution candidates can carry a provider-assisted unified diff into drafts and authorized apply artifacts.
-- Harness beat turns recent failed or partial check history or Feed traces into a written evolution proposal, recommendation, and apply plan.
+- Harness beat turns recent failed or partial check history, Feed traces, or repair outcomes into a written evolution proposal, recommendation, and apply plan.
 - Harness beat recommendations can be granted, written as reviewable apply artifacts, reviewed, and scored from the native HTML app.
 - `harness-repair-agent` can read heartbeat/evolution/state signals, probe adapter readiness, write `.octopus/harness-repair/SESSION.*`, `PROMPT.md`, optional provider-backed `DRAFT.md`, `NEXT_NEED.json`, and `COMMANDS.sh`, record reviewed `OUTCOME.md` plus `.octopus/harness-repair/outcomes.jsonl`, then feed those outcomes into later repair sessions.
 - The SWE read tool now returns a compact file/range header and line-numbered evidence.
@@ -155,12 +155,13 @@ Updated: 2026-06-27
 - Added `repair score <trace-index> <status>` so reviewed repair Feed can update route learning, pet state, product reports, and heartbeat compaction.
 - Tightened README into a product-page first surface with the clear-brain value, pixel Octopus, runnable install path, and current usable loop above docs links.
 - Added native HTML Repair outcome controls so a repair session can be scored from the app without shell use.
+- Added repair-outcome-driven harness beat evolution so failed or partial repair reviews can start the next reviewable apply plan.
 
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
 - LLM evolution can generate candidates and provider-assisted patch drafts from manifest surfaces, scored outcomes, recent Feed traces, and check history; local candidates now also target traced or failing runtime files, and harness beat can start from Feed trace or check feedback while app and CLI patch writes stay review/grant-bound.
-- Harness-repair diagnosis can now queue its next Need, remember reviewed session outcomes, and accept repair scoring from CLI or the native app; closing the loop still needs real provider-backed repairs scored through that outcome journal.
+- Harness-repair diagnosis can now queue its next Need, remember reviewed session outcomes, accept repair scoring from CLI or the native app, and feed failed or partial repair outcomes into harness beat evolution; closing the loop still needs real provider-backed repairs scored through that outcome journal.
 - Product reporting is available in CLI and app; report quality still needs feedback from real project states.
 - Preflight now exposes the release gate and record template; current readiness still depends on running that gate with live provider, OAuth PR publishing, scored feedback data, and appending a current-head or docs-only parent-recorded result.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.

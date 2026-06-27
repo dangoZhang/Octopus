@@ -52,7 +52,7 @@ Every executed Feed is also written to a compact harness trace journal and retur
 
 `check <tentacle> [index]` runs all manifest/profile evolution checks or one 1-based check, returns per-command status, records compact check history in harness state, and updates pet state from the result. Bridge exposes it only for built-in seed tentacles.
 
-`beat [memory_keep]` pulses the three hearts. The harness beat now watches recent failed or partial check history and Feed traces; when a matching tentacle manifest exists, it writes the next evolution proposal, recommendation, and apply plan under `.octopus/evolution/`, then exposes the source signal, candidate, preview, next action, and review target in heartbeat data.
+`beat [memory_keep]` pulses the three hearts. The harness beat now watches recent failed or partial check history, Feed traces, and repair outcomes; when a matching tentacle manifest exists, it writes the next evolution proposal, recommendation, and apply plan under `.octopus/evolution/`, then exposes the source signal, candidate, preview, next action, and review target in heartbeat data.
 
 `harness-repair-agent` is the seed tentacle for that loop. Its tool-side LLM can inspect heartbeat/evolution/state diagnostics, probe adapter readiness, write a reviewable `.octopus/harness-repair/` session with `PROMPT.md`, `DRAFT.md`, `NEXT_NEED.json`, and `COMMANDS.sh`, then return the next review/grant/apply/score Feed without adding tool logs to clean-brain context. `OCTOPUS_REPAIR_LLM=1` lets the configured provider fill `DRAFT.md`; the default path stays offline. Reviewed session outcomes are recorded as `OUTCOME.md` plus `.octopus/harness-repair/outcomes.jsonl`, and later repair sessions read that local outcome memory.
 

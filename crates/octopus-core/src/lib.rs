@@ -5031,6 +5031,32 @@ pub fn write_harness_beat_evolution_artifacts(
         )
         .map(Some);
     }
+    for outcome in state
+        .repair_outcomes
+        .iter()
+        .rev()
+        .filter(|outcome| evolution_actionable_repair_outcome_status(&outcome.status))
+    {
+        let objective = repair_outcome_evolution_objective(outcome);
+        let Ok(proposal) = propose_tentacle_evolution_with_state(
+            tentacles_root,
+            &outcome.tentacle_id,
+            &objective,
+            state,
+        ) else {
+            continue;
+        };
+        return harness_beat_evolution_from_proposal(
+            workspace_root,
+            proposal,
+            state,
+            "repair_outcome",
+            outcome.index,
+            0,
+            short_text(&one_line(&outcome.summary), 160),
+        )
+        .map(Some);
+    }
     Ok(None)
 }
 
@@ -5134,6 +5160,10 @@ fn evolution_actionable_feed_trace_status(status: &Status) -> bool {
     matches!(status, Status::Failed | Status::Partial)
 }
 
+fn evolution_actionable_repair_outcome_status(status: &Status) -> bool {
+    matches!(status, Status::Failed | Status::Partial)
+}
+
 fn check_history_evolution_detail(record: &CheckHistoryRecord) -> String {
     if !record.stderr.trim().is_empty() {
         record.stderr.clone()
@@ -5163,6 +5193,18 @@ fn feed_trace_evolution_objective(trace: &FeedTraceRecord) -> String {
         tentacle,
         tool,
         short_text(&one_line(&trace.summary), 160)
+    )
+}
+
+fn repair_outcome_evolution_objective(outcome: &RepairOutcome) -> String {
+    let tool = outcome.tool.as_deref().unwrap_or("unknown tool");
+    format!(
+        "repair outcome #{} for {} via {} ({:?}): {}",
+        outcome.index,
+        outcome.tentacle_id,
+        tool,
+        outcome.status,
+        short_text(&one_line(&outcome.summary), 160)
     )
 }
 
@@ -9214,6 +9256,75 @@ mod tests {
         let plan = fs::read_to_string(&evolution.apply_plan_path).unwrap();
         assert!(plan.contains("feedback focus:"));
         assert!(plan.contains("read feed lost the requested lines"));
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn harness_beat_evolution_can_start_from_repair_outcome() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        let trace = state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Observe, "README.md"),
+            status: Status::Satisfied,
+            evidence: vec![Evidence::new("read", "repair session had evidence")],
+            summary: "repair session created".to_string(),
+            metadata: BTreeMap::from([
+                ("tentacle".to_string(), "swe-agent".to_string()),
+                ("tool".to_string(), "read".to_string()),
+                ("plan_source".to_string(), "llm".to_string()),
+            ]),
+        });
+        let outcome = state
+            .record_repair_outcome(
+                Some(trace.index),
+                Status::Partial,
+                "repair draft still misses line-number evidence",
+            )
+            .unwrap();
+        let stale_trace = state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Observe, "unknown"),
+            status: Status::Satisfied,
+            evidence: vec![Evidence::new("missing", "stale missing tentacle repair")],
+            summary: "stale missing tentacle repair".to_string(),
+            metadata: BTreeMap::from([
+                ("tentacle".to_string(), "missing-tentacle".to_string()),
+                ("tool".to_string(), "missing".to_string()),
+            ]),
+        });
+        state
+            .record_repair_outcome(
+                Some(stale_trace.index),
+                Status::Failed,
+                "stale missing tentacle outcome",
+            )
+            .unwrap();
+
+        let workspace = std::env::temp_dir().join(format!(
+            "octopus-harness-beat-repair-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&workspace);
+        let evolution = write_harness_beat_evolution_artifacts(&root, &workspace, &state)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(evolution.source_kind, "repair_outcome");
+        assert_eq!(evolution.source_index, outcome.index);
+        assert_eq!(evolution.source_check_index, 0);
+        assert_eq!(evolution.tentacle_id, "swe-agent");
+        assert_eq!(evolution.candidate_id, "03-runtime-code");
+        assert!(evolution
+            .objective
+            .contains("repair draft still misses line-number evidence"));
+        assert!(Path::new(&evolution.proposal_path).exists());
+        assert!(Path::new(&evolution.apply_plan_path).exists());
+        let plan = fs::read_to_string(&evolution.apply_plan_path).unwrap();
+        assert!(plan.contains("repair draft still misses line-number evidence"));
+        assert!(evolution
+            .apply_plan_preview
+            .contains("repair draft still misses line-number evidence"));
         let _ = fs::remove_dir_all(workspace);
     }
 
