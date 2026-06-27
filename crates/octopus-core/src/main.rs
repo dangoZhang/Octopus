@@ -5082,6 +5082,9 @@ fn repair_report(
         .map(|item| format!("octopus needs take {}", item.index))
         .collect::<Vec<_>>();
     if let Some(plan) = &repair_plan {
+        if !plan.review.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.review)));
+        }
         for command in [
             &plan.check_command,
             &plan.grant_command,
@@ -9834,6 +9837,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(plan.status, "review_required");
         assert_eq!(plan.target_tool, "repair_session");
         assert!(plan.grant_command.contains("harness:write"));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REVIEW.md")));
         assert!(report
             .next
             .iter()
