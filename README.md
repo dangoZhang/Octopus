@@ -2,26 +2,17 @@
 
 > Independent-thinking tools for agents with a clean brain.
 
-[Open the app](https://dangozhang.github.io/Octopus/app.html) · [Read the docs](https://dangozhang.github.io/Octopus/) · [Install guide](docs/quickstart.md)
+[Open the app](https://dangozhang.github.io/Octopus/app.html) · [Docs](https://dangozhang.github.io/Octopus/) · [Install guide](docs/quickstart.md)
 
-Agents get noisy when one model has to carry tool manuals, command syntax, logs, memory, permissions, and repair steps in the same context. Octopus moves that load to intelligent tentacles. The center asks for cognition. The edge gathers evidence, runs tools, learns from feedback, and returns compact Feed.
+Most agents make one model do everything: keep the goal, remember context, read tool manuals, choose commands, parse logs, and repair the system that just failed. The brain gets crowded before the work gets hard.
 
-## The Agent Brain Got Too Loud
+Octopus keeps the center quiet. The main model carries only `Goal + Mem + Need + Feed`. It asks for cognition: verify this, reproduce that, compare options, remember a fact, forget stale context, execute a job, repair a broken path. It does not need to know which tool, API, file, shell command, or desktop adapter will be used.
 
-Octopus keeps the main context small: `Goal + Mem + Need + Feed`.
+The edge does the work. A tentacle is an LLM prompt, tool metadata, runtime code, local grants, traces, and an editable harness surface. It can think while using tools, return compact Feed, and improve from feedback without dragging implementation burden back into the main brain.
 
-A Need is cognitive: verify, reproduce, compare, remember, forget, execute, or repair. It does not need to name tools, APIs, commands, files, or implementation steps. Tentacles own that burden through their own prompt, tool metadata, runtime code, grants, traces, and evolution policy.
+The system has three pulses: one heartbeat for liveness, one memory beat for context, and one harness beat for tool-side evolution. The pixel Octopus changes color from real work states, so the agent has a small visible body instead of only logs.
 
-## What Feels Different
-
-- 🧠 Clean center: export, review, rewrite, and import Needs without dragging tool manuals into the main brain.
-- 🐙 Thinking tentacles: SWE, computer-use, repo maintenance, harness repair, bash-only, and JSON Feed ship as editable agent tool suites.
-- 🫀 Three pulses: heartbeat tracks liveness, memory beat compacts state, and harness beat turns failures into reviewable repairs.
-- 🎨 Pixel state: the Octopus changes color from real Need, Feed, repair, beat, blocked, and success events.
-- 🔐 Local grants: risky tools stop at `needs_authorization` until the local workspace allows them.
-- ⚙️ Rust kernel, code-as-harness: the base stays small while the tool surface stays readable, testable, and replaceable.
-
-## Download, Open, Run
+## Quick Install & Use
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
@@ -32,7 +23,7 @@ octopus bridge
 
 Open `http://127.0.0.1:8765/app.html`.
 
-Run a first clean loop:
+Run the first clean loop:
 
 ```bash
 octopus goal set "make this repo easier to use"
@@ -53,24 +44,4 @@ octopus provider check
 octopus brain --live --save "what should the brain ask next?"
 ```
 
-## Usable Today
-
-- Bootstrap local state and install seed tentacles.
-- Recommend first-run tentacles and learn from accepted, ignored, or failed choices.
-- Export clean-brain prompts, run external chat sessions, and rewrite polluted Needs before queueing them.
-- Run manifest Feed through permissioned tools, record traces, score outcomes, and update route evidence.
-- Inspect and operate the loop through the local HTML app and pixel Octopus.
-- Generate harness evolution proposals and reviewable apply plans from failed Feed, checks, or repair outcomes.
-
-## Pre-0.1 Line
-
-Octopus is on the `0.0.x` line. The kernel, app, starter tentacles, provider bridge, Feed traces, feedback scoring, repair plans, and Pages docs are working. `0.1.0` waits for recorded real-machine release testing with live providers, desktop adapters, and PR publishing.
-
-## Docs
-
-- [Product app](docs/app.html)
-- [Pixel Octopus](docs/pet.html)
-- [Install guide](docs/quickstart.md)
-- [Architecture](docs/architecture.md)
-- [Real-machine gate](docs/real-machine-test.md)
-- [Tentacle contract](tentacles/README.md)
+Current line: `0.0.11`. `0.1.0` waits for recorded real-machine testing.

@@ -952,7 +952,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                         parse_brain_reply::<BrainExploreDraft>(&payload, "clean-brain explore")?;
                     let report = if rewrite {
                         if live || clean_brain_llm_enabled() {
-                            let mut client = clean_brain_llm_client()?;
+                            let mut client = clean_brain_rewrite_llm_client()?;
                             loaded.clean_brain_rewrite_with_client(
                                 prompt.clone(),
                                 6,
@@ -989,7 +989,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 }
             } else if refine_goal {
                 let report = if live || clean_brain_llm_enabled() {
-                    let mut client = clean_brain_llm_client()?;
+                    let mut client = clean_brain_goal_llm_client()?;
                     loaded.clean_brain_goal_with_client(prompt.clone(), 6, &mut client)?
                 } else {
                     loaded.clean_brain_goal(prompt.clone(), 6)
@@ -1019,7 +1019,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     }
                 }
             } else if live || save {
-                let mut client = clean_brain_llm_client()?;
+                let mut client = clean_brain_explore_llm_client()?;
                 let report = loaded.clean_brain_explore_with_client(prompt, 6, &mut client)?;
                 if save {
                     let saved = loaded.queue_exploration_report(&report);
@@ -1066,7 +1066,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .or_else(|| loaded.goal.as_ref().map(|goal| goal.objective.clone()))
                 .unwrap_or_else(|| "next useful Need".to_string());
             let report = if clean_brain_llm_enabled() {
-                let mut client = clean_brain_llm_client()?;
+                let mut client = clean_brain_explore_llm_client()?;
                 loaded.clean_brain_explore_with_client(prompt.clone(), 6, &mut client)?
             } else {
                 loaded.clean_brain_explore(prompt.clone(), 6)
@@ -3076,6 +3076,10 @@ fn provider_env_report(profile_id: &str, prefix: &str) -> Result<ProviderEnvRepo
         "export OCTOPUS_LLM_EVOLVE=1".to_string(),
         format!("export OCTOPUS_CHAT_LLM_PREFIX={prefix}"),
         format!("export OCTOPUS_BRAIN_LLM_PREFIX={prefix}"),
+        format!("export OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX={prefix}"),
+        format!("export OCTOPUS_BRAIN_GOAL_LLM_PREFIX={prefix}"),
+        format!("export OCTOPUS_BRAIN_REWRITE_LLM_PREFIX={prefix}"),
+        format!("export OCTOPUS_BRAIN_QUEUE_LLM_PREFIX={prefix}"),
         format!("export OCTOPUS_MANIFEST_LLM_PREFIX={prefix}"),
         format!("export OCTOPUS_EVOLVE_LLM_PREFIX={prefix}"),
     ]);
@@ -3163,8 +3167,36 @@ fn provider_status_report() -> ProviderStatusReport {
         provider_layer_status(
             "clean_brain",
             "clean brain explores Goal/Mem/Need/Feed into new Needs",
-            brain_llm_enabled(),
-            brain_llm_prefix(),
+            clean_brain_llm_enabled(),
+            clean_brain_llm_prefix(),
+            "export OCTOPUS_BRAIN_LLM=1",
+        ),
+        provider_layer_status(
+            "clean_brain_explore",
+            "Need exploration from Goal/Mem/Need/Feed",
+            clean_brain_llm_enabled(),
+            clean_brain_explore_llm_prefix(),
+            "export OCTOPUS_BRAIN_LLM=1",
+        ),
+        provider_layer_status(
+            "clean_brain_goal",
+            "human Goal refinement without Feed execution",
+            clean_brain_llm_enabled(),
+            clean_brain_goal_llm_prefix(),
+            "export OCTOPUS_BRAIN_LLM=1",
+        ),
+        provider_layer_status(
+            "clean_brain_rewrite",
+            "rewrite polluted Need candidates into cognitive Needs",
+            clean_brain_llm_enabled(),
+            clean_brain_rewrite_llm_prefix(),
+            "export OCTOPUS_BRAIN_LLM=1",
+        ),
+        provider_layer_status(
+            "clean_brain_queue",
+            "review pending Needs before Feed",
+            clean_brain_llm_enabled(),
+            clean_brain_queue_llm_prefix(),
             "export OCTOPUS_BRAIN_LLM=1",
         ),
         provider_layer_status(
@@ -5542,6 +5574,12 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             "ready",
             "provider-backed or external-chat rewrite turns polluted model Needs into cognitive Needs before queueing",
             Some("octopus brain --rewrite --live --apply reply.json --save"),
+        ),
+        product_capability(
+            "clean_brain_model_slots",
+            "ready",
+            "Goal, Explore, Rewrite, and Need Queue review can use separate provider prefixes without changing brain context",
+            Some("octopus provider status"),
         ),
         product_capability(
             "need_queue",
@@ -8516,9 +8554,27 @@ fn chat_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
     ))
 }
 
-fn clean_brain_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
+fn clean_brain_explore_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
     Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_llm_prefix())?,
+        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_explore_llm_prefix())?,
+    ))
+}
+
+fn clean_brain_goal_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
+    Ok(OpenAiCompatibleChatClient::new(
+        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_goal_llm_prefix())?,
+    ))
+}
+
+fn clean_brain_rewrite_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
+    Ok(OpenAiCompatibleChatClient::new(
+        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_rewrite_llm_prefix())?,
+    ))
+}
+
+fn clean_brain_queue_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
+    Ok(OpenAiCompatibleChatClient::new(
+        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_queue_llm_prefix())?,
     ))
 }
 
@@ -8556,6 +8612,26 @@ fn clean_brain_llm_prefix() -> String {
     } else {
         brain_llm_prefix()
     }
+}
+
+fn clean_brain_explore_llm_prefix() -> String {
+    clean_brain_slot_llm_prefix("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX")
+}
+
+fn clean_brain_goal_llm_prefix() -> String {
+    clean_brain_slot_llm_prefix("OCTOPUS_BRAIN_GOAL_LLM_PREFIX")
+}
+
+fn clean_brain_rewrite_llm_prefix() -> String {
+    clean_brain_slot_llm_prefix("OCTOPUS_BRAIN_REWRITE_LLM_PREFIX")
+}
+
+fn clean_brain_queue_llm_prefix() -> String {
+    clean_brain_slot_llm_prefix("OCTOPUS_BRAIN_QUEUE_LLM_PREFIX")
+}
+
+fn clean_brain_slot_llm_prefix(slot_env: &str) -> String {
+    env::var(slot_env).unwrap_or_else(|_| clean_brain_llm_prefix())
 }
 
 fn manifest_llm_prefix() -> String {
@@ -8675,7 +8751,11 @@ fn write_brain_session(
     )
     .map_err(|error| error.to_string())?;
     let draft_path = if live {
-        let mut client = clean_brain_llm_client()?;
+        let mut client = if refine_goal {
+            clean_brain_goal_llm_client()?
+        } else {
+            clean_brain_explore_llm_client()?
+        };
         let response = client.chat(&messages)?;
         let draft = clean_brain_session_draft_json(&response.content)?;
         fs::write(&draft_path, draft).map_err(|error| error.to_string())?;
@@ -8764,7 +8844,7 @@ fn write_brain_rewrite_session(
     )
     .map_err(|error| error.to_string())?;
     let draft_path = if live {
-        let mut client = clean_brain_llm_client()?;
+        let mut client = clean_brain_rewrite_llm_client()?;
         let response = client.chat(&messages)?;
         let draft = clean_brain_session_draft_json(&response.content)?;
         fs::write(&draft_path, draft).map_err(|error| error.to_string())?;
@@ -8943,7 +9023,7 @@ fn write_need_queue_review_session(
     )
     .map_err(|error| error.to_string())?;
     let draft_path = if live {
-        let mut client = clean_brain_llm_client()?;
+        let mut client = clean_brain_queue_llm_client()?;
         let response = client.chat(&messages)?;
         let draft = clean_brain_session_draft_json(&response.content)?;
         fs::write(&draft_path, draft).map_err(|error| error.to_string())?;
@@ -10462,6 +10542,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(content.contains("export OCTOPUS_CHAT_LLM_PREFIX=OCTOPUS_TEST"));
         assert!(content.contains("export OCTOPUS_BRAIN_LLM=1"));
         assert!(content.contains("export OCTOPUS_BRAIN_LLM_PREFIX=OCTOPUS_TEST"));
+        assert!(content.contains("export OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX=OCTOPUS_TEST"));
+        assert!(content.contains("export OCTOPUS_BRAIN_GOAL_LLM_PREFIX=OCTOPUS_TEST"));
+        assert!(content.contains("export OCTOPUS_BRAIN_REWRITE_LLM_PREFIX=OCTOPUS_TEST"));
+        assert!(content.contains("export OCTOPUS_BRAIN_QUEUE_LLM_PREFIX=OCTOPUS_TEST"));
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
     }
@@ -10498,6 +10582,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let old_evolve = std::env::var("OCTOPUS_LLM_EVOLVE").ok();
         let old_chat_prefix = std::env::var("OCTOPUS_CHAT_LLM_PREFIX").ok();
         let old_brain_prefix = std::env::var("OCTOPUS_BRAIN_LLM_PREFIX").ok();
+        let old_brain_explore_prefix = std::env::var("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX").ok();
+        let old_brain_goal_prefix = std::env::var("OCTOPUS_BRAIN_GOAL_LLM_PREFIX").ok();
+        let old_brain_rewrite_prefix = std::env::var("OCTOPUS_BRAIN_REWRITE_LLM_PREFIX").ok();
+        let old_brain_queue_prefix = std::env::var("OCTOPUS_BRAIN_QUEUE_LLM_PREFIX").ok();
         let old_manifest_prefix = std::env::var("OCTOPUS_MANIFEST_LLM_PREFIX").ok();
         let old_evolve_prefix = std::env::var("OCTOPUS_EVOLVE_LLM_PREFIX").ok();
         let old_model = std::env::var("OCTOPUS_STATUS_TEST_MODEL").ok();
@@ -10509,6 +10597,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         std::env::set_var("OCTOPUS_LLM_EVOLVE", "1");
         std::env::set_var("OCTOPUS_CHAT_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_BRAIN_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
+        std::env::set_var("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
+        std::env::set_var("OCTOPUS_BRAIN_GOAL_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
+        std::env::set_var("OCTOPUS_BRAIN_REWRITE_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
+        std::env::set_var("OCTOPUS_BRAIN_QUEUE_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_MANIFEST_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_EVOLVE_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_STATUS_TEST_MODEL", "test-model");
@@ -10517,7 +10609,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
 
         let report = provider_status_report();
 
-        assert_eq!(report.layers.len(), 4);
+        assert_eq!(report.layers.len(), 8);
         assert!(report
             .layers
             .iter()
@@ -10530,6 +10622,26 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(report.layers.iter().any(|layer| {
             layer.layer == "clean_brain" && layer.prefix == "OCTOPUS_STATUS_TEST" && layer.enabled
         }));
+        assert!(report.layers.iter().any(|layer| {
+            layer.layer == "clean_brain_explore"
+                && layer.prefix == "OCTOPUS_STATUS_TEST"
+                && layer.enabled
+        }));
+        assert!(report.layers.iter().any(|layer| {
+            layer.layer == "clean_brain_goal"
+                && layer.prefix == "OCTOPUS_STATUS_TEST"
+                && layer.enabled
+        }));
+        assert!(report.layers.iter().any(|layer| {
+            layer.layer == "clean_brain_rewrite"
+                && layer.prefix == "OCTOPUS_STATUS_TEST"
+                && layer.enabled
+        }));
+        assert!(report.layers.iter().any(|layer| {
+            layer.layer == "clean_brain_queue"
+                && layer.prefix == "OCTOPUS_STATUS_TEST"
+                && layer.enabled
+        }));
         assert!(report
             .next
             .contains(&"octopus provider check OCTOPUS_STATUS_TEST".to_string()));
@@ -10540,6 +10652,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         restore_env("OCTOPUS_LLM_EVOLVE", old_evolve);
         restore_env("OCTOPUS_CHAT_LLM_PREFIX", old_chat_prefix);
         restore_env("OCTOPUS_BRAIN_LLM_PREFIX", old_brain_prefix);
+        restore_env("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX", old_brain_explore_prefix);
+        restore_env("OCTOPUS_BRAIN_GOAL_LLM_PREFIX", old_brain_goal_prefix);
+        restore_env("OCTOPUS_BRAIN_REWRITE_LLM_PREFIX", old_brain_rewrite_prefix);
+        restore_env("OCTOPUS_BRAIN_QUEUE_LLM_PREFIX", old_brain_queue_prefix);
         restore_env("OCTOPUS_MANIFEST_LLM_PREFIX", old_manifest_prefix);
         restore_env("OCTOPUS_EVOLVE_LLM_PREFIX", old_evolve_prefix);
         restore_env("OCTOPUS_STATUS_TEST_MODEL", old_model);
@@ -11644,6 +11760,123 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build a clean g
         let content = fs::read_to_string(&state_path).unwrap();
         assert!(content.contains("brain goal refined"));
         assert!(content.contains("current goal evidence"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cli_clean_brain_model_slots_route_goal_and_explore_without_feed() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _env = env_guard();
+        let dir = std::env::temp_dir().join(format!("octopus-brain-slots-{}", std::process::id()));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let goal_curl = dir.join("goal-curl.sh");
+        let explore_curl = dir.join("explore-curl.sh");
+        fs::write(
+            &goal_curl,
+            r#"#!/bin/sh
+printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"slot goal brain\",\"constraints\":[\"goal slot\"],\"summary\":\"goal slot reply\",\"needs\":[{\"kind\":\"observe\",\"query\":\"goal-slot cognitive state\"}]}"}}]}'
+"#,
+        )
+        .unwrap();
+        fs::write(
+            &explore_curl,
+            r#"#!/bin/sh
+printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"explore slot reply\",\"needs\":[{\"kind\":\"verify\",\"query\":\"explore-slot cognitive need\"}]}"}}]}'
+"#,
+        )
+        .unwrap();
+        for path in [&goal_curl, &explore_curl] {
+            let mut permissions = fs::metadata(path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(path, permissions).unwrap();
+        }
+
+        let old_brain = std::env::var("OCTOPUS_BRAIN_LLM").ok();
+        let old_brain_prefix = std::env::var("OCTOPUS_BRAIN_LLM_PREFIX").ok();
+        let old_goal_prefix = std::env::var("OCTOPUS_BRAIN_GOAL_LLM_PREFIX").ok();
+        let old_explore_prefix = std::env::var("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX").ok();
+        let old_goal_model = std::env::var("OCTOPUS_SLOT_GOAL_MODEL").ok();
+        let old_goal_base_url = std::env::var("OCTOPUS_SLOT_GOAL_BASE_URL").ok();
+        let old_goal_api_key = std::env::var("OCTOPUS_SLOT_GOAL_API_KEY").ok();
+        let old_goal_curl = std::env::var("OCTOPUS_SLOT_GOAL_CURL").ok();
+        let old_explore_model = std::env::var("OCTOPUS_SLOT_EXPLORE_MODEL").ok();
+        let old_explore_base_url = std::env::var("OCTOPUS_SLOT_EXPLORE_BASE_URL").ok();
+        let old_explore_api_key = std::env::var("OCTOPUS_SLOT_EXPLORE_API_KEY").ok();
+        let old_explore_curl = std::env::var("OCTOPUS_SLOT_EXPLORE_CURL").ok();
+        std::env::set_var("OCTOPUS_BRAIN_LLM", "1");
+        std::env::set_var("OCTOPUS_BRAIN_LLM_PREFIX", "OCTOPUS_UNUSED_BRAIN");
+        std::env::set_var("OCTOPUS_BRAIN_GOAL_LLM_PREFIX", "OCTOPUS_SLOT_GOAL");
+        std::env::set_var("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX", "OCTOPUS_SLOT_EXPLORE");
+        std::env::set_var("OCTOPUS_SLOT_GOAL_MODEL", "goal-model");
+        std::env::set_var("OCTOPUS_SLOT_GOAL_BASE_URL", "https://goal.example/v1");
+        std::env::remove_var("OCTOPUS_SLOT_GOAL_API_KEY");
+        std::env::set_var(
+            "OCTOPUS_SLOT_GOAL_CURL",
+            goal_curl.to_string_lossy().to_string(),
+        );
+        std::env::set_var("OCTOPUS_SLOT_EXPLORE_MODEL", "explore-model");
+        std::env::set_var(
+            "OCTOPUS_SLOT_EXPLORE_BASE_URL",
+            "https://explore.example/v1",
+        );
+        std::env::remove_var("OCTOPUS_SLOT_EXPLORE_API_KEY");
+        std::env::set_var(
+            "OCTOPUS_SLOT_EXPLORE_CURL",
+            explore_curl.to_string_lossy().to_string(),
+        );
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--goal".to_string(),
+            "--live".to_string(),
+            "--save".to_string(),
+            "tighten".to_string(),
+            "goal".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--live".to_string(),
+            "--save".to_string(),
+            "explore".to_string(),
+            "needs".to_string(),
+        ])
+        .unwrap();
+
+        restore_env("OCTOPUS_BRAIN_LLM", old_brain);
+        restore_env("OCTOPUS_BRAIN_LLM_PREFIX", old_brain_prefix);
+        restore_env("OCTOPUS_BRAIN_GOAL_LLM_PREFIX", old_goal_prefix);
+        restore_env("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX", old_explore_prefix);
+        restore_env("OCTOPUS_SLOT_GOAL_MODEL", old_goal_model);
+        restore_env("OCTOPUS_SLOT_GOAL_BASE_URL", old_goal_base_url);
+        restore_env("OCTOPUS_SLOT_GOAL_API_KEY", old_goal_api_key);
+        restore_env("OCTOPUS_SLOT_GOAL_CURL", old_goal_curl);
+        restore_env("OCTOPUS_SLOT_EXPLORE_MODEL", old_explore_model);
+        restore_env("OCTOPUS_SLOT_EXPLORE_BASE_URL", old_explore_base_url);
+        restore_env("OCTOPUS_SLOT_EXPLORE_API_KEY", old_explore_api_key);
+        restore_env("OCTOPUS_SLOT_EXPLORE_CURL", old_explore_curl);
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert_eq!(restored.goal.as_ref().unwrap().objective, "slot goal brain");
+        assert_eq!(restored.pending_need_queue_count(), 2);
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let content = fs::read_to_string(&state_path).unwrap();
+        assert!(content.contains("goal slot reply"));
+        assert!(content.contains("goal-slot cognitive state"));
+        assert!(content.contains("explore slot reply"));
+        assert!(content.contains("explore-slot cognitive need"));
         let _ = fs::remove_dir_all(dir);
     }
 

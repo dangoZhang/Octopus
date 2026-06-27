@@ -169,6 +169,11 @@ octopus provider status
 octopus provider save openai OCTOPUS_LLM "$tmp/llm.env"
 # set OPENAI_API_KEY first, then:
 . "$tmp/llm.env"
+# Optional: route clean-brain jobs to different provider prefixes.
+export OCTOPUS_BRAIN_GOAL_LLM_PREFIX=OCTOPUS_LLM
+export OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX=OCTOPUS_LLM
+export OCTOPUS_BRAIN_REWRITE_LLM_PREFIX=OCTOPUS_LLM
+export OCTOPUS_BRAIN_QUEUE_LLM_PREFIX=OCTOPUS_LLM
 octopus provider check
 
 octopus --state "$tmp/state.json" brain --goal --live --save "make the goal sharper"
