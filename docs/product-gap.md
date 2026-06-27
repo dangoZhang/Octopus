@@ -33,6 +33,7 @@ Updated: 2026-06-28
 - The native HTML app Doctor panel has readiness actions for bootstrap, goal setup, provider status/env, starter recommendations, preflight, seed checks, beat, and product report, with Doctor refresh after local actions.
 - The native HTML app now has a First Run path that runs Doctor, Bootstrap, Goal, Starter, safe Feed, Feed feedback, Preflight, record actions, and Beat through the whole-project local API.
 - `first-run [objective]` runs the same safe local loop from CLI and returns one JSON record with Bootstrap, Goal, Starter, Feed, Feedback, Beat, Product, Preflight, and Doctor evidence.
+- `first-run --live [objective]` keeps the same loop but turns on the live provider preflight gate only when explicitly requested.
 - `update` reports the current GitHub reinstall command by default, and `update --run` performs the cargo reinstall explicitly.
 - `bootstrap` creates local state files, adapts to the project, installs seed tentacles, pulses heartbeat, and returns a product report plus next commands.
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
@@ -255,6 +256,7 @@ Updated: 2026-06-28
 - Added First Run record actions so the native app can generate and check the real-machine preflight record from the same launch path.
 - Added CLI `first-run [objective]` so headless installs and real-machine records can run the same scored local loop without manually copying eight commands.
 - Tightened the biological research grounding around Liang's cephalopod program, flexible cuttlefish camouflage, and segmented cephalopod arms, then connected preflight feedback evidence to `first-run`.
+- Added `first-run --live` plus native app CLI/live loop buttons so the whole-project first run can include live provider readiness without making network calls the default.
 
 ## Remaining Gaps
 

@@ -473,7 +473,9 @@
             <h2>First Run</h2>
             <div id="firstRunStatus" class="metric"><span>Ready.</span></div>
             <div class="toolbar">
-              <button class="primary" type="button" id="firstRunAll">Run Loop</button>
+              <button class="primary" type="button" id="firstRunCli">Run CLI Loop</button>
+              <button type="button" id="firstRunLive">Run Live Loop</button>
+              <button type="button" id="firstRunAll">Run Steps</button>
               <button type="button" id="firstRunDoctor">Doctor</button>
               <button type="button" id="firstRunBootstrap">Bootstrap</button>
               <button type="button" id="firstRunGoal">Goal</button>
@@ -697,6 +699,7 @@
           `octopus --state ${shellQuote(state)} init`,
           `octopus --state ${shellQuote(state)} --json bootstrap`,
           `octopus --state ${shellQuote(state)} --json first-run ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json first-run --live ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json starter ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json starter feedback ${tentacle} accepted ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} install ${tentacle}`,
@@ -832,6 +835,31 @@
           $("output").textContent = String(error);
           throw error;
         }
+      }
+
+      async function runFirstRunCli(live = false) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "make this repo easier to use";
+        const args = ["--state", state, "--json", "first-run"];
+        if (live) args.push("--live");
+        args.push(goal);
+        return runFirstRunTask(live ? "Live CLI Loop" : "CLI Loop", async () => {
+          const report = await runBridgeJson(args);
+          currentStarterReport = report.starter || currentStarterReport;
+          currentProductReport = report.product || currentProductReport;
+          currentPreflightReport = report.preflight || currentPreflightReport;
+          currentDoctorReport = report.doctor || currentDoctorReport;
+          if (report.starter) renderStarterReport(report.starter);
+          if (report.product) renderProductReport(report.product);
+          if (report.preflight) renderPreflightReport(report.preflight);
+          if (report.doctor) renderDoctorReport(report.doctor);
+          $("output").textContent = JSON.stringify(report, null, 2);
+          return report;
+        });
+      }
+
+      async function runFirstRunLive() {
+        return runFirstRunCli(true);
       }
 
       async function runFirstRunDoctor() {
@@ -3971,6 +3999,8 @@
         currentRepairScoreReport = null;
         render();
       });
+      $("firstRunCli").addEventListener("click", () => runFirstRunCli(false));
+      $("firstRunLive").addEventListener("click", runFirstRunLive);
       $("firstRunAll").addEventListener("click", runFirstRunPath);
       $("firstRunDoctor").addEventListener("click", runFirstRunDoctor);
       $("firstRunBootstrap").addEventListener("click", runFirstRunBootstrap);

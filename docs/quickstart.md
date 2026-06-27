@@ -68,6 +68,7 @@ source .octopus/llm.env
 # export OCTOPUS_LLM_REASONING_EFFORT=medium
 # export OCTOPUS_LLM_MAX_TOKENS=2048
 octopus provider check
+octopus first-run --live "make this repo easier to use"
 octopus brain --agenda --save "what matters next?"
 octopus brain --focus compare --save "which path should the brain compare?"
 octopus brain --llm-prefix OCTOPUS_LLM --agenda --save "what matters next?"

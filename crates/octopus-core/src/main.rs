@@ -285,6 +285,7 @@ struct BootstrapReport {
 struct FirstRunReport {
     state_path: String,
     objective: String,
+    live: bool,
     evidence_target: String,
     bootstrap: BootstrapReport,
     goal: Goal,
@@ -2182,12 +2183,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("first-run") => {
-            let objective = rest
-                .get(1..)
-                .filter(|values| !values.is_empty())
-                .map(|values| values.join(" "))
-                .unwrap_or_else(default_first_run_objective);
-            let report = first_run_report(state.clone(), objective)?;
+            let (live, objective) = parse_first_run_args(&rest[1..]);
+            let report = first_run_report(state.clone(), objective, live)?;
             if json {
                 println!(
                     "{}",
@@ -4970,6 +4967,9 @@ fn bridge_command_allowed(args: &[String]) -> bool {
     if command == "preflight" {
         return bridge_preflight_allowed(args);
     }
+    if command == "first-run" {
+        return bridge_first_run_allowed(args);
+    }
     if command == "update" {
         return bridge_update_allowed(args);
     }
@@ -5007,6 +5007,15 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "adapt"
             | "self-iterate"
     )
+}
+
+fn bridge_first_run_allowed(args: &[String]) -> bool {
+    let Some(index) = bridge_command_index(args) else {
+        return false;
+    };
+    args[index + 1..]
+        .iter()
+        .all(|arg| !arg.starts_with('-') || arg == "--live")
 }
 
 fn bridge_update_allowed(args: &[String]) -> bool {
@@ -5326,7 +5335,29 @@ fn first_run_evidence_target() -> String {
     }
 }
 
-fn first_run_report(state_path: PathBuf, objective: String) -> Result<FirstRunReport, String> {
+fn parse_first_run_args(args: &[String]) -> (bool, String) {
+    let mut live = false;
+    let mut objective = Vec::new();
+    for arg in args {
+        if arg == "--live" {
+            live = true;
+        } else {
+            objective.push(arg.clone());
+        }
+    }
+    let objective = if objective.is_empty() {
+        default_first_run_objective()
+    } else {
+        objective.join(" ")
+    };
+    (live, objective)
+}
+
+fn first_run_report(
+    state_path: PathBuf,
+    objective: String,
+    live: bool,
+) -> Result<FirstRunReport, String> {
     let evidence_target = first_run_evidence_target();
     let bootstrap = bootstrap_workspace(state_path.clone(), default_tentacles_root())?;
     let mut loaded = HarnessState::load(&state_path).map_err(|error| error.to_string())?;
@@ -5356,19 +5387,26 @@ fn first_run_report(state_path: PathBuf, objective: String) -> Result<FirstRunRe
         .save(&state_path)
         .map_err(|error| error.to_string())?;
     let product = product_report(&harness.state, &state_path)?;
-    let preflight = preflight_report(&harness.state, &state_path, false)?;
+    let preflight = preflight_report(&harness.state, &state_path, live)?;
     let doctor = doctor_report(&harness.state, state_path.clone())?;
     let state_arg = shell_arg(&state_path.to_string_lossy());
-    let next = vec![
+    let objective_arg = shell_arg(&objective);
+    let mut next = vec![
         format!("octopus --state {state_arg} preflight"),
         format!("octopus --state {state_arg} preflight record"),
         format!("octopus --state {state_arg} start --open"),
         "octopus provider check".to_string(),
         format!("octopus --state {state_arg} self-iterate pr dangoZhang/Octopus \"review first-run evidence\""),
     ];
+    if !live {
+        next.push(format!(
+            "octopus --state {state_arg} first-run --live {objective_arg}"
+        ));
+    }
     Ok(FirstRunReport {
         state_path: state_path.to_string_lossy().to_string(),
         objective,
+        live,
         evidence_target,
         bootstrap,
         goal,
@@ -9907,11 +9945,19 @@ fn print_first_run_report(report: &FirstRunReport, language: Language) {
         .find(|check| check.id == "feedback_data")
         .map(|check| check.status.as_str())
         .unwrap_or("missing");
+    let live_gate = report
+        .preflight
+        .checks
+        .iter()
+        .find(|check| check.id == "live_provider")
+        .map(|check| check.status.as_str())
+        .unwrap_or("missing");
     match language {
         Language::En => {
             println!("Octopus first run");
             println!("state: {}", report.state_path);
             println!("objective: {}", report.objective);
+            println!("live: {}", report.live);
             println!("evidence_target: {}", report.evidence_target);
             println!(
                 "seed_tentacles: {}",
@@ -9930,6 +9976,7 @@ fn print_first_run_report(report: &FirstRunReport, language: Language) {
             println!("capabilities: {}", report.product.capabilities.len());
             println!("gaps: {}", report.product.gaps.len());
             println!("preflight_feedback: {feedback_gate}");
+            println!("preflight_live_provider: {live_gate}");
             println!("release_ready: {}", report.preflight.release_ready);
             println!("doctor_warnings: {}", report.doctor.warnings.len());
             println!("next: {}", join_or_none(&report.next));
@@ -9938,6 +9985,7 @@ fn print_first_run_report(report: &FirstRunReport, language: Language) {
             println!("章鱼首次运行");
             println!("状态文件: {}", report.state_path);
             println!("目标: {}", report.objective);
+            println!("Live: {}", report.live);
             println!("证据目标: {}", report.evidence_target);
             println!(
                 "种子触手: {}",
@@ -9953,6 +10001,7 @@ fn print_first_run_report(report: &FirstRunReport, language: Language) {
             println!("能力数: {}", report.product.capabilities.len());
             println!("缺口数: {}", report.product.gaps.len());
             println!("Preflight反馈门: {feedback_gate}");
+            println!("Preflight live provider: {live_gate}");
             println!("可发布: {}", report.preflight.release_ready);
             println!("Doctor警告: {}", report.doctor.warnings.len());
             println!("下一步: {}", join_or_none(&report.next));
@@ -12569,7 +12618,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -12656,13 +12705,14 @@ fn parse_status(value: &str) -> Result<Status, String> {
 mod tests {
     use super::{
         app_open_command, bridge_command_allowed, bridge_command_name, bridge_static,
-        bridge_static_asset, check_preflight_record, check_report, default_tentacles_root_for,
-        first_run_report, http_content_length, install_report, is_broken_pipe_panic,
-        localize_summary, materialize_bundled_tentacles_root, parse_bridge_env_overlay,
-        parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
-        preflight_report, prepare_bridge_state, product_report, provider_status_report,
-        real_machine_record_status_from_parts, repair_report, run, skill_reports, starter_report,
-        tentacles_root_ready, update_report, usage, write_pet_image_report, Language,
+        bridge_static_asset, check_preflight_record, check_report, default_first_run_objective,
+        default_tentacles_root_for, first_run_report, http_content_length, install_report,
+        is_broken_pipe_panic, localize_summary, materialize_bundled_tentacles_root,
+        parse_bridge_env_overlay, parse_first_run_args, parse_start_options, percent_encode_path,
+        pet_report, pet_report_for_state, preflight_report, prepare_bridge_state, product_report,
+        provider_status_report, real_machine_record_status_from_parts, repair_report, run,
+        skill_reports, starter_report, tentacles_root_ready, update_report, usage,
+        write_pet_image_report, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
@@ -14865,7 +14915,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("provider status"));
         assert!(usage().contains("update [--run]"));
         assert!(usage().contains("goal [set [--constraint text] objective|refine text]"));
-        assert!(usage().contains("first-run [objective]"));
+        assert!(usage().contains("first-run [--live] [objective]"));
         assert!(usage().contains("starter [objective]"));
         assert!(usage().contains("report"));
         assert!(usage().contains("preflight [--live]"));
@@ -14889,9 +14939,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let state_path = dir.join(".octopus/state.json");
 
         let report =
-            first_run_report(state_path.clone(), "validate first run".to_string()).unwrap();
+            first_run_report(state_path.clone(), "validate first run".to_string(), false).unwrap();
 
         assert_eq!(report.objective, "validate first run");
+        assert!(!report.live);
         assert_eq!(report.evidence_target, "README.md");
         assert_eq!(report.feedback.status, Status::Satisfied);
         assert_eq!(
@@ -14910,6 +14961,20 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn first_run_args_parse_live_without_polluting_objective() {
+        let (live, objective) = parse_first_run_args(&[
+            "--live".to_string(),
+            "validate".to_string(),
+            "provider".to_string(),
+        ]);
+        assert!(live);
+        assert_eq!(objective, "validate provider");
+        let (live, objective) = parse_first_run_args(&[]);
+        assert!(!live);
+        assert_eq!(objective, default_first_run_objective());
     }
 
     #[test]
@@ -15440,6 +15505,30 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "state.json".to_string(),
             "--json".to_string(),
             "bootstrap".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "first-run".to_string(),
+            "validate".to_string(),
+            "repo".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "first-run".to_string(),
+            "--live".to_string(),
+            "validate".to_string(),
+            "provider".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "first-run".to_string(),
+            "--unsafe".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),

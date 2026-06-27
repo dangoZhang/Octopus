@@ -36,7 +36,7 @@ Run a first loop:
 octopus first-run "make this repo easier to use"
 ```
 
-`first-run` sets a clean Goal, installs seed tentacles, asks a safe observe Need, records Feed feedback, pulses the hearts, and returns Doctor plus Preflight evidence.
+`first-run` sets a clean Goal, installs seed tentacles, asks a safe observe Need, records Feed feedback, pulses the hearts, and returns Doctor plus Preflight evidence. Add `--live` when provider env is ready and you want the same loop to include the live provider gate.
 
 Use an OpenAI-compatible provider for live clean-brain calls and tool-side planning:
 
