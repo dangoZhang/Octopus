@@ -1498,6 +1498,35 @@ where
         .map_err(|error| format!("invalid clean-brain explore JSON: {error}"))
 }
 
+fn brain_memory_from_chat<C>(
+    brain: &BrainContextReport,
+    prompt: &str,
+    client: &mut C,
+) -> Result<BrainExploreDraft, String>
+where
+    C: ChatClient,
+{
+    let context = serde_json::json!({
+        "policy": brain.policy,
+        "slots": brain.slots,
+        "goal": brain.goal,
+        "mem": brain.mem,
+        "recent_need_feed": brain.turns,
+    });
+    let response = client.chat(&[
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain memory layer. You see only Goal, Mem, Need, and Feed. Express memory-shaped cognitive Needs only: remember durable context, recall relevant context, or forget stale context. Do not choose tools, APIs, files, commands, routes, tentacles, or implementation. Return only JSON: {\"summary\":\"short memory focus\",\"needs\":[{\"kind\":\"remember|recall|forget|verify\",\"query\":\"short cognitive memory request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!("Clean brain context JSON: {context}\nUser memory prompt: {prompt}"),
+        ),
+    ])?;
+    serde_json::from_str::<BrainExploreDraft>(&response.content)
+        .map_err(|error| format!("invalid clean-brain memory JSON: {error}"))
+}
+
 fn brain_deliberation_from_chat<C>(
     brain: &BrainContextReport,
     prompt: &str,
@@ -2027,6 +2056,47 @@ impl HarnessState {
         self.brain_explore_report(brain, prompt, "external_chat", draft.summary, draft.needs)
     }
 
+    pub fn clean_brain_memory(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+    ) -> BrainExploreReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let needs = local_brain_memory_needs(&brain, &prompt);
+        let summary = format!(
+            "clean-brain memory focus for {}",
+            clean_focus(&brain, &prompt)
+        );
+        self.brain_memory_report(brain, prompt, "local_memory", summary, needs)
+    }
+
+    pub fn clean_brain_memory_with_client<C>(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        client: &mut C,
+    ) -> Result<BrainExploreReport, String>
+    where
+        C: ChatClient,
+    {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let draft = brain_memory_from_chat(&brain, &prompt, client)?;
+        Ok(self.brain_memory_report(brain, prompt, "llm_memory", draft.summary, draft.needs))
+    }
+
+    pub fn clean_brain_memory_from_draft(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        draft: BrainExploreDraft,
+    ) -> BrainExploreReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        self.brain_memory_report(brain, prompt, "external_memory", draft.summary, draft.needs)
+    }
+
     pub fn clean_brain_deliberate(
         &self,
         prompt: impl Into<String>,
@@ -2432,6 +2502,35 @@ impl HarnessState {
             audit,
             next,
         }
+    }
+
+    fn brain_memory_report(
+        &self,
+        brain: BrainContextReport,
+        prompt: String,
+        source: &str,
+        summary: impl Into<String>,
+        needs: Vec<GoalNeedSuggestion>,
+    ) -> BrainExploreReport {
+        let mut report = self.brain_explore_report(brain, prompt.clone(), source, summary, needs);
+        report
+            .next
+            .push("octopus brain --memory --session".to_string());
+        if report.audit.clean_needs.is_empty() {
+            if report.audit.issue_count == 0 {
+                report
+                    .next
+                    .push("octopus brain --memory \"what should be remembered?\"".to_string());
+            }
+        } else {
+            report.next.push(format!(
+                "octopus brain --memory --save {}",
+                shell_arg(&prompt)
+            ));
+        }
+        report.next.sort();
+        report.next.dedup();
+        report
     }
 
     fn brain_deliberation_report(
@@ -8138,11 +8237,7 @@ fn need_queue_status_key(status: &NeedQueueStatus) -> &'static str {
 }
 
 fn local_brain_explore_needs(brain: &BrainContextReport, prompt: &str) -> Vec<GoalNeedSuggestion> {
-    let focus = clean_optional(Some(prompt))
-        .map(str::to_string)
-        .or_else(|| brain.goal.as_ref().map(|goal| goal.objective.clone()))
-        .or_else(|| brain.turns.last().map(|turn| turn.need.query.clone()))
-        .unwrap_or_else(|| "current goal".to_string());
+    let focus = clean_focus(brain, prompt);
     let mut needs = vec![
         GoalNeedSuggestion {
             kind: NeedKind::Observe,
@@ -8178,6 +8273,67 @@ fn local_brain_explore_needs(brain: &BrainContextReport, prompt: &str) -> Vec<Go
             seen.insert(key, ()).is_none()
         })
         .collect()
+}
+
+fn local_brain_memory_needs(brain: &BrainContextReport, prompt: &str) -> Vec<GoalNeedSuggestion> {
+    let focus = clean_focus(brain, prompt);
+    let mut needs = Vec::new();
+    if let Some(goal) = &brain.goal {
+        needs.push(GoalNeedSuggestion {
+            kind: NeedKind::Remember,
+            query: format!("active goal: {}", goal.objective),
+        });
+        for constraint in goal.constraints.iter().take(3) {
+            needs.push(GoalNeedSuggestion {
+                kind: NeedKind::Remember,
+                query: format!("goal constraint: {constraint}"),
+            });
+        }
+    } else {
+        needs.push(GoalNeedSuggestion {
+            kind: NeedKind::Verify,
+            query: format!("whether {focus} has a clear durable goal"),
+        });
+    }
+    if brain.mem.is_empty() {
+        needs.push(GoalNeedSuggestion {
+            kind: NeedKind::Remember,
+            query: format!("memory focus: {focus}"),
+        });
+    } else {
+        needs.push(GoalNeedSuggestion {
+            kind: NeedKind::Recall,
+            query: focus.clone(),
+        });
+    }
+    for turn in brain.turns.iter().rev().take(2) {
+        needs.push(GoalNeedSuggestion {
+            kind: NeedKind::Remember,
+            query: format!("Feed for {}: {}", turn.need.query, turn.feed.summary),
+        });
+    }
+    if brain.mem.len() > 5 {
+        needs.push(GoalNeedSuggestion {
+            kind: NeedKind::Forget,
+            query: format!("stale context not relevant to {focus}"),
+        });
+    }
+    let mut seen = BTreeMap::new();
+    needs
+        .into_iter()
+        .filter(|need| {
+            let key = format!("{}:{}", kind_key(&need.kind), need.query);
+            seen.insert(key, ()).is_none()
+        })
+        .collect()
+}
+
+fn clean_focus(brain: &BrainContextReport, prompt: &str) -> String {
+    clean_optional(Some(prompt))
+        .map(str::to_string)
+        .or_else(|| brain.goal.as_ref().map(|goal| goal.objective.clone()))
+        .or_else(|| brain.turns.last().map(|turn| turn.need.query.clone()))
+        .unwrap_or_else(|| "current goal".to_string())
 }
 
 fn local_brain_deliberation(brain: &BrainContextReport, prompt: &str) -> BrainDeliberationDraft {
@@ -9848,6 +10004,44 @@ mod tests {
         assert!(state.routes.scores.is_empty());
 
         let saved = state.queue_reflection_report(&report);
+
+        assert_eq!(saved.queued.len(), report.needs.len());
+        assert_eq!(state.pending_need_queue_count(), report.needs.len());
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
+    }
+
+    #[test]
+    fn clean_brain_memory_suggests_memory_needs_without_feed() {
+        let mut goal = Goal::new("keep the clean brain focused");
+        goal.refine("remember durable context only".to_string());
+        let mut state = HarnessState {
+            goal: Some(goal),
+            ..HarnessState::default()
+        };
+        state.memory.remember("old clean-brain context");
+
+        let report = state.clean_brain_memory("compress durable context", 5);
+
+        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
+        assert_eq!(report.source, "local_memory");
+        assert!(report
+            .needs
+            .iter()
+            .any(|need| matches!(need.kind, NeedKind::Remember)));
+        assert!(report
+            .needs
+            .iter()
+            .any(|need| matches!(need.kind, NeedKind::Recall)));
+        assert_eq!(report.audit.issue_count, 0);
+        assert!(report
+            .next
+            .iter()
+            .any(|next| next.contains("brain --memory --save")));
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
+
+        let saved = state.queue_exploration_report(&report);
 
         assert_eq!(saved.queued.len(), report.needs.len());
         assert_eq!(state.pending_need_queue_count(), report.needs.len());
