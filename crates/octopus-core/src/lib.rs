@@ -6345,7 +6345,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 ),
                 tool_meta_with_contract(
                     "heartbeat_repair",
-                    "Turn heartbeat evolution artifacts into a review, grant, apply, and score plan.",
+                    "Read the latest repair action plan or heartbeat artifacts into a review, grant, apply, and score Feed.",
                     "shell",
                     "tentacles/harness-repair-agent/tools/heartbeat_repair.sh",
                     OCTOPUS_JSON_CONTRACT,
@@ -6384,6 +6384,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "Return repair plans as Feed; do not patch the kernel directly.",
                     "Keep provider repair drafts optional and reviewable.",
                     "Record reviewed repair outcomes before using them as future repair evidence.",
+                    "Read latest REPAIR_PLAN before older evolution artifacts.",
                     "Prefer reviewable .octopus/evolution artifacts and explicit harness:write grants.",
                 ],
             ),
@@ -10192,6 +10193,48 @@ print(json.dumps({
         assert!(repair_plan_text.contains("octopus-harness-repair-plan-v1"));
         assert!(repair_plan_text.contains("\"target_tool\": \"repair_session\""));
         assert!(repair_plan_text.contains("\"checks\""));
+        let heartbeat_feed = tentacle.feed(&Need::new(
+            NeedKind::Verify,
+            workspace.to_string_lossy().to_string(),
+        ));
+        assert_eq!(heartbeat_feed.status, Status::Satisfied);
+        assert!(heartbeat_feed.summary.contains("repair_plan"));
+        assert_eq!(
+            heartbeat_feed.metadata.get("tool").map(String::as_str),
+            Some("heartbeat_repair")
+        );
+        assert_eq!(
+            heartbeat_feed
+                .metadata
+                .get("repair_plan_status")
+                .map(String::as_str),
+            Some("review_required")
+        );
+        assert_eq!(
+            heartbeat_feed
+                .metadata
+                .get("target_tool")
+                .map(String::as_str),
+            Some("repair_session")
+        );
+        assert_eq!(
+            heartbeat_feed
+                .metadata
+                .get("next_need_kind")
+                .map(String::as_str),
+            Some("verify")
+        );
+        let heartbeat_plan = heartbeat_feed
+            .metadata
+            .get("repair_plan")
+            .map(|path| workspace.join(path))
+            .expect("heartbeat repair plan metadata");
+        assert_eq!(heartbeat_plan, repair_plan);
+        assert!(heartbeat_feed
+            .metadata
+            .get("grant_command")
+            .unwrap()
+            .contains("harness:write"));
         let session = feed
             .metadata
             .get("session")

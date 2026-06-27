@@ -31,9 +31,9 @@
     },
     {
       "id": "heartbeat_repair",
-      "description": "Inspect harness-beat evolution artifacts and suggest the next grant, apply, or score action.",
+      "description": "Inspect the latest repair-session action plan, then harness-beat evolution artifacts, and suggest the next review, grant, apply, or score action.",
       "input": "octopus-json-v1 tool call or workspace root",
-      "output": "JSON Feed with repair plan, review boundary, next_need_kind, and next_need_query",
+      "output": "JSON Feed with latest REPAIR_PLAN, review boundary, grant/apply/score commands, next_need_kind, and next_need_query",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/heartbeat_repair.sh",
@@ -112,6 +112,7 @@
       "Feed repair-session planning with local OUTCOME_MEMORY, never raw tool logs in clean-brain context.",
       "Feed repair-session planning with CODE_CONTEXT from the target tentacle manifest and tool code.",
       "Keep REPAIR_PLAN commands reviewable and grant-bound before any harness write.",
+      "Let heartbeat_repair read the latest REPAIR_PLAN before older evolution artifacts.",
       "Require explicit harness:write grants before apply artifacts.",
       "Keep clean-brain context limited to Goal, Mem, Need, and Feed."
     ]
