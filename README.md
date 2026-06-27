@@ -42,16 +42,17 @@ octopus provider save openai
 source .octopus/llm.env
 octopus provider check
 octopus brain --deliberate --save "think before the next Need"
+octopus brain --reflect --save "what evidence is missing?"
 OCTOPUS_BRAIN_COUNCIL_LLM_PREFIXES=OCTOPUS_LLM,OTHER_LLM octopus brain --council --save "ask multiple clean brains"
 octopus brain --synthesize --apply-json '{"summary":"model jury","drafts":[{"source":"model-a","needs":[{"kind":"verify","query":"whether the goal is satisfied"}]}]}' --save "merge model drafts"
 octopus brain --live --save "what should the brain ask next?"
 ```
 
-Set `OCTOPUS_BRAIN_COUNCIL_LLM_PREFIXES`, `OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX`, `OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX`, `OCTOPUS_BRAIN_GOAL_LLM_PREFIX`, `OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX`, `OCTOPUS_BRAIN_REWRITE_LLM_PREFIX`, or `OCTOPUS_BRAIN_QUEUE_LLM_PREFIX` to route clean-brain jobs to different models.
+Set `OCTOPUS_BRAIN_COUNCIL_LLM_PREFIXES`, `OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX`, `OCTOPUS_BRAIN_REFLECT_LLM_PREFIX`, `OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX`, `OCTOPUS_BRAIN_GOAL_LLM_PREFIX`, `OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX`, `OCTOPUS_BRAIN_REWRITE_LLM_PREFIX`, or `OCTOPUS_BRAIN_QUEUE_LLM_PREFIX` to route clean-brain jobs to different models.
 
 ## Works Today
 
-- Clean-brain Goal, Need, Feed, queue, context, deliberation, council, synthesis, and external-chat sessions.
+- Clean-brain Goal, Need, Feed, queue, context, deliberation, reflection, council, synthesis, and external-chat sessions.
 - Seed tentacles for SWE work, computer-use adapters, repo maintenance, harness repair, and write-and-run local execution.
 - Tool-side LLM planning with grants, traces, route scores, feedback scoring, and reviewable harness evolution drafts.
 - Native HTML app, local bridge, install reports, provider setup, preflight gates, and pixel pet SVG export.

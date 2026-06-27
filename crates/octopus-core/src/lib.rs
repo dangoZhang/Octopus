@@ -196,6 +196,13 @@ pub struct BrainDeliberationSaveReport {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainReflectionSaveReport {
+    pub reflection: BrainReflectionReport,
+    pub queued: Vec<NeedQueueItem>,
+    pub queue: NeedQueueReport,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BrainSynthesisSaveReport {
     pub synthesis: BrainSynthesisReport,
     pub queued: Vec<NeedQueueItem>,
@@ -462,6 +469,24 @@ pub struct BrainDeliberationReport {
     pub questions: Vec<String>,
     pub options: Vec<String>,
     pub risks: Vec<String>,
+    pub needs: Vec<GoalNeedSuggestion>,
+    pub audit: BrainNeedAudit,
+    pub next: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainReflectionReport {
+    pub policy: String,
+    pub source: String,
+    pub prompt: String,
+    pub goal: Option<Goal>,
+    pub mem: Vec<MemoryContextRecord>,
+    pub recent: Vec<BrainContextTurn>,
+    pub summary: String,
+    pub goal_state: String,
+    pub evidence: Vec<String>,
+    pub gaps: Vec<String>,
+    pub questions: Vec<String>,
     pub needs: Vec<GoalNeedSuggestion>,
     pub audit: BrainNeedAudit,
     pub next: Vec<String>,
@@ -1398,6 +1423,20 @@ pub struct BrainDeliberationDraft {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainReflectionDraft {
+    pub summary: String,
+    pub goal_state: String,
+    #[serde(default)]
+    pub evidence: Vec<String>,
+    #[serde(default)]
+    pub gaps: Vec<String>,
+    #[serde(default)]
+    pub questions: Vec<String>,
+    #[serde(default)]
+    pub needs: Vec<GoalNeedSuggestion>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BrainSynthesisInput {
     pub summary: Option<String>,
     #[serde(default)]
@@ -1486,6 +1525,35 @@ where
     ])?;
     serde_json::from_str::<BrainDeliberationDraft>(&response.content)
         .map_err(|error| format!("invalid clean-brain deliberation JSON: {error}"))
+}
+
+fn brain_reflection_from_chat<C>(
+    brain: &BrainContextReport,
+    prompt: &str,
+    client: &mut C,
+) -> Result<BrainReflectionDraft, String>
+where
+    C: ChatClient,
+{
+    let context = serde_json::json!({
+        "policy": brain.policy,
+        "slots": brain.slots,
+        "goal": brain.goal,
+        "mem": brain.mem,
+        "recent_need_feed": brain.turns,
+    });
+    let response = client.chat(&[
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain reflection layer. You see only Goal, Mem, Need, and Feed. Reflect on whether the Goal is satisfied, what evidence exists, what gaps remain, what questions matter, and what cognitive Needs should be asked next. Do not choose tools, APIs, files, commands, routes, tentacles, or implementation. Return only JSON: {\"summary\":\"short reflection\",\"goal_state\":\"satisfied|partial|uncertain|blocked\",\"evidence\":[\"evidence from Goal/Mem/Need/Feed\"],\"gaps\":[\"remaining cognitive gap\"],\"questions\":[\"open cognitive question\"],\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!("Clean brain context JSON: {context}\nUser reflection prompt: {prompt}"),
+        ),
+    ])?;
+    serde_json::from_str::<BrainReflectionDraft>(&response.content)
+        .map_err(|error| format!("invalid clean-brain reflection JSON: {error}"))
 }
 
 fn brain_synthesis_from_chat<C>(
@@ -1996,6 +2064,43 @@ impl HarnessState {
         self.brain_deliberation_report(brain, prompt, "external_deliberation", draft)
     }
 
+    pub fn clean_brain_reflect(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+    ) -> BrainReflectionReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let draft = local_brain_reflection(&brain, &prompt);
+        self.brain_reflection_report(brain, prompt, "local", draft)
+    }
+
+    pub fn clean_brain_reflect_with_client<C>(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        client: &mut C,
+    ) -> Result<BrainReflectionReport, String>
+    where
+        C: ChatClient,
+    {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let draft = brain_reflection_from_chat(&brain, &prompt, client)?;
+        Ok(self.brain_reflection_report(brain, prompt, "llm_reflection", draft))
+    }
+
+    pub fn clean_brain_reflect_from_draft(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        draft: BrainReflectionDraft,
+    ) -> BrainReflectionReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        self.brain_reflection_report(brain, prompt, "external_reflection", draft)
+    }
+
     pub fn clean_brain_synthesize_from_input(
         &self,
         prompt: impl Into<String>,
@@ -2382,6 +2487,54 @@ impl HarnessState {
         }
     }
 
+    fn brain_reflection_report(
+        &self,
+        brain: BrainContextReport,
+        prompt: String,
+        source: &str,
+        draft: BrainReflectionDraft,
+    ) -> BrainReflectionReport {
+        let audit = audit_clean_brain_needs(&draft.needs);
+        let mut next = vec!["octopus brain --reflect --session".to_string()];
+        if audit.clean_needs.is_empty() {
+            if audit.issue_count > 0 {
+                next.push("rewrite reflection Needs as cognitive requests before Feed".to_string());
+            } else {
+                next.push("octopus brain --reflect \"what goal evidence is missing?\"".to_string());
+            }
+        } else {
+            next.extend(audit.clean_needs.iter().map(|need| {
+                format!(
+                    "octopus need {} {}",
+                    kind_key(&need.kind),
+                    shell_arg(&need.query)
+                )
+            }));
+            next.push(format!(
+                "octopus brain --reflect --save {}",
+                shell_arg(&prompt)
+            ));
+        }
+        next.sort();
+        next.dedup();
+        BrainReflectionReport {
+            policy: brain.policy,
+            source: source.to_string(),
+            prompt,
+            goal: brain.goal,
+            mem: brain.mem,
+            recent: brain.turns,
+            summary: draft.summary,
+            goal_state: draft.goal_state,
+            evidence: draft.evidence,
+            gaps: draft.gaps,
+            questions: draft.questions,
+            needs: draft.needs,
+            audit,
+            next,
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn brain_synthesis_report(
         &self,
@@ -2497,6 +2650,26 @@ impl HarnessState {
         }
         BrainDeliberationSaveReport {
             deliberation: report.clone(),
+            queued,
+            queue: self.need_queue_report(8),
+        }
+    }
+
+    pub fn queue_reflection_report(
+        &mut self,
+        report: &BrainReflectionReport,
+    ) -> BrainReflectionSaveReport {
+        let mut queued = Vec::new();
+        for need in &report.audit.clean_needs {
+            queued.push(self.queue_need_suggestion(
+                need.clone(),
+                report.source.clone(),
+                report.prompt.clone(),
+                report.summary.clone(),
+            ));
+        }
+        BrainReflectionSaveReport {
+            reflection: report.clone(),
             queued,
             queue: self.need_queue_report(8),
         }
@@ -8064,6 +8237,63 @@ fn local_brain_deliberation(brain: &BrainContextReport, prompt: &str) -> BrainDe
     }
 }
 
+fn local_brain_reflection(brain: &BrainContextReport, prompt: &str) -> BrainReflectionDraft {
+    let focus = clean_optional(Some(prompt))
+        .map(str::to_string)
+        .or_else(|| brain.goal.as_ref().map(|goal| goal.objective.clone()))
+        .unwrap_or_else(|| "current goal".to_string());
+    let mut evidence = Vec::new();
+    if let Some(goal) = &brain.goal {
+        evidence.push(format!("goal: {}", goal.objective));
+        if !goal.constraints.is_empty() {
+            evidence.push(format!("constraints: {}", goal.constraints.join("; ")));
+        }
+    }
+    if !brain.mem.is_empty() {
+        evidence.push(format!("memory records: {}", brain.mem.len()));
+    }
+    if !brain.turns.is_empty() {
+        evidence.push(format!("recent Need/Feed turns: {}", brain.turns.len()));
+    }
+    if evidence.is_empty() {
+        evidence.push("no Goal, memory, or recent Feed evidence yet".to_string());
+    }
+
+    let mut gaps = Vec::new();
+    if brain.goal.is_none() {
+        gaps.push("explicit Goal is missing".to_string());
+    }
+    if brain.mem.is_empty() {
+        gaps.push("memory has no durable goal context".to_string());
+    }
+    if brain.turns.is_empty() {
+        gaps.push("recent Feed evidence is empty".to_string());
+    }
+    if gaps.is_empty() {
+        gaps.push(format!(
+            "satisfaction evidence for {focus} may still be incomplete"
+        ));
+    }
+
+    let questions = vec![
+        format!("what evidence would prove {focus} is satisfied?"),
+        format!("what uncertainty should shape the next Need for {focus}?"),
+    ];
+    let goal_state = if brain.goal.is_none() || brain.turns.is_empty() {
+        "uncertain".to_string()
+    } else {
+        "partial".to_string()
+    };
+    BrainReflectionDraft {
+        summary: format!("clean-brain reflection for {focus}"),
+        goal_state,
+        evidence,
+        gaps,
+        questions,
+        needs: local_brain_explore_needs(brain, &focus),
+    }
+}
+
 type BrainSynthesisParts = (
     usize,
     String,
@@ -9589,6 +9819,35 @@ mod tests {
         assert!(state.routes.scores.is_empty());
 
         let saved = state.queue_deliberation_report(&report);
+
+        assert_eq!(saved.queued.len(), report.needs.len());
+        assert_eq!(state.pending_need_queue_count(), report.needs.len());
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
+    }
+
+    #[test]
+    fn clean_brain_reflects_on_goal_without_feed() {
+        let mut state = HarnessState {
+            goal: Some(Goal::new("keep the LLM brain focused on Needs")),
+            ..HarnessState::default()
+        };
+        state
+            .memory
+            .remember("brain reflection uses clean context only");
+
+        let report = state.clean_brain_reflect("what evidence is missing?", 5);
+
+        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
+        assert_eq!(report.source, "local");
+        assert!(!report.evidence.is_empty());
+        assert!(!report.gaps.is_empty());
+        assert!(!report.questions.is_empty());
+        assert!(report.audit.issue_count == 0);
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
+
+        let saved = state.queue_reflection_report(&report);
 
         assert_eq!(saved.queued.len(), report.needs.len());
         assert_eq!(state.pending_need_queue_count(), report.needs.len());
