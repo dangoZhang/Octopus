@@ -36,8 +36,8 @@ Updated: 2026-06-27
 - `brain --goal [--live] [--save] [prompt]` lets the clean brain refine Goal and optional queued Needs without running Feed.
 - `brain --live [--save] [prompt]` calls the clean-brain provider and can store returned Needs without running Feed.
 - `explore [prompt]` lets the clean brain suggest cognitive Needs from Goal/Mem/Need/Feed without running Feed.
-- Clean-brain Goal and exploration reports now include a Need audit that flags tool/API/command/file burden in returned Need text without running Feed.
-- `explore --save [prompt]` stores suggested Needs in a reviewable Need Queue; `needs session [--live] [prompt]` writes a clean-brain review session, `needs take <index>` returns one command, and `needs script [path]` writes a reviewable Feed script without executing it.
+- Clean-brain Goal and exploration reports now include a Need audit that flags tool/API/command/file burden and exposes only clean Needs for follow-up commands or queueing.
+- `explore --save [prompt]` stores only audit-clean Needs in a reviewable Need Queue; `needs session [--live] [prompt]` writes a clean-brain review session, `needs take <index>` returns one command, and `needs script [path]` writes a reviewable Feed script without executing it.
 - The native HTML app can run `--json bootstrap` through the bridge from the command panel.
 - The native HTML app can show current Goal, status, refinements, and recent clean-brain Goal turns from persisted state.
 - The native HTML app can paste an external brain reply and apply it to Need Queue or Goal through the bridge.
@@ -152,6 +152,7 @@ Updated: 2026-06-27
 - Added `brain --apply` and `brain --apply-json` plus native HTML apply buttons so external Chat UIs can feed clean-brain JSON back into Goal or Need Queue without tool context.
 - Added a separate clean-brain LLM provider layer, `brain --live [--save]`, and more OpenAI-compatible provider profiles for model routing without tool context.
 - Added clean-brain Need audit fields to Goal and exploration reports so external or live model replies can expose implementation leakage before Feed.
+- Added `clean_needs` to the clean-brain Need audit and changed Goal/Explore save paths so polluted Needs are not queued or turned into next Feed commands.
 - Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and bridge API.
 - Polished README and docs homepages into product-page copy with the value story first and runnable install commands kept visible.
 - Added `preflight [--live]` so release readiness can check state, seed tentacles, manifests, context boundary, docs/pet, LLM layers, live provider, feedback data, GitHub PR path, current-head real-machine record, desktop adapters, and harness repair.

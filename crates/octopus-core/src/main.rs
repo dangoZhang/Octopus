@@ -4981,7 +4981,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         product_capability(
             "clean_brain_audit",
             "ready",
-            "clean-brain Goal and exploration reports flag Need text that carries tool or implementation burden",
+            "clean-brain Goal and exploration reports flag implementation burden and expose only clean Needs for queueing",
             Some("octopus brain --live \"what should the brain ask next?\""),
         ),
         product_capability(
@@ -6041,9 +6041,10 @@ fn print_brain_explore(report: &BrainExploreReport, language: Language) {
             );
             println!("summary: {}", report.summary);
             println!("audit: {}", brain_audit_line(&report.audit));
-            for need in &report.needs {
+            for need in clean_brain_print_needs(&report.audit, &report.needs) {
                 println!("need: {} {}", need_label(&need.kind), need.query);
             }
+            print_polluted_need_count(&report.audit, language);
             for next in &report.next {
                 println!("next: {next}");
             }
@@ -6062,9 +6063,10 @@ fn print_brain_explore(report: &BrainExploreReport, language: Language) {
             );
             println!("摘要: {}", report.summary);
             println!("审计: {}", brain_audit_line(&report.audit));
-            for need in &report.needs {
+            for need in clean_brain_print_needs(&report.audit, &report.needs) {
                 println!("Need: {} {}", need_label(&need.kind), need.query);
             }
+            print_polluted_need_count(&report.audit, language);
             for next in &report.next {
                 println!("下一步: {next}");
             }
@@ -6091,9 +6093,10 @@ fn print_brain_goal(report: &BrainGoalReport, language: Language) {
             println!("constraints: {}", report.goal.constraints.len());
             println!("summary: {}", report.summary);
             println!("audit: {}", brain_audit_line(&report.audit));
-            for need in &report.needs {
+            for need in clean_brain_print_needs(&report.audit, &report.needs) {
                 println!("need: {} {}", need_label(&need.kind), need.query);
             }
+            print_polluted_need_count(&report.audit, language);
             for next in &report.next {
                 println!("next: {next}");
             }
@@ -6106,13 +6109,35 @@ fn print_brain_goal(report: &BrainGoalReport, language: Language) {
             println!("约束: {}", report.goal.constraints.len());
             println!("摘要: {}", report.summary);
             println!("审计: {}", brain_audit_line(&report.audit));
-            for need in &report.needs {
+            for need in clean_brain_print_needs(&report.audit, &report.needs) {
                 println!("Need: {} {}", need_label(&need.kind), need.query);
             }
+            print_polluted_need_count(&report.audit, language);
             for next in &report.next {
                 println!("下一步: {next}");
             }
         }
+    }
+}
+
+fn clean_brain_print_needs<'a>(
+    audit: &'a octopus_core::BrainNeedAudit,
+    raw_needs: &'a [GoalNeedSuggestion],
+) -> &'a [GoalNeedSuggestion] {
+    if audit.issue_count == 0 {
+        raw_needs
+    } else {
+        &audit.clean_needs
+    }
+}
+
+fn print_polluted_need_count(audit: &octopus_core::BrainNeedAudit, language: Language) {
+    if audit.issue_count == 0 {
+        return;
+    }
+    match language {
+        Language::En => println!("blocked_needs: {}", audit.issue_count),
+        Language::Zh => println!("已阻止Need: {}", audit.issue_count),
     }
 }
 
@@ -8733,6 +8758,39 @@ mod tests {
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("external chat explored"));
         assert!(content.contains("goal evidence stays clean"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_brain_apply_json_saves_only_clean_needs() {
+        let _env = env_guard();
+        let path = std::env::temp_dir().join(format!(
+            "octopus-brain-clean-apply-state-{}.json",
+            std::process::id()
+        ));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--apply-json".to_string(),
+            "{\"summary\":\"mixed external chat\",\"needs\":[{\"kind\":\"verify\",\"query\":\"goal evidence stays clean\"},{\"kind\":\"execute\",\"query\":\"cargo test -p octopus-core\"}]}".to_string(),
+            "--save".to_string(),
+            "what".to_string(),
+            "next".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&path).unwrap();
+        assert_eq!(restored.pending_need_queue_count(), 1);
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("goal evidence stays clean"));
+        assert!(!content.contains("cargo test"));
         let _ = fs::remove_file(path);
     }
 

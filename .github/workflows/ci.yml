@@ -169,6 +169,7 @@ jobs:
       - run: grep -q "runFeedTest" docs/app.html
       - run: grep -q "renderFeedReport" docs/app.html
       - run: grep -q "needQueueControls" docs/app.html
+      - run: grep -q "Accepted Needs" docs/app.html
       - run: grep -q "takeQueuedNeed" docs/app.html
       - run: grep -q "dropQueuedNeed" docs/app.html
       - run: grep -q "Queue action" docs/app.html
