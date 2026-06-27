@@ -42,6 +42,7 @@ Updated: 2026-06-27
 - `harness-repair-agent` can diagnose state, traces, check history, evolution artifacts, repo dirtiness, provider env, and local adapters as structured Feed.
 - `repair [query]` runs the harness-repair tentacle, records the Feed trace, and queues the tentacle's structured next Need for review.
 - The native HTML app can score a repair Feed as satisfied, partial, or failed, then render the recent repair outcome memory.
+- Repair scoring mirrors session-backed outcomes into `.octopus/harness-repair/<session>/OUTCOME.md` and `outcomes.jsonl`.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
 - The HTML install guide can expand each check to inspect stdout, stderr, exit code, and recent harness check history.
 - `check <tentacle> [index]` records compact harness history and the HTML install guide can rerun one check at a time.
@@ -65,7 +66,7 @@ Updated: 2026-06-27
 - LLM-generated evolution candidates can carry a provider-assisted unified diff into drafts and authorized apply artifacts.
 - Harness beat turns recent failed or partial check history, Feed traces, or repair outcomes into a written evolution proposal, recommendation, and apply plan.
 - Harness beat recommendations can be granted, written as reviewable apply artifacts, reviewed, and scored from the native HTML app.
-- `harness-repair-agent` can read heartbeat/evolution/state signals, probe adapter readiness, write `.octopus/harness-repair/SESSION.*`, `PROMPT.md`, optional provider-backed `DRAFT.md`, `NEXT_NEED.json`, and `COMMANDS.sh`, record reviewed `OUTCOME.md` plus `.octopus/harness-repair/outcomes.jsonl`, then feed those outcomes into later repair sessions.
+- `harness-repair-agent` can read heartbeat/evolution/state signals, probe adapter readiness, write `.octopus/harness-repair/SESSION.*`, `PROMPT.md`, optional provider-backed `DRAFT.md`, `NEXT_NEED.json`, `COMMANDS.sh`, and `OUTCOME_MEMORY.md`, record reviewed `OUTCOME.md` plus `.octopus/harness-repair/outcomes.jsonl`, then feed merged outcome memory into later repair sessions.
 - The SWE read tool now returns a compact file/range header and line-numbered evidence.
 
 ## Filled So Far
@@ -165,6 +166,8 @@ Updated: 2026-06-27
 - Added native HTML Repair outcome controls so a repair session can be scored from the app without shell use.
 - Added repair-outcome-driven harness beat evolution so failed or partial repair reviews can start the next reviewable apply plan.
 - Rolled the cleanup/version cadence to `0.0.9` after reviewable Need Queue scripts, app queue review controls, repair-outcome-driven harness beat evolution, and README/control-surface polish.
+- Added repair-score session journal sync so app/CLI repair reviews write local outcome artifacts as well as state.
+- Added repair-session outcome memory so state repair outcomes and `.octopus/harness-repair/outcomes.jsonl` are merged into `OUTCOME_MEMORY.md` and provider draft context.
 - Added `starter [objective]` so first-run users can choose common agent tool-combo tentacles from Goal/objective metadata before any Feed execution.
 - Added a structured native HTML starter panel so first-run users can choose tentacles from rendered recommendations.
 
@@ -172,7 +175,7 @@ Updated: 2026-06-27
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
 - LLM evolution can generate candidates and provider-assisted patch drafts from manifest surfaces, scored outcomes, recent Feed traces, and check history; local candidates now also target traced or failing runtime files, and harness beat can start from Feed trace or check feedback while app and CLI patch writes stay review/grant-bound.
-- Harness-repair diagnosis can now queue its next Need, remember reviewed session outcomes, accept repair scoring from CLI or the native app, and feed failed or partial repair outcomes into harness beat evolution; closing the loop still needs real provider-backed repairs scored through that outcome journal.
+- Harness-repair diagnosis can now queue its next Need, remember reviewed session outcomes, feed merged outcome memory into repair sessions, accept repair scoring from CLI or the native app, mirror session-backed scores into the outcome journal, and feed failed or partial repair outcomes into harness beat evolution; closing the loop still needs real provider-backed repair runs scored from real projects.
 - Product reporting is available in CLI and app; report quality still needs feedback from real project states.
 - Preflight now exposes the release gate and record template; current readiness still depends on running that gate with live provider, OAuth PR publishing, scored feedback data, and appending a current-head or docs-only parent-recorded result.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.

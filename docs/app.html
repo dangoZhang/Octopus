@@ -1672,6 +1672,7 @@
       function repairScoreSummary(report) {
         const outcome = report && report.outcome;
         if (!outcome) return null;
+        const journal = report.journal || {};
         const grid = document.createElement("div");
         grid.className = "report-grid";
         [
@@ -1680,6 +1681,8 @@
           ["Status", outcome.status || "unknown"],
           ["Score", outcome.score == null ? "none" : Number(outcome.score).toFixed(2)],
           ["Summary", outcome.summary || "none"],
+          ["Outcome file", journal.outcome_path || "none"],
+          ["Journal", journal.outcomes_file || "none"],
           ["Recent", String((report.recent || []).length)],
         ].forEach(([label, value]) => {
           const metric = document.createElement("div");

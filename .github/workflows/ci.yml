@@ -188,6 +188,7 @@ jobs:
       - run: grep -q "scoreRepair" docs/app.html
       - run: grep -q "repair score" docs/app.html
       - run: grep -q "Repair outcome" docs/app.html
+      - run: grep -q "Outcome file" docs/app.html
       - run: grep -q "feedEvidenceDetails" docs/app.html
       - run: grep -q "checkOutputDetails" docs/app.html
       - run: grep -q "check-output" docs/app.html

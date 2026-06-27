@@ -27,6 +27,6 @@ Real-machine test gate for `0.1.0` and later tags:
 
 Last cleanup/version correction: `0.0.9` on 2026-06-27. Scope: reviewable Need Queue scripts, app queue review controls, repair-outcome-driven harness beat evolution, and README/control-surface polish; no tag cut.
 
-Product commits toward `0.0.10`: 5/8.
+Product commits toward `0.0.10`: 7/8.
 
 Next planned cleanup/version commit: `0.0.10`.

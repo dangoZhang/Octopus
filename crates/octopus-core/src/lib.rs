@@ -279,6 +279,8 @@ pub struct FeedTraceRecord {
     pub route: Option<String>,
     pub evidence_count: usize,
     pub summary: String,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -2309,6 +2311,7 @@ impl HarnessState {
             route: feed.metadata.get("route").cloned(),
             evidence_count: feed.evidence.len(),
             summary: short_text(&feed.summary, FEED_TRACE_SUMMARY_BYTES),
+            metadata: feed.metadata.clone(),
         };
         self.feed_traces.push(trace.clone());
         trace
@@ -10190,6 +10193,28 @@ print(json.dumps({
             .map(|path| workspace.join(path))
             .expect("outcome markdown metadata");
         assert!(outcome_markdown.exists());
+        let follow_up = tentacle.feed(&Need::new(
+            NeedKind::Execute,
+            workspace.to_string_lossy().to_string(),
+        ));
+        assert_eq!(follow_up.status, Status::Satisfied);
+        let outcome_memory = follow_up
+            .metadata
+            .get("outcome_memory")
+            .map(|path| workspace.join(path))
+            .expect("outcome memory metadata");
+        assert!(outcome_memory.exists());
+        let memory = fs::read_to_string(&outcome_memory).unwrap();
+        assert!(memory.contains("reviewed repair draft"));
+        assert!(memory.contains("satisfied"));
+        let prompt = follow_up
+            .metadata
+            .get("prompt")
+            .map(|path| workspace.join(path))
+            .expect("follow-up prompt metadata");
+        assert!(fs::read_to_string(prompt)
+            .unwrap()
+            .contains("repair outcome memory"));
         assert!(feed
             .evidence
             .iter()
