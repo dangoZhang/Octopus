@@ -167,9 +167,13 @@ jobs:
       - run: grep -q "Copy env" docs/app.html
       - run: grep -q "OCTOPUS_BRAIN_GOAL_LLM_PREFIX" crates/octopus-core/src/main.rs
       - run: grep -q "OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX" crates/octopus-core/src/main.rs
+      - run: grep -q "OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX" crates/octopus-core/src/main.rs
       - run: grep -q "OCTOPUS_BRAIN_GOAL_LLM_PREFIX" README.md
+      - run: grep -q "OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX" README.md
       - run: grep -q "Deliberate Session" docs/app.html
+      - run: grep -q "Synthesize Session" docs/app.html
       - run: grep -q "OCTOPUS_BRAIN_GOAL_LLM_PREFIX" docs/quickstart.md
+      - run: grep -q "OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX" docs/quickstart.md
       - run: grep -q "Install Report" docs/app.html
       - run: grep -q "Bootstrap" docs/app.html
       - run: grep -q "\"bootstrap\"" docs/app.html

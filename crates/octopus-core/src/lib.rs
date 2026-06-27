@@ -196,6 +196,13 @@ pub struct BrainDeliberationSaveReport {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainSynthesisSaveReport {
+    pub synthesis: BrainSynthesisReport,
+    pub queued: Vec<NeedQueueItem>,
+    pub queue: NeedQueueReport,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct NeedQueueTakeReport {
     pub item: NeedQueueItem,
     pub command: String,
@@ -451,6 +458,25 @@ pub struct BrainDeliberationReport {
     pub mem: Vec<MemoryContextRecord>,
     pub recent: Vec<BrainContextTurn>,
     pub summary: String,
+    pub observations: Vec<String>,
+    pub questions: Vec<String>,
+    pub options: Vec<String>,
+    pub risks: Vec<String>,
+    pub needs: Vec<GoalNeedSuggestion>,
+    pub audit: BrainNeedAudit,
+    pub next: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainSynthesisReport {
+    pub policy: String,
+    pub source: String,
+    pub prompt: String,
+    pub goal: Option<Goal>,
+    pub mem: Vec<MemoryContextRecord>,
+    pub recent: Vec<BrainContextTurn>,
+    pub summary: String,
+    pub draft_count: usize,
     pub observations: Vec<String>,
     pub questions: Vec<String>,
     pub options: Vec<String>,
@@ -1371,6 +1397,39 @@ pub struct BrainDeliberationDraft {
     pub needs: Vec<GoalNeedSuggestion>,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainSynthesisInput {
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub observations: Vec<String>,
+    #[serde(default)]
+    pub questions: Vec<String>,
+    #[serde(default)]
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub risks: Vec<String>,
+    #[serde(default)]
+    pub needs: Vec<GoalNeedSuggestion>,
+    #[serde(default)]
+    pub drafts: Vec<BrainSynthesisDraft>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainSynthesisDraft {
+    pub source: Option<String>,
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub observations: Vec<String>,
+    #[serde(default)]
+    pub questions: Vec<String>,
+    #[serde(default)]
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub risks: Vec<String>,
+    #[serde(default)]
+    pub needs: Vec<GoalNeedSuggestion>,
+}
+
 fn brain_explore_from_chat<C>(
     brain: &BrainContextReport,
     prompt: &str,
@@ -1427,6 +1486,41 @@ where
     ])?;
     serde_json::from_str::<BrainDeliberationDraft>(&response.content)
         .map_err(|error| format!("invalid clean-brain deliberation JSON: {error}"))
+}
+
+fn brain_synthesis_from_chat<C>(
+    brain: &BrainContextReport,
+    prompt: &str,
+    input: &BrainSynthesisInput,
+    client: &mut C,
+) -> Result<BrainSynthesisInput, String>
+where
+    C: ChatClient,
+{
+    let context = serde_json::json!({
+        "policy": brain.policy,
+        "slots": brain.slots,
+        "goal": brain.goal,
+        "mem": brain.mem,
+        "recent_need_feed": brain.turns,
+        "current_need": prompt,
+        "current_feed": {
+            "summary": "clean-brain draft bundle",
+            "drafts": input,
+        },
+    });
+    let response = client.chat(&[
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain synthesis layer. You see only Goal, Mem, Need, and Feed. The current Feed contains clean-brain draft replies from other models. Synthesize that Feed into compact cognitive observations, questions, options, risks, and cognitive Needs only. Do not choose tools, APIs, files, commands, routes, tentacles, or implementation. Return only JSON: {\"summary\":\"short synthesis\",\"observations\":[\"cognitive observation\"],\"questions\":[\"open cognitive question\"],\"options\":[\"possible cognitive direction\"],\"risks\":[\"reasoning risk\"],\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!("Clean brain synthesis prompt: {prompt}\nClean brain context JSON: {context}"),
+        ),
+    ])?;
+    serde_json::from_str::<BrainSynthesisInput>(&response.content)
+        .map_err(|error| format!("invalid clean-brain synthesis JSON: {error}"))
 }
 
 fn brain_rewrite_from_chat<C>(
@@ -1902,6 +1996,60 @@ impl HarnessState {
         self.brain_deliberation_report(brain, prompt, "external_deliberation", draft)
     }
 
+    pub fn clean_brain_synthesize_from_input(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        input: BrainSynthesisInput,
+    ) -> BrainSynthesisReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let (draft_count, summary, observations, questions, options, risks, needs) =
+            merge_brain_synthesis_input(input);
+        self.brain_synthesis_report(
+            brain,
+            prompt,
+            "external_synthesis",
+            draft_count,
+            summary,
+            observations,
+            questions,
+            options,
+            risks,
+            needs,
+        )
+    }
+
+    pub fn clean_brain_synthesize_with_client<C>(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        input: BrainSynthesisInput,
+        client: &mut C,
+    ) -> Result<BrainSynthesisReport, String>
+    where
+        C: ChatClient,
+    {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let draft_count = brain_synthesis_draft_count(&input);
+        let synthesis = brain_synthesis_from_chat(&brain, &prompt, &input, client)?;
+        let (merged_count, summary, observations, questions, options, risks, needs) =
+            merge_brain_synthesis_input(synthesis);
+        Ok(self.brain_synthesis_report(
+            brain,
+            prompt,
+            "llm_synthesis",
+            draft_count.max(merged_count),
+            summary,
+            observations,
+            questions,
+            options,
+            risks,
+            needs,
+        ))
+    }
+
     pub fn clean_brain_rewrite_from_draft(
         &self,
         prompt: impl Into<String>,
@@ -2234,6 +2382,59 @@ impl HarnessState {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn brain_synthesis_report(
+        &self,
+        brain: BrainContextReport,
+        prompt: String,
+        source: &str,
+        draft_count: usize,
+        summary: String,
+        observations: Vec<String>,
+        questions: Vec<String>,
+        options: Vec<String>,
+        risks: Vec<String>,
+        needs: Vec<GoalNeedSuggestion>,
+    ) -> BrainSynthesisReport {
+        let audit = audit_clean_brain_needs(&needs);
+        let mut next = vec!["octopus brain --synthesize --session".to_string()];
+        if audit.clean_needs.is_empty() {
+            if audit.issue_count > 0 {
+                next.push("rewrite synthesis Needs as cognitive requests before Feed".to_string());
+            } else {
+                next.push("octopus brain --synthesize --session --apply <drafts.json>".to_string());
+            }
+        } else {
+            next.extend(audit.clean_needs.iter().map(|need| {
+                format!(
+                    "octopus need {} {}",
+                    kind_key(&need.kind),
+                    shell_arg(&need.query)
+                )
+            }));
+            next.push("octopus needs script".to_string());
+        }
+        next.sort();
+        next.dedup();
+        BrainSynthesisReport {
+            policy: brain.policy,
+            source: source.to_string(),
+            prompt,
+            goal: brain.goal,
+            mem: brain.mem,
+            recent: brain.turns,
+            summary,
+            draft_count,
+            observations,
+            questions,
+            options,
+            risks,
+            needs,
+            audit,
+            next,
+        }
+    }
+
     pub fn queue_goal_report(&mut self, report: &BrainGoalReport) -> BrainGoalSaveReport {
         let mut queued = Vec::new();
         for need in &report.audit.clean_needs {
@@ -2296,6 +2497,26 @@ impl HarnessState {
         }
         BrainDeliberationSaveReport {
             deliberation: report.clone(),
+            queued,
+            queue: self.need_queue_report(8),
+        }
+    }
+
+    pub fn queue_synthesis_report(
+        &mut self,
+        report: &BrainSynthesisReport,
+    ) -> BrainSynthesisSaveReport {
+        let mut queued = Vec::new();
+        for need in &report.audit.clean_needs {
+            queued.push(self.queue_need_suggestion(
+                need.clone(),
+                report.source.clone(),
+                report.prompt.clone(),
+                report.summary.clone(),
+            ));
+        }
+        BrainSynthesisSaveReport {
+            synthesis: report.clone(),
             queued,
             queue: self.need_queue_report(8),
         }
@@ -7843,6 +8064,149 @@ fn local_brain_deliberation(brain: &BrainContextReport, prompt: &str) -> BrainDe
     }
 }
 
+type BrainSynthesisParts = (
+    usize,
+    String,
+    Vec<String>,
+    Vec<String>,
+    Vec<String>,
+    Vec<String>,
+    Vec<GoalNeedSuggestion>,
+);
+
+fn brain_synthesis_draft_count(input: &BrainSynthesisInput) -> usize {
+    let direct_count = usize::from(
+        !input.observations.is_empty()
+            || !input.questions.is_empty()
+            || !input.options.is_empty()
+            || !input.risks.is_empty()
+            || !input.needs.is_empty()
+            || (input.drafts.is_empty() && input.summary.is_some()),
+    );
+    direct_count + input.drafts.len()
+}
+
+fn merge_brain_synthesis_input(input: BrainSynthesisInput) -> BrainSynthesisParts {
+    let mut draft_count = 0;
+    let mut summary_candidates = Vec::new();
+    let mut observations = Vec::new();
+    let mut questions = Vec::new();
+    let mut options = Vec::new();
+    let mut risks = Vec::new();
+    let mut needs = Vec::new();
+    let mut text_seen = BTreeMap::new();
+    let mut need_seen = BTreeMap::new();
+
+    if let Some(summary) = clean_optional(input.summary.as_deref()) {
+        summary_candidates.push(summary.to_string());
+    }
+    let has_direct = !input.observations.is_empty()
+        || !input.questions.is_empty()
+        || !input.options.is_empty()
+        || !input.risks.is_empty()
+        || !input.needs.is_empty()
+        || (input.drafts.is_empty() && input.summary.is_some());
+    if has_direct {
+        draft_count += 1;
+        merge_brain_synthesis_draft_parts(
+            &mut observations,
+            &mut questions,
+            &mut options,
+            &mut risks,
+            &mut needs,
+            &mut text_seen,
+            &mut need_seen,
+            input.observations,
+            input.questions,
+            input.options,
+            input.risks,
+            input.needs,
+        );
+    }
+    for draft in input.drafts {
+        draft_count += 1;
+        if let Some(summary) = clean_optional(draft.summary.as_deref()) {
+            summary_candidates.push(summary.to_string());
+        }
+        merge_brain_synthesis_draft_parts(
+            &mut observations,
+            &mut questions,
+            &mut options,
+            &mut risks,
+            &mut needs,
+            &mut text_seen,
+            &mut need_seen,
+            draft.observations,
+            draft.questions,
+            draft.options,
+            draft.risks,
+            draft.needs,
+        );
+    }
+    let summary = summary_candidates
+        .first()
+        .cloned()
+        .unwrap_or_else(|| format!("synthesized {draft_count} clean-brain draft(s)"));
+    (
+        draft_count,
+        summary,
+        observations,
+        questions,
+        options,
+        risks,
+        needs,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn merge_brain_synthesis_draft_parts(
+    observations: &mut Vec<String>,
+    questions: &mut Vec<String>,
+    options: &mut Vec<String>,
+    risks: &mut Vec<String>,
+    needs: &mut Vec<GoalNeedSuggestion>,
+    text_seen: &mut BTreeMap<String, ()>,
+    need_seen: &mut BTreeMap<String, ()>,
+    draft_observations: Vec<String>,
+    draft_questions: Vec<String>,
+    draft_options: Vec<String>,
+    draft_risks: Vec<String>,
+    draft_needs: Vec<GoalNeedSuggestion>,
+) {
+    for value in draft_observations {
+        push_unique_clean_text(observations, text_seen, &value);
+    }
+    for value in draft_questions {
+        push_unique_clean_text(questions, text_seen, &value);
+    }
+    for value in draft_options {
+        push_unique_clean_text(options, text_seen, &value);
+    }
+    for value in draft_risks {
+        push_unique_clean_text(risks, text_seen, &value);
+    }
+    for need in draft_needs {
+        if let Some(query) = clean_optional(Some(need.query.as_str())) {
+            let key = format!("{}:{}", kind_key(&need.kind), query.to_lowercase());
+            if need_seen.insert(key, ()).is_none() {
+                needs.push(GoalNeedSuggestion {
+                    kind: need.kind,
+                    query: query.to_string(),
+                });
+            }
+        }
+    }
+}
+
+fn push_unique_clean_text(target: &mut Vec<String>, seen: &mut BTreeMap<String, ()>, value: &str) {
+    if let Some(value) = clean_optional(Some(value)) {
+        let key = value.to_lowercase();
+        if seen.insert(key, ()).is_none() {
+            target.push(value.to_string());
+        }
+    }
+}
+
 fn audit_clean_brain_needs(needs: &[GoalNeedSuggestion]) -> BrainNeedAudit {
     let issues = needs
         .iter()
@@ -9228,6 +9592,93 @@ mod tests {
 
         assert_eq!(saved.queued.len(), report.needs.len());
         assert_eq!(state.pending_need_queue_count(), report.needs.len());
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
+    }
+
+    #[test]
+    fn clean_brain_synthesizes_model_drafts_without_feed() {
+        let mut state = HarnessState {
+            goal: Some(Goal::new(
+                "use model diversity while keeping brain context clean",
+            )),
+            ..HarnessState::default()
+        };
+        state
+            .memory
+            .remember("synthesis must still emit Needs only");
+        let input = BrainSynthesisInput {
+            summary: Some("model jury".to_string()),
+            observations: Vec::new(),
+            questions: Vec::new(),
+            options: Vec::new(),
+            risks: Vec::new(),
+            needs: Vec::new(),
+            drafts: vec![
+                BrainSynthesisDraft {
+                    source: Some("model-a".to_string()),
+                    summary: Some("draft a".to_string()),
+                    observations: vec!["goal needs evidence".to_string()],
+                    questions: vec!["which evidence is missing?".to_string()],
+                    options: vec!["verify user-facing behavior".to_string()],
+                    risks: vec!["model may leak tool choices".to_string()],
+                    needs: vec![
+                        GoalNeedSuggestion {
+                            kind: NeedKind::Verify,
+                            query: "whether current evidence is enough".to_string(),
+                        },
+                        GoalNeedSuggestion {
+                            kind: NeedKind::Execute,
+                            query: "cargo test -p octopus-core".to_string(),
+                        },
+                    ],
+                },
+                BrainSynthesisDraft {
+                    source: Some("model-b".to_string()),
+                    summary: Some("draft b".to_string()),
+                    observations: vec!["goal needs evidence".to_string()],
+                    questions: vec!["what should be remembered?".to_string()],
+                    options: vec!["compare recent Feed with goal".to_string()],
+                    risks: vec!["next Need could be too broad".to_string()],
+                    needs: vec![
+                        GoalNeedSuggestion {
+                            kind: NeedKind::Verify,
+                            query: "whether current evidence is enough".to_string(),
+                        },
+                        GoalNeedSuggestion {
+                            kind: NeedKind::Remember,
+                            query: "draft diversity stayed cognitive".to_string(),
+                        },
+                    ],
+                },
+            ],
+        };
+
+        let report = state.clean_brain_synthesize_from_input("merge model drafts", 5, input);
+
+        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
+        assert_eq!(report.source, "external_synthesis");
+        assert_eq!(report.draft_count, 2);
+        assert_eq!(report.needs.len(), 3);
+        assert_eq!(report.audit.clean_count, 2);
+        assert_eq!(report.audit.issue_count, 1);
+        assert!(report
+            .audit
+            .clean_needs
+            .iter()
+            .any(|need| need.query == "whether current evidence is enough"));
+        assert!(report
+            .audit
+            .clean_needs
+            .iter()
+            .any(|need| need.query == "draft diversity stayed cognitive"));
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
+
+        let saved = state.queue_synthesis_report(&report);
+
+        assert_eq!(saved.queued.len(), 2);
+        assert_eq!(state.pending_need_queue_count(), 2);
         assert!(state.feed_traces.is_empty());
         assert!(state.routes.scores.is_empty());
     }

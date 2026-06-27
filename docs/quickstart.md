@@ -128,6 +128,7 @@ octopus provider save openai OCTOPUS_LLM "$tmp/llm.env"
 # Optional: route clean-brain jobs to different provider prefixes.
 export OCTOPUS_BRAIN_GOAL_LLM_PREFIX=OCTOPUS_LLM
 export OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX=OCTOPUS_LLM
+export OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX=OCTOPUS_LLM
 export OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX=OCTOPUS_LLM
 export OCTOPUS_BRAIN_REWRITE_LLM_PREFIX=OCTOPUS_LLM
 export OCTOPUS_BRAIN_QUEUE_LLM_PREFIX=OCTOPUS_LLM
@@ -135,6 +136,8 @@ octopus provider check
 octopus --state "$tmp/state.json" brain --goal --live --save "make the goal sharper"
 octopus --state "$tmp/state.json" brain --deliberate --live --save "think before the next Need"
 octopus --state "$tmp/state.json" brain --deliberate --session "think before the next Need"
+octopus --state "$tmp/state.json" brain --synthesize --apply-json '{"summary":"model jury","drafts":[{"source":"model-a","needs":[{"kind":"verify","query":"whether evidence is enough"}]},{"source":"model-b","needs":[{"kind":"remember","query":"model b kept Needs cognitive"}]}]}' --save "merge model drafts"
+octopus --state "$tmp/state.json" brain --synthesize --session --apply-json '{"summary":"model jury","drafts":[{"source":"model-a","needs":[{"kind":"verify","query":"whether evidence is enough"}]}]}' "merge model drafts"
 octopus --state "$tmp/state.json" brain --live "what should the brain ask next?"
 octopus --state "$tmp/state.json" brain --session --live "what should the brain ask next?"
 octopus --state "$tmp/state.json" brain --rewrite --session --apply-json '{"summary":"dirty","needs":[{"kind":"execute","query":"cargo test -p octopus-core"}]}' "rewrite as cognitive Need"

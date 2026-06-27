@@ -5,8 +5,9 @@ use octopus_core::{
     think_tentacle, write_harness_beat_evolution_artifacts, write_tentacle_apply_artifacts,
     write_tentacle_evolution_artifacts, AdaptReport, BrainDeliberationDraft,
     BrainDeliberationReport, BrainDeliberationSaveReport, BrainExploreDraft, BrainExploreReport,
-    BrainGoalReport, BrainGoalSaveReport, BrainPromptReport, CapabilityGrant, ChatClient,
-    ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord, ContextReport, EnvironmentReport,
+    BrainGoalReport, BrainGoalSaveReport, BrainPromptReport, BrainSynthesisInput,
+    BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant, ChatClient, ChatMessage,
+    ChatRole, CheckHistoryInput, CheckHistoryRecord, ContextReport, EnvironmentReport,
     EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome,
     EvolutionRecommendation, Feed, FeedFeedbackOutcome, FeedTraceRecord, Goal, GoalChat,
     GoalNeedSuggestion, GoalRefinement, Harness, HarnessBeatEvolution, HarnessState, HeartBeat,
@@ -852,6 +853,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let mut session = false;
             let mut rewrite = false;
             let mut deliberate = false;
+            let mut synthesize = false;
             let mut apply_path = None;
             let mut apply_json = None;
             let mut prompt = Vec::new();
@@ -864,6 +866,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     "--session" => session = true,
                     "--rewrite" => rewrite = true,
                     "--deliberate" => deliberate = true,
+                    "--synthesize" => synthesize = true,
                     "--apply" => {
                         brain_index += 1;
                         let Some(path) = rest.get(brain_index) else {
@@ -892,8 +895,20 @@ fn run(args: Vec<String>) -> Result<(), String> {
             if deliberate && rewrite {
                 return Err("brain --deliberate cannot be combined with --rewrite".to_string());
             }
+            if synthesize && refine_goal {
+                return Err("brain --synthesize cannot be combined with --goal".to_string());
+            }
+            if synthesize && rewrite {
+                return Err("brain --synthesize cannot be combined with --rewrite".to_string());
+            }
+            if synthesize && deliberate {
+                return Err("brain --synthesize cannot be combined with --deliberate".to_string());
+            }
             if rewrite && !has_apply_payload {
                 return Err("brain --rewrite requires --apply or --apply-json".to_string());
+            }
+            if synthesize && !session && !has_apply_payload {
+                return Err("brain --synthesize requires --apply or --apply-json".to_string());
             }
             let prompt = (!prompt.is_empty()).then(|| prompt.join(" "));
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
@@ -915,6 +930,13 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     let draft =
                         parse_brain_reply::<BrainExploreDraft>(payload, "clean-brain rewrite")?;
                     write_brain_rewrite_session(&loaded, &state, &prompt, draft, live)?
+                } else if synthesize {
+                    let payload = apply_payload.as_deref().ok_or_else(|| {
+                        "brain --synthesize --session requires a drafts payload".to_string()
+                    })?;
+                    let input =
+                        parse_brain_reply::<BrainSynthesisInput>(payload, "clean-brain synthesis")?;
+                    write_brain_synthesis_session(&loaded, &state, &prompt, input, live)?
                 } else if deliberate {
                     write_brain_deliberation_session(&loaded, &state, &prompt, live)?
                 } else {
@@ -957,6 +979,43 @@ fn run(args: Vec<String>) -> Result<(), String> {
                         } else {
                             print_brain_goal(&report, language);
                         }
+                    }
+                } else if synthesize {
+                    let input = parse_brain_reply::<BrainSynthesisInput>(
+                        &payload,
+                        "clean-brain synthesis",
+                    )?;
+                    let report = if live {
+                        let mut client = clean_brain_synthesize_llm_client()?;
+                        loaded.clean_brain_synthesize_with_client(
+                            prompt.clone(),
+                            6,
+                            input,
+                            &mut client,
+                        )?
+                    } else {
+                        loaded.clean_brain_synthesize_from_input(prompt.clone(), 6, input)
+                    };
+                    if save {
+                        let saved = loaded.queue_synthesis_report(&report);
+                        loaded.save(&state).map_err(|error| error.to_string())?;
+                        if json {
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&saved)
+                                    .map_err(|error| error.to_string())?
+                            );
+                        } else {
+                            print_brain_synthesis_save(&saved, language);
+                        }
+                    } else if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&report)
+                                .map_err(|error| error.to_string())?
+                        );
+                    } else {
+                        print_brain_synthesis(&report, language);
                     }
                 } else if deliberate {
                     let draft = parse_brain_reply::<BrainDeliberationDraft>(
@@ -3249,6 +3308,13 @@ fn provider_status_report() -> ProviderStatusReport {
             "cognitive deliberation before Needs",
             clean_brain_llm_enabled(),
             clean_brain_deliberate_llm_prefix(),
+            "export OCTOPUS_BRAIN_LLM=1",
+        ),
+        provider_layer_status(
+            "clean_brain_synthesize",
+            "multi-model clean-brain draft synthesis",
+            clean_brain_llm_enabled(),
+            clean_brain_synthesize_llm_prefix(),
             "export OCTOPUS_BRAIN_LLM=1",
         ),
         provider_layer_status(
@@ -6816,6 +6882,74 @@ fn print_brain_deliberation(report: &BrainDeliberationReport, language: Language
     }
 }
 
+fn print_brain_synthesis_save(report: &BrainSynthesisSaveReport, language: Language) {
+    print_brain_synthesis(&report.synthesis, language);
+    match language {
+        Language::En => println!("queued: {}", report.queued.len()),
+        Language::Zh => println!("已入队: {}", report.queued.len()),
+    }
+    print_need_queue(&report.queue, language);
+}
+
+fn print_brain_synthesis(report: &BrainSynthesisReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus synthesize");
+            println!("source: {}", report.source);
+            println!("brain: {}", report.policy);
+            println!("drafts: {}", report.draft_count);
+            println!(
+                "goal: {}",
+                report
+                    .goal
+                    .as_ref()
+                    .map(|goal| goal.objective.as_str())
+                    .unwrap_or("none")
+            );
+            println!("summary: {}", report.summary);
+            print_list("observation", &report.observations);
+            print_list("question", &report.questions);
+            print_list("option", &report.options);
+            print_list("risk", &report.risks);
+            println!("audit: {}", brain_audit_line(&report.audit));
+            for need in clean_brain_print_needs(&report.audit, &report.needs) {
+                println!("need: {} {}", need_label(&need.kind), need.query);
+            }
+            print_polluted_need_count(&report.audit, language);
+            for next in &report.next {
+                println!("next: {next}");
+            }
+        }
+        Language::Zh => {
+            println!("章鱼合成");
+            println!("来源: {}", report.source);
+            println!("主脑: {}", report.policy);
+            println!("草稿数: {}", report.draft_count);
+            println!(
+                "目标: {}",
+                report
+                    .goal
+                    .as_ref()
+                    .map(|goal| goal.objective.as_str())
+                    .unwrap_or("无")
+            );
+            println!("摘要: {}", report.summary);
+            print_list("观察", &report.observations);
+            print_list("问题", &report.questions);
+            print_list("选项", &report.options);
+            print_list("风险", &report.risks);
+            println!("审计: {}", brain_audit_line(&report.audit));
+            for need in clean_brain_print_needs(&report.audit, &report.needs) {
+                println!("Need: {} {}", need_label(&need.kind), need.query);
+            }
+            print_polluted_need_count(&report.audit, language);
+            for next in &report.next {
+                println!("下一步: {next}");
+            }
+        }
+    }
+}
+
 fn print_list(label: &str, items: &[String]) {
     for item in items {
         println!("{label}: {item}");
@@ -8717,6 +8851,12 @@ fn clean_brain_deliberate_llm_client() -> Result<OpenAiCompatibleChatClient, Str
     ))
 }
 
+fn clean_brain_synthesize_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
+    Ok(OpenAiCompatibleChatClient::new(
+        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_synthesize_llm_prefix())?,
+    ))
+}
+
 fn clean_brain_goal_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
     Ok(OpenAiCompatibleChatClient::new(
         OpenAiCompatibleConfig::from_env_prefix(&clean_brain_goal_llm_prefix())?,
@@ -8777,6 +8917,10 @@ fn clean_brain_explore_llm_prefix() -> String {
 
 fn clean_brain_deliberate_llm_prefix() -> String {
     clean_brain_slot_llm_prefix("OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX")
+}
+
+fn clean_brain_synthesize_llm_prefix() -> String {
+    clean_brain_slot_llm_prefix("OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX")
 }
 
 fn clean_brain_goal_llm_prefix() -> String {
@@ -9038,6 +9182,99 @@ fn write_brain_deliberation_session(
     Ok(BrainSessionReport {
         policy: prompt_report.policy,
         mode: "deliberate".to_string(),
+        prompt: prompt.to_string(),
+        session_dir: session_dir.to_string_lossy().to_string(),
+        prompt_path: prompt_path.to_string_lossy().to_string(),
+        messages_path: messages_path.to_string_lossy().to_string(),
+        reply_path: reply_path.to_string_lossy().to_string(),
+        draft_path: draft_path_string,
+        command_path: command_path.to_string_lossy().to_string(),
+        apply_command,
+        next,
+    })
+}
+
+fn write_brain_synthesis_session(
+    state: &HarnessState,
+    state_path: &Path,
+    prompt: &str,
+    input: BrainSynthesisInput,
+    live: bool,
+) -> Result<BrainSessionReport, String> {
+    let prompt_report = state.clean_brain_prompt(prompt.to_string(), 6);
+    let messages = brain_synthesis_session_messages(&prompt_report, &input);
+    let reply_template = serde_json::json!({
+        "summary": "short synthesis",
+        "observations": ["cognitive observation"],
+        "questions": ["open cognitive question"],
+        "options": ["possible cognitive direction"],
+        "risks": ["reasoning risk"],
+        "needs": [
+            {"kind": "verify", "query": "short cognitive request"}
+        ]
+    });
+    let session_dir = next_brain_session_dir(state_path)?;
+    fs::create_dir_all(&session_dir).map_err(|error| error.to_string())?;
+
+    let prompt_path = session_dir.join("PROMPT.md");
+    let messages_path = session_dir.join("messages.json");
+    let reply_path = session_dir.join("REPLY.json");
+    let draft_path = session_dir.join("DRAFT.json");
+    let command_path = session_dir.join("COMMANDS.sh");
+    let state_arg = shell_arg(state_path.to_string_lossy().as_ref());
+    let prompt_arg = shell_arg(prompt);
+    let reply_arg = shell_arg(reply_path.to_string_lossy().as_ref());
+    let apply_command = format!(
+        "octopus --state {state_arg} brain --synthesize --apply {reply_arg} --save {prompt_arg}"
+    );
+
+    fs::write(
+        &prompt_path,
+        brain_session_prompt_markdown(&prompt_report, &messages, "synthesize", &apply_command),
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        &messages_path,
+        serde_json::to_string_pretty(&messages).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        &reply_path,
+        serde_json::to_string_pretty(&reply_template).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    let draft_path = if live {
+        let mut client = clean_brain_synthesize_llm_client()?;
+        let response = client.chat(&messages)?;
+        let draft = clean_brain_session_draft_json(&response.content)?;
+        fs::write(&draft_path, draft).map_err(|error| error.to_string())?;
+        Some(draft_path)
+    } else {
+        None
+    };
+    fs::write(
+        &command_path,
+        format!(
+            "#!/usr/bin/env sh\nset -eu\n# Paste the accepted synthesis JSON into REPLY.json first.\n{apply_command}\n"
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    make_executable(&command_path)?;
+    let draft_path_string = draft_path
+        .as_ref()
+        .map(|path| path.to_string_lossy().to_string());
+    let mut next = Vec::new();
+    if draft_path_string.is_some() {
+        next.push("review DRAFT.json, then copy accepted JSON into REPLY.json".to_string());
+    } else {
+        next.push("paste PROMPT.md or messages.json into a chat model".to_string());
+        next.push("replace REPLY.json with synthesis JSON".to_string());
+    }
+    next.push(apply_command.clone());
+
+    Ok(BrainSessionReport {
+        policy: prompt_report.policy,
+        mode: "synthesize".to_string(),
         prompt: prompt.to_string(),
         session_dir: session_dir.to_string_lossy().to_string(),
         prompt_path: prompt_path.to_string_lossy().to_string(),
@@ -9449,6 +9686,37 @@ fn brain_deliberation_session_messages(report: &BrainPromptReport) -> Vec<ChatMe
     ]
 }
 
+fn brain_synthesis_session_messages(
+    report: &BrainPromptReport,
+    input: &BrainSynthesisInput,
+) -> Vec<ChatMessage> {
+    let context = serde_json::json!({
+        "policy": report.policy,
+        "slots": ["Goal", "Mem", "Need", "Feed"],
+        "goal": report.goal,
+        "mem": report.mem,
+        "recent_need_feed": report.recent,
+        "current_need": report.prompt,
+        "current_feed": {
+            "summary": "clean-brain draft bundle",
+            "drafts": input,
+        },
+    });
+    vec![
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain synthesis layer. You see only Goal, Mem, Need, and Feed. The current Feed contains draft replies from other clean-brain models. Synthesize that Feed into compact cognitive observations, questions, options, risks, and cognitive Needs only. Do not choose tools, APIs, files, commands, routes, tentacles, or implementation. Return only JSON: {\"summary\":\"short synthesis\",\"observations\":[\"cognitive observation\"],\"questions\":[\"open cognitive question\"],\"options\":[\"possible cognitive direction\"],\"risks\":[\"reasoning risk\"],\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!(
+                "Clean brain synthesis prompt: {}\nClean brain context JSON: {context}",
+                report.prompt
+            ),
+        ),
+    ]
+}
+
 fn brain_rewrite_session_messages(
     brain: &BrainPromptReport,
     raw: &BrainExploreReport,
@@ -9531,7 +9799,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--deliberate] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--deliberate] [--synthesize] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -10121,6 +10389,87 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"rewrite clean\",\
         let content = fs::read_to_string(&state_path).unwrap();
         assert!(content.contains("external deliberation"));
         assert!(content.contains("whether goal evidence is enough"));
+        assert!(!content.contains("cargo test"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_brain_synthesis_session_writes_external_chat_artifacts_without_feed() {
+        let _env = env_guard();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-brain-synthesis-{}", std::process::id()));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--synthesize".to_string(),
+            "--session".to_string(),
+            "--apply-json".to_string(),
+            "{\"summary\":\"draft bundle\",\"drafts\":[{\"source\":\"model-a\",\"summary\":\"a\",\"observations\":[\"goal needs evidence\"],\"needs\":[{\"kind\":\"verify\",\"query\":\"whether evidence is enough\"}]},{\"source\":\"model-b\",\"summary\":\"b\",\"questions\":[\"what is missing?\"],\"needs\":[{\"kind\":\"remember\",\"query\":\"model b kept Needs cognitive\"}]}]}".to_string(),
+            "merge".to_string(),
+            "drafts".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        assert_eq!(restored.pending_need_queue_count(), 0);
+        let session = dir.join("brain").join("session-1");
+        let prompt = fs::read_to_string(session.join("PROMPT.md")).unwrap();
+        let messages = fs::read_to_string(session.join("messages.json")).unwrap();
+        let reply = fs::read_to_string(session.join("REPLY.json")).unwrap();
+        let command = fs::read_to_string(session.join("COMMANDS.sh")).unwrap();
+        assert!(prompt.contains("mode: synthesize"));
+        assert!(messages.contains("synthesis layer"));
+        assert!(messages.contains("model-a"));
+        assert!(messages.contains("Goal + Mem + Need + Feed"));
+        assert!(reply.contains("\"observations\""));
+        assert!(reply.contains("\"needs\""));
+        assert!(command.contains("brain --synthesize --apply"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_brain_synthesis_apply_saves_clean_needs_without_feed() {
+        let _env = env_guard();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-brain-synthesis-apply-{}",
+            std::process::id()
+        ));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--synthesize".to_string(),
+            "--apply-json".to_string(),
+            "{\"summary\":\"model jury\",\"drafts\":[{\"source\":\"model-a\",\"summary\":\"a\",\"observations\":[\"goal needs evidence\"],\"needs\":[{\"kind\":\"verify\",\"query\":\"whether evidence is enough\"},{\"kind\":\"execute\",\"query\":\"cargo test -p octopus-core\"}]},{\"source\":\"model-b\",\"summary\":\"b\",\"questions\":[\"what is missing?\"],\"needs\":[{\"kind\":\"verify\",\"query\":\"whether evidence is enough\"},{\"kind\":\"remember\",\"query\":\"model synthesis stayed cognitive\"}]}]}".to_string(),
+            "--save".to_string(),
+            "merge".to_string(),
+            "drafts".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert_eq!(restored.pending_need_queue_count(), 2);
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let content = fs::read_to_string(&state_path).unwrap();
+        assert!(content.contains("model jury"));
+        assert!(content.contains("whether evidence is enough"));
+        assert!(content.contains("model synthesis stayed cognitive"));
         assert!(!content.contains("cargo test"));
         let _ = fs::remove_dir_all(dir);
     }
@@ -10718,7 +11067,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
         assert!(usage().contains(
-            "brain [--goal] [--live] [--save] [--session] [--rewrite] [--deliberate] [--apply path|-] [--apply-json json] [prompt]"
+            "brain [--goal] [--live] [--save] [--session] [--rewrite] [--deliberate] [--synthesize] [--apply path|-] [--apply-json json] [prompt]"
         ));
         assert!(usage().contains("explore [--save] [prompt]"));
         assert!(usage().contains("needs [take|drop|script [path]|session [--live] [prompt]]"));
@@ -10940,6 +11289,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let old_brain_prefix = std::env::var("OCTOPUS_BRAIN_LLM_PREFIX").ok();
         let old_brain_explore_prefix = std::env::var("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX").ok();
         let old_brain_deliberate_prefix = std::env::var("OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX").ok();
+        let old_brain_synthesize_prefix = std::env::var("OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX").ok();
         let old_brain_goal_prefix = std::env::var("OCTOPUS_BRAIN_GOAL_LLM_PREFIX").ok();
         let old_brain_rewrite_prefix = std::env::var("OCTOPUS_BRAIN_REWRITE_LLM_PREFIX").ok();
         let old_brain_queue_prefix = std::env::var("OCTOPUS_BRAIN_QUEUE_LLM_PREFIX").ok();
@@ -10956,6 +11306,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         std::env::set_var("OCTOPUS_BRAIN_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
+        std::env::set_var("OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_BRAIN_GOAL_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_BRAIN_REWRITE_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
         std::env::set_var("OCTOPUS_BRAIN_QUEUE_LLM_PREFIX", "OCTOPUS_STATUS_TEST");
@@ -10967,7 +11318,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
 
         let report = provider_status_report();
 
-        assert_eq!(report.layers.len(), 9);
+        assert_eq!(report.layers.len(), 10);
         assert!(report
             .layers
             .iter()
@@ -10987,6 +11338,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         }));
         assert!(report.layers.iter().any(|layer| {
             layer.layer == "clean_brain_deliberate"
+                && layer.prefix == "OCTOPUS_STATUS_TEST"
+                && layer.enabled
+        }));
+        assert!(report.layers.iter().any(|layer| {
+            layer.layer == "clean_brain_synthesize"
                 && layer.prefix == "OCTOPUS_STATUS_TEST"
                 && layer.enabled
         }));
@@ -11019,6 +11375,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         restore_env(
             "OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX",
             old_brain_deliberate_prefix,
+        );
+        restore_env(
+            "OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX",
+            old_brain_synthesize_prefix,
         );
         restore_env("OCTOPUS_BRAIN_GOAL_LLM_PREFIX", old_brain_goal_prefix);
         restore_env("OCTOPUS_BRAIN_REWRITE_LLM_PREFIX", old_brain_rewrite_prefix);
@@ -12144,6 +12504,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build a clean g
         let goal_curl = dir.join("goal-curl.sh");
         let explore_curl = dir.join("explore-curl.sh");
         let deliberate_curl = dir.join("deliberate-curl.sh");
+        let synthesize_curl = dir.join("synthesize-curl.sh");
         fs::write(
             &goal_curl,
             r#"#!/bin/sh
@@ -12165,7 +12526,19 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"deliberate slot r
 "#,
         )
         .unwrap();
-        for path in [&goal_curl, &explore_curl, &deliberate_curl] {
+        fs::write(
+            &synthesize_curl,
+            r#"#!/bin/sh
+printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"synthesize slot reply\",\"observations\":[\"synthesis observation\"],\"questions\":[\"synthesis question\"],\"options\":[\"synthesis option\"],\"risks\":[\"synthesis risk\"],\"needs\":[{\"kind\":\"verify\",\"query\":\"synthesize-slot cognitive need\"}]}"}}]}'
+"#,
+        )
+        .unwrap();
+        for path in [
+            &goal_curl,
+            &explore_curl,
+            &deliberate_curl,
+            &synthesize_curl,
+        ] {
             let mut permissions = fs::metadata(path).unwrap().permissions();
             permissions.set_mode(0o755);
             fs::set_permissions(path, permissions).unwrap();
@@ -12176,6 +12549,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"deliberate slot r
         let old_goal_prefix = std::env::var("OCTOPUS_BRAIN_GOAL_LLM_PREFIX").ok();
         let old_explore_prefix = std::env::var("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX").ok();
         let old_deliberate_prefix = std::env::var("OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX").ok();
+        let old_synthesize_prefix = std::env::var("OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX").ok();
         let old_goal_model = std::env::var("OCTOPUS_SLOT_GOAL_MODEL").ok();
         let old_goal_base_url = std::env::var("OCTOPUS_SLOT_GOAL_BASE_URL").ok();
         let old_goal_api_key = std::env::var("OCTOPUS_SLOT_GOAL_API_KEY").ok();
@@ -12188,6 +12562,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"deliberate slot r
         let old_deliberate_base_url = std::env::var("OCTOPUS_SLOT_DELIBERATE_BASE_URL").ok();
         let old_deliberate_api_key = std::env::var("OCTOPUS_SLOT_DELIBERATE_API_KEY").ok();
         let old_deliberate_curl = std::env::var("OCTOPUS_SLOT_DELIBERATE_CURL").ok();
+        let old_synthesize_model = std::env::var("OCTOPUS_SLOT_SYNTHESIZE_MODEL").ok();
+        let old_synthesize_base_url = std::env::var("OCTOPUS_SLOT_SYNTHESIZE_BASE_URL").ok();
+        let old_synthesize_api_key = std::env::var("OCTOPUS_SLOT_SYNTHESIZE_API_KEY").ok();
+        let old_synthesize_curl = std::env::var("OCTOPUS_SLOT_SYNTHESIZE_CURL").ok();
         std::env::set_var("OCTOPUS_BRAIN_LLM", "1");
         std::env::set_var("OCTOPUS_BRAIN_LLM_PREFIX", "OCTOPUS_UNUSED_BRAIN");
         std::env::set_var("OCTOPUS_BRAIN_GOAL_LLM_PREFIX", "OCTOPUS_SLOT_GOAL");
@@ -12195,6 +12573,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"deliberate slot r
         std::env::set_var(
             "OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX",
             "OCTOPUS_SLOT_DELIBERATE",
+        );
+        std::env::set_var(
+            "OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX",
+            "OCTOPUS_SLOT_SYNTHESIZE",
         );
         std::env::set_var("OCTOPUS_SLOT_GOAL_MODEL", "goal-model");
         std::env::set_var("OCTOPUS_SLOT_GOAL_BASE_URL", "https://goal.example/v1");
@@ -12222,6 +12604,16 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"deliberate slot r
         std::env::set_var(
             "OCTOPUS_SLOT_DELIBERATE_CURL",
             deliberate_curl.to_string_lossy().to_string(),
+        );
+        std::env::set_var("OCTOPUS_SLOT_SYNTHESIZE_MODEL", "synthesize-model");
+        std::env::set_var(
+            "OCTOPUS_SLOT_SYNTHESIZE_BASE_URL",
+            "https://synthesize.example/v1",
+        );
+        std::env::remove_var("OCTOPUS_SLOT_SYNTHESIZE_API_KEY");
+        std::env::set_var(
+            "OCTOPUS_SLOT_SYNTHESIZE_CURL",
+            synthesize_curl.to_string_lossy().to_string(),
         );
 
         run(vec![
@@ -12259,12 +12651,27 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"deliberate slot r
             "first".to_string(),
         ])
         .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--synthesize".to_string(),
+            "--live".to_string(),
+            "--apply-json".to_string(),
+            "{\"summary\":\"drafts\",\"drafts\":[{\"source\":\"model-a\",\"summary\":\"a\",\"needs\":[{\"kind\":\"verify\",\"query\":\"model-a cognitive need\"}]}]}".to_string(),
+            "--save".to_string(),
+            "merge".to_string(),
+            "drafts".to_string(),
+        ])
+        .unwrap();
 
         restore_env("OCTOPUS_BRAIN_LLM", old_brain);
         restore_env("OCTOPUS_BRAIN_LLM_PREFIX", old_brain_prefix);
         restore_env("OCTOPUS_BRAIN_GOAL_LLM_PREFIX", old_goal_prefix);
         restore_env("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX", old_explore_prefix);
         restore_env("OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX", old_deliberate_prefix);
+        restore_env("OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX", old_synthesize_prefix);
         restore_env("OCTOPUS_SLOT_GOAL_MODEL", old_goal_model);
         restore_env("OCTOPUS_SLOT_GOAL_BASE_URL", old_goal_base_url);
         restore_env("OCTOPUS_SLOT_GOAL_API_KEY", old_goal_api_key);
@@ -12277,10 +12684,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"deliberate slot r
         restore_env("OCTOPUS_SLOT_DELIBERATE_BASE_URL", old_deliberate_base_url);
         restore_env("OCTOPUS_SLOT_DELIBERATE_API_KEY", old_deliberate_api_key);
         restore_env("OCTOPUS_SLOT_DELIBERATE_CURL", old_deliberate_curl);
+        restore_env("OCTOPUS_SLOT_SYNTHESIZE_MODEL", old_synthesize_model);
+        restore_env("OCTOPUS_SLOT_SYNTHESIZE_BASE_URL", old_synthesize_base_url);
+        restore_env("OCTOPUS_SLOT_SYNTHESIZE_API_KEY", old_synthesize_api_key);
+        restore_env("OCTOPUS_SLOT_SYNTHESIZE_CURL", old_synthesize_curl);
 
         let restored = HarnessState::load(&state_path).unwrap();
         assert_eq!(restored.goal.as_ref().unwrap().objective, "slot goal brain");
-        assert_eq!(restored.pending_need_queue_count(), 3);
+        assert_eq!(restored.pending_need_queue_count(), 4);
         assert!(restored.feed_traces.is_empty());
         assert!(restored.routes.scores.is_empty());
         let content = fs::read_to_string(&state_path).unwrap();
@@ -12290,6 +12701,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"deliberate slot r
         assert!(content.contains("explore-slot cognitive need"));
         assert!(content.contains("deliberate slot reply"));
         assert!(content.contains("deliberate-slot cognitive need"));
+        assert!(content.contains("synthesize slot reply"));
+        assert!(content.contains("synthesize-slot cognitive need"));
         let _ = fs::remove_dir_all(dir);
     }
 

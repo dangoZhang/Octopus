@@ -42,9 +42,10 @@ octopus provider save openai
 source .octopus/llm.env
 octopus provider check
 octopus brain --deliberate --save "think before the next Need"
+octopus brain --synthesize --apply-json '{"summary":"model jury","drafts":[{"source":"model-a","needs":[{"kind":"verify","query":"whether the goal is satisfied"}]}]}' --save "merge model drafts"
 octopus brain --live --save "what should the brain ask next?"
 ```
 
-Set `OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX`, `OCTOPUS_BRAIN_GOAL_LLM_PREFIX`, `OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX`, `OCTOPUS_BRAIN_REWRITE_LLM_PREFIX`, or `OCTOPUS_BRAIN_QUEUE_LLM_PREFIX` to route clean-brain jobs to different models.
+Set `OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX`, `OCTOPUS_BRAIN_SYNTHESIZE_LLM_PREFIX`, `OCTOPUS_BRAIN_GOAL_LLM_PREFIX`, `OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX`, `OCTOPUS_BRAIN_REWRITE_LLM_PREFIX`, or `OCTOPUS_BRAIN_QUEUE_LLM_PREFIX` to route clean-brain jobs to different models.
 
 Current line: `0.0.11`. `0.1.0` waits for recorded real-machine testing.
