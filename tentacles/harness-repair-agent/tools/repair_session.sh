@@ -280,10 +280,16 @@ def draft_markdown(draft, prompt_path, session_path, workspace):
 payload = load_payload(sys.argv[1])
 workspace = workspace_from(sys.argv[2:], payload)
 loaded_provider_keys = load_provider_env(workspace)
-state_path = Path(os.environ.get("OCTOPUS_STATE", workspace / ".octopus" / "state.json")).expanduser()
+state_path = Path(
+    os.environ.get("OCTOPUS_STATE_PATH")
+    or os.environ.get("OCTOPUS_STATE")
+    or workspace / ".octopus" / "state.json"
+).expanduser()
 state = load_json(state_path)
 repair_root = workspace / ".octopus" / "harness-repair"
-repair_outcomes = load_jsonl(repair_root / "outcomes.jsonl", 6)
+state_repair_outcomes = state.get("repair_outcomes") or []
+file_repair_outcomes = load_jsonl(repair_root / "outcomes.jsonl", 6)
+repair_outcomes = (state_repair_outcomes or file_repair_outcomes)[-6:]
 latest_repair_outcome = repair_outcomes[-1] if repair_outcomes else {}
 feed_traces = state.get("feed_traces") or []
 check_history = state.get("check_history") or []
@@ -337,11 +343,11 @@ elif latest_trace and str(latest_trace.get("status", "")).lower() in {"failed", 
     target_tentacle = str(latest_trace.get("tentacle") or "unknown")
     source = compact(latest_trace.get("summary", "feed_trace"))
     next_need = f"execute beat repair for {target_tentacle}"
-elif str(latest_repair_outcome.get("outcome_status", "")).lower() in {"failed", "partial"}:
+elif str(latest_repair_outcome.get("status") or latest_repair_outcome.get("outcome_status") or "").lower() in {"failed", "partial"}:
     target_tentacle = str(latest_repair_outcome.get("target_tentacle") or "unknown")
     candidate = str(latest_repair_outcome.get("candidate") or "none")
-    source = f"repair_outcome:{compact(latest_repair_outcome.get('session', 'session'))}"
-    next_need = f"execute beat repair after {latest_repair_outcome.get('outcome_status')} repair outcome"
+    source = f"repair_outcome:{compact(latest_repair_outcome.get('index') or latest_repair_outcome.get('session', 'session'))}"
+    next_need = f"execute beat repair after {latest_repair_outcome.get('status') or latest_repair_outcome.get('outcome_status')} repair outcome"
     commands = ["octopus beat 200", "octopus repair .", "octopus report"]
 elif not provider_ready:
     next_need = "verify provider setup"
@@ -364,9 +370,7 @@ draft_md = session_dir / "DRAFT.md"
 next_need_json = session_dir / "NEXT_NEED.json"
 command_script = session_dir / "COMMANDS.sh"
 outcome_command = (
-    "tentacles/harness-repair-agent/tools/repair_outcome.sh "
-    f"{shlex.quote(str(workspace))} {shlex.quote(rel(session_json, workspace))} "
-    "satisfied \"repair improved Feed\""
+    "octopus repair score <trace-index> satisfied \"repair improved Feed\""
 )
 next_need_kind, next_need_query = need_parts(next_need)
 session = {
@@ -448,7 +452,7 @@ prompt_md.write_text(
             "",
             "recent repair outcomes:",
             *[
-                f"- {compact(item.get('outcome_status', 'unknown'))}: {compact(item.get('summary', ''))}"
+                f"- {compact(item.get('status') or item.get('outcome_status') or 'unknown')}: {compact(item.get('summary', ''))}"
                 for item in repair_outcomes[-3:]
             ],
             "",
