@@ -1971,10 +1971,6 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let options = parse_start_options(&rest)?;
             run_bridge(&options.addr, state.clone(), options.open)
         }
-        Some("bridge") => {
-            let addr = rest.get(1).map(String::as_str).unwrap_or("127.0.0.1:8765");
-            run_bridge(addr, state.clone(), false)
-        }
         Some("init") => {
             let root = rest
                 .get(1)
@@ -4276,7 +4272,7 @@ fn parse_start_options(rest: &[String]) -> Result<StartOptions, String> {
 
 fn run_bridge(addr: &str, state_path: PathBuf, open_app: bool) -> Result<(), String> {
     let listener =
-        TcpListener::bind(addr).map_err(|error| format!("bridge bind failed: {error}"))?;
+        TcpListener::bind(addr).map_err(|error| format!("start bind failed: {error}"))?;
     let startup = prepare_bridge_state(state_path)?;
     print_bridge_startup(&startup, addr);
     if open_app {
@@ -4294,7 +4290,7 @@ fn run_bridge(addr: &str, state_path: PathBuf, open_app: bool) -> Result<(), Str
                         write_http_response(&mut stream, 500, "application/json", body.as_bytes());
                 }
             }
-            Err(error) => eprintln!("bridge connection failed: {error}"),
+            Err(error) => eprintln!("local app connection failed: {error}"),
         }
     }
     Ok(())
@@ -4341,7 +4337,7 @@ fn print_bridge_startup(report: &BootstrapReport, addr: &str) {
     println!("seeds: {}", join_or_none(&report.seed_tentacles));
     println!("installed: {}", join_or_none(&report.installed_tentacles));
     println!("app: http://{addr}/app.html");
-    println!("bridge: http://{addr}");
+    println!("api: http://{addr}");
 }
 
 fn handle_bridge_connection(stream: &mut TcpStream) -> Result<(), String> {
@@ -4534,14 +4530,14 @@ fn bridge_static_asset(path: &str) -> Option<(&'static str, &'static [u8])> {
 
 fn run_bridge_command(args: &[String]) -> Result<BridgeRunResponse, String> {
     if !bridge_command_allowed(args) {
-        return Err("bridge command not allowed".to_string());
+        return Err("local app command not allowed".to_string());
     }
     let mut command = Command::new(env::current_exe().map_err(|error| error.to_string())?);
     command.args(args);
     apply_bridge_env_overlay(&mut command);
     let output = command
         .output()
-        .map_err(|error| format!("bridge command failed to start: {error}"))?;
+        .map_err(|error| format!("local app command failed to start: {error}"))?;
     Ok(BridgeRunResponse {
         ok: output.status.success(),
         code: output.status.code(),
@@ -4552,7 +4548,7 @@ fn run_bridge_command(args: &[String]) -> Result<BridgeRunResponse, String> {
 
 fn stream_bridge_command(stream: &mut TcpStream, args: &[String]) -> Result<(), String> {
     if !bridge_command_allowed(args) {
-        return Err("bridge command not allowed".to_string());
+        return Err("local app command not allowed".to_string());
     }
     write_http_stream_header(stream)?;
     write_sse_event(
@@ -4568,15 +4564,15 @@ fn stream_bridge_command(stream: &mut TcpStream, args: &[String]) -> Result<(), 
     apply_bridge_env_overlay(&mut command);
     let mut child = command
         .spawn()
-        .map_err(|error| format!("bridge command failed to start: {error}"))?;
+        .map_err(|error| format!("local app command failed to start: {error}"))?;
     let stdout = child
         .stdout
         .take()
-        .ok_or_else(|| "bridge command stdout unavailable".to_string())?;
+        .ok_or_else(|| "local app command stdout unavailable".to_string())?;
     let stderr = child
         .stderr
         .take()
-        .ok_or_else(|| "bridge command stderr unavailable".to_string())?;
+        .ok_or_else(|| "local app command stderr unavailable".to_string())?;
     let (sender, receiver) = mpsc::channel::<(String, String)>();
     spawn_stream_reader("stdout", stdout, sender.clone());
     spawn_stream_reader("stderr", stderr, sender);
@@ -7236,7 +7232,7 @@ Append the completed result to `docs/real-machine-test.md` after the run.
 
 - Install and doctor:
 - Core loop:
-- Bridge/app:
+- Start/app:
 - Live provider:
 - PR dry run:
 
@@ -7320,14 +7316,14 @@ fn preflight_record_commands(state_path: &Path, current_head: Option<&str>) -> V
         "\"$OCTOPUS\" provider status".to_string(),
         "\"$OCTOPUS\" provider check \"${OCTOPUS_LLM_PREFIX:-OCTOPUS_LLM}\"".to_string(),
         "\"$OCTOPUS\" --state \"$STATE\" preflight --live".to_string(),
-        "\"$OCTOPUS\" bridge 127.0.0.1:18765 &".to_string(),
-        "BRIDGE_PID=$!".to_string(),
-        "trap 'kill \"$BRIDGE_PID\" 2>/dev/null || true' EXIT".to_string(),
+        "\"$OCTOPUS\" start 127.0.0.1:18765 &".to_string(),
+        "START_PID=$!".to_string(),
+        "trap 'kill \"$START_PID\" 2>/dev/null || true' EXIT".to_string(),
         "sleep 1".to_string(),
         "curl -fsS http://127.0.0.1:18765/app.html >/dev/null".to_string(),
         "curl -fsS 'http://127.0.0.1:18765/pet.html?state=harness' >/dev/null".to_string(),
         "curl -fsS -X POST http://127.0.0.1:18765/api/run -H 'content-type: application/json' --data-binary \"{\\\"args\\\":[\\\"--state\\\",\\\"$STATE\\\",\\\"--json\\\",\\\"doctor\\\"]}\"".to_string(),
-        "kill \"$BRIDGE_PID\"".to_string(),
+        "kill \"$START_PID\"".to_string(),
         "\"$OCTOPUS\" --state \"$STATE\" self-iterate dangoZhang/Octopus".to_string(),
         "OCTOPUS_PR_DRY_RUN=1 \"$OCTOPUS\" --state \"$STATE\" self-iterate pr dangoZhang/Octopus \"preflight dry run\"".to_string(),
     ]);
@@ -11746,7 +11742,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | bridge [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -13911,7 +13907,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         ])
         .unwrap();
         assert!(usage().contains("start [--open] [addr]"));
-        assert!(usage().contains("bridge [addr]"));
+        assert!(!usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
         assert!(usage().contains(
             "brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt]"
@@ -14067,7 +14063,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     }
 
     #[test]
-    fn bridge_startup_prepares_whole_project_state() {
+    fn start_prepares_whole_project_state() {
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!("octopus-bridge-start-{}", std::process::id()));

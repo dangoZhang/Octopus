@@ -25,7 +25,7 @@ Real-machine test gate for `0.1.0` and later tags:
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
-Last cleanup/version correction: `0.0.13` on 2026-06-27. Scope: launch-and-open startup, native update report, human Goal constraints, clean-brain model routing, removed stale demo CI checks, README/version consistency, and cleanup scan; no tag cut.
+Last cleanup/version correction: `0.0.13` on 2026-06-27. Scope: launch-and-open startup, native update report, human Goal constraints, clean-brain model routing, removed stale demo CI checks, removed secondary startup route, README/docs route cleanup, and version consistency; no tag cut.
 
 Product commits toward `0.0.14`: 0/8.
 

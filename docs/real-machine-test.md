@@ -53,7 +53,7 @@ Result: pass. Bootstrap installed seven seed tentacles. Harness repair checks pa
 ## HTML UI
 
 ```bash
-"$tmp/root/bin/octopus" bridge 127.0.0.1:18765
+"$tmp/root/bin/octopus" start 127.0.0.1:18765
 curl -fsS "http://127.0.0.1:18765/app.html"
 curl -fsS "http://127.0.0.1:18765/pet.html?state=harness"
 curl -fsS -X POST "http://127.0.0.1:18765/api/run" \
@@ -61,7 +61,7 @@ curl -fsS -X POST "http://127.0.0.1:18765/api/run" \
   --data-binary "{\"args\":[\"--state\",\"$tmp/state.json\",\"--json\",\"doctor\"]}"
 ```
 
-Result: pass. App and pet pages were served locally. `/api/run` returned a JSON bridge envelope with doctor output.
+Result: pass. App and pet pages were served locally. `/api/run` returned a JSON local app envelope with doctor output.
 
 ## Known Issues
 

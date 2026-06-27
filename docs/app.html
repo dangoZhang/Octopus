@@ -431,7 +431,7 @@
               <option value="json-feed">json-feed</option>
             </select>
           </label>
-          <label>Bridge
+          <label>Local API
             <input id="bridge" value="http://127.0.0.1:8765" />
           </label>
           <label>Provider prefix
@@ -756,7 +756,7 @@
         });
         const result = await response.json();
         if (!result.ok) {
-          throw new Error(result.stderr || result.stdout || "bridge command failed");
+          throw new Error(result.stderr || result.stdout || "Octopus command failed");
         }
         return JSON.parse(result.stdout);
       }
@@ -3359,7 +3359,7 @@
         });
         const result = await response.json();
         $("output").textContent = [result.stdout, result.stderr].filter(Boolean).join("\n");
-        if (!result.ok) throw new Error(result.stderr || "bridge command failed");
+        if (!result.ok) throw new Error(result.stderr || "Octopus command failed");
       }
 
       async function runBridge(action) {

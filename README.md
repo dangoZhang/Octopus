@@ -56,6 +56,6 @@ octopus brain --live --save "what should the brain ask next?"
 - Clean-brain Goal, Need, Feed, queue, context, agenda, clarification, deliberation, reflection, memory, council, synthesis, and external-chat sessions.
 - Seed tentacles for SWE work, computer-use adapters, repo maintenance, harness repair, and write-and-run local execution.
 - Tool-side LLM planning with grants, traces, route scores, feedback scoring, and reviewable harness evolution drafts.
-- Native HTML app, local bridge, install reports, provider setup, preflight gates, and pixel pet SVG export.
+- Native HTML app server, install reports, provider setup, preflight gates, and pixel pet SVG export.
 
 Pre-release line: `0.0.13`. `0.1.0` waits for recorded real-machine testing.

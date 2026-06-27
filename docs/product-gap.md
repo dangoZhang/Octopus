@@ -19,14 +19,14 @@ Updated: 2026-06-27
 - `provider status` reports chat, clean-brain model slots including clarification, agenda, memory, and synthesis, tentacle-planning, and harness-evolution LLM readiness without a network call.
 - `provider save` writes reusable provider env to `.octopus/llm.env` by default, and start overlays that file onto child Octopus commands.
 - The native HTML app can generate or save provider env, render provider layer readiness, and run an explicit live provider check through start.
-- `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path; `bridge` remains a compatibility alias.
+- `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
 - `start` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
 - `start` and `bootstrap` can materialize editable bundled seed tentacles under `.octopus/bundled-tentacles` when source tentacles are unavailable.
-- `start` is the product-facing launch path; the old standalone demo route has been removed from CLI, doctor, and docs.
-- CI now follows the product launch path and no longer checks the removed standalone demo command.
-- `start --open` keeps the same whole-project startup path and attempts to open the native app after the bridge binds.
-- The native HTML app defaults its bridge to local Octopus when opened from docs pages, and auto-renders a read-only startup snapshot when served by `octopus start`.
-- The native HTML app can render the dry-run update report and copy the explicit reinstall command while bridge blocks `update --run`.
+- `start` is the single product-facing launch path in CLI, doctor, and docs.
+- CI now follows the product launch path and no longer checks the removed demo command.
+- `start --open` keeps the same whole-project startup path and attempts to open the native app after the local app server binds.
+- The native HTML app defaults its local API URL to Octopus when opened from docs pages, and auto-renders a read-only startup snapshot when served by `octopus start`.
+- The native HTML app can render the dry-run update report and copy the explicit reinstall command while the local app API blocks `update --run`.
 - `update` reports the current GitHub reinstall command by default, and `update --run` performs the cargo reinstall explicitly.
 - `bootstrap` creates local state files, adapts to the project, installs seed tentacles, pulses heartbeat, and returns a product report plus next commands.
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
@@ -37,7 +37,7 @@ Updated: 2026-06-27
 - Starter recommendation cards now include group reasons and manifest-derived signals so first-run users can see why a tentacle was recommended.
 - Starter recommendations now record accepted, ignored, and failed first-run choices as harness feedback, and later ranking uses that feedback score.
 - README now stays short with the Octopus story and install path; docs homepages carry the broader product landing copy.
-- The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
+- The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the local app API.
 - `goal set --constraint ...` and `goal refine ...` let a human set or sharpen the clean-brain Goal without running Feed or touching route learning.
 - `status --json` exposes recent clean-brain Goal turns so Goal refinement history stays visible without replaying Feed.
 - `brain [prompt]` exports pasteable clean-brain chat messages from Goal/Mem/Need/Feed for any model UI.
@@ -56,9 +56,9 @@ Updated: 2026-06-27
 - `explore [prompt]` lets the clean brain suggest cognitive Needs from Goal/Mem/Need/Feed without running Feed.
 - Clean-brain Goal, clarification, agenda, memory, reflection, and exploration reports now include a Need audit that flags tool/API/command/file burden and exposes only clean Needs for follow-up commands or queueing.
 - `explore --save [prompt]` stores only audit-clean Needs in a reviewable Need Queue; `needs session [--live] [prompt]` writes a clean-brain review session, `needs take <index>` returns one command, and `needs script [path]` writes a reviewable Feed script without executing it.
-- The native HTML app can run `--json bootstrap` through the bridge from the command panel.
+- The native HTML app can run `--json bootstrap` through the local app API from the command panel.
 - The native HTML app can show current Goal, status, refinements, and recent clean-brain Goal turns from persisted state.
-- The native HTML app can paste an external brain reply and apply it to Need Queue or Goal through the bridge.
+- The native HTML app can paste an external brain reply and apply it to Need Queue or Goal through the local app API.
 - The native HTML app can run Clarify Session, Clarify, Apply Clarify, Agenda Session, Agenda, and Apply Agenda controls so questions and cognitive priorities can be drafted or imported without Feed execution.
 - The native HTML app can run Memory Session, Memory, and Apply Memory controls so memory Needs can be drafted or imported without Feed execution.
 - The native HTML app can take or drop individual queued Needs, write the pending Need Queue into a local reviewable Feed script, and write offline or live clean-brain review sessions.
@@ -71,10 +71,10 @@ Updated: 2026-06-27
 - `check <tentacle> [index]` records compact harness history and the HTML install guide can rerun one check at a time.
 - The native HTML app can run a structured Feed test that installs the selected tentacle, sends the selected Need, and renders plan source, tool, action count, summary, and evidence.
 - `report` emits a state-aware product report with clean-brain context, tentacle context, capability status, gaps, and next commands.
-- The native HTML app can render the same product report from the local bridge.
+- The native HTML app can render the same product report from the local app API.
 - `preflight [--live]` turns the `0.1.0` readiness gate into CLI, JSON, and native HTML checks without live provider calls unless requested.
 - `preflight script [path]` writes a reviewable local release-gate script that runs bootstrap, Feed, checks, feedback, beat, pet, report, and optional live provider/PR dry-run gates.
-- `preflight record [path]` writes a real-machine evidence template with GitHub install, core loop, bridge/app, live provider, and PR dry-run commands.
+- `preflight record [path]` writes a real-machine evidence template with GitHub install, core loop, start/app, live provider, and PR dry-run commands.
 - The real-machine record gate accepts a current recorded head, or a docs-only record commit whose parent head is recorded.
 - Context policy is explicit: clean brain sees `Goal + Mem + Need + Feed`; tentacles see `Need + Tool + Action + Tool + Action -> Feed`.
 - `context [kind query]` now renders the clean-brain context slots, memory summary, recent Need/Feed, and installed tentacle tool/action context as CLI, JSON, and native HTML output.
@@ -111,7 +111,7 @@ Updated: 2026-06-27
 - Added provider profiles so users can generate env for chat, tentacle planning, and harness evolution without hand-writing every variable.
 - Added `octopus provider check` for live OpenAI-compatible endpoint validation using the same adapter as chat and tool-side LLM planning.
 - Added `self-iterate pr` plus a repo-maintainer `publish_pr` adapter with dry-run and explicit `gh` publishing.
-- Added `octopus bridge` and wired `docs/app.html` to run Octopus commands through a local HTTP bridge.
+- Added the local app API so `docs/app.html` can run approved Octopus commands through `octopus start`.
 - Added `/api/stream` so the HTML app can show command output while Octopus runs.
 - Added a computer-use `browser_status` tool for local browser availability and current-tab diagnostics.
 - Added manifest-level tool `permission` metadata and execution-time grant checks before high-risk tentacle tools run.
@@ -127,10 +127,10 @@ Updated: 2026-06-27
 - Added multi-action LLM tentacle execution: `calls[]` can now run up to two tool actions, with `actions`, `action_count`, and per-action evidence exposed.
 - Added grant-bound computer-use clipboard read/write tools with dry-run diagnostics for CI and local tests.
 - Added install reports so user-selectable tentacles expose scope-merged grants, checks, and next commands directly from manifest/profile metadata.
-- Added a native HTML install report view and bridge-limited local tool grant buttons for installable tentacles.
+- Added a native HTML install report view and local-app-scoped tool grant buttons for installable tentacles.
 - Added CLI/HTML install checks so seed-tentacle checks can be run and shown as ok/failed in the native app.
 - Added per-check stdout/stderr drilldown in the native HTML install guide.
-- Added single-check rerun support in CLI, bridge, and the HTML install guide.
+- Added single-check rerun support in CLI, local app API, and the HTML install guide.
 - Rolled the cleanup/version cadence to `0.0.4` after the install-guide product cycle.
 - Added persistent harness check history for install checks and surfaced it in the HTML install guide.
 - Fed check history into harness evolution proposals, LLM evolution prompts, runtime-code targeting, and recommendation scoring.
@@ -138,16 +138,16 @@ Updated: 2026-06-27
 - Added provider-assisted patch drafts for `OCTOPUS_LLM_EVOLVE=1` candidates, including authorized `.patch` emission when the diff stays on the declared target.
 - Added harness-beat evolution recommendations so `beat` can write the next apply plan from failed or partial check history.
 - Added a native HTML harness-beat panel that renders heartbeat data, evolution candidate, plan path, and next action.
-- Added bridge-limited Harness Beat review buttons so accepted, partial, or rejected recommendations write `evolve score` feedback.
+- Added local-app-scoped Harness Beat review buttons so accepted, partial, or rejected recommendations write `evolve score` feedback.
 - Rolled the cleanup/version cadence to `0.0.5` after the harness-beat evolution/review product cycle.
 - Added a native HTML provider panel for structured `provider status` and explicit `provider check`.
 - Added native HTML provider profile/env generation with a copyable shell env block.
-- Added `provider save` plus bridge-side `.octopus/llm.env` loading so app-generated provider setup can affect later bridge child commands.
-- Added a native HTML Provider Save action and limited provider env saving through bridge to the default path.
-- Added a native HTML Feed Test action that runs `--json need` through bridge and renders structured Feed metadata/evidence for tool-side planning.
+- Added `provider save` plus start-side `.octopus/llm.env` loading so app-generated provider setup can affect later local app commands.
+- Added a native HTML Provider Save action and limited provider env saving through the local app API to the default path.
+- Added a native HTML Feed Test action that runs `--json need` through the local app API and renders structured Feed metadata/evidence for tool-side planning.
 - Added Feed-trace-driven harness beat evolution so failed or partial Feed can produce the next reviewed apply plan without waiting for a manifest check failure.
 - Added a seed `harness-repair-agent` so heartbeat/evolution artifacts can be inspected by an LLM-backed tentacle as normal Need-to-Feed work, including reviewable repair-session artifacts and optional provider-generated drafts.
-- Added bridge-limited Harness Grant and Write Apply controls so the native app can move a recommendation into reviewable apply artifacts.
+- Added local-app-scoped Harness Grant and Write Apply controls so the native app can move a recommendation into reviewable apply artifacts.
 - Added first-class context inspection so the product can prove the brain sees only `Goal/Mem/Need/Feed` while tentacles carry `Need/Tool/Action/Feed`.
 - Added `octopus report` and `--json report` for capability/gap review from current harness state.
 - Added a native HTML Report panel that renders capabilities, gaps, and next actions.
@@ -157,7 +157,7 @@ Updated: 2026-06-27
 - Added state-aware route reports in CLI, JSON, and the native app so Feed feedback becomes visible route selection evidence.
 - Added direct human `goal set --constraint` and `goal refine` in CLI and native app so the clean brain can receive durable constraints without tool execution.
 - Added `bootstrap` so a new local state can install seed tentacles and get a report in one command.
-- Added native HTML Bootstrap access through the local bridge.
+- Added native HTML Bootstrap access through the local app API.
 - Added `harness-repair-agent` as a seed tentacle for tool-side diagnosis of the harness feedback and adapter loop.
 - Fixed the GitHub install command and passed `OCTOPUS_STATE_PATH` into tool runtimes so harness diagnostics can read temporary or custom state paths.
 - Added clean-brain `explore` in CLI, JSON, and native app so the main brain can suggest Needs without tool execution.
@@ -184,7 +184,7 @@ Updated: 2026-06-27
 - Added `brain --memory` plus native HTML Memory controls so the clean brain can draft remember, recall, forget, and verify Needs for the memory heart without Feed execution.
 - Added `brain --synthesize` plus native HTML Synthesize controls so multiple model drafts can be merged or provider-synthesized into one audited clean-brain Need set without Feed execution.
 - Added `brain --council` plus native HTML Brain Council so multiple configured clean-brain models can draft separately and feed synthesis without exposing tools to the brain.
-- Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and bridge API.
+- Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and local app API.
 - Polished README and docs homepages into product-page copy with the value story first and runnable install commands kept visible.
 - Added `preflight [--live]` so release readiness can check state, seed tentacles, manifests, context boundary, docs/pet, LLM layers, live provider, feedback data, GitHub PR path, current-head real-machine record, desktop adapters, and harness repair.
 - Added `preflight script [path]` plus native HTML access so release-gate commands can be generated, reviewed, and run on a real machine.
@@ -218,20 +218,21 @@ Updated: 2026-06-27
 - Reworked README into a product-page share surface with a first-screen story, edge-intelligence insight, differentiators, install/use path, and usable pre-release boundary.
 - Added starter choice feedback so accepted, ignored, and failed starter picks become compact harness records, influence later recommendation ranking, update pet state, and show in the native HTML app.
 - Rolled the cleanup/version cadence to `0.0.11` after repair action plans, heartbeat plan pickup, repair plan/report/app surfacing, REVIEW.md bundles, trace-aware repair scoring, starter choice feedback, and README product landing polish.
-- Rolled the cleanup/version cadence to `0.0.12` after bridge startup, pixel pet SVG export, clean-brain clarification, reflection, memory, council, synthesis, provider slots, native app controls, embedded HTML app fallback, README/version consistency, and cleanup scan.
+- Rolled the cleanup/version cadence to `0.0.12` after local app startup, pixel pet SVG export, clean-brain clarification, reflection, memory, council, synthesis, provider slots, native app controls, embedded HTML app fallback, README/version consistency, and cleanup scan.
 - Tightened README to story plus Quick Install & Use, and kept English and Chinese docs homepages as shorter product pages with the value promise, first clean loop, usable surface, and pre-`0.1.0` boundary visible before deep docs.
 - Added `pet image [state] [path]` so the color-changing pixel Octopus can be exported as SVG from the same state mapping used by CLI and HTML.
-- Made `octopus bridge` start the whole local project surface by bootstrapping state and seed tentacles before serving the native app.
-- Embedded native HTML pages into the Rust binary as a bridge fallback so installed binaries can serve the app even when source docs are unavailable.
+- Made local startup prepare the whole project surface by bootstrapping state and seed tentacles before serving the native app.
+- Embedded native HTML pages into the Rust binary as a start fallback so installed binaries can serve the app even when source docs are unavailable.
 - Embedded seed tentacle files into the binary and materialized them as editable local harness files for installed whole-project startup.
-- Added `octopus start` as the product-facing whole-project launcher while keeping `octopus bridge` compatible.
-- Added `octopus update` as a dry-run-first update path, with `--run` for explicit GitHub reinstall and bridge limited to dry-run.
-- Removed the standalone demo route and rebuilt Quick Install & Use around launching the whole project with `octopus start`.
+- Added `octopus start` as the product-facing whole-project launcher.
+- Added `octopus update` as a dry-run-first update path, with `--run` for explicit GitHub reinstall and the local app limited to dry-run.
+- Rebuilt Quick Install & Use around launching the whole project with `octopus start`.
 - Added native app startup auto-checks so locally served app sessions immediately show product report, provider readiness, and starter recommendations.
 - Added per-call clean-brain model routing with `brain --llm-prefix` and council model override with `brain --council --models`, so strong-model selection stays outside Need text and Feed execution.
 - Added `octopus start --open` and moved user-facing install paths to the one-command launch-and-open flow.
 - Added a native HTML Update panel for safe dry-run update reports and copyable reinstall commands.
-- Rolled the cleanup/version cadence to `0.0.13` after launch-and-open startup, native update reports, human Goal constraints, clean-brain model routing, removed stale demo CI checks, README/version consistency, and cleanup scan.
+- Removed the old secondary startup CLI route, moved preflight/app docs to `octopus start`, and kept the local app API under the whole-project server.
+- Rolled the cleanup/version cadence to `0.0.13` after launch-and-open startup, native update reports, human Goal constraints, clean-brain model routing, removed stale demo CI checks, removed secondary startup route, README/docs route cleanup, and version consistency.
 
 ## Remaining Gaps
 
@@ -242,9 +243,9 @@ Updated: 2026-06-27
 - Preflight now exposes the release gate and record template; current readiness still depends on running that gate with live provider, OAuth PR publishing, scored feedback data, and appending a current-head or docs-only parent-recorded result.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
-- Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, clean-brain slot diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
+- Provider profiles now include CLI/HTML env generation, env saving, start env loading, clean-brain slot diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
 - GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
-- The HTML app can run, stream, render update reports, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, draft/apply agenda reports, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect repair plans, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, render/filter starter recommendation cards with choice feedback, run starter install/check/first-Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, render update reports, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, draft/apply agenda reports, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect repair plans, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, render/filter starter recommendation cards with choice feedback, run starter install/check/first-Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through the local app API; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
