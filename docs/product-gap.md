@@ -21,6 +21,7 @@ Updated: 2026-06-27
 - The native HTML app can generate or save provider env, render provider layer readiness, and run an explicit live provider check through the bridge.
 - `bridge` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
 - `bridge` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
+- `bridge` and `bootstrap` can materialize editable bundled seed tentacles under `.octopus/bundled-tentacles` when source tentacles are unavailable.
 - `bootstrap` creates local state files, adapts to the project, installs seed tentacles, pulses heartbeat, and returns a product report plus next commands.
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
@@ -213,6 +214,7 @@ Updated: 2026-06-27
 - Added `pet image [state] [path]` so the color-changing pixel Octopus can be exported as SVG from the same state mapping used by CLI and HTML.
 - Made `octopus bridge` start the whole local project surface by bootstrapping state and seed tentacles before serving the native app.
 - Embedded native HTML pages into the Rust binary as a bridge fallback so installed binaries can serve the app even when source docs are unavailable.
+- Embedded seed tentacle files into the binary and materialized them as editable local harness files for installed whole-project startup.
 
 ## Remaining Gaps
 

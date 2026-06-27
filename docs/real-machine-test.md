@@ -71,5 +71,5 @@ Result: pass. App and pet pages were served locally. `/api/run` returned a JSON 
 
 ## Tag Decision
 
-- Pass or fail: pass for pre-`0.1.0` local MVP preflight.
+- Pass or fail: pass for pre-`0.1.0` whole-project local preflight.
 - Follow-up: do not cut `0.1.0` yet; repeat this gate with live LLM provider, OAuth PR publishing, and richer desktop-control coverage.

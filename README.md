@@ -19,7 +19,7 @@ cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked 
 octopus bridge
 ```
 
-Open `http://127.0.0.1:8765/app.html`. The bridge prepares local state, seed tentacles, heartbeats, and the native app surface.
+Open `http://127.0.0.1:8765/app.html`. The bridge prepares local state, seed tentacles, heartbeats, and the native app surface. If no source checkout is present, it creates editable seed tentacles under `.octopus/bundled-tentacles`.
 
 Run a first loop:
 
