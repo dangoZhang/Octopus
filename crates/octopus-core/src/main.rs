@@ -387,16 +387,45 @@ struct RepairReport {
     state_path: String,
     tentacle: String,
     feed: Feed,
+    repair_plan: Option<RepairPlanReport>,
     queued: Vec<NeedQueueItem>,
     queue: NeedQueueReport,
     next: Vec<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
+struct RepairPlanReport {
+    path: String,
+    review: String,
+    status: String,
+    schema: String,
+    session: String,
+    target_tentacle: String,
+    target_tool: String,
+    candidate: String,
+    review_boundary: String,
+    check_command: String,
+    grant_command: String,
+    apply_command: String,
+    score_command: String,
+    suggested_commands: String,
+    next_need_kind: String,
+    next_need_query: String,
+}
+
+#[derive(Debug, serde::Serialize)]
 struct RepairScoreReport {
     outcome: RepairOutcome,
+    journal: Option<RepairOutcomeJournalReport>,
     recent: Vec<RepairOutcome>,
     next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct RepairOutcomeJournalReport {
+    session_path: String,
+    outcome_path: String,
+    outcomes_file: String,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -628,9 +657,17 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     .map(|values| values.join(" "))
                     .unwrap_or_else(|| "recorded repair outcome".to_string());
                 let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                let trace = loaded
+                    .feed_traces
+                    .iter()
+                    .find(|trace| trace.index == trace_index)
+                    .cloned();
                 let outcome = loaded.record_repair_outcome(Some(trace_index), status, summary)?;
+                let cwd = env::current_dir().map_err(|error| error.to_string())?;
+                let journal = write_repair_score_journal(&cwd, trace.as_ref(), &outcome)?;
                 let report = RepairScoreReport {
                     outcome,
+                    journal,
                     recent: loaded.recent_repair_outcomes(5),
                     next: vec![
                         "octopus repair .".to_string(),
@@ -2122,6 +2159,16 @@ fn print_repair_report(report: &RepairReport, language: Language) {
             if let Some(index) = report.feed.metadata.get("feed_trace_index") {
                 println!("trace_index: {index}");
             }
+            if let Some(plan) = &report.repair_plan {
+                println!("repair_plan: {}", plan.path);
+                print_optional_line("review", &plan.review);
+                println!("plan_status: {}", plan.status);
+                println!("target: {}/{}", plan.target_tentacle, plan.target_tool);
+                print_optional_line("check", &plan.check_command);
+                print_optional_line("grant", &plan.grant_command);
+                print_optional_line("apply", &plan.apply_command);
+                print_optional_line("score", &plan.score_command);
+            }
             println!("queued: {}", report.queued.len());
             for item in &report.queued {
                 println!(
@@ -2141,6 +2188,16 @@ fn print_repair_report(report: &RepairReport, language: Language) {
             if let Some(index) = report.feed.metadata.get("feed_trace_index") {
                 println!("Feed轨迹编号: {index}");
             }
+            if let Some(plan) = &report.repair_plan {
+                println!("修复计划: {}", plan.path);
+                print_optional_line("审阅", &plan.review);
+                println!("计划状态: {}", plan.status);
+                println!("目标: {}/{}", plan.target_tentacle, plan.target_tool);
+                print_optional_line("检查", &plan.check_command);
+                print_optional_line("授权", &plan.grant_command);
+                print_optional_line("应用", &plan.apply_command);
+                print_optional_line("评分", &plan.score_command);
+            }
             println!("排队Need: {}", report.queued.len());
             for item in &report.queued {
                 println!(
@@ -2155,6 +2212,12 @@ fn print_repair_report(report: &RepairReport, language: Language) {
     }
 }
 
+fn print_optional_line(label: &str, value: &str) {
+    if !value.trim().is_empty() {
+        println!("{label}: {value}");
+    }
+}
+
 fn print_repair_score_report(report: &RepairScoreReport, language: Language) {
     match language {
         Language::En => {
@@ -2165,6 +2228,10 @@ fn print_repair_score_report(report: &RepairScoreReport, language: Language) {
             println!("status: {:?}", report.outcome.status);
             println!("score: {:.2}", report.outcome.score);
             println!("summary: {}", report.outcome.summary);
+            if let Some(journal) = &report.journal {
+                println!("outcome: {}", journal.outcome_path);
+                println!("journal: {}", journal.outcomes_file);
+            }
             println!("recent_repair_outcomes: {}", report.recent.len());
             println!("next: {}", join_or_none(&report.next));
         }
@@ -2176,10 +2243,134 @@ fn print_repair_score_report(report: &RepairScoreReport, language: Language) {
             println!("状态: {:?}", report.outcome.status);
             println!("分数: {:.2}", report.outcome.score);
             println!("摘要: {}", report.outcome.summary);
+            if let Some(journal) = &report.journal {
+                println!("结果文件: {}", journal.outcome_path);
+                println!("结果日志: {}", journal.outcomes_file);
+            }
             println!("近期 repair 结果: {}", report.recent.len());
             println!("下一步: {}", join_or_none(&report.next));
         }
     }
+}
+
+fn write_repair_score_journal(
+    cwd: &Path,
+    trace: Option<&FeedTraceRecord>,
+    outcome: &RepairOutcome,
+) -> Result<Option<RepairOutcomeJournalReport>, String> {
+    let Some(trace) = trace else {
+        return Ok(None);
+    };
+    let Some(session) = trace.metadata.get("session") else {
+        return Ok(None);
+    };
+    let workspace = trace
+        .metadata
+        .get("workspace")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| cwd.to_path_buf());
+    let session_path = metadata_path(&workspace, session);
+    let Some(session_dir) = session_path.parent() else {
+        return Ok(None);
+    };
+    if !session_path.exists() {
+        return Ok(None);
+    }
+    let repair_root = workspace.join(".octopus").join("harness-repair");
+    fs::create_dir_all(&repair_root).map_err(|error| error.to_string())?;
+    let outcomes_file = repair_root.join("outcomes.jsonl");
+    let outcome_path = session_dir.join("OUTCOME.md");
+    let status = cli_status_key(&outcome.status);
+    let target = trace
+        .metadata
+        .get("target_tentacle")
+        .cloned()
+        .unwrap_or_else(|| outcome.tentacle_id.clone());
+    let candidate = trace
+        .metadata
+        .get("candidate")
+        .cloned()
+        .unwrap_or_else(|| "none".to_string());
+    let draft_status = trace
+        .metadata
+        .get("llm_draft_status")
+        .cloned()
+        .unwrap_or_else(|| "unknown".to_string());
+    let timestamp_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_secs();
+    let record = serde_json::json!({
+        "schema_version": "octopus-harness-repair-outcome-v1",
+        "timestamp_secs": timestamp_secs,
+        "workspace": workspace.to_string_lossy(),
+        "session": display_path(&workspace, &session_path),
+        "trace_index": outcome.trace_index,
+        "target_tentacle": target,
+        "candidate": candidate,
+        "source": trace.metadata.get("source").cloned().unwrap_or_else(|| "repair_score".to_string()),
+        "next_need": trace.metadata.get("next_need").cloned().unwrap_or_default(),
+        "draft_status": draft_status,
+        "outcome_status": status,
+        "summary": truncate_chars(&outcome.summary, 500),
+    });
+    let mut handle = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&outcomes_file)
+        .map_err(|error| error.to_string())?;
+    writeln!(handle, "{record}").map_err(|error| error.to_string())?;
+    fs::write(
+        &outcome_path,
+        format!(
+            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\n\n{}\n\njournal: `{}`\n",
+            status,
+            display_path(&workspace, &session_path),
+            record["target_tentacle"].as_str().unwrap_or("unknown"),
+            record["candidate"].as_str().unwrap_or("none"),
+            record["draft_status"].as_str().unwrap_or("unknown"),
+            outcome.summary,
+            display_path(&workspace, &outcomes_file)
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(Some(RepairOutcomeJournalReport {
+        session_path: display_path(&workspace, &session_path),
+        outcome_path: display_path(&workspace, &outcome_path),
+        outcomes_file: display_path(&workspace, &outcomes_file),
+    }))
+}
+
+fn metadata_path(workspace: &Path, value: &str) -> PathBuf {
+    let path = PathBuf::from(value);
+    if path.is_absolute() {
+        path
+    } else {
+        workspace.join(path)
+    }
+}
+
+fn display_path(workspace: &Path, path: &Path) -> String {
+    path.strip_prefix(workspace)
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_else(|_| path.to_string_lossy().to_string())
+}
+
+fn cli_status_key(status: &Status) -> &'static str {
+    match status {
+        Status::Satisfied => "satisfied",
+        Status::Partial => "partial",
+        Status::Failed => "failed",
+        Status::Unsupported => "unsupported",
+    }
+}
+
+fn truncate_chars(value: &str, max: usize) -> String {
+    let mut output = value.chars().take(max).collect::<String>();
+    if value.chars().count() > max {
+        output.push_str("...");
+    }
+    output
 }
 
 fn print_feed_feedback_outcome(outcome: &FeedFeedbackOutcome, language: Language) {
@@ -5232,7 +5423,12 @@ fn repair_report(
     } else {
         None
     };
-    let need = Need::new(NeedKind::Observe, query.clone());
+    let need_kind = if latest_repair_plan_for_query(&query).is_some() {
+        NeedKind::Verify
+    } else {
+        NeedKind::Observe
+    };
+    let need = Need::new(need_kind, query.clone());
     let mut feed = feed_tentacle(&root, tentacle_id, &need, llm_config, &state.grants)?;
     feed.metadata
         .insert("tentacle".to_string(), tentacle_id.to_string());
@@ -5249,11 +5445,27 @@ fn repair_report(
             feed.summary.clone(),
         ));
     }
+    let repair_plan = repair_plan_report_from_feed(&feed);
     let queue = state.need_queue_report(8);
     let mut next = queued
         .iter()
         .map(|item| format!("octopus needs take {}", item.index))
         .collect::<Vec<_>>();
+    if let Some(plan) = &repair_plan {
+        if !plan.review.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.review)));
+        }
+        for command in [
+            &plan.check_command,
+            &plan.grant_command,
+            &plan.apply_command,
+            &plan.score_command,
+        ] {
+            if !command.trim().is_empty() {
+                next.push(command.to_string());
+            }
+        }
+    }
     next.push("octopus needs".to_string());
     next.push("octopus beat 200".to_string());
     next.push("octopus traces".to_string());
@@ -5263,10 +5475,86 @@ fn repair_report(
         state_path: state_path.to_string_lossy().to_string(),
         tentacle: tentacle_id.to_string(),
         feed,
+        repair_plan,
         queued,
         queue,
         next,
     })
+}
+
+fn latest_repair_plan_for_query(query: &str) -> Option<PathBuf> {
+    let workspace = repair_workspace_from_query(query).ok()?;
+    let repair_root = workspace.join(".octopus/harness-repair");
+    let mut latest: Option<(SystemTime, PathBuf)> = None;
+    for entry in fs::read_dir(repair_root).ok()? {
+        let path = entry.ok()?.path().join("REPAIR_PLAN.json");
+        if !path.exists() {
+            continue;
+        }
+        let modified = fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .unwrap_or(UNIX_EPOCH);
+        if latest.as_ref().is_none_or(|(time, _)| modified > *time) {
+            latest = Some((modified, path));
+        }
+    }
+    latest.map(|(_, path)| path)
+}
+
+fn repair_workspace_from_query(query: &str) -> Result<PathBuf, String> {
+    let token = query
+        .split_whitespace()
+        .next()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(".");
+    let mut path = PathBuf::from(token);
+    if !path.is_absolute() {
+        path = env::current_dir()
+            .map_err(|error| error.to_string())?
+            .join(path);
+    }
+    if path.is_file() {
+        path = path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+    }
+    if !path.exists() || !path.is_dir() {
+        return env::current_dir().map_err(|error| error.to_string());
+    }
+    path.canonicalize().map_err(|error| error.to_string())
+}
+
+fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
+    let metadata = &feed.metadata;
+    let path = metadata.get("repair_plan")?.to_string();
+    let score_command = metadata_value(metadata, "score_command");
+    let score_command = metadata
+        .get("feed_trace_index")
+        .map(|index| score_command.replace("<trace-index>", index))
+        .unwrap_or(score_command);
+    Some(RepairPlanReport {
+        path,
+        review: metadata_value(metadata, "review"),
+        status: metadata_value(metadata, "repair_plan_status"),
+        schema: metadata_value(metadata, "repair_plan_schema"),
+        session: metadata_value(metadata, "repair_plan_session"),
+        target_tentacle: metadata_value(metadata, "target_tentacle"),
+        target_tool: metadata_value(metadata, "target_tool"),
+        candidate: metadata_value(metadata, "candidate"),
+        review_boundary: metadata_value(metadata, "review_boundary"),
+        check_command: metadata_value(metadata, "check_command"),
+        grant_command: metadata_value(metadata, "grant_command"),
+        apply_command: metadata_value(metadata, "apply_command"),
+        score_command,
+        suggested_commands: metadata_value(metadata, "suggested_commands"),
+        next_need_kind: metadata_value(metadata, "next_need_kind"),
+        next_need_query: metadata_value(metadata, "next_need_query"),
+    })
+}
+
+fn metadata_value(metadata: &BTreeMap<String, String>, key: &str) -> String {
+    metadata.get(key).cloned().unwrap_or_default()
 }
 
 fn repair_next_need_from_feed(feed: &Feed) -> Option<GoalNeedSuggestion> {
@@ -9280,8 +9568,8 @@ mod tests {
         bridge_command_allowed, bridge_command_name, check_report, http_content_length,
         install_report, is_broken_pipe_panic, localize_summary, parse_bridge_env_overlay,
         percent_encode_path, pet_report, pet_report_for_state, preflight_report, product_report,
-        provider_status_report, real_machine_record_status_from_parts, run, skill_reports,
-        starter_report, usage, Language,
+        provider_status_report, real_machine_record_status_from_parts, repair_report, run,
+        skill_reports, starter_report, usage, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
@@ -10527,6 +10815,60 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(queued.source, "harness-repair-agent");
         assert_eq!(queued.need.kind, NeedKind::Verify);
         assert!(queued.need.query.contains("Feed trace"));
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_repair_report_exposes_latest_repair_plan() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-repair-plan-report-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+        let state = state_path.to_string_lossy().to_string();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "install".to_string(),
+            "harness-repair-agent".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state,
+            "need".to_string(),
+            "execute".to_string(),
+            dir.to_string_lossy().to_string(),
+        ])
+        .unwrap();
+
+        let mut restored = HarnessState::load(&state_path).unwrap();
+        let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        assert_eq!(
+            report.feed.metadata.get("tool").map(String::as_str),
+            Some("heartbeat_repair")
+        );
+        let plan = report.repair_plan.expect("repair plan report");
+        assert!(plan.path.ends_with("REPAIR_PLAN.json"));
+        assert!(plan.review.ends_with("REVIEW.md"));
+        assert_eq!(plan.status, "review_required");
+        assert_eq!(plan.target_tool, "repair_session");
+        assert!(plan.grant_command.contains("harness:write"));
+        assert!(plan.score_command.contains("repair score 2"));
+        assert!(!plan.score_command.contains("<trace-index>"));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REVIEW.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command == &plan.grant_command));
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
     }
@@ -12492,18 +12834,30 @@ JSON
     #[test]
     fn cli_repair_score_records_outcome() {
         let _env = env_guard();
-        let path = std::env::temp_dir().join(format!(
-            "octopus-repair-score-state-{}.json",
+        let _cwd = CwdGuard::new();
+        let workspace = std::env::temp_dir().join(format!(
+            "octopus-repair-score-workspace-{}",
             std::process::id()
         ));
+        let _ = fs::remove_dir_all(&workspace);
+        fs::create_dir_all(&workspace).unwrap();
+        std::env::set_current_dir(&workspace).unwrap();
+        let path = workspace.join("state.json");
         let state = path.to_string_lossy().to_string();
-        let _ = fs::remove_file(&path);
 
         run(vec![
             "--state".to_string(),
             state.clone(),
-            "repair".to_string(),
-            ".".to_string(),
+            "install".to_string(),
+            "harness-repair-agent".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "need".to_string(),
+            "execute".to_string(),
+            workspace.to_string_lossy().to_string(),
         ])
         .unwrap();
         run(vec![
@@ -12526,7 +12880,25 @@ JSON
             "repair score"
         );
         assert_eq!(restored.last_pet_event.as_ref().unwrap().state, "harness");
-        let _ = fs::remove_file(path);
+        let outcomes_file = workspace.join(".octopus/harness-repair/outcomes.jsonl");
+        assert!(outcomes_file.exists());
+        let outcomes = fs::read_to_string(&outcomes_file).unwrap();
+        assert!(outcomes.contains("\"outcome_status\":\"satisfied\""));
+        assert!(outcomes.contains("repair improved harness"));
+        let outcome_markdown = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .find_map(|entry| {
+                let entry = entry.unwrap();
+                let candidate = entry.path().join("OUTCOME.md");
+                candidate.exists().then_some(candidate)
+            })
+            .expect("repair outcome markdown");
+        assert!(fs::read_to_string(outcome_markdown)
+            .unwrap()
+            .contains("repair improved harness"));
+        let _ = fs::remove_dir_all(workspace);
     }
 
     #[test]

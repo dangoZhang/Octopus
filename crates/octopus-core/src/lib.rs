@@ -326,6 +326,8 @@ pub struct FeedTraceRecord {
     pub route: Option<String>,
     pub evidence_count: usize,
     pub summary: String,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -2648,6 +2650,7 @@ impl HarnessState {
             route: feed.metadata.get("route").cloned(),
             evidence_count: feed.evidence.len(),
             summary: short_text(&feed.summary, FEED_TRACE_SUMMARY_BYTES),
+            metadata: feed.metadata.clone(),
         };
         self.feed_traces.push(trace.clone());
         trace
@@ -6739,14 +6742,14 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 ),
                 tool_meta_with_contract(
                     "heartbeat_repair",
-                    "Turn heartbeat evolution artifacts into a review, grant, apply, and score plan.",
+                    "Read the latest repair action plan or heartbeat artifacts into a review, grant, apply, and score Feed.",
                     "shell",
                     "tentacles/harness-repair-agent/tools/heartbeat_repair.sh",
                     OCTOPUS_JSON_CONTRACT,
                 ),
                 tool_meta_with_contract(
                     "repair_session",
-                    "Write a reviewable local self-repair session plus optional provider repair draft.",
+                    "Write a reviewable local self-repair session, REVIEW.md bundle, and optional provider repair draft.",
                     "shell",
                     "tentacles/harness-repair-agent/tools/repair_session.sh",
                     OCTOPUS_JSON_CONTRACT,
@@ -6778,6 +6781,8 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "Return repair plans as Feed; do not patch the kernel directly.",
                     "Keep provider repair drafts optional and reviewable.",
                     "Record reviewed repair outcomes before using them as future repair evidence.",
+                    "Write REVIEW.md as the user-facing repair review bundle for each session.",
+                    "Read latest REPAIR_PLAN before older evolution artifacts.",
                     "Prefer reviewable .octopus/evolution artifacts and explicit harness:write grants.",
                 ],
             ),
@@ -10699,7 +10704,15 @@ print(json.dumps({
             Some("repair_session")
         );
         assert!(workspace.join(".octopus/harness-repair").exists());
-        for key in ["prompt", "draft", "next_need_file", "command_script"] {
+        for key in [
+            "prompt",
+            "draft",
+            "review",
+            "next_need_file",
+            "command_script",
+            "code_context",
+            "repair_plan",
+        ] {
             let path = feed
                 .metadata
                 .get(key)
@@ -10715,6 +10728,88 @@ print(json.dumps({
         assert_eq!(
             feed.metadata.get("next_need_kind").map(String::as_str),
             Some("verify")
+        );
+        assert_eq!(
+            feed.metadata.get("code_context_tool").map(String::as_str),
+            Some("repair_session")
+        );
+        let code_context = feed
+            .metadata
+            .get("code_context")
+            .map(|path| workspace.join(path))
+            .expect("code context metadata path");
+        let code_context_text = fs::read_to_string(&code_context).unwrap();
+        assert!(code_context_text.contains("Harness Repair Code Context"));
+        assert!(code_context_text.contains("repair_session.sh"));
+        let review = feed
+            .metadata
+            .get("review")
+            .map(|path| workspace.join(path))
+            .expect("review metadata path");
+        let review_text = fs::read_to_string(&review).unwrap();
+        assert!(review_text.contains("Harness Repair Review"));
+        assert!(review_text.contains("harness:write"));
+        assert_eq!(
+            feed.metadata.get("repair_plan_status").map(String::as_str),
+            Some("review_required")
+        );
+        let repair_plan = feed
+            .metadata
+            .get("repair_plan")
+            .map(|path| workspace.join(path))
+            .expect("repair plan metadata path");
+        let repair_plan_text = fs::read_to_string(&repair_plan).unwrap();
+        assert!(repair_plan_text.contains("octopus-harness-repair-plan-v1"));
+        assert!(repair_plan_text.contains("\"target_tool\": \"repair_session\""));
+        assert!(repair_plan_text.contains("\"checks\""));
+        let heartbeat_feed = tentacle.feed(&Need::new(
+            NeedKind::Verify,
+            workspace.to_string_lossy().to_string(),
+        ));
+        assert_eq!(heartbeat_feed.status, Status::Satisfied);
+        assert!(heartbeat_feed.summary.contains("repair_plan"));
+        assert_eq!(
+            heartbeat_feed.metadata.get("tool").map(String::as_str),
+            Some("heartbeat_repair")
+        );
+        assert_eq!(
+            heartbeat_feed
+                .metadata
+                .get("repair_plan_status")
+                .map(String::as_str),
+            Some("review_required")
+        );
+        assert_eq!(
+            heartbeat_feed
+                .metadata
+                .get("target_tool")
+                .map(String::as_str),
+            Some("repair_session")
+        );
+        assert_eq!(
+            heartbeat_feed
+                .metadata
+                .get("next_need_kind")
+                .map(String::as_str),
+            Some("verify")
+        );
+        let heartbeat_plan = heartbeat_feed
+            .metadata
+            .get("repair_plan")
+            .map(|path| workspace.join(path))
+            .expect("heartbeat repair plan metadata");
+        assert_eq!(heartbeat_plan, repair_plan);
+        assert!(heartbeat_feed
+            .metadata
+            .get("grant_command")
+            .unwrap()
+            .contains("harness:write"));
+        assert_eq!(
+            heartbeat_feed
+                .metadata
+                .get("review")
+                .map(|path| workspace.join(path)),
+            Some(review)
         );
         let session = feed
             .metadata
@@ -10749,6 +10844,28 @@ print(json.dumps({
             .map(|path| workspace.join(path))
             .expect("outcome markdown metadata");
         assert!(outcome_markdown.exists());
+        let follow_up = tentacle.feed(&Need::new(
+            NeedKind::Execute,
+            workspace.to_string_lossy().to_string(),
+        ));
+        assert_eq!(follow_up.status, Status::Satisfied);
+        let outcome_memory = follow_up
+            .metadata
+            .get("outcome_memory")
+            .map(|path| workspace.join(path))
+            .expect("outcome memory metadata");
+        assert!(outcome_memory.exists());
+        let memory = fs::read_to_string(&outcome_memory).unwrap();
+        assert!(memory.contains("reviewed repair draft"));
+        assert!(memory.contains("satisfied"));
+        let prompt = follow_up
+            .metadata
+            .get("prompt")
+            .map(|path| workspace.join(path))
+            .expect("follow-up prompt metadata");
+        assert!(fs::read_to_string(prompt)
+            .unwrap()
+            .contains("code context excerpt"));
         assert!(feed
             .evidence
             .iter()

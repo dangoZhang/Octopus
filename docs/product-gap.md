@@ -27,7 +27,7 @@ Updated: 2026-06-27
 - Starter recommendations are grouped for first-run work: repo, desktop, self-iteration, repair, research, script, runtime, memory, and visual.
 - Starter recommendation cards now include group reasons and manifest-derived signals so first-run users can see why a tentacle was recommended.
 - Starter recommendations now record accepted, ignored, and failed first-run choices as harness feedback, and later ranking uses that feedback score.
-- README now opens as a product landing page: clean-brain story, thinking tentacles, pixel Octopus, install path, usable surface, and maturity line are visible before docs links.
+- README now stays short with the Octopus story and install path; docs homepages carry the broader product landing copy.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
 - `status --json` exposes recent clean-brain Goal turns so Goal refinement history stays visible without replaying Feed.
@@ -45,8 +45,9 @@ Updated: 2026-06-27
 - The native HTML app can paste an external brain reply and apply it to Need Queue or Goal through the bridge.
 - The native HTML app can take or drop individual queued Needs, write the pending Need Queue into a local reviewable Feed script, and write offline or live clean-brain review sessions.
 - `harness-repair-agent` can diagnose state, traces, check history, evolution artifacts, repo dirtiness, provider env, and local adapters as structured Feed.
-- `repair [query]` runs the harness-repair tentacle, records the Feed trace, and queues the tentacle's structured next Need for review.
+- `repair [query]` runs the harness-repair tentacle, records the Feed trace, exposes the latest repair plan when present, and queues the tentacle's structured next Need for review.
 - The native HTML app can score a repair Feed as satisfied, partial, or failed, then render the recent repair outcome memory.
+- Repair scoring mirrors session-backed outcomes into `.octopus/harness-repair/<session>/OUTCOME.md` and `outcomes.jsonl`.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
 - The HTML install guide can expand each check to inspect stdout, stderr, exit code, and recent harness check history.
 - `check <tentacle> [index]` records compact harness history and the HTML install guide can rerun one check at a time.
@@ -70,7 +71,7 @@ Updated: 2026-06-27
 - LLM-generated evolution candidates can carry a provider-assisted unified diff into drafts and authorized apply artifacts.
 - Harness beat turns recent failed or partial check history, Feed traces, or repair outcomes into a written evolution proposal, recommendation, and apply plan.
 - Harness beat recommendations can be granted, written as reviewable apply artifacts, reviewed, and scored from the native HTML app.
-- `harness-repair-agent` can read heartbeat/evolution/state signals, probe adapter readiness, write `.octopus/harness-repair/SESSION.*`, `PROMPT.md`, optional provider-backed `DRAFT.md`, `NEXT_NEED.json`, and `COMMANDS.sh`, record reviewed `OUTCOME.md` plus `.octopus/harness-repair/outcomes.jsonl`, then feed those outcomes into later repair sessions.
+- `harness-repair-agent` can read heartbeat/evolution/state signals, probe adapter readiness, write `.octopus/harness-repair/SESSION.*`, `PROMPT.md`, optional provider-backed `DRAFT.md`, `REVIEW.md`, `NEXT_NEED.json`, `COMMANDS.sh`, `OUTCOME_MEMORY.md`, `CODE_CONTEXT.md`, and `REPAIR_PLAN.json`, continue from the latest repair plan through `heartbeat_repair`, record reviewed `OUTCOME.md` plus `.octopus/harness-repair/outcomes.jsonl`, then feed merged outcome memory and target code context into later reviewable repair plans.
 - The SWE read tool now returns a compact file/range header and line-numbered evidence.
 
 ## Filled So Far
@@ -175,27 +176,38 @@ Updated: 2026-06-27
 - Added native HTML Repair outcome controls so a repair session can be scored from the app without shell use.
 - Added repair-outcome-driven harness beat evolution so failed or partial repair reviews can start the next reviewable apply plan.
 - Rolled the cleanup/version cadence to `0.0.9` after reviewable Need Queue scripts, app queue review controls, repair-outcome-driven harness beat evolution, and README/control-surface polish.
+- Added repair-score session journal sync so app/CLI repair reviews write local outcome artifacts as well as state.
+- Added repair-session outcome memory so state repair outcomes and `.octopus/harness-repair/outcomes.jsonl` are merged into `OUTCOME_MEMORY.md` and provider draft context.
 - Added `starter [objective]` so first-run users can choose common agent tool-combo tentacles from Goal/objective metadata before any Feed execution.
 - Rebuilt README as a shorter product landing page with the Octopus loop, differentiators, install path, runnable first loop, and pre-release line kept above the links.
 - Added a structured native HTML starter panel with recommendation cards, Use, Install, First Need, and Check actions.
 - Added first-run starter grouping and HTML filters so users can narrow recommendations by repo, desktop, self-iteration, repair, research, script, runtime, memory, or visual work.
-- Rolled the cleanup/version cadence to `0.0.10` after starter recommendation grouping/filtering, product-page README trim, app/report wording cleanup, and version consistency.
+- Added repair-session code context so target tentacle manifests and tool code are written into `CODE_CONTEXT.md` and provider draft context.
+- Rolled the cleanup/version cadence to `0.0.10` after starter recommendation grouping/filtering, product-page README trim, clean-brain Need audit, repair-score journals, repair-session outcome/code context, app/report wording cleanup, and version consistency.
+- Added repair-session action plans so each session writes `REPAIR_PLAN.json` with check, grant, apply, score, code-context, and outcome-memory boundaries.
+- Added heartbeat repair plan pickup so verify Needs read the latest `REPAIR_PLAN.json` and return the next review/grant/apply/score Feed.
+- Added repair-plan surfacing in `octopus repair` and the native Repair panel so users can see the latest plan path and review commands without digging into metadata.
+- Added repair-session review bundles so each session writes `REVIEW.md` and report surfaces can link the user-facing repair review.
+- Added repair report next-step review commands so the review bundle is visible in the normal next-action list.
+- Added trace-aware repair score commands so report/app score prompts use the concrete Feed trace instead of a placeholder.
 - Added starter recommendation evidence signals so each card can explain its group, objective matches, Needs, tools, runtimes, evolution surfaces, LLM readiness, and install state.
 - Reworked README into a product-page share surface with a first-screen story, edge-intelligence insight, differentiators, install/use path, and usable pre-release boundary.
 - Added starter choice feedback so accepted, ignored, and failed starter picks become compact harness records, influence later recommendation ranking, update pet state, and show in the native HTML app.
+- Rolled the cleanup/version cadence to `0.0.11` after repair action plans, heartbeat plan pickup, repair plan/report/app surfacing, REVIEW.md bundles, trace-aware repair scoring, starter choice feedback, and README product landing polish.
+- Tightened README to story plus Quick Install & Use, and kept English and Chinese docs homepages as shorter product pages with the value promise, first clean loop, usable surface, and pre-`0.1.0` boundary visible before deep docs.
 
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
 - LLM evolution can generate candidates and provider-assisted patch drafts from manifest surfaces, scored outcomes, recent Feed traces, and check history; local candidates now also target traced or failing runtime files, and harness beat can start from Feed trace or check feedback while app and CLI patch writes stay review/grant-bound.
-- Harness-repair diagnosis can now queue its next Need, remember reviewed session outcomes, accept repair scoring from CLI or the native app, and feed failed or partial repair outcomes into harness beat evolution; closing the loop still needs real provider-backed repairs scored through that outcome journal.
+- Harness-repair diagnosis can now queue its next Need, remember reviewed session outcomes, feed merged outcome memory and target code context into repair sessions, write reviewable action plans, continue those plans through heartbeat repair, accept repair scoring from CLI or the native app, mirror session-backed scores into the outcome journal, and feed failed or partial repair outcomes into harness beat evolution; closing the loop still needs real provider-backed repair runs scored from real projects.
 - Product reporting is available in CLI and app; report quality still needs feedback from real project states.
 - Preflight now exposes the release gate and record template; current readiness still depends on running that gate with live provider, OAuth PR publishing, scored feedback data, and appending a current-head or docs-only parent-recorded result.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, clean-brain slot diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
 - GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
-- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, render/filter starter recommendation cards with choice feedback, run starter install/check/first-Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect repair plans, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, render/filter starter recommendation cards with choice feedback, run starter install/check/first-Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill

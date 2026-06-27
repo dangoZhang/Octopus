@@ -12,7 +12,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo run -q -p octopus-core -- --version | grep -q "octopus 0.0.10"
+      - run: cargo run -q -p octopus-core -- --version | grep -q "octopus 0.0.11"
       - run: cargo run -q -p octopus-core --example thinking_tentacle
       - run: cargo run -q -p octopus-core -- demo dangoZhang/Octopus | grep -q "Octopus demo"
       - run: cargo run -q -p octopus-core -- --json demo dangoZhang/Octopus | grep -q '"probe_summary"'
@@ -134,10 +134,10 @@ jobs:
       - run: grep -q '"harness-self-repair"' tentacles/harness-repair-agent/manifest.json
       - run: grep -q data-state docs/pet.html
       - run: grep -q "pixel-pet" docs/pet.html
-      - run: grep -q "octopus think" docs/index.html
-      - run: grep -q "octopus traces" docs/index.html
-      - run: grep -q "octopus report" docs/index.html
-      - run: grep -q "octopus preflight" docs/index.html
+      - run: grep -q "think swe-agent" docs/quickstart.md
+      - run: grep -q "Feed traces" docs/quickstart.md
+      - run: grep -q "octopus report" docs/quickstart.md
+      - run: grep -q "octopus preflight" docs/quickstart.md
       - run: grep -q "Command Surface" docs/app.html
       - run: grep -q "Starter" docs/app.html
       - run: grep -q "runStarterReport" docs/app.html
@@ -169,6 +169,7 @@ jobs:
       - run: grep -q "OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX" crates/octopus-core/src/main.rs
       - run: grep -q "OCTOPUS_BRAIN_GOAL_LLM_PREFIX" README.md
       - run: grep -q "Deliberate Session" docs/app.html
+      - run: grep -q "OCTOPUS_BRAIN_GOAL_LLM_PREFIX" docs/quickstart.md
       - run: grep -q "Install Report" docs/app.html
       - run: grep -q "Bootstrap" docs/app.html
       - run: grep -q "\"bootstrap\"" docs/app.html
@@ -211,6 +212,7 @@ jobs:
       - run: grep -q "scoreRepair" docs/app.html
       - run: grep -q "repair score" docs/app.html
       - run: grep -q "Repair outcome" docs/app.html
+      - run: grep -q "Outcome file" docs/app.html
       - run: grep -q "feedEvidenceDetails" docs/app.html
       - run: grep -q "checkOutputDetails" docs/app.html
       - run: grep -q "check-output" docs/app.html
