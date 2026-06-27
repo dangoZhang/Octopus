@@ -12,9 +12,10 @@ use octopus_core::{
     HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem,
     NeedQueueReport, NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport,
     OpenAiCompatibleChatClient, OpenAiCompatibleConfig, RepairOutcome, RouteReport,
-    SelfIterationPlan, Status, StatusReport, TentacleEvolutionProposal, TentacleManifestReport,
-    TentacleProfile, TentacleScaffold, TentacleThinkingPlan, TentacleToolAction,
-    TentacleToolCandidate, ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
+    SelfIterationPlan, StarterFeedbackInput, StarterFeedbackRecord, StarterFeedbackStatus, Status,
+    StatusReport, TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile,
+    TentacleScaffold, TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate,
+    ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -256,6 +257,9 @@ struct StarterRecommendation {
     group_reason: String,
     reason: String,
     signals: Vec<String>,
+    feedback_score: f32,
+    feedback_count: usize,
+    last_feedback: Option<StarterFeedbackPreview>,
     installed: bool,
     llm_ready: bool,
     needs: Vec<String>,
@@ -267,6 +271,29 @@ struct StarterRecommendation {
     install_command: String,
     first_need_command: String,
     check_command: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct StarterFeedbackPreview {
+    status: StarterFeedbackStatus,
+    summary: String,
+    objective: String,
+    score: f32,
+}
+
+#[derive(Debug)]
+struct StarterFeedbackSignal {
+    score: f32,
+    count: usize,
+    last: Option<StarterFeedbackPreview>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct StarterFeedbackReport {
+    record: StarterFeedbackRecord,
+    feedback_score: f32,
+    feedback_count: usize,
+    next: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -1678,6 +1705,74 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("starter") => {
+            if rest.get(1).map(String::as_str) == Some("feedback") {
+                let tentacle_id = rest
+                    .get(2)
+                    .ok_or_else(|| "starter feedback requires a tentacle id".to_string())?;
+                let status = rest
+                    .get(3)
+                    .ok_or_else(|| "starter feedback requires accepted|ignored|failed".to_string())
+                    .and_then(|value| parse_starter_feedback_status(value))?;
+                let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                let objective = rest
+                    .get(4..)
+                    .filter(|values| !values.is_empty())
+                    .map(|values| values.join(" "))
+                    .filter(|value| !value.trim().is_empty())
+                    .or_else(|| loaded.goal.as_ref().map(|goal| goal.objective.clone()))
+                    .unwrap_or_else(|| "start Octopus on this project".to_string());
+                let current_report = starter_report(
+                    &loaded,
+                    &state,
+                    default_tentacles_root(),
+                    Some(objective.clone()),
+                )?;
+                let group = current_report
+                    .recommendations
+                    .iter()
+                    .find(|item| item.id == *tentacle_id)
+                    .map(|item| item.group.clone());
+                let summary = format!(
+                    "{} starter for {}",
+                    starter_feedback_status_label(status),
+                    objective
+                );
+                let record = loaded.record_starter_feedback(StarterFeedbackInput {
+                    tentacle_id: tentacle_id.clone(),
+                    objective: objective.clone(),
+                    group: group.clone(),
+                    status,
+                    summary,
+                });
+                let signal = starter_feedback_signal(
+                    &loaded,
+                    &objective,
+                    tentacle_id,
+                    group.as_deref().unwrap_or(""),
+                );
+                loaded.save(&state).map_err(|error| error.to_string())?;
+                let report = StarterFeedbackReport {
+                    record,
+                    feedback_score: signal.score,
+                    feedback_count: signal.count,
+                    next: vec![
+                        octopus_state_command(
+                            &state,
+                            &["starter".to_string(), shell_value(&objective)],
+                        ),
+                        "octopus bridge".to_string(),
+                    ],
+                };
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_starter_feedback_report(&report, language);
+                }
+                return Ok(());
+            }
             let objective = rest
                 .get(1..)
                 .filter(|values| !values.is_empty())
@@ -2250,6 +2345,13 @@ fn print_starter_report(report: &StarterReport, language: Language) {
                 );
                 println!("  group_reason: {}", item.group_reason);
                 println!("  signals: {}", join_or_none(&item.signals));
+                println!(
+                    "  feedback: score={:+.2}, count={}",
+                    item.feedback_score, item.feedback_count
+                );
+                if let Some(last) = &item.last_feedback {
+                    println!("  last_feedback: {:?} {}", last.status, last.summary);
+                }
                 println!("  install: {}", item.install_command);
                 println!("  first_need: {}", item.first_need_command);
                 println!("  check: {}", item.check_command);
@@ -2284,12 +2386,69 @@ fn print_starter_report(report: &StarterReport, language: Language) {
                 );
                 println!("  分组原因: {}", item.group_reason);
                 println!("  信号: {}", join_or_none(&item.signals));
+                println!(
+                    "  反馈: 分数={:+.2}, 次数={}",
+                    item.feedback_score, item.feedback_count
+                );
+                if let Some(last) = &item.last_feedback {
+                    println!("  最近反馈: {:?} {}", last.status, last.summary);
+                }
                 println!("  安装: {}", item.install_command);
                 println!("  第一条Need: {}", item.first_need_command);
                 println!("  检查: {}", item.check_command);
             }
             println!("下一步: {}", join_or_none(&report.next));
         }
+    }
+}
+
+fn print_starter_feedback_report(report: &StarterFeedbackReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus starter feedback");
+            println!("record: #{}", report.record.index);
+            println!("tentacle: {}", report.record.tentacle_id);
+            println!("status: {:?}", report.record.status);
+            println!("objective: {}", report.record.objective);
+            println!("summary: {}", report.record.summary);
+            println!(
+                "feedback: score={:+.2}, count={}",
+                report.feedback_score, report.feedback_count
+            );
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼启动反馈");
+            println!("记录: #{}", report.record.index);
+            println!("触手: {}", report.record.tentacle_id);
+            println!("状态: {:?}", report.record.status);
+            println!("目标: {}", report.record.objective);
+            println!("摘要: {}", report.record.summary);
+            println!(
+                "反馈: 分数={:+.2}, 次数={}",
+                report.feedback_score, report.feedback_count
+            );
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn parse_starter_feedback_status(value: &str) -> Result<StarterFeedbackStatus, String> {
+    match value {
+        "accepted" | "accept" | "selected" | "used" | "use" => Ok(StarterFeedbackStatus::Accepted),
+        "ignored" | "ignore" | "skip" | "skipped" => Ok(StarterFeedbackStatus::Ignored),
+        "failed" | "fail" | "bad" => Ok(StarterFeedbackStatus::Failed),
+        _ => Err(format!(
+            "unknown starter feedback status: {value}; use accepted|ignored|failed"
+        )),
+    }
+}
+
+fn starter_feedback_status_label(status: StarterFeedbackStatus) -> &'static str {
+    match status {
+        StarterFeedbackStatus::Accepted => "accepted",
+        StarterFeedbackStatus::Ignored => "ignored",
+        StarterFeedbackStatus::Failed => "failed",
     }
 }
 
@@ -4204,21 +4363,32 @@ fn starter_report(
         .into_values()
         .map(|candidate| {
             let matched = starter_matches(&candidate, &keywords);
-            let score = (matched.len() as i32 * 10) + starter_priority_score(&candidate.id);
-            (score, matched, candidate)
+            let needs = candidate.needs.iter().cloned().collect::<Vec<_>>();
+            let tools = candidate.tools.iter().cloned().collect::<Vec<_>>();
+            let evolution_surfaces = candidate
+                .evolution_surfaces
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>();
+            let group = starter_group(&candidate.id, &needs, &tools, &evolution_surfaces);
+            let feedback = starter_feedback_signal(state, &objective, &candidate.id, group.0);
+            let score = ((matched.len() as i32 * 10) + starter_priority_score(&candidate.id))
+                as f32
+                + feedback.score;
+            (score, matched, feedback, candidate)
         })
         .collect::<Vec<_>>();
     scored.sort_by(|left, right| {
         right
             .0
-            .cmp(&left.0)
-            .then_with(|| starter_priority(&left.2.id).cmp(&starter_priority(&right.2.id)))
-            .then_with(|| left.2.id.cmp(&right.2.id))
+            .total_cmp(&left.0)
+            .then_with(|| starter_priority(&left.3.id).cmp(&starter_priority(&right.3.id)))
+            .then_with(|| left.3.id.cmp(&right.3.id))
     });
 
     let state_path_text = state_path.to_string_lossy().to_string();
     let mut recommendations = Vec::new();
-    for (_, matched, candidate) in scored.into_iter().take(6) {
+    for (_, matched, feedback, candidate) in scored.into_iter().take(6) {
         let needs = candidate.needs.iter().cloned().collect::<Vec<_>>();
         let tools = candidate.tools.iter().cloned().collect::<Vec<_>>();
         let runtimes = candidate.runtimes.iter().cloned().collect::<Vec<_>>();
@@ -4235,7 +4405,7 @@ fn starter_report(
             format!("matches {}", matched.join(", "))
         };
         let group_reason = group.2.to_string();
-        let signals = starter_signals(&candidate, &matched, group, &first_need);
+        let signals = starter_signals(&candidate, &matched, group, &first_need, &feedback);
         recommendations.push(StarterRecommendation {
             id: candidate.id.clone(),
             name: candidate.name,
@@ -4245,6 +4415,9 @@ fn starter_report(
             group_reason,
             reason,
             signals,
+            feedback_score: feedback.score,
+            feedback_count: feedback.count,
+            last_feedback: feedback.last,
             installed: candidate.installed,
             llm_ready: candidate.llm_ready,
             needs,
@@ -4398,6 +4571,7 @@ fn starter_signals(
     matched: &[String],
     group: (&str, &str, &str),
     first_need: &str,
+    feedback: &StarterFeedbackSignal,
 ) -> Vec<String> {
     let mut signals = Vec::new();
     signals.push(format!("group: {} - {}", group.1, group.2));
@@ -4431,11 +4605,67 @@ fn starter_signals(
     } else {
         "state: available".to_string()
     });
+    if feedback.count > 0 {
+        signals.push(format!(
+            "feedback: {} event(s), score {:+.2}",
+            feedback.count, feedback.score
+        ));
+    }
     let mut seen = BTreeSet::new();
     signals
         .into_iter()
         .filter(|signal| seen.insert(signal.clone()))
         .collect()
+}
+
+fn starter_feedback_signal(
+    state: &HarnessState,
+    objective: &str,
+    tentacle_id: &str,
+    group: &str,
+) -> StarterFeedbackSignal {
+    let objective_words = words_for_match(objective);
+    let mut score = 0.0;
+    let mut count = 0;
+    let mut last = None;
+    for record in &state.starter_feedback {
+        let same_tentacle = record.tentacle_id == tentacle_id;
+        let same_group = record.group.as_deref() == Some(group);
+        if !same_tentacle && !same_group {
+            continue;
+        }
+        let record_words = words_for_match(&record.objective);
+        let overlap = !objective_words.is_empty()
+            && objective_words
+                .iter()
+                .any(|word| record_words.contains(word));
+        let weight = if same_tentacle && record.objective == objective {
+            1.0
+        } else if same_tentacle && overlap {
+            0.75
+        } else if same_tentacle {
+            0.45
+        } else if same_group && overlap {
+            0.2
+        } else {
+            0.1
+        };
+        score += record.score * weight;
+        count += 1;
+        if same_tentacle {
+            last = Some(StarterFeedbackPreview {
+                status: record.status,
+                summary: record.summary.clone(),
+                objective: record.objective.clone(),
+                score: record.score,
+            });
+        }
+    }
+    StarterFeedbackSignal {
+        score: score.clamp(-8.0, 8.0),
+        count,
+        last,
+    }
 }
 
 fn starter_set_preview(values: &BTreeSet<String>, limit: usize) -> Vec<String> {
@@ -5101,7 +5331,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         product_capability(
             "starter_panel",
             if app_exists { "ready" } else { "missing" },
-            "native HTML app renders and filters starter tentacle recommendations with evidence signals, install, check, and first-Need actions",
+            "native HTML app renders starter recommendations with evidence signals, choice feedback, install, check, and first-Need actions",
             Some("octopus starter \"build a clean-brain agent\""),
         ),
         product_capability(
@@ -8497,7 +8727,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -8539,7 +8769,8 @@ mod tests {
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
-        GoalStatus, HarnessState, Need, NeedKind, NeedQueueStatus, Status,
+        GoalStatus, HarnessState, Need, NeedKind, NeedQueueStatus, StarterFeedbackInput,
+        StarterFeedbackStatus, Status,
     };
     use std::fs;
     use std::path::Path;
@@ -9178,6 +9409,42 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     }
 
     #[test]
+    fn cli_records_starter_feedback() {
+        let _env = env_guard();
+        let path = std::env::temp_dir().join(format!(
+            "octopus-starter-feedback-state-{}.json",
+            std::process::id()
+        ));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "starter".to_string(),
+            "feedback".to_string(),
+            "computer-use-agent".to_string(),
+            "accepted".to_string(),
+            "start".to_string(),
+            "Octopus".to_string(),
+        ])
+        .unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("starter_feedback"));
+        assert!(content.contains("computer-use-agent"));
+        assert!(content.contains("accepted"));
+        let loaded = HarnessState::load(&path).unwrap();
+        assert_eq!(loaded.starter_feedback.len(), 1);
+        assert_eq!(
+            loaded.starter_feedback[0].status,
+            StarterFeedbackStatus::Accepted
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn cli_beat_compacts_memory_and_saves_state() {
         let _env = env_guard();
         let path =
@@ -9324,6 +9591,44 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(swe.first_need_command.contains(" need execute "));
         assert!(state.feed_traces.is_empty());
         assert!(state.routes.scores.is_empty());
+    }
+
+    #[test]
+    fn starter_feedback_changes_first_run_ranking() {
+        let mut state = HarnessState::default();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let state_path = Path::new(".octopus/state.json");
+        let objective = "start Octopus on this project";
+
+        let before = starter_report(
+            &state,
+            state_path,
+            root.clone(),
+            Some(objective.to_string()),
+        )
+        .unwrap();
+        assert_ne!(before.recommendations[0].id, "computer-use-agent");
+
+        state.record_starter_feedback(StarterFeedbackInput {
+            tentacle_id: "computer-use-agent".to_string(),
+            objective: objective.to_string(),
+            group: Some("desktop".to_string()),
+            status: StarterFeedbackStatus::Accepted,
+            summary: "selected desktop starter".to_string(),
+        });
+
+        let after = starter_report(&state, state_path, root, Some(objective.to_string())).unwrap();
+        assert_eq!(after.recommendations[0].id, "computer-use-agent");
+        let computer = &after.recommendations[0];
+        assert!(computer.feedback_score > 0.0);
+        assert_eq!(computer.feedback_count, 1);
+        assert!(computer.last_feedback.is_some());
+        assert!(computer
+            .signals
+            .iter()
+            .any(|signal| signal.contains("feedback: 1 event")));
     }
 
     #[test]

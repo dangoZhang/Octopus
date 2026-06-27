@@ -622,6 +622,7 @@
           `octopus --state ${shellQuote(state)} init`,
           `octopus --state ${shellQuote(state)} --json bootstrap`,
           `octopus --state ${shellQuote(state)} --json starter ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json starter feedback ${tentacle} accepted ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json check ${tentacle}`,
@@ -1926,7 +1927,8 @@
         command.textContent = `${item.id || "tentacle"} · ${item.group_label || "Starter"} · ${item.first_need_kind || "observe"}`;
         const meta = document.createElement("span");
         meta.className = "check-meta";
-        meta.textContent = `${item.reason || "metadata match"} · ${item.group_reason || "starter work"} · tools=${(item.tools || []).length} · llm=${item.llm_ready ? "ready" : "optional"}`;
+        const feedbackScore = Number(item.feedback_score || 0).toFixed(2);
+        meta.textContent = `${item.reason || "metadata match"} · ${item.group_reason || "starter work"} · feedback=${feedbackScore}/${item.feedback_count || 0} · tools=${(item.tools || []).length} · llm=${item.llm_ready ? "ready" : "optional"}`;
         element.append(badge, command, meta);
         const details = document.createElement("details");
         details.className = "check-output-details";
@@ -1939,6 +1941,9 @@
           `group: ${item.group_label || item.group || "none"}`,
           `group_reason: ${item.group_reason || "none"}`,
           `signals: ${(item.signals || []).join("; ") || "none"}`,
+          `feedback_score: ${feedbackScore}`,
+          `feedback_count: ${item.feedback_count || 0}`,
+          `last_feedback: ${starterFeedbackText(item.last_feedback)}`,
           `needs: ${(item.needs || []).join(", ") || "none"}`,
           `runtimes: ${(item.runtimes || []).join(", ") || "none"}`,
           `surfaces: ${(item.evolution_surfaces || []).join(", ") || "none"}`,
@@ -1958,6 +1963,7 @@
         wrap.className = "toolbar";
         [
           ["Use", () => useStarter(item)],
+          ["Ignore", () => ignoreStarter(item)],
           ["Install", () => installStarter(item)],
           ["First Need", () => runStarterNeed(item)],
           ["Check", () => checkStarter(item)],
@@ -1971,17 +1977,54 @@
         return wrap;
       }
 
-      function useStarter(item) {
+      function starterFeedbackText(feedback) {
+        if (!feedback) return "none";
+        return `${feedback.status || "unknown"} ${feedback.summary || ""}`.trim();
+      }
+
+      function starterObjective(item) {
+        return item.first_need_query || (currentStarterReport && currentStarterReport.objective) || $("goal").value.trim() || "start Octopus on this project";
+      }
+
+      async function recordStarterFeedback(item, status) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const objective = starterObjective(item);
+        if (!item.id) return null;
+        const report = await runBridgeJson(["--state", state, "--json", "starter", "feedback", item.id, status, objective]);
+        currentStarterReport = null;
+        await runStarterReport(false);
+        return report;
+      }
+
+      function useStarter(item, recordChoice = true) {
         if (item.id) $("tentacle").value = item.id;
         if (item.first_need_kind) $("need").value = item.first_need_kind;
         if (item.first_need_query) $("target").value = item.first_need_query;
         render(currentPetState);
+        if (recordChoice) {
+          recordStarterFeedback(item, "accepted")
+            .then((report) => {
+              if (report) $("output").textContent = JSON.stringify(report, null, 2);
+            })
+            .catch((error) => {
+              $("output").textContent = String(error);
+            });
+        }
+      }
+
+      async function ignoreStarter(item) {
+        try {
+          const report = await recordStarterFeedback(item, "ignored");
+          if (report) $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("output").textContent = String(error);
+        }
       }
 
       async function installStarter(item) {
         const state = $("state").value.trim() || ".octopus/state.json";
         if (!item.id) return;
-        useStarter(item);
+        useStarter(item, false);
         $("installReport").textContent = "installing...";
         try {
           const report = await runBridgeJson(["--state", state, "--json", "install", item.id]);
@@ -1989,7 +2032,7 @@
           currentCheckReport = null;
           renderInstallReport(report);
           $("output").textContent = JSON.stringify(report, null, 2);
-          await runStarterReport(false);
+          await recordStarterFeedback(item, "accepted");
         } catch (error) {
           $("installReport").textContent = String(error);
           $("output").textContent = String(error);
@@ -1999,8 +2042,8 @@
       async function runStarterNeed(item) {
         const state = $("state").value.trim() || ".octopus/state.json";
         const kind = item.first_need_kind || "observe";
-        const query = item.first_need_query || (currentStarterReport && currentStarterReport.objective) || $("goal").value.trim() || ".";
-        useStarter(item);
+        const query = starterObjective(item);
+        useStarter(item, false);
         $("feedReport").textContent = "feeding...";
         try {
           const report = await runBridgeJson(["--state", state, "--json", "need", kind, query]);
@@ -2008,7 +2051,16 @@
           currentFeedTrace = feedTraceFromFeedback(report);
           renderFeedReport(report);
           $("output").textContent = JSON.stringify(report, null, 2);
+          const failed = ["failed", "unsupported"].includes(String(report.status || "").toLowerCase());
+          try {
+            await recordStarterFeedback(item, failed ? "failed" : "accepted");
+          } catch (feedbackError) {
+            $("output").textContent = `${JSON.stringify(report, null, 2)}\n\nstarter feedback failed: ${feedbackError}`;
+          }
         } catch (error) {
+          try {
+            await recordStarterFeedback(item, "failed");
+          } catch (_) {}
           $("feedReport").textContent = String(error);
           $("output").textContent = String(error);
         }
@@ -2017,7 +2069,7 @@
       async function checkStarter(item) {
         const state = $("state").value.trim() || ".octopus/state.json";
         if (!item.id) return;
-        useStarter(item);
+        useStarter(item, false);
         $("installReport").textContent = "checking...";
         try {
           const report = await runBridgeJson(["--state", state, "--json", "check", item.id]);
