@@ -23,6 +23,7 @@ Updated: 2026-06-27
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
 - `starter [objective]` recommends starter tentacles from profile and manifest metadata, including install, check, and first-Need commands without running tools.
+- The native HTML app can fetch `--json starter` recommendations as cards, then run install, check, or the first Need from each recommendation.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
 - `status --json` exposes recent clean-brain Goal turns so Goal refinement history stays visible without replaying Feed.
@@ -165,6 +166,7 @@ Updated: 2026-06-27
 - Added repair-outcome-driven harness beat evolution so failed or partial repair reviews can start the next reviewable apply plan.
 - Rolled the cleanup/version cadence to `0.0.9` after reviewable Need Queue scripts, app queue review controls, repair-outcome-driven harness beat evolution, and README/control-surface polish.
 - Added `starter [objective]` so first-run users can choose common agent tool-combo tentacles from Goal/objective metadata before any Feed execution.
+- Added a structured native HTML starter panel so first-run users can choose tentacles from rendered recommendations.
 
 ## Remaining Gaps
 
@@ -177,7 +179,7 @@ Updated: 2026-06-27
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, clean-brain layer diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
 - GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
-- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show starter JSON, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; `starter` still needs a structured native panel and richer desktop UX still needs work.
+- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show starter cards with install/check/Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
@@ -185,7 +187,7 @@ Updated: 2026-06-27
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
 - Exercise live clean-brain exploration and multi-action tentacle planning with real LLM providers and record provider-specific failures.
 - Exercise Feed feedback outcomes from real tasks against the new route report and tune route choices from that evidence.
-- Add a structured native HTML starter panel so first-run users can choose tentacles from rendered cards.
+- Add richer first-run grouping so starter cards can be filtered by repo, desktop, self-iteration, repair, and research work.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Apply and score the next Feed-trace- or check-driven seed-tentacle improvement through the app review/grant loop.
 - Run `repair` after bootstrap, take the queued Need, and score whether the resulting Feed improves the harness from the app.

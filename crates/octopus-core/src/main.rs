@@ -249,6 +249,8 @@ struct StarterRecommendation {
     tools: Vec<String>,
     runtimes: Vec<String>,
     evolution_surfaces: Vec<String>,
+    first_need_kind: String,
+    first_need_query: String,
     install_command: String,
     first_need_command: String,
     check_command: String,
@@ -4207,6 +4209,8 @@ fn starter_report(
             tools,
             runtimes,
             evolution_surfaces,
+            first_need_kind: first_need.clone(),
+            first_need_query: objective.clone(),
             install_command: octopus_state_command(
                 state_path,
                 &["install".to_string(), candidate.id.clone()],
