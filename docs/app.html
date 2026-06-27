@@ -719,7 +719,7 @@
         }
       }
 
-      async function runStarterReport() {
+      async function runStarterReport(updateOutput = true) {
         const state = $("state").value.trim() || ".octopus/state.json";
         const goal = $("goal").value.trim() || "build a clean-brain agent";
         $("starterReport").textContent = "loading...";
@@ -727,7 +727,7 @@
           const report = await runBridgeJson(["--state", state, "--json", "starter", goal]);
           currentStarterReport = report;
           renderStarterReport(report);
-          $("output").textContent = JSON.stringify(report, null, 2);
+          if (updateOutput) $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("starterReport").textContent = String(error);
           $("output").textContent = String(error);
@@ -1945,7 +1945,7 @@
           currentCheckReport = null;
           renderInstallReport(report);
           $("output").textContent = JSON.stringify(report, null, 2);
-          await runStarterReport();
+          await runStarterReport(false);
         } catch (error) {
           $("installReport").textContent = String(error);
           $("output").textContent = String(error);
