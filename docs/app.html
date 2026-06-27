@@ -450,6 +450,9 @@
             <select id="providerProfile">
               <option value="openai">openai</option>
               <option value="local">local</option>
+              <option value="litellm">litellm</option>
+              <option value="codex">codex</option>
+              <option value="zai">zai</option>
               <option value="openrouter">openrouter</option>
               <option value="deepseek">deepseek</option>
               <option value="groq">groq</option>
@@ -569,6 +572,7 @@
             <button type="button" id="runNeedReview">Need Review</button>
             <button type="button" id="runNeedLiveReview">Need Live Review</button>
             <button type="button" id="runRepair">Repair</button>
+            <button type="button" id="runRepairContinue">Repair Continue</button>
             <button type="button" data-run="think">Think</button>
             <button type="button" id="runContext">Context</button>
             <button type="button" data-run="need">Need</button>
@@ -578,6 +582,7 @@
             <button type="button" data-run="provider">Provider</button>
             <button type="button" id="providerEnv">Provider Env</button>
             <button type="button" id="providerSave">Provider Save</button>
+            <button type="button" id="providerSaveKey">Save Key</button>
             <button type="button" id="providerCheck">Provider Check</button>
             <button type="button" id="runUpdate">Update</button>
             <button type="button" data-run="pet">Pet</button>
@@ -711,6 +716,7 @@
           "octopus providers",
           "octopus provider status",
           `octopus provider save ${providerProfile} ${providerPrefix}`,
+          `octopus provider save-key ${providerProfile} ${providerPrefix}`,
           `octopus provider check ${providerPrefix}`,
           "octopus start --open",
           `octopus --state ${shellQuote(state)} init`,
@@ -777,6 +783,7 @@
           `octopus --state ${shellQuote(state)} --json needs session ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json needs session --live ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json repair ${shellQuote(target)}`,
+          `octopus --state ${shellQuote(state)} --json repair continue ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} --json repair score 1 satisfied ${shellQuote("repair improved harness")}`,
           `octopus --state ${shellQuote(state)} --json need ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} --json context ${need} ${shellQuote(target)}`,
@@ -1977,6 +1984,24 @@
         }
       }
 
+      async function runRepairContinueReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const target = $("target").value.trim() || ".";
+        $("repairReport").textContent = "continuing repair...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "repair", "continue", target]);
+          currentRepairReport = report.repair || null;
+          currentRepairScoreReport = null;
+          currentNeedQueueReport = report.repair && report.repair.queue ? report.repair.queue : null;
+          renderRepairContinueReport(report);
+          if (currentNeedQueueReport) renderNeedQueueReport(currentNeedQueueReport);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("repairReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
       async function runBeat(updateOutput = true) {
         const state = $("state").value.trim() || ".octopus/state.json";
         $("beatReport").textContent = "loading...";
@@ -2033,6 +2058,20 @@
             `saved ${report.path || ".octopus/llm.env"}`,
             report.env && report.env.shell ? report.env.shell : JSON.stringify(report, null, 2),
           ].filter(Boolean).join("\n\n");
+        } catch (error) {
+          $("providerReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runProviderSaveKey() {
+        const prefix = $("providerPrefix").value.trim() || "OCTOPUS_LLM";
+        const profile = $("providerProfile").value;
+        $("providerReport").textContent = "saving key...";
+        try {
+          const report = await runBridgeJson(["--json", "provider", "save-key", profile, prefix]);
+          renderProviderSavedEnvReport(report);
+          $("output").textContent = `saved key-backed env to ${report.path || ".octopus/llm.env"}`;
         } catch (error) {
           $("providerReport").textContent = String(error);
           $("output").textContent = String(error);
@@ -2635,6 +2674,16 @@
         }
         root.appendChild(reportList("Queued Need", report.queued || [], needQueueItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function renderRepairContinueReport(report) {
+        renderRepairReport(report.repair || {});
+        const root = $("repairReport");
+        const taken = report.taken && report.taken.item ? [report.taken.item] : [];
+        const feeds = report.feedback && report.feedback.feeds ? report.feedback.feeds : [];
+        root.appendChild(reportList("Continued Need", taken, needQueueItem));
+        root.appendChild(reportList("Continued Feed", feeds, feedItem));
+        root.appendChild(reportList("Continue Next", report.next || [], textItem));
       }
 
       function repairPlanSummary(plan) {
@@ -4329,9 +4378,11 @@
       $("runNeedReview").addEventListener("click", () => runNeedReviewSession(false));
       $("runNeedLiveReview").addEventListener("click", () => runNeedReviewSession(true));
       $("runRepair").addEventListener("click", runRepairReport);
+      $("runRepairContinue").addEventListener("click", runRepairContinueReport);
       $("runContext").addEventListener("click", runContextReport);
       $("providerEnv").addEventListener("click", runProviderEnv);
       $("providerSave").addEventListener("click", runProviderSave);
+      $("providerSaveKey").addEventListener("click", runProviderSaveKey);
       $("providerCheck").addEventListener("click", runProviderCheck);
       $("runUpdate").addEventListener("click", runUpdateReport);
       $("runDoctor").addEventListener("click", runDoctorReport);

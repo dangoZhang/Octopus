@@ -69,6 +69,15 @@ Result: pass. App and pet pages were served locally. `/api/run` returned a JSON 
 - OAuth PR publishing and live provider-assisted harness evolution still need real-machine coverage.
 - Rich desktop control beyond diagnostics still needs real desktop feedback.
 
+## Live Provider Evidence
+
+Date: 2026-06-28 CST. Working tree package version `0.0.15`.
+
+- Codex CLI OAuth: `codex login status` returned logged in with ChatGPT. `OCTOPUS_LLM_BACKEND=codex ... octopus provider check` returned `OCTOPUS_CODEX_OK`.
+- Direct API key: BigModel/Z.AI OpenAI-compatible endpoint `https://open.bigmodel.cn/api/paas/v4`, model `glm-4.5-flash`, returned `OCTOPUS_ZAI_OK`. The key was used only in the process environment and was not written to project files.
+- Local open-source model: `llama-server` served `/Users/zty/msc/beta/.local_models/qwen35-35b-a3b/Qwen_Qwen3.5-35B-A3B-IQ2_M.gguf` on `http://127.0.0.1:1234/v1`; CPU/low-context settings returned `OCTOPUS_LOCAL_OK`.
+- API-key adapter path: a local OpenAI-compatible test server verified the `Authorization: Bearer ...` header and returned `API_KEY_OK`.
+
 ## Tag Decision
 
 - Pass or fail: pass for pre-`0.1.0` whole-project local preflight.

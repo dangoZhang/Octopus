@@ -1,18 +1,20 @@
 # Octopus 🐙
 
-> Clean brain. Independent tentacles.
+Clean brain. Independent tentacles.
 
-[Open the app](https://dangozhang.github.io/Octopus/app.html) · [Docs](https://dangozhang.github.io/Octopus/) · [Install guide](docs/quickstart.md)
+[Open the app](https://dangozhang.github.io/Octopus/app.html) · [Docs](https://dangozhang.github.io/Octopus/) · [中文 README](README.zh-CN.md) · [中文文档](docs/zh/quickstart.md) · [Install guide](docs/quickstart.md)
 
-Biological octopuses do not push every signal through one brain. Their arms contain local nervous systems. Behavior emerges from intent, local control, and feedback.
+Biological octopuses do not solve control by pushing every signal through one brain.
+Their arms contain local nervous systems.
+Their behavior emerges from intent, local control, and feedback.
+Their hearts beat for blood and environment adaptation.
 
-That biology is the product bet: high-level intent, distributed local control, and layered feedback can make agents faster to think with. See the [research map](docs/references.md).
+Octopus brings that idea to agents.
+The brain only owns the goal and the need.
+Tentacles with Intelligence own the implementation.
+The heartbeat is for self-motivated work and self-evolving harness change.
 
-Octopus brings that idea to agents. The main model carries only `Goal + Mem + Need + Feed`. It asks for cognition: verify this, reproduce that, compare options, remember a fact, forget stale context, execute a job, repair a broken path.
-
-The edge does the work. Octopus turns tools into local nervous systems: an LLM prompt, tool metadata, runtime code, local grants, traces, and an editable harness. A tentacle chooses how to observe, execute, verify, and compress Feed without polluting the clean brain.
-
-The runtime keeps three pulses alive: liveness, memory, and harness evolution. A pixel Octopus changes color from real work states, giving the agent a visible body instead of only logs.
+Octopus Loop:
 
 ```text
 Goal -> Brain -> Need -> Tentacle Intelligence -> Action -> Feed -> Brain
@@ -38,12 +40,20 @@ octopus first-run "make this repo easier to use"
 
 `first-run` sets a clean Goal, installs seed tentacles, asks a safe observe Need, records Feed feedback, pulses the hearts, and returns Doctor plus Preflight evidence. Add `--live` when provider env is ready and you want the same loop to include the live provider gate.
 
-Use an OpenAI-compatible provider for live clean-brain calls and tool-side planning:
+Use Codex login, an API key, a local model, or a LiteLLM/OpenAI-compatible gateway for live clean-brain calls and tool-side planning:
 
 ```bash
+codex login
+octopus provider save codex
+source .octopus/llm.env
+octopus provider check
+
+# Or use an API key provider:
+export OPENAI_API_KEY=...
 octopus provider save openai
 source .octopus/llm.env
 octopus provider check
+
 octopus brain --brief --save "compress the clean brain state"
 octopus brain --intent --save "what should the brain ask next?"
 octopus brain --align --save "does this still follow the goal?"
@@ -51,7 +61,7 @@ octopus brain --scout --save "map what the brain should understand next"
 octopus need verify .
 ```
 
-Strong-model knobs such as `OCTOPUS_LLM_REASONING_EFFORT`, `OCTOPUS_LLM_MAX_TOKENS`, and `OCTOPUS_LLM_EXTRA_BODY` stay in provider env, outside Need text.
+`provider save-key` can write a resolved API key into `.octopus/llm.env` with local-only file permissions. Strong-model knobs such as `OCTOPUS_LLM_REASONING_EFFORT`, `OCTOPUS_LLM_MAX_TOKENS`, `OCTOPUS_LLM_RETRIES`, and `OCTOPUS_LLM_EXTRA_BODY` stay in provider env, outside Need text.
 
 ## Works Today
 

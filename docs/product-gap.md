@@ -16,7 +16,7 @@ Updated: 2026-06-28
 - `json-feed` is a runtime seed for the `octopus-json-v1` contract.
 - Memory is a heart/beat; visual is the color-changing pet layer.
 - LLM adapters support OpenAI-compatible providers for chat goal refinement, clean-brain Goal/Intent/Brief/Align/Clarify/Agenda/Scout/Deliberate/Council/Synthesize/Explore/Rewrite/Queue/Memory jobs, manifest tool planning, and harness evolution candidate generation.
-- `providers` and `provider <name> [prefix]` expose reusable LLM profile setup for OpenAI, local servers, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.
+- `providers` and `provider <name> [prefix]` expose reusable LLM profile setup for Codex CLI OAuth, API-key clouds, Z.AI/BigModel, local servers, LiteLLM gateway, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.
 - `provider status` reports chat, clean-brain model slots including intent, brief, alignment, clarification, agenda, scout, memory, and synthesis, tentacle-planning, and harness-evolution LLM readiness without a network call.
 - `provider save` writes reusable provider env to `.octopus/llm.env` by default, and start overlays that file onto child Octopus commands.
 - Provider env supports optional model thinking controls: reasoning effort, token budget, temperature, top_p, and provider-specific JSON body keys.
@@ -76,6 +76,7 @@ Updated: 2026-06-28
 - The native HTML app can take or drop individual queued Needs, write the pending Need Queue into a local reviewable Feed script, and write offline or live clean-brain review sessions.
 - `harness-repair-agent` can diagnose state, traces, check history, evolution artifacts, repo dirtiness, provider env, and local adapters as structured Feed.
 - `repair [query]` runs the harness-repair tentacle, records the Feed trace, exposes the latest repair plan when present, and queues the tentacle's structured next Need for review.
+- `repair continue [query]` runs repair, takes the queued clean Need, routes it back through the harness, and returns the continued Feed plus trace-scoring commands.
 - The native HTML app can score a repair Feed as satisfied, partial, or failed, then render the recent repair outcome memory.
 - Repair scoring mirrors session-backed outcomes into `.octopus/harness-repair/<session>/OUTCOME.md` and `outcomes.jsonl`.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
@@ -268,17 +269,20 @@ Updated: 2026-06-28
 - Added `preflight record append` plus native app append buttons so checked real-machine evidence can move into the release log without manual copy/paste.
 - Made `evolve score` return a full score report with recent outcomes, next recommendation, apply artifacts, and native app rendering so feedback directly drives the next harness move.
 - Rolled the cleanup/version cadence to `0.0.15` after clean-brain brief compaction, live first-run gating, real-machine record append, score-to-next harness evolution, README trim, app cleanup, and version consistency.
+- Added `repair continue [query]` in CLI and native HTML so a harness-repair Feed can immediately take its queued clean Need, continue through the harness, and return scoreable Feed evidence.
+- Added Codex CLI OAuth and LiteLLM/Z.AI provider profiles, plus a provider backend switch so Octopus can use login sessions, direct API keys, local OpenAI-compatible models, or a universal provider gateway without changing clean-brain context.
+- Hardened the LLM request base with non-streaming chat-completions payloads, retries, provider error parsing, content-array/text/reasoning-only response adaptation, Codex CLI timeout/retry handling, and `provider save-key` secret writes with sanitized output.
 
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
 - LLM evolution can generate candidates and provider-assisted patch drafts from manifest surfaces, scored outcomes, recent Feed traces, and check history; local candidates now also target traced or failing runtime files, `evolve score` writes the next recommendation/apply artifacts from updated feedback, and harness beat can start from Feed trace or check feedback while app and CLI patch writes stay review/grant-bound.
-- Harness-repair diagnosis can now queue its next Need, remember reviewed session outcomes, feed merged outcome memory and target code context into repair sessions, write reviewable action plans, continue those plans through heartbeat repair, accept repair scoring from CLI or the native app, mirror session-backed scores into the outcome journal, and feed failed or partial repair outcomes into harness beat evolution; closing the loop still needs real provider-backed repair runs scored from real projects.
+- Harness-repair diagnosis can now queue its next Need, immediately continue that Need as Feed, remember reviewed session outcomes, feed merged outcome memory and target code context into repair sessions, write reviewable action plans, continue those plans through heartbeat repair, accept repair scoring from CLI or the native app, mirror session-backed scores into the outcome journal, and feed failed or partial repair outcomes into harness beat evolution; closing the loop still needs real provider-backed repair runs scored from real projects.
 - Product reporting is available in CLI and app; report quality still needs feedback from real project states.
 - Preflight now exposes the release gate and record template; current readiness still depends on running that gate with live provider, OAuth PR publishing, scored feedback data, and appending a current-head or docs-only parent-recorded result.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
-- Provider profiles now include CLI/HTML env generation, env saving, start env loading, clean-brain slot diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
+- Provider profiles now include CLI/HTML env generation, env saving, secure key-backed env saving, start env loading, clean-brain slot diagnostics, request retries, live validation, Codex CLI OAuth, direct API-key, local model, and LiteLLM gateway paths; provider-specific edge cases still need broader real-machine feedback.
 - GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
 - The HTML app can run, stream, render update reports, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, draft/apply agenda reports, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect repair plans, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, render/filter starter recommendation cards with choice feedback, run starter install/check/first-Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and render score-to-next evolution feedback through the local app API; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
@@ -286,12 +290,12 @@ Updated: 2026-06-28
 ## Next Fill
 
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
-- Exercise live clean-brain exploration and multi-action tentacle planning with real LLM providers and record provider-specific failures.
+- Exercise live clean-brain exploration and multi-action tentacle planning with Codex OAuth, API-key providers, LiteLLM-routed providers, and local open-source models; record provider-specific failures.
 - Exercise Feed feedback outcomes from real tasks against the new route report and tune route choices from that evidence.
 - Exercise starter ranking feedback with real first-run choices and tune score weights from observed accepts, ignores, and failures.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Apply and score the next Feed-trace- or check-driven seed-tentacle improvement through the app review/grant loop.
-- Run `repair` after bootstrap, take the queued Need, and score whether the resulting Feed improves the harness from the app.
+- Run `repair continue` after bootstrap on real projects, then score whether the continued Feed improves the harness from the app.
 - Use `octopus report` after every product cycle to pick the next highest-impact gap.
 - Exercise provider-assisted patch drafts with a real LLM provider and score the result through the review/grant loop.
 - Turn window/browser diagnostics into richer native control adapters.

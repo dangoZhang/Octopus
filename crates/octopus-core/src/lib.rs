@@ -5,7 +5,8 @@ use std::fs;
 use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const OCTOPUS_JSON_CONTRACT: &str = "octopus-json-v1";
 const OCTOPUS_TOOL_CALL_SCHEMA: &str = "octopus-tool-call-v1";
@@ -1169,12 +1170,23 @@ pub trait ChatClient {
     fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String>;
 }
 
+impl<T> ChatClient for Box<T>
+where
+    T: ChatClient + ?Sized,
+{
+    fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+        (**self).chat(messages)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct OpenAiCompatibleConfig {
     pub model: String,
     pub api_key: Option<String>,
     pub base_url: String,
     pub timeout_seconds: u64,
+    pub retry_count: u32,
+    pub retry_delay_ms: u64,
     pub curl_command: String,
     #[serde(default)]
     pub tuning: OpenAiCompatibleTuning,
@@ -1217,6 +1229,24 @@ impl OpenAiCompatibleConfig {
             })
             .transpose()?
             .unwrap_or(60);
+        let retry_count = env::var(format!("{prefix}_RETRIES"))
+            .ok()
+            .map(|value| {
+                value
+                    .parse::<u32>()
+                    .map_err(|_| format!("{prefix}_RETRIES must be an integer"))
+            })
+            .transpose()?
+            .unwrap_or(1);
+        let retry_delay_ms = env::var(format!("{prefix}_RETRY_MS"))
+            .ok()
+            .map(|value| {
+                value
+                    .parse::<u64>()
+                    .map_err(|_| format!("{prefix}_RETRY_MS must be an integer"))
+            })
+            .transpose()?
+            .unwrap_or(750);
         let curl_command =
             env::var(format!("{prefix}_CURL")).unwrap_or_else(|_| "curl".to_string());
         let tuning = OpenAiCompatibleTuning::from_env_prefix(prefix)?;
@@ -1225,6 +1255,8 @@ impl OpenAiCompatibleConfig {
             api_key,
             base_url,
             timeout_seconds,
+            retry_count,
+            retry_delay_ms,
             curl_command,
             tuning,
         })
@@ -1350,13 +1382,12 @@ impl OpenAiCompatibleChatClient {
                 serde_json::Value::String(reasoning_effort.clone()),
             );
         }
+        body.entry("stream".to_string())
+            .or_insert(serde_json::Value::Bool(false));
         serde_json::to_string(&serde_json::Value::Object(body)).map_err(|error| error.to_string())
     }
-}
 
-impl ChatClient for OpenAiCompatibleChatClient {
-    fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String> {
-        let body = self.request_body(messages)?;
+    fn chat_once(&self, body: &str) -> Result<ChatResponse, String> {
         let mut command = Command::new(&self.config.curl_command);
         command
             .arg("-sS")
@@ -1392,16 +1423,292 @@ impl ChatClient for OpenAiCompatibleChatClient {
         }
         let data = serde_json::from_str::<serde_json::Value>(&stdout)
             .map_err(|error| format!("invalid chat response JSON: {error}"))?;
-        let content = data
-            .pointer("/choices/0/message/content")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| "chat response missing choices[0].message.content".to_string())?;
+        if let Some(error) = data.get("error") {
+            return Err(chat_error_message(error));
+        }
+        let content = extract_chat_content(&data)?;
         Ok(ChatResponse {
-            content: content.to_string(),
+            content,
             metadata: BTreeMap::from([
                 ("provider".to_string(), "openai-compatible".to_string()),
                 ("model".to_string(), self.config.model.clone()),
                 ("base_url".to_string(), self.config.base_url.clone()),
+            ]),
+        })
+    }
+}
+
+impl ChatClient for OpenAiCompatibleChatClient {
+    fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+        let body = self.request_body(messages)?;
+        let mut last_error = String::new();
+        for attempt in 0..=self.config.retry_count {
+            match self.chat_once(&body) {
+                Ok(response) => return Ok(response),
+                Err(error) => {
+                    last_error = error;
+                    if attempt < self.config.retry_count {
+                        thread::sleep(Duration::from_millis(self.config.retry_delay_ms));
+                    }
+                }
+            }
+        }
+        Err(last_error)
+    }
+}
+
+fn chat_error_message(error: &serde_json::Value) -> String {
+    error
+        .get("message")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| error.get("code").and_then(serde_json::Value::as_str))
+        .map(|value| format!("provider error: {value}"))
+        .unwrap_or_else(|| format!("provider error: {error}"))
+}
+
+fn extract_chat_content(data: &serde_json::Value) -> Result<String, String> {
+    let content = data.pointer("/choices/0/message/content");
+    if let Some(text) = content.and_then(serde_json::Value::as_str) {
+        let text = text.trim().to_string();
+        if !text.is_empty() {
+            return Ok(text);
+        }
+    }
+    if let Some(parts) = content.and_then(serde_json::Value::as_array) {
+        let text = parts
+            .iter()
+            .filter_map(|part| {
+                part.get("text")
+                    .or_else(|| part.get("content"))
+                    .and_then(serde_json::Value::as_str)
+            })
+            .collect::<Vec<_>>()
+            .join("");
+        let text = text.trim().to_string();
+        if !text.is_empty() {
+            return Ok(text);
+        }
+    }
+    if let Some(text) = data
+        .pointer("/choices/0/text")
+        .and_then(serde_json::Value::as_str)
+    {
+        let text = text.trim().to_string();
+        if !text.is_empty() {
+            return Ok(text);
+        }
+    }
+    if data
+        .pointer("/choices/0/message/reasoning_content")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return Err(
+            "chat response content is empty after reasoning_content; increase max_tokens or disable thinking"
+                .to_string(),
+        );
+    }
+    Err("chat response missing non-empty choices[0].message.content".to_string())
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct CodexCliConfig {
+    pub model: Option<String>,
+    pub command: String,
+    pub timeout_seconds: u64,
+    pub retry_count: u32,
+    pub retry_delay_ms: u64,
+}
+
+impl CodexCliConfig {
+    pub fn from_env_prefix(prefix: &str) -> Result<Self, String> {
+        let model = env::var(format!("{prefix}_MODEL"))
+            .ok()
+            .filter(|value| !value.trim().is_empty());
+        let command =
+            env::var(format!("{prefix}_CODEX_COMMAND")).unwrap_or_else(|_| "codex".to_string());
+        let timeout_seconds = env::var(format!("{prefix}_TIMEOUT"))
+            .ok()
+            .map(|value| {
+                value
+                    .parse::<u64>()
+                    .map_err(|_| format!("{prefix}_TIMEOUT must be an integer"))
+            })
+            .transpose()?
+            .unwrap_or(120);
+        let retry_count = env::var(format!("{prefix}_RETRIES"))
+            .ok()
+            .map(|value| {
+                value
+                    .parse::<u32>()
+                    .map_err(|_| format!("{prefix}_RETRIES must be an integer"))
+            })
+            .transpose()?
+            .unwrap_or(1);
+        let retry_delay_ms = env::var(format!("{prefix}_RETRY_MS"))
+            .ok()
+            .map(|value| {
+                value
+                    .parse::<u64>()
+                    .map_err(|_| format!("{prefix}_RETRY_MS must be an integer"))
+            })
+            .transpose()?
+            .unwrap_or(750);
+        Ok(Self {
+            model,
+            command,
+            timeout_seconds,
+            retry_count,
+            retry_delay_ms,
+        })
+    }
+}
+
+pub struct CodexCliChatClient {
+    config: CodexCliConfig,
+}
+
+impl CodexCliChatClient {
+    pub fn new(config: CodexCliConfig) -> Self {
+        Self { config }
+    }
+
+    fn prompt(messages: &[ChatMessage]) -> String {
+        let mut prompt = String::from(
+            "You are an Octopus LLM provider. Answer only the user's requested content. Do not run tools unless explicitly requested.\n\n",
+        );
+        for message in messages {
+            let role = match message.role {
+                ChatRole::System => "system",
+                ChatRole::User => "user",
+                ChatRole::Assistant => "assistant",
+                ChatRole::Tool => "tool",
+            };
+            prompt.push_str(role);
+            prompt.push_str(": ");
+            prompt.push_str(&message.content);
+            prompt.push('\n');
+        }
+        prompt
+    }
+}
+
+impl ChatClient for CodexCliChatClient {
+    fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+        let mut last_error = String::new();
+        for attempt in 0..=self.config.retry_count {
+            match self.chat_once(messages) {
+                Ok(response) => return Ok(response),
+                Err(error) => {
+                    last_error = error;
+                    if attempt < self.config.retry_count {
+                        thread::sleep(Duration::from_millis(self.config.retry_delay_ms));
+                    }
+                }
+            }
+        }
+        Err(last_error)
+    }
+}
+
+impl CodexCliChatClient {
+    fn chat_once(&self, messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+        let temp_suffix = format!(
+            "{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_millis())
+                .unwrap_or_default()
+        );
+        let output_path = env::temp_dir().join(format!("octopus-codex-provider-{temp_suffix}.txt"));
+        let stdout_path =
+            env::temp_dir().join(format!("octopus-codex-provider-{temp_suffix}.stdout"));
+        let stderr_path =
+            env::temp_dir().join(format!("octopus-codex-provider-{temp_suffix}.stderr"));
+        let prompt = Self::prompt(messages);
+        let mut command = Command::new(&self.config.command);
+        let stdout_file = fs::File::create(&stdout_path)
+            .map_err(|error| format!("failed to create codex stdout capture: {error}"))?;
+        let stderr_file = fs::File::create(&stderr_path)
+            .map_err(|error| format!("failed to create codex stderr capture: {error}"))?;
+        command
+            .arg("exec")
+            .arg("--ephemeral")
+            .arg("--skip-git-repo-check")
+            .arg("--sandbox")
+            .arg("read-only")
+            .arg("--output-last-message")
+            .arg(&output_path);
+        if let Some(model) = &self.config.model {
+            command.arg("--model").arg(model);
+        }
+        let mut child = command
+            .arg("-")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::from(stdout_file))
+            .stderr(Stdio::from(stderr_file))
+            .spawn()
+            .map_err(|error| format!("{} failed to start: {error}", self.config.command))?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(prompt.as_bytes())
+                .map_err(|error| format!("failed to write codex prompt: {error}"))?;
+        }
+        let deadline = Instant::now() + Duration::from_secs(self.config.timeout_seconds.max(1));
+        let status = loop {
+            if let Some(status) = child
+                .try_wait()
+                .map_err(|error| format!("{} failed: {error}", self.config.command))?
+            {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = fs::remove_file(&output_path);
+                let _ = fs::remove_file(&stdout_path);
+                let _ = fs::remove_file(&stderr_path);
+                return Err(format!(
+                    "codex provider timed out after {}s",
+                    self.config.timeout_seconds.max(1)
+                ));
+            }
+            thread::sleep(Duration::from_millis(50));
+        };
+        let stdout = fs::read_to_string(&stdout_path).unwrap_or_default();
+        let stderr = fs::read_to_string(&stderr_path).unwrap_or_default();
+        let _ = fs::remove_file(&stdout_path);
+        let _ = fs::remove_file(&stderr_path);
+        if !status.success() {
+            let message = if stderr.trim().is_empty() {
+                stdout
+            } else {
+                stderr
+            };
+            let _ = fs::remove_file(&output_path);
+            return Err(trim_output(&message));
+        }
+        let content = fs::read_to_string(&output_path)
+            .unwrap_or_else(|_| stdout.clone())
+            .trim()
+            .to_string();
+        let _ = fs::remove_file(&output_path);
+        if content.is_empty() {
+            return Err("codex provider returned empty content".to_string());
+        }
+        Ok(ChatResponse {
+            content,
+            metadata: BTreeMap::from([
+                ("provider".to_string(), "codex-cli".to_string()),
+                (
+                    "model".to_string(),
+                    self.config
+                        .model
+                        .clone()
+                        .unwrap_or_else(|| "codex-default".to_string()),
+                ),
+                ("base_url".to_string(), "codex-cli".to_string()),
             ]),
         })
     }
@@ -12016,6 +12323,8 @@ mod tests {
             api_key: Some("token".to_string()),
             base_url: "https://llm.example/v1/".to_string(),
             timeout_seconds: 3,
+            retry_count: 0,
+            retry_delay_ms: 0,
             curl_command: "curl".to_string(),
             tuning: OpenAiCompatibleTuning {
                 temperature: Some(0.2),
@@ -12054,6 +12363,8 @@ mod tests {
             "MODEL",
             "BASE_URL",
             "API_KEY",
+            "RETRIES",
+            "RETRY_MS",
             "TEMPERATURE",
             "TOP_P",
             "MAX_TOKENS",
@@ -12069,6 +12380,8 @@ mod tests {
         std::env::set_var(format!("{prefix}_MODEL"), "clean-model");
         std::env::set_var(format!("{prefix}_BASE_URL"), "https://llm.example/v1");
         std::env::set_var(format!("{prefix}_API_KEY"), "token");
+        std::env::set_var(format!("{prefix}_RETRIES"), "2");
+        std::env::set_var(format!("{prefix}_RETRY_MS"), "5");
         std::env::set_var(format!("{prefix}_TEMPERATURE"), "0.3");
         std::env::set_var(format!("{prefix}_TOP_P"), "0.8");
         std::env::set_var(format!("{prefix}_MAX_TOKENS"), "1024");
@@ -12085,6 +12398,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(config.tuning.temperature, Some(0.3));
+        assert_eq!(config.retry_count, 2);
+        assert_eq!(config.retry_delay_ms, 5);
         assert_eq!(config.tuning.top_p, Some(0.8));
         assert_eq!(config.tuning.max_tokens, Some(1024));
         assert_eq!(config.tuning.reasoning_effort.as_deref(), Some("high"));
@@ -12093,6 +12408,34 @@ mod tests {
         assert!(!body.contains("dirty-model"));
         assert!(!body.contains("\"content\":\"dirty\""));
         assert!(body.contains("\"metadata\":{\"purpose\":\"clean-brain\"}"));
+        for key in &keys {
+            std::env::remove_var(key);
+        }
+    }
+
+    #[test]
+    fn codex_cli_config_reads_retry_and_timeout_env() {
+        let prefix = format!("OCTOPUS_TEST_CODEX_{}", std::process::id());
+        let keys = ["MODEL", "CODEX_COMMAND", "TIMEOUT", "RETRIES", "RETRY_MS"]
+            .into_iter()
+            .map(|suffix| format!("{prefix}_{suffix}"))
+            .collect::<Vec<_>>();
+        for key in &keys {
+            std::env::remove_var(key);
+        }
+        std::env::set_var(format!("{prefix}_MODEL"), "codex-model");
+        std::env::set_var(format!("{prefix}_CODEX_COMMAND"), "codex-test");
+        std::env::set_var(format!("{prefix}_TIMEOUT"), "9");
+        std::env::set_var(format!("{prefix}_RETRIES"), "3");
+        std::env::set_var(format!("{prefix}_RETRY_MS"), "15");
+
+        let config = CodexCliConfig::from_env_prefix(&prefix).unwrap();
+
+        assert_eq!(config.model.as_deref(), Some("codex-model"));
+        assert_eq!(config.command, "codex-test");
+        assert_eq!(config.timeout_seconds, 9);
+        assert_eq!(config.retry_count, 3);
+        assert_eq!(config.retry_delay_ms, 15);
         for key in &keys {
             std::env::remove_var(key);
         }
@@ -12120,6 +12463,8 @@ mod tests {
             api_key: None,
             base_url: "https://llm.example/v1".to_string(),
             timeout_seconds: 1,
+            retry_count: 0,
+            retry_delay_ms: 0,
             curl_command: curl.to_string_lossy().to_string(),
             tuning: OpenAiCompatibleTuning::default(),
         });
@@ -12132,6 +12477,125 @@ mod tests {
         assert_eq!(
             response.metadata.get("provider"),
             Some(&"openai-compatible".to_string())
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn openai_compatible_chat_client_rejects_empty_content() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!("octopus-empty-curl-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = dir.join("fake-curl.sh");
+        fs::write(
+            &curl,
+            "#!/bin/sh\nprintf '%s' '{\"choices\":[{\"message\":{\"content\":\"\"}}]}'\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+        let mut client = OpenAiCompatibleChatClient::new(OpenAiCompatibleConfig {
+            model: "test-model".to_string(),
+            api_key: None,
+            base_url: "https://llm.example/v1".to_string(),
+            timeout_seconds: 1,
+            retry_count: 0,
+            retry_delay_ms: 0,
+            curl_command: curl.to_string_lossy().to_string(),
+            tuning: OpenAiCompatibleTuning::default(),
+        });
+
+        let error = client
+            .chat(&[ChatMessage::new(ChatRole::User, "hello")])
+            .unwrap_err();
+
+        assert!(error.contains("non-empty"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn openai_compatible_chat_client_retries_transient_failures() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!("octopus-retry-curl-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = dir.join("fake-curl.sh");
+        let marker = dir.join("called");
+        fs::write(
+            &curl,
+            format!(
+                "#!/bin/sh\nif [ ! -f '{}' ]; then touch '{}'; exit 22; fi\nprintf '%s' '{{\"choices\":[{{\"message\":{{\"content\":\"retry ok\"}}}}]}}'\n",
+                marker.display(),
+                marker.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+        let mut client = OpenAiCompatibleChatClient::new(OpenAiCompatibleConfig {
+            model: "test-model".to_string(),
+            api_key: None,
+            base_url: "https://llm.example/v1".to_string(),
+            timeout_seconds: 1,
+            retry_count: 1,
+            retry_delay_ms: 1,
+            curl_command: curl.to_string_lossy().to_string(),
+            tuning: OpenAiCompatibleTuning::default(),
+        });
+
+        let response = client
+            .chat(&[ChatMessage::new(ChatRole::User, "hello")])
+            .unwrap();
+
+        assert_eq!(response.content, "retry ok");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn codex_cli_chat_client_retries_transient_failures() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!("octopus-retry-codex-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let marker = dir.join("called");
+        let codex = dir.join("fake-codex.sh");
+        fs::write(
+            &codex,
+            format!(
+                "#!/bin/sh\nout=''\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = '--output-last-message' ]; then shift; out=\"$1\"; fi\n  shift || true\ndone\nif [ ! -f '{}' ]; then touch '{}'; echo transient >&2; exit 1; fi\nprintf '%s' 'codex retry ok' > \"$out\"\n",
+                marker.display(),
+                marker.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&codex).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&codex, permissions).unwrap();
+        let mut client = CodexCliChatClient::new(CodexCliConfig {
+            model: None,
+            command: codex.to_string_lossy().to_string(),
+            timeout_seconds: 1,
+            retry_count: 1,
+            retry_delay_ms: 1,
+        });
+
+        let response = client
+            .chat(&[ChatMessage::new(ChatRole::User, "hello")])
+            .unwrap();
+
+        assert_eq!(response.content, "codex retry ok");
+        assert_eq!(
+            response.metadata.get("provider"),
+            Some(&"codex-cli".to_string())
         );
         let _ = fs::remove_dir_all(dir);
     }
@@ -13685,6 +14149,8 @@ print(json.dumps({
             api_key: None,
             base_url: "https://llm.example/v1".to_string(),
             timeout_seconds: 1,
+            retry_count: 0,
+            retry_delay_ms: 0,
             curl_command: curl.to_string_lossy().to_string(),
             tuning: OpenAiCompatibleTuning::default(),
         };
@@ -13805,6 +14271,8 @@ print(json.dumps({
             api_key: None,
             base_url: "https://llm.example/v1".to_string(),
             timeout_seconds: 1,
+            retry_count: 0,
+            retry_delay_ms: 0,
             curl_command: curl.to_string_lossy().to_string(),
             tuning: OpenAiCompatibleTuning::default(),
         };
@@ -13868,6 +14336,8 @@ print(json.dumps({
             api_key: None,
             base_url: "https://llm.example/v1".to_string(),
             timeout_seconds: 1,
+            retry_count: 0,
+            retry_delay_ms: 0,
             curl_command: curl.to_string_lossy().to_string(),
             tuning: OpenAiCompatibleTuning::default(),
         };

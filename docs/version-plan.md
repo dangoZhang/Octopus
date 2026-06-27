@@ -27,6 +27,6 @@ Real-machine test gate for `0.1.0` and later tags:
 
 Last cleanup/version correction: `0.0.15` on 2026-06-28. Scope: clean-brain brief compaction, live first-run and record append gates, score-to-next harness evolution, README trim, app control-surface cleanup, and version consistency; no tag cut.
 
-Product commits toward `0.0.16`: 2/8.
+Product commits toward `0.0.16`: 3/8.
 
 Next planned cleanup/version commit: `0.0.16`.

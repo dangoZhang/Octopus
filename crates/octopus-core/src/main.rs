@@ -8,17 +8,18 @@ use octopus_core::{
     BrainGoalReport, BrainGoalSaveReport, BrainPromptReport, BrainReflectionDraft,
     BrainReflectionReport, BrainReflectionSaveReport, BrainSynthesisDraft, BrainSynthesisInput,
     BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant, ChatClient, ChatMessage,
-    ChatRole, CheckHistoryInput, CheckHistoryRecord, ContextReport, EnvironmentReport,
-    EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome,
-    EvolutionRecommendation, Feed, FeedFeedbackOutcome, FeedTraceRecord, Feedback, Goal, GoalChat,
-    GoalNeedSuggestion, GoalRefinement, Harness, HarnessBeatEvolution, HarnessState, HeartBeat,
-    HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem,
-    NeedQueueReport, NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport,
-    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, OpenAiCompatibleTuning, RepairOutcome,
-    RouteReport, SelfIterationPlan, StarterFeedbackInput, StarterFeedbackRecord,
-    StarterFeedbackStatus, Status, StatusReport, TentacleEvolutionProposal, TentacleManifestReport,
-    TentacleProfile, TentacleScaffold, TentacleThinkingPlan, TentacleToolAction,
-    TentacleToolCandidate, ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
+    ChatRole, CheckHistoryInput, CheckHistoryRecord, CodexCliChatClient, CodexCliConfig,
+    ContextReport, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan,
+    EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed, FeedFeedbackOutcome,
+    FeedTraceRecord, Feedback, Goal, GoalChat, GoalNeedSuggestion, GoalRefinement, Harness,
+    HarnessBeatEvolution, HarnessState, HeartBeat, HeartbeatReport, InstalledTentacle,
+    LoadedTentacleManifest, Need, NeedKind, NeedQueueItem, NeedQueueReport, NeedQueueSaveReport,
+    NeedQueueStatus, NeedQueueTakeReport, OpenAiCompatibleChatClient, OpenAiCompatibleConfig,
+    OpenAiCompatibleTuning, RepairOutcome, RouteReport, SelfIterationPlan, StarterFeedbackInput,
+    StarterFeedbackRecord, StarterFeedbackStatus, Status, StatusReport, TentacleEvolutionProposal,
+    TentacleManifestReport, TentacleProfile, TentacleScaffold, TentacleThinkingPlan,
+    TentacleToolAction, TentacleToolCandidate, ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY,
+    TENTACLE_CONTEXT_POLICY,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -481,13 +482,14 @@ struct ProviderProfile {
     id: String,
     name: String,
     description: String,
+    backend: String,
     base_url: String,
     model: String,
     key_env: String,
     notes: Vec<String>,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize)]
 struct ProviderEnvReport {
     profile: ProviderProfile,
     prefix: String,
@@ -575,6 +577,14 @@ struct RepairReport {
     repair_plan: Option<RepairPlanReport>,
     queued: Vec<NeedQueueItem>,
     queue: NeedQueueReport,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct RepairContinueReport {
+    repair: RepairReport,
+    taken: Option<NeedQueueTakeReport>,
+    feedback: Option<Feedback>,
     next: Vec<String>,
 }
 
@@ -900,6 +910,24 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     );
                 } else {
                     print_repair_score_report(&report, language);
+                }
+                return Ok(());
+            }
+            if rest.get(1).map(String::as_str) == Some("continue") {
+                let query = rest
+                    .get(2..)
+                    .filter(|values| !values.is_empty())
+                    .map(|values| values.join(" "))
+                    .unwrap_or_else(|| ".".to_string());
+                let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                let report = repair_continue_report(&state, &mut loaded, query)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_repair_continue_report(&report, language);
                 }
                 return Ok(());
             }
@@ -2300,7 +2328,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .filter(|values| !values.is_empty())
                 .map(|values| values.join(" "))
                 .ok_or_else(|| "llm requires a message".to_string())?;
-            let mut client = OpenAiCompatibleChatClient::from_env()?;
+            let (_model, _base_url, _api_key_present, _tuning, mut client) =
+                provider_client("OCTOPUS_LLM")?;
             let response = client.chat(&[
                 ChatMessage::new(
                     ChatRole::System,
@@ -2353,6 +2382,26 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     .map(PathBuf::from)
                     .unwrap_or_else(|| PathBuf::from(DEFAULT_PROVIDER_ENV_PATH));
                 let report = save_provider_env_report(profile_id, prefix, &path)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_provider_saved_env(&report, language);
+                }
+                return Ok(());
+            }
+            if rest.get(1).map(String::as_str) == Some("save-key") {
+                let profile_id = rest
+                    .get(2)
+                    .ok_or_else(|| "provider save-key requires a profile id".to_string())?;
+                let prefix = rest.get(3).map(String::as_str).unwrap_or("OCTOPUS_LLM");
+                let path = rest
+                    .get(4)
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from(DEFAULT_PROVIDER_ENV_PATH));
+                let report = save_provider_env_report_with_key(profile_id, prefix, &path)?;
                 if json {
                     println!(
                         "{}",
@@ -3352,6 +3401,46 @@ fn print_optional_line(label: &str, value: &str) {
     }
 }
 
+fn print_repair_continue_report(report: &RepairContinueReport, language: Language) {
+    print_repair_report(&report.repair, language);
+    match language {
+        Language::En => {
+            if let Some(taken) = &report.taken {
+                println!("continued_need: {}", need_queue_line(&taken.item));
+            } else {
+                println!("continued_need: none");
+            }
+            if let Some(feedback) = &report.feedback {
+                println!("continued_feed: {}", feedback.summary);
+                for feed in &feedback.feeds {
+                    if let Some(index) = feed.metadata.get("feed_trace_index") {
+                        println!("continued_trace_index: {index}");
+                    }
+                    println!("continued_status: {:?} {}", feed.status, feed.summary);
+                }
+            }
+            println!("continue_next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            if let Some(taken) = &report.taken {
+                println!("已继续Need: {}", need_queue_line(&taken.item));
+            } else {
+                println!("已继续Need: 无");
+            }
+            if let Some(feedback) = &report.feedback {
+                println!("继续Feed: {}", feedback.summary);
+                for feed in &feedback.feeds {
+                    if let Some(index) = feed.metadata.get("feed_trace_index") {
+                        println!("继续轨迹编号: {index}");
+                    }
+                    println!("继续状态: {:?} {}", feed.status, feed.summary);
+                }
+            }
+            println!("继续下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
 fn print_repair_score_report(report: &RepairScoreReport, language: Language) {
     match language {
         Language::En => {
@@ -4168,6 +4257,7 @@ fn provider_profiles() -> Vec<ProviderProfile> {
             id: "openai".to_string(),
             name: "OpenAI-compatible cloud".to_string(),
             description: "Default hosted chat-completions provider.".to_string(),
+            backend: "openai-compatible".to_string(),
             base_url: "https://api.openai.com/v1".to_string(),
             model: "gpt-4.1-mini".to_string(),
             key_env: "OPENAI_API_KEY".to_string(),
@@ -4181,6 +4271,7 @@ fn provider_profiles() -> Vec<ProviderProfile> {
             name: "Local OpenAI-compatible server".to_string(),
             description: "For Ollama, LM Studio, llama.cpp server, or another local adapter."
                 .to_string(),
+            backend: "openai-compatible".to_string(),
             base_url: "http://localhost:11434/v1".to_string(),
             model: "llama3.1".to_string(),
             key_env: "".to_string(),
@@ -4190,9 +4281,54 @@ fn provider_profiles() -> Vec<ProviderProfile> {
             ],
         },
         ProviderProfile {
+            id: "litellm".to_string(),
+            name: "LiteLLM universal gateway".to_string(),
+            description: "Self-hosted OpenAI-compatible proxy for 100+ model providers."
+                .to_string(),
+            backend: "openai-compatible".to_string(),
+            base_url: "http://localhost:4000/v1".to_string(),
+            model: "your-model".to_string(),
+            key_env: "LITELLM_API_KEY".to_string(),
+            notes: vec![
+                "Start LiteLLM proxy, then point Octopus at the proxy base URL.".to_string(),
+                "Use this for provider-native keys that are not directly OpenAI-compatible."
+                    .to_string(),
+            ],
+        },
+        ProviderProfile {
+            id: "codex".to_string(),
+            name: "Codex CLI OAuth".to_string(),
+            description: "Uses the local Codex CLI login session instead of an API key."
+                .to_string(),
+            backend: "codex".to_string(),
+            base_url: "codex-cli".to_string(),
+            model: "".to_string(),
+            key_env: "".to_string(),
+            notes: vec![
+                "Run `codex login` once, then `octopus provider check` can use that OAuth session."
+                    .to_string(),
+                "This is useful when a user prefers Codex login over raw API keys.".to_string(),
+            ],
+        },
+        ProviderProfile {
+            id: "zai".to_string(),
+            name: "Z.AI / BigModel OpenAI-compatible".to_string(),
+            description: "GLM models through the BigModel OpenAI-compatible endpoint.".to_string(),
+            backend: "openai-compatible".to_string(),
+            base_url: "https://open.bigmodel.cn/api/paas/v4".to_string(),
+            model: "glm-4.5-flash".to_string(),
+            key_env: "ZAI_API_KEY".to_string(),
+            notes: vec![
+                "Set ZAI_API_KEY before sourcing the generated env.".to_string(),
+                "Reasoning models may need a larger max token budget before final content appears."
+                    .to_string(),
+            ],
+        },
+        ProviderProfile {
             id: "openrouter".to_string(),
             name: "OpenRouter-compatible cloud".to_string(),
             description: "Hosted router using the OpenAI-compatible chat API.".to_string(),
+            backend: "openai-compatible".to_string(),
             base_url: "https://openrouter.ai/api/v1".to_string(),
             model: "openai/gpt-4.1-mini".to_string(),
             key_env: "OPENROUTER_API_KEY".to_string(),
@@ -4206,6 +4342,7 @@ fn provider_profiles() -> Vec<ProviderProfile> {
             name: "DeepSeek OpenAI-compatible cloud".to_string(),
             description: "DeepSeek chat models through their OpenAI-compatible endpoint."
                 .to_string(),
+            backend: "openai-compatible".to_string(),
             base_url: "https://api.deepseek.com".to_string(),
             model: "deepseek-v4-flash".to_string(),
             key_env: "DEEPSEEK_API_KEY".to_string(),
@@ -4220,6 +4357,7 @@ fn provider_profiles() -> Vec<ProviderProfile> {
             name: "Groq OpenAI-compatible cloud".to_string(),
             description: "Fast hosted inference through Groq's OpenAI-compatible endpoint."
                 .to_string(),
+            backend: "openai-compatible".to_string(),
             base_url: "https://api.groq.com/openai/v1".to_string(),
             model: "openai/gpt-oss-20b".to_string(),
             key_env: "GROQ_API_KEY".to_string(),
@@ -4232,6 +4370,7 @@ fn provider_profiles() -> Vec<ProviderProfile> {
             id: "gemini".to_string(),
             name: "Gemini OpenAI-compatible cloud".to_string(),
             description: "Gemini models through Google's OpenAI-compatible endpoint.".to_string(),
+            backend: "openai-compatible".to_string(),
             base_url: "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
             model: "gemini-3.5-flash".to_string(),
             key_env: "GEMINI_API_KEY".to_string(),
@@ -4245,6 +4384,7 @@ fn provider_profiles() -> Vec<ProviderProfile> {
             name: "DashScope OpenAI-compatible cloud".to_string(),
             description: "Qwen models through Alibaba Cloud DashScope compatibility mode."
                 .to_string(),
+            backend: "openai-compatible".to_string(),
             base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string(),
             model: "qwen-plus".to_string(),
             key_env: "DASHSCOPE_API_KEY".to_string(),
@@ -4259,6 +4399,7 @@ fn provider_profiles() -> Vec<ProviderProfile> {
             id: "moonshot".to_string(),
             name: "Moonshot OpenAI-compatible cloud".to_string(),
             description: "Kimi/Moonshot models through an OpenAI-compatible endpoint.".to_string(),
+            backend: "openai-compatible".to_string(),
             base_url: "https://api.moonshot.ai/v1".to_string(),
             model: "kimi-k2.6".to_string(),
             key_env: "MOONSHOT_API_KEY".to_string(),
@@ -4271,6 +4412,7 @@ fn provider_profiles() -> Vec<ProviderProfile> {
             id: "lmstudio".to_string(),
             name: "LM Studio local server".to_string(),
             description: "LM Studio's local OpenAI-compatible server.".to_string(),
+            backend: "openai-compatible".to_string(),
             base_url: "http://localhost:1234/v1".to_string(),
             model: "local-model".to_string(),
             key_env: "".to_string(),
@@ -4283,6 +4425,7 @@ fn provider_profiles() -> Vec<ProviderProfile> {
             id: "custom".to_string(),
             name: "Custom OpenAI-compatible endpoint".to_string(),
             description: "Template for any provider that speaks chat completions.".to_string(),
+            backend: "openai-compatible".to_string(),
             base_url: "https://example.com/v1".to_string(),
             model: "your-model".to_string(),
             key_env: "OCTOPUS_PROVIDER_API_KEY".to_string(),
@@ -4311,6 +4454,21 @@ fn provider_profile(id: &str) -> Result<ProviderProfile, String> {
 }
 
 fn provider_env_report(profile_id: &str, prefix: &str) -> Result<ProviderEnvReport, String> {
+    provider_env_report_inner(profile_id, prefix, false)
+}
+
+fn provider_env_report_with_key(
+    profile_id: &str,
+    prefix: &str,
+) -> Result<ProviderEnvReport, String> {
+    provider_env_report_inner(profile_id, prefix, true)
+}
+
+fn provider_env_report_inner(
+    profile_id: &str,
+    prefix: &str,
+    include_key: bool,
+) -> Result<ProviderEnvReport, String> {
     if !valid_env_prefix(prefix) {
         return Err(format!(
             "invalid provider env prefix: {prefix}; use letters, digits, and underscore"
@@ -4318,19 +4476,28 @@ fn provider_env_report(profile_id: &str, prefix: &str) -> Result<ProviderEnvRepo
     }
     let profile = provider_profile(profile_id)?;
     let mut exports = vec![
+        format!("export {prefix}_BACKEND={}", shell_value(&profile.backend)),
         format!("export {prefix}_MODEL={}", shell_value(&profile.model)),
-        format!(
-            "export {prefix}_BASE_URL={}",
-            shell_value(&profile.base_url)
-        ),
     ];
-    if profile.key_env.is_empty() {
-        exports.push(format!("export {prefix}_API_KEY="));
+    if profile.backend == "codex" {
+        exports.push(format!("export {prefix}_CODEX_COMMAND=codex"));
     } else {
         exports.push(format!(
-            "export {prefix}_API_KEY=\"${{{}:-}}\"",
-            profile.key_env
+            "export {prefix}_BASE_URL={}",
+            shell_value(&profile.base_url)
         ));
+        if profile.key_env.is_empty() {
+            exports.push(format!("export {prefix}_API_KEY="));
+        } else if include_key {
+            let key = env::var(&profile.key_env)
+                .map_err(|_| format!("{} is required for provider save-key", profile.key_env))?;
+            exports.push(format!("export {prefix}_API_KEY={}", shell_value(&key)));
+        } else {
+            exports.push(format!(
+                "export {prefix}_API_KEY=\"${{{}:-}}\"",
+                profile.key_env
+            ));
+        }
     }
     exports.extend([
         "# Optional model thinking controls. Leave blank unless the provider supports them."
@@ -4339,13 +4506,13 @@ fn provider_env_report(profile_id: &str, prefix: &str) -> Result<ProviderEnvRepo
         format!("# export {prefix}_MAX_TOKENS=2048"),
         format!("# export {prefix}_TEMPERATURE=0.2"),
         format!("# export {prefix}_TOP_P=0.9"),
+        format!("# export {prefix}_RETRIES=1"),
+        format!("# export {prefix}_RETRY_MS=750"),
         format!(
             "# export {prefix}_EXTRA_BODY='{{\"response_format\":{{\"type\":\"json_object\"}}}}'"
         ),
         "export OCTOPUS_CHAT_LLM=1".to_string(),
         "export OCTOPUS_BRAIN_LLM=1".to_string(),
-        "export OCTOPUS_LLM_MANIFEST=1".to_string(),
-        "export OCTOPUS_LLM_EVOLVE=1".to_string(),
         format!("export OCTOPUS_CHAT_LLM_PREFIX={prefix}"),
         format!("export OCTOPUS_BRAIN_LLM_PREFIX={prefix}"),
         format!("export OCTOPUS_BRAIN_INTENT_LLM_PREFIX={prefix}"),
@@ -4361,9 +4528,15 @@ fn provider_env_report(profile_id: &str, prefix: &str) -> Result<ProviderEnvRepo
         format!("export OCTOPUS_BRAIN_GOAL_LLM_PREFIX={prefix}"),
         format!("export OCTOPUS_BRAIN_REWRITE_LLM_PREFIX={prefix}"),
         format!("export OCTOPUS_BRAIN_QUEUE_LLM_PREFIX={prefix}"),
-        format!("export OCTOPUS_MANIFEST_LLM_PREFIX={prefix}"),
-        format!("export OCTOPUS_EVOLVE_LLM_PREFIX={prefix}"),
     ]);
+    if profile.backend != "codex" {
+        exports.extend([
+            "export OCTOPUS_LLM_MANIFEST=1".to_string(),
+            "export OCTOPUS_LLM_EVOLVE=1".to_string(),
+            format!("export OCTOPUS_MANIFEST_LLM_PREFIX={prefix}"),
+            format!("export OCTOPUS_EVOLVE_LLM_PREFIX={prefix}"),
+        ]);
+    }
     let shell = exports.join("\n");
     Ok(ProviderEnvReport {
         profile,
@@ -4378,16 +4551,43 @@ fn save_provider_env_report(
     prefix: &str,
     path: &Path,
 ) -> Result<ProviderSavedEnvReport, String> {
-    let env = provider_env_report(profile_id, prefix)?;
+    save_provider_env_report_inner(profile_id, prefix, path, false)
+}
+
+fn save_provider_env_report_with_key(
+    profile_id: &str,
+    prefix: &str,
+    path: &Path,
+) -> Result<ProviderSavedEnvReport, String> {
+    save_provider_env_report_inner(profile_id, prefix, path, true)
+}
+
+fn save_provider_env_report_inner(
+    profile_id: &str,
+    prefix: &str,
+    path: &Path,
+    include_key: bool,
+) -> Result<ProviderSavedEnvReport, String> {
+    let write_env = if include_key {
+        provider_env_report_with_key(profile_id, prefix)?
+    } else {
+        provider_env_report(profile_id, prefix)?
+    };
+    let report_env = if include_key {
+        provider_env_report(profile_id, prefix)?
+    } else {
+        write_env.clone()
+    };
     if let Some(parent) = path.parent().filter(|value| !value.as_os_str().is_empty()) {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
-    fs::write(path, format!("{}\n", env.shell)).map_err(|error| error.to_string())?;
+    fs::write(path, format!("{}\n", write_env.shell)).map_err(|error| error.to_string())?;
+    secure_provider_env_file(path)?;
     let path = path.to_string_lossy().to_string();
-    let prefix = env.prefix.clone();
+    let prefix = report_env.prefix.clone();
     Ok(ProviderSavedEnvReport {
         path: path.clone(),
-        env,
+        env: report_env,
         next: vec![
             format!("source {path}"),
             "octopus provider status".to_string(),
@@ -4396,15 +4596,30 @@ fn save_provider_env_report(
     })
 }
 
+fn secure_provider_env_file(path: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+            .map_err(|error| error.to_string())?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+    Ok(())
+}
+
 fn provider_check_report(prefix: &str, message: &str) -> Result<ProviderCheckReport, String> {
     if !valid_env_prefix(prefix) {
         return Err(format!(
             "invalid provider env prefix: {prefix}; use letters, digits, and underscore"
         ));
     }
-    let config = OpenAiCompatibleConfig::from_env_prefix(prefix)
-        .map_err(|error| provider_check_error(prefix, &error))?;
-    let mut client = OpenAiCompatibleChatClient::new(config.clone());
+    let backend = provider_backend(prefix);
+    let (model, base_url, api_key_present, tuning, mut client) =
+        provider_client(prefix).map_err(|error| provider_check_error(prefix, &error))?;
     let response = client
         .chat(&[
             ChatMessage::new(
@@ -4417,12 +4632,16 @@ fn provider_check_report(prefix: &str, message: &str) -> Result<ProviderCheckRep
     Ok(ProviderCheckReport {
         ok: true,
         prefix: prefix.to_string(),
-        model: config.model,
-        base_url: config.base_url,
-        api_key_present: config.api_key.is_some(),
-        tuning: config.tuning,
+        model,
+        base_url,
+        api_key_present,
+        tuning,
         content: response.content,
-        metadata: response.metadata,
+        metadata: response
+            .metadata
+            .into_iter()
+            .chain([("backend".to_string(), backend)])
+            .collect(),
         next: vec![
             "octopus chat \"refine the goal\"".to_string(),
             "octopus need observe README.md".to_string(),
@@ -4435,6 +4654,53 @@ fn provider_check_error(prefix: &str, error: &str) -> String {
     format!(
         "provider check failed for {prefix}: {error}\nnext: octopus providers; octopus provider save openai; source .octopus/llm.env; octopus provider check {prefix}"
     )
+}
+
+fn provider_backend(prefix: &str) -> String {
+    env::var(format!("{prefix}_BACKEND"))
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "openai-compatible".to_string())
+}
+
+type ProviderClient = (
+    String,
+    String,
+    bool,
+    OpenAiCompatibleTuning,
+    Box<dyn ChatClient>,
+);
+
+fn provider_client(prefix: &str) -> Result<ProviderClient, String> {
+    match provider_backend(prefix).as_str() {
+        "codex" => {
+            let config = CodexCliConfig::from_env_prefix(prefix)?;
+            let model = config
+                .model
+                .clone()
+                .unwrap_or_else(|| "codex-default".to_string());
+            Ok((
+                model,
+                "codex-cli".to_string(),
+                false,
+                OpenAiCompatibleTuning::default(),
+                Box::new(CodexCliChatClient::new(config)),
+            ))
+        }
+        "openai-compatible" | "" => {
+            let config = OpenAiCompatibleConfig::from_env_prefix(prefix)?;
+            Ok((
+                config.model.clone(),
+                config.base_url.clone(),
+                config.api_key.is_some(),
+                config.tuning.clone(),
+                Box::new(OpenAiCompatibleChatClient::new(config)),
+            ))
+        }
+        other => Err(format!(
+            "unknown {prefix}_BACKEND: {other}; expected openai-compatible or codex"
+        )),
+    }
 }
 
 fn provider_status_report() -> ProviderStatusReport {
@@ -4590,6 +4856,50 @@ fn provider_layer_status(
     prefix: String,
     enable_hint: &str,
 ) -> ProviderLayerStatus {
+    if provider_backend(&prefix) == "codex" {
+        return match CodexCliConfig::from_env_prefix(&prefix) {
+            Ok(config) => {
+                let command_is_ready = command_ready(&config.command);
+                let harness_layer = matches!(layer, "tentacle_planning" | "harness_evolution");
+                ProviderLayerStatus {
+                    layer: layer.to_string(),
+                    purpose: purpose.to_string(),
+                    enabled,
+                    prefix: prefix.clone(),
+                    configured: command_is_ready && !harness_layer,
+                    model: config.model.or_else(|| Some("codex-default".to_string())),
+                    base_url: Some("codex-cli".to_string()),
+                    api_key_present: false,
+                    tuning: Some(OpenAiCompatibleTuning::default()),
+                    curl_available: command_is_ready,
+                    curl_command: config.command,
+                    check_command: format!("octopus provider check {prefix}"),
+                    message: if harness_layer {
+                        "Codex CLI OAuth covers chat and clean-brain; use LiteLLM or an OpenAI-compatible provider for tentacle planning and harness evolution until those adapters are generalized.".to_string()
+                    } else if enabled {
+                        "configured via Codex CLI login".to_string()
+                    } else {
+                        format!("configured but disabled; run `{enable_hint}`")
+                    },
+                }
+            }
+            Err(error) => ProviderLayerStatus {
+                layer: layer.to_string(),
+                purpose: purpose.to_string(),
+                enabled,
+                prefix: prefix.clone(),
+                configured: false,
+                model: None,
+                base_url: Some("codex-cli".to_string()),
+                api_key_present: false,
+                tuning: None,
+                curl_available: command_ready("codex"),
+                curl_command: "codex".to_string(),
+                check_command: format!("octopus provider check {prefix}"),
+                message: error,
+            },
+        };
+    }
     match OpenAiCompatibleConfig::from_env_prefix(&prefix) {
         Ok(config) => ProviderLayerStatus {
             layer: layer.to_string(),
@@ -4651,14 +4961,19 @@ fn print_provider_profiles(profiles: &[ProviderProfile], language: Language) {
         Language::Zh => println!("Provider 配置:"),
     }
     for profile in profiles {
+        let model = if profile.model.trim().is_empty() {
+            "codex-default"
+        } else {
+            &profile.model
+        };
         match language {
             Language::En => println!(
-                "- {}: {} ({}, {})",
-                profile.id, profile.description, profile.model, profile.base_url
+                "- {}: {} ({}, {}, {})",
+                profile.id, profile.description, profile.backend, model, profile.base_url
             ),
             Language::Zh => println!(
-                "- {}: {} ({}, {})",
-                profile.id, profile.description, profile.model, profile.base_url
+                "- {}: {} ({}, {}, {})",
+                profile.id, profile.description, profile.backend, model, profile.base_url
             ),
         }
     }
@@ -5419,7 +5734,7 @@ fn bridge_provider_allowed(args: &[String]) -> bool {
         Some("check") => args
             .get(index + 2)
             .is_none_or(|prefix| valid_env_prefix(prefix)),
-        Some("save") => {
+        Some("save" | "save-key") => {
             let Some(profile) = args.get(index + 2) else {
                 return false;
             };
@@ -7033,6 +7348,59 @@ fn repair_report(
         queue,
         next,
     })
+}
+
+fn repair_continue_report(
+    state_path: &Path,
+    state: &mut HarnessState,
+    query: String,
+) -> Result<RepairContinueReport, String> {
+    let repair = repair_report(state_path, state, query)?;
+    let Some(queued) = repair.queued.first() else {
+        state.save(state_path).map_err(|error| error.to_string())?;
+        return Ok(RepairContinueReport {
+            repair,
+            taken: None,
+            feedback: None,
+            next: vec![
+                "octopus repair .".to_string(),
+                "octopus report".to_string(),
+                "octopus beat 200".to_string(),
+            ],
+        });
+    };
+    let taken = state.take_queued_need(queued.index)?;
+    let need = Need::new(taken.item.need.kind.clone(), taken.item.need.query.clone());
+    let loaded = std::mem::take(state);
+    let mut harness = harness_for_need(loaded, &need.kind)?;
+    let feedback = harness.feed(&[need]);
+    let trace_index = feedback_trace_index(&feedback);
+    *state = harness.state;
+    state.save(state_path).map_err(|error| error.to_string())?;
+    let mut next = vec![
+        "octopus repair score <trace-index> satisfied \"repair improved harness\"".to_string(),
+        "octopus report".to_string(),
+        "octopus beat 200".to_string(),
+    ];
+    if let Some(index) = trace_index {
+        next.insert(
+            0,
+            format!("octopus feedback {index} satisfied \"continued repair Feed worked\""),
+        );
+    }
+    Ok(RepairContinueReport {
+        repair,
+        taken: Some(taken),
+        feedback: Some(feedback),
+        next,
+    })
+}
+
+fn feedback_trace_index(feedback: &Feedback) -> Option<String> {
+    feedback
+        .feeds
+        .iter()
+        .find_map(|feed| feed.metadata.get("feed_trace_index").cloned())
 }
 
 fn latest_repair_plan_for_query(query: &str) -> Option<PathBuf> {
@@ -11233,94 +11601,64 @@ fn evolution_score_report(
     }
 }
 
-fn chat_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
-    Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&chat_llm_prefix())?,
-    ))
+fn chat_llm_client() -> Result<Box<dyn ChatClient>, String> {
+    Ok(provider_client(&chat_llm_prefix())?.4)
 }
 
-fn clean_brain_explore_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
-    Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_explore_llm_prefix())?,
-    ))
+fn clean_brain_explore_llm_client() -> Result<Box<dyn ChatClient>, String> {
+    Ok(provider_client(&clean_brain_explore_llm_prefix())?.4)
 }
 
-fn clean_brain_intent_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
-    Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_intent_llm_prefix())?,
-    ))
+fn clean_brain_intent_llm_client() -> Result<Box<dyn ChatClient>, String> {
+    Ok(provider_client(&clean_brain_intent_llm_prefix())?.4)
 }
 
-fn clean_brain_brief_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
-    Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_brief_llm_prefix())?,
-    ))
+fn clean_brain_brief_llm_client() -> Result<Box<dyn ChatClient>, String> {
+    Ok(provider_client(&clean_brain_brief_llm_prefix())?.4)
 }
 
-fn clean_brain_deliberate_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
-    Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_deliberate_llm_prefix())?,
-    ))
+fn clean_brain_deliberate_llm_client() -> Result<Box<dyn ChatClient>, String> {
+    Ok(provider_client(&clean_brain_deliberate_llm_prefix())?.4)
 }
 
-fn clean_brain_clarify_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
-    Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_clarify_llm_prefix())?,
-    ))
+fn clean_brain_clarify_llm_client() -> Result<Box<dyn ChatClient>, String> {
+    Ok(provider_client(&clean_brain_clarify_llm_prefix())?.4)
 }
 
-fn clean_brain_agenda_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
-    Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_agenda_llm_prefix())?,
-    ))
+fn clean_brain_agenda_llm_client() -> Result<Box<dyn ChatClient>, String> {
+    Ok(provider_client(&clean_brain_agenda_llm_prefix())?.4)
 }
 
-fn clean_brain_scout_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
-    Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_scout_llm_prefix())?,
-    ))
+fn clean_brain_scout_llm_client() -> Result<Box<dyn ChatClient>, String> {
+    Ok(provider_client(&clean_brain_scout_llm_prefix())?.4)
 }
 
-fn clean_brain_reflect_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
-    Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_reflect_llm_prefix())?,
-    ))
+fn clean_brain_reflect_llm_client() -> Result<Box<dyn ChatClient>, String> {
+    Ok(provider_client(&clean_brain_reflect_llm_prefix())?.4)
 }
 
-fn clean_brain_align_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
-    Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_align_llm_prefix())?,
-    ))
+fn clean_brain_align_llm_client() -> Result<Box<dyn ChatClient>, String> {
+    Ok(provider_client(&clean_brain_align_llm_prefix())?.4)
 }
 
-fn clean_brain_memory_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
-    Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_memory_llm_prefix())?,
-    ))
+fn clean_brain_memory_llm_client() -> Result<Box<dyn ChatClient>, String> {
+    Ok(provider_client(&clean_brain_memory_llm_prefix())?.4)
 }
 
-fn clean_brain_synthesize_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
-    Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_synthesize_llm_prefix())?,
-    ))
+fn clean_brain_synthesize_llm_client() -> Result<Box<dyn ChatClient>, String> {
+    Ok(provider_client(&clean_brain_synthesize_llm_prefix())?.4)
 }
 
-fn clean_brain_goal_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
-    Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_goal_llm_prefix())?,
-    ))
+fn clean_brain_goal_llm_client() -> Result<Box<dyn ChatClient>, String> {
+    Ok(provider_client(&clean_brain_goal_llm_prefix())?.4)
 }
 
-fn clean_brain_rewrite_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
-    Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_rewrite_llm_prefix())?,
-    ))
+fn clean_brain_rewrite_llm_client() -> Result<Box<dyn ChatClient>, String> {
+    Ok(provider_client(&clean_brain_rewrite_llm_prefix())?.4)
 }
 
-fn clean_brain_queue_llm_client() -> Result<OpenAiCompatibleChatClient, String> {
-    Ok(OpenAiCompatibleChatClient::new(
-        OpenAiCompatibleConfig::from_env_prefix(&clean_brain_queue_llm_prefix())?,
-    ))
+fn clean_brain_queue_llm_client() -> Result<Box<dyn ChatClient>, String> {
+    Ok(provider_client(&clean_brain_queue_llm_prefix())?.4)
 }
 
 fn manifest_llm_config() -> Result<OpenAiCompatibleConfig, String> {
@@ -13511,7 +13849,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair continue [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -13603,8 +13941,9 @@ mod tests {
         http_content_length, install_report, is_broken_pipe_panic, localize_summary,
         materialize_bundled_tentacles_root, parse_bridge_env_overlay, parse_first_run_args,
         parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
-        preflight_report, prepare_bridge_state, product_report, provider_status_report,
-        real_machine_record_status_from_parts, repair_report, run, skill_reports, starter_report,
+        preflight_report, prepare_bridge_state, product_report, provider_env_report,
+        provider_status_report, real_machine_record_status_from_parts, repair_continue_report,
+        repair_report, run, save_provider_env_report_with_key, skill_reports, starter_report,
         tentacles_root_ready, update_report, usage, write_pet_image_report, Language,
     };
     use octopus_core::{
@@ -16133,6 +16472,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("explore [--save] [prompt]"));
         assert!(usage().contains("needs [take|drop|script [path]|session [--live] [prompt]]"));
         assert!(usage().contains("repair [query]"));
+        assert!(usage().contains("repair continue [query]"));
         assert!(usage().contains("repair score <trace-index>"));
         assert!(usage().contains("context [kind query]"));
         assert!(usage().contains("provider save <profile>"));
@@ -16424,6 +16764,39 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     }
 
     #[test]
+    fn cli_repair_continue_runs_queued_need_as_feed() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-repair-continue-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+        let mut state = HarnessState::default();
+
+        let report = repair_continue_report(&state_path, &mut state, ".".to_string()).unwrap();
+
+        let taken = report.taken.expect("continued Need");
+        let feedback = report.feedback.expect("continued Feed");
+        assert_eq!(state.feed_traces.len(), 2);
+        assert!(state.need_queue.iter().any(|item| {
+            item.index == taken.item.index && item.status == NeedQueueStatus::Taken
+        }));
+        assert!(feedback
+            .feeds
+            .iter()
+            .any(|feed| feed.metadata.contains_key("feed_trace_index")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.starts_with("octopus feedback ")));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn cli_repair_report_exposes_latest_repair_plan() {
         let _env = env_guard();
         let _cwd = CwdGuard::new();
@@ -16539,6 +16912,99 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(!overlay.iter().any(|(key, _)| key == "PATH"));
 
         restore_env("OPENAI_API_KEY", old_key);
+    }
+
+    #[test]
+    fn provider_profiles_cover_oauth_gateway_and_api_key_paths() {
+        let codex = provider_env_report("codex", "OCTOPUS_CODEX").unwrap();
+        let litellm = provider_env_report("litellm", "OCTOPUS_LITELLM").unwrap();
+        let zai = provider_env_report("zai", "OCTOPUS_ZAI").unwrap();
+
+        assert!(codex.shell.contains("export OCTOPUS_CODEX_BACKEND='codex'"));
+        assert!(codex
+            .shell
+            .contains("export OCTOPUS_CODEX_CODEX_COMMAND=codex"));
+        assert!(litellm
+            .shell
+            .contains("export OCTOPUS_LITELLM_BASE_URL='http://localhost:4000/v1'"));
+        assert!(litellm
+            .shell
+            .contains("export OCTOPUS_LITELLM_API_KEY=\"${LITELLM_API_KEY:-}\""));
+        assert!(zai
+            .shell
+            .contains("export OCTOPUS_ZAI_BASE_URL='https://open.bigmodel.cn/api/paas/v4'"));
+        assert!(zai
+            .shell
+            .contains("export OCTOPUS_ZAI_API_KEY=\"${ZAI_API_KEY:-}\""));
+        assert!(!codex.shell.contains("OCTOPUS_LLM_MANIFEST=1"));
+    }
+
+    #[test]
+    fn provider_status_does_not_overclaim_codex_harness_layers() {
+        let _env = env_guard();
+        let old_manifest = std::env::var("OCTOPUS_LLM_MANIFEST").ok();
+        let old_evolve = std::env::var("OCTOPUS_LLM_EVOLVE").ok();
+        let old_manifest_prefix = std::env::var("OCTOPUS_MANIFEST_LLM_PREFIX").ok();
+        let old_evolve_prefix = std::env::var("OCTOPUS_EVOLVE_LLM_PREFIX").ok();
+        let old_backend = std::env::var("OCTOPUS_CODEX_STATUS_BACKEND").ok();
+        let old_command = std::env::var("OCTOPUS_CODEX_STATUS_CODEX_COMMAND").ok();
+
+        std::env::set_var("OCTOPUS_LLM_MANIFEST", "1");
+        std::env::set_var("OCTOPUS_LLM_EVOLVE", "1");
+        std::env::set_var("OCTOPUS_MANIFEST_LLM_PREFIX", "OCTOPUS_CODEX_STATUS");
+        std::env::set_var("OCTOPUS_EVOLVE_LLM_PREFIX", "OCTOPUS_CODEX_STATUS");
+        std::env::set_var("OCTOPUS_CODEX_STATUS_BACKEND", "codex");
+        std::env::set_var("OCTOPUS_CODEX_STATUS_CODEX_COMMAND", "codex");
+
+        let report = provider_status_report();
+        let tentacle = report
+            .layers
+            .iter()
+            .find(|layer| layer.layer == "tentacle_planning")
+            .unwrap();
+        let evolution = report
+            .layers
+            .iter()
+            .find(|layer| layer.layer == "harness_evolution")
+            .unwrap();
+
+        assert!(tentacle.enabled);
+        assert!(evolution.enabled);
+        assert!(!tentacle.configured);
+        assert!(!evolution.configured);
+        assert!(tentacle.message.contains("LiteLLM"));
+
+        restore_env("OCTOPUS_LLM_MANIFEST", old_manifest);
+        restore_env("OCTOPUS_LLM_EVOLVE", old_evolve);
+        restore_env("OCTOPUS_MANIFEST_LLM_PREFIX", old_manifest_prefix);
+        restore_env("OCTOPUS_EVOLVE_LLM_PREFIX", old_evolve_prefix);
+        restore_env("OCTOPUS_CODEX_STATUS_BACKEND", old_backend);
+        restore_env("OCTOPUS_CODEX_STATUS_CODEX_COMMAND", old_command);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn provider_save_key_writes_secret_without_returning_it() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _env = env_guard();
+        let dir = std::env::temp_dir().join(format!("octopus-provider-key-{}", std::process::id()));
+        let path = dir.join("llm.env");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let old_key = std::env::var("ZAI_API_KEY").ok();
+        std::env::set_var("ZAI_API_KEY", "secret-test-key");
+
+        let report = save_provider_env_report_with_key("zai", "OCTOPUS_ZAI", &path).unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+        let mode = fs::metadata(&path).unwrap().permissions().mode();
+
+        assert!(content.contains("secret-test-key"));
+        assert!(!report.env.shell.contains("secret-test-key"));
+        assert_eq!(mode & 0o777, 0o600);
+
+        restore_env("ZAI_API_KEY", old_key);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

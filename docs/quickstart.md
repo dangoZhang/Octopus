@@ -63,13 +63,59 @@ The app can continue the same loop without opening a shell: starter tentacles, p
 
 ## Optional LLM
 
+Use whichever credential shape you already have.
+
+Codex login/OAuth:
+
 ```bash
+codex login
+octopus provider save codex
+source .octopus/llm.env
+octopus provider check
+```
+
+Direct API key:
+
+```bash
+export OPENAI_API_KEY=...
 octopus provider save openai
 source .octopus/llm.env
 # Optional when your model/provider supports explicit thinking controls:
 # export OCTOPUS_LLM_REASONING_EFFORT=medium
 # export OCTOPUS_LLM_MAX_TOKENS=2048
 octopus provider check
+```
+
+Direct API key saved locally:
+
+```bash
+export ZAI_API_KEY=...
+octopus provider save-key zai
+source .octopus/llm.env
+octopus provider check
+```
+
+Local OpenAI-compatible model:
+
+```bash
+octopus provider save lmstudio
+source .octopus/llm.env
+# edit .octopus/llm.env if your server/model id differs
+octopus provider check
+```
+
+Any provider through a LiteLLM/OpenAI-compatible gateway:
+
+```bash
+# Start LiteLLM separately with your provider key and model routing.
+octopus provider save litellm
+source .octopus/llm.env
+octopus provider check
+```
+
+Then run live Octopus flows:
+
+```bash
 octopus first-run --live "make this repo easier to use"
 octopus brain --agenda --save "what matters next?"
 octopus brain --focus compare --save "which path should the brain compare?"
@@ -78,7 +124,7 @@ octopus brain --council --models OCTOPUS_LLM --save "ask clean brains"
 octopus brain --live --save "what should the brain ask next?"
 ```
 
-OpenAI-compatible profiles include OpenAI, local servers, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.
+OpenAI-compatible profiles include OpenAI, local servers, LiteLLM, Codex CLI OAuth, Z.AI/BigModel, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.
 
 ## Harness Evolution
 
