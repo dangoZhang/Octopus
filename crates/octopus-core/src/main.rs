@@ -123,6 +123,15 @@ struct PetReport {
     exists: bool,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct PetImageReport {
+    pet: PetReport,
+    image_path: String,
+    image_url: String,
+    format: String,
+    bytes: usize,
+}
+
 #[derive(serde::Serialize)]
 struct InitReport {
     state_path: String,
@@ -1466,6 +1475,24 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         Some("pet") => {
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            if rest.get(1).map(String::as_str) == Some("image") {
+                let pet_state = rest.get(2).map(String::as_str).unwrap_or("auto");
+                let report = pet_report_for_state(&loaded, &state, pet_state)?;
+                let image_path = rest
+                    .get(3)
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| default_pet_image_path(&state, &report.state));
+                let report = write_pet_image_report(report, &image_path)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_pet_image_report(&report, language);
+                }
+                return Ok(());
+            }
             let pet_state = rest.get(1).map(String::as_str).unwrap_or("auto");
             let report = pet_report_for_state(&loaded, &state, pet_state)?;
             if json {
@@ -2895,6 +2922,29 @@ fn print_pet_report(report: &PetReport, language: Language) {
             }
             println!("入口: {}", report.target);
             println!("存在: {}", report.exists);
+        }
+    }
+}
+
+fn print_pet_image_report(report: &PetImageReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus pet image");
+            println!("state: {}", report.pet.state);
+            println!("pixel: {}", report.pet.fallback);
+            println!("format: {}", report.format);
+            println!("path: {}", report.image_path);
+            println!("url: {}", report.image_url);
+            println!("bytes: {}", report.bytes);
+        }
+        Language::Zh => {
+            println!("章鱼桌宠图片");
+            println!("状态: {}", report.pet.state);
+            println!("像素: {}", report.pet.fallback);
+            println!("格式: {}", report.format);
+            println!("路径: {}", report.image_path);
+            println!("地址: {}", report.image_url);
+            println!("字节: {}", report.bytes);
         }
     }
 }
@@ -4406,6 +4456,108 @@ fn pet_report(state: &str) -> Result<PetReport, String> {
         exists: path.exists(),
         path: path_text,
     })
+}
+
+const OCTOPUS_PIXEL_ROWS: [&str; 12] = [
+    ".....bbbbb.....",
+    "...bbbbbbbbb...",
+    "..bbbbbbbbbbb..",
+    ".bbbbbbbbbbbbb.",
+    ".bbbbebbbebbbb.",
+    ".bbbbbbbbbbbbb.",
+    "..bbbbbbbbbbb..",
+    "...bbbbbbbbb...",
+    "..bb.bbb.bb....",
+    ".bb..bbb..bb...",
+    "bb...b.b...bb..",
+    "b....b.b....b..",
+];
+
+fn default_pet_image_path(state_path: &Path, state: &str) -> PathBuf {
+    let base = state_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    base.join("pet").join(format!("octopus-{state}.svg"))
+}
+
+fn write_pet_image_report(report: PetReport, path: &Path) -> Result<PetImageReport, String> {
+    let svg = pet_svg(&report);
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    fs::write(path, svg.as_bytes()).map_err(|error| error.to_string())?;
+    let image_path = path.to_string_lossy().to_string();
+    let image_url_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        env::current_dir()
+            .map_err(|error| error.to_string())?
+            .join(path)
+    };
+    Ok(PetImageReport {
+        pet: report,
+        image_url: file_url(&image_url_path),
+        image_path,
+        format: "svg".to_string(),
+        bytes: svg.len(),
+    })
+}
+
+fn pet_svg(report: &PetReport) -> String {
+    let pixel = 16;
+    let gap = 2;
+    let margin = 12;
+    let width = margin * 2 + 15 * pixel + 14 * gap;
+    let height = margin * 2 + OCTOPUS_PIXEL_ROWS.len() as i32 * pixel + 11 * gap;
+    let mut body = String::new();
+    for (row_index, row) in OCTOPUS_PIXEL_ROWS.iter().enumerate() {
+        for (column_index, value) in row.chars().enumerate() {
+            if value == '.' {
+                continue;
+            }
+            let x = margin + column_index as i32 * (pixel + gap);
+            let y = margin + row_index as i32 * (pixel + gap);
+            match value {
+                'b' => body.push_str(&format!(
+                    r#"<rect x="{x}" y="{y}" width="{pixel}" height="{pixel}" rx="2" fill="{}"/>"#,
+                    report.color
+                )),
+                'e' => {
+                    let pupil = 6;
+                    let pupil_x = x + 5;
+                    let pupil_y = y + 5;
+                    body.push_str(&format!(
+                        r##"<rect x="{x}" y="{y}" width="{pixel}" height="{pixel}" rx="2" fill="#ffffff"/><rect x="{pupil_x}" y="{pupil_y}" width="{pupil}" height="{pupil}" rx="1" fill="#101318"/>"##
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img" aria-labelledby="title desc" shape-rendering="crispEdges">
+<title id="title">Octopus pixel pet: {}</title>
+<desc id="desc">{}</desc>
+<rect width="100%" height="100%" rx="8" fill="#f5f7fa"/>
+{}
+</svg>
+"##,
+        xml_escape(&report.title),
+        xml_escape(&report.summary),
+        body
+    )
+}
+
+fn xml_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn file_url(path: &Path) -> String {
@@ -9255,7 +9407,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -9293,7 +9445,7 @@ mod tests {
         install_report, is_broken_pipe_panic, localize_summary, parse_bridge_env_overlay,
         percent_encode_path, pet_report, pet_report_for_state, preflight_report, product_report,
         provider_status_report, real_machine_record_status_from_parts, repair_report, run,
-        skill_reports, starter_report, usage, Language,
+        skill_reports, starter_report, usage, write_pet_image_report, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
@@ -11237,6 +11389,29 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(pet_report("unknown")
             .unwrap_err()
             .contains("unknown pet state"));
+    }
+
+    #[test]
+    fn pet_image_writes_pixel_svg() {
+        let report = pet_report("success").unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "octopus-pet-image-{}-{}.svg",
+            std::process::id(),
+            report.state
+        ));
+        let image = write_pet_image_report(report, &path).unwrap();
+        let svg = fs::read_to_string(&path).unwrap();
+
+        assert_eq!(image.format, "svg");
+        assert_eq!(image.pet.state, "success");
+        assert!(image.image_url.starts_with("file://"));
+        assert!(image.bytes > 100);
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("Octopus pixel pet: Success"));
+        assert!(svg.contains("#16833a"));
+        assert!(svg.contains("shape-rendering=\"crispEdges\""));
+
+        let _ = fs::remove_file(path);
     }
 
     #[test]

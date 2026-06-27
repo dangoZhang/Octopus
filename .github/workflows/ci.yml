@@ -63,6 +63,10 @@ jobs:
           "$tmp/root/bin/octopus" --state "$tmp/state.json" --json check computer-use-agent 1 | grep -q '"results"'
           grep -q '"check_history"' "$tmp/state.json"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" pet harness | grep -q "Octopus pet"
+          "$tmp/root/bin/octopus" --state "$tmp/state.json" pet image harness "$tmp/pet.svg" | grep -q "Octopus pet image"
+          grep -q "<svg" "$tmp/pet.svg"
+          "$tmp/root/bin/octopus" --state "$tmp/state.json" --json pet image success "$tmp/pet-json.svg" | grep -q '"format": "svg"'
+          grep -q "#16833a" "$tmp/pet-json.svg"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" doctor | grep -q "Octopus doctor"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" report | grep -q "Octopus report"
           "$tmp/root/bin/octopus" --state "$tmp/state.json" --json report | grep -q '"capabilities"'

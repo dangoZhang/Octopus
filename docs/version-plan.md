@@ -27,6 +27,6 @@ Real-machine test gate for `0.1.0` and later tags:
 
 Last cleanup/version correction: `0.0.11` on 2026-06-27. Scope: repair action plans, heartbeat plan pickup, repair plan/report/app surfacing, REVIEW.md bundles, trace-aware repair scoring, starter choice feedback, README product landing polish, and version consistency; no tag cut.
 
-Product commits toward `0.0.12`: 2/8.
+Product commits toward `0.0.12`: 3/8.
 
 Next planned cleanup/version commit: `0.0.12`.
