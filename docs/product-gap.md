@@ -22,6 +22,7 @@ Updated: 2026-06-27
 - `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path; `bridge` remains a compatibility alias.
 - `start` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
 - `start` and `bootstrap` can materialize editable bundled seed tentacles under `.octopus/bundled-tentacles` when source tentacles are unavailable.
+- `update` reports the current GitHub reinstall command by default, and `update --run` performs the cargo reinstall explicitly.
 - `bootstrap` creates local state files, adapts to the project, installs seed tentacles, pulses heartbeat, and returns a product report plus next commands.
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
@@ -218,6 +219,7 @@ Updated: 2026-06-27
 - Embedded native HTML pages into the Rust binary as a bridge fallback so installed binaries can serve the app even when source docs are unavailable.
 - Embedded seed tentacle files into the binary and materialized them as editable local harness files for installed whole-project startup.
 - Added `octopus start` as the product-facing whole-project launcher while keeping `octopus bridge` compatible.
+- Added `octopus update` as a dry-run-first update path, with `--run` for explicit GitHub reinstall and bridge limited to dry-run.
 
 ## Remaining Gaps
 

@@ -5,10 +5,12 @@
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
 octopus --version
+octopus update
 octopus start
 ```
 
 Open `http://127.0.0.1:8765/app.html`. `start` prepares local state, seed tentacles, heartbeat state, and the native app surface.
+Run `octopus update --run` when you want to reinstall the latest GitHub version.
 
 ## Source Build
 

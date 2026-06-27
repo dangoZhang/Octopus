@@ -21,6 +21,8 @@ octopus start
 
 Open `http://127.0.0.1:8765/app.html`. `start` prepares local state, seed tentacles, heartbeats, and the native app surface. If no source checkout is present, it creates editable seed tentacles under `.octopus/bundled-tentacles`.
 
+Update later with `octopus update --run`.
+
 Run a first loop:
 
 ```bash

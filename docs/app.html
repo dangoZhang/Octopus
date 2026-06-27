@@ -634,6 +634,7 @@
         const providerProfile = $("providerProfile").value;
         $("commands").textContent = [
           "cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force",
+          "octopus update",
           "octopus providers",
           "octopus provider status",
           `octopus provider save ${providerProfile} ${providerPrefix}`,

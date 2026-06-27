@@ -321,6 +321,20 @@ struct InstallReport {
     next: Vec<String>,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct UpdateReport {
+    current_version: String,
+    command: Vec<String>,
+    shell: String,
+    run: bool,
+    cargo_available: bool,
+    status: String,
+    code: Option<i32>,
+    stdout: String,
+    stderr: String,
+    next: Vec<String>,
+}
+
 #[derive(serde::Serialize)]
 struct InstallGrantReport {
     provider: String,
@@ -2625,6 +2639,26 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
+        Some("update") => {
+            let mut run_update = false;
+            for value in rest.iter().skip(1) {
+                match value.as_str() {
+                    "--run" => run_update = true,
+                    "--dry-run" => run_update = false,
+                    other => return Err(format!("unknown update option: {other}")),
+                }
+            }
+            let report = update_report(run_update);
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_update_report(&report, language);
+            }
+            Ok(())
+        }
         Some("check") => {
             let tentacle_id = rest
                 .get(1)
@@ -3096,6 +3130,47 @@ fn print_install_next(report: &InstallReport, language: Language) {
     }
     for command in &report.next {
         println!("- {command}");
+    }
+}
+
+fn print_update_report(report: &UpdateReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus update");
+            println!("version: {}", report.current_version);
+            println!("status: {}", report.status);
+            println!("command: {}", report.shell);
+            println!("run: {}", report.run);
+            println!("cargo: {}", report.cargo_available);
+            if let Some(code) = report.code {
+                println!("code: {code}");
+            }
+            if !report.stdout.trim().is_empty() {
+                println!("stdout: {}", report.stdout.trim());
+            }
+            if !report.stderr.trim().is_empty() {
+                println!("stderr: {}", report.stderr.trim());
+            }
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼更新");
+            println!("版本: {}", report.current_version);
+            println!("状态: {}", report.status);
+            println!("命令: {}", report.shell);
+            println!("执行: {}", report.run);
+            println!("cargo: {}", report.cargo_available);
+            if let Some(code) = report.code {
+                println!("退出码: {code}");
+            }
+            if !report.stdout.trim().is_empty() {
+                println!("stdout: {}", report.stdout.trim());
+            }
+            if !report.stderr.trim().is_empty() {
+                println!("stderr: {}", report.stderr.trim());
+            }
+            println!("下一步: {}", join_or_none(&report.next));
+        }
     }
 }
 
@@ -4546,6 +4621,9 @@ fn bridge_command_allowed(args: &[String]) -> bool {
     if command == "preflight" {
         return bridge_preflight_allowed(args);
     }
+    if command == "update" {
+        return bridge_update_allowed(args);
+    }
     if command == "self-iterate" && args.iter().any(|arg| arg == "pr") {
         return false;
     }
@@ -4580,6 +4658,17 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "adapt"
             | "self-iterate"
     )
+}
+
+fn bridge_update_allowed(args: &[String]) -> bool {
+    let Some(index) = bridge_command_index(args) else {
+        return false;
+    };
+    args.len() == index + 1
+        || (args.len() == index + 2
+            && args
+                .get(index + 1)
+                .is_some_and(|value| value == "--dry-run"))
 }
 
 fn bridge_repair_allowed(args: &[String]) -> bool {
@@ -6581,6 +6670,12 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             Some("octopus start"),
         ),
         product_capability(
+            "local_update",
+            "ready",
+            "dry-run update report plus explicit cargo install runner",
+            Some("octopus update"),
+        ),
+        product_capability(
             "starter_panel",
             if app_exists { "ready" } else { "missing" },
             "native HTML app renders starter recommendations with evidence signals, choice feedback, install, check, and first-Need actions",
@@ -8528,6 +8623,7 @@ fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorRepo
         next.push(format!("octopus provider check {}", llm.config_prefix));
     }
     next.push("octopus demo dangoZhang/Octopus".to_string());
+    next.push("octopus update".to_string());
     next.push(format!("open {}", pet.path));
     next.sort();
     next.dedup();
@@ -9597,6 +9693,97 @@ fn install_next_commands(
     commands.push(format!("{prefix} need {sample_need} {sample_query}"));
     commands.push(format!("{prefix} doctor"));
     commands
+}
+
+fn update_report(run_update: bool) -> UpdateReport {
+    let command = update_command();
+    let shell = command
+        .iter()
+        .map(|part| shell_arg(part))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let cargo_available = command_ready("cargo");
+    if !run_update {
+        return UpdateReport {
+            current_version: env!("CARGO_PKG_VERSION").to_string(),
+            command,
+            shell,
+            run: false,
+            cargo_available,
+            status: "ready".to_string(),
+            code: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            next: vec![
+                "octopus update --run".to_string(),
+                "octopus start".to_string(),
+            ],
+        };
+    }
+    if !cargo_available {
+        return UpdateReport {
+            current_version: env!("CARGO_PKG_VERSION").to_string(),
+            command,
+            shell,
+            run: true,
+            cargo_available,
+            status: "cargo_missing".to_string(),
+            code: None,
+            stdout: String::new(),
+            stderr: "cargo command is not available".to_string(),
+            next: vec!["cargo --version".to_string(), "octopus update".to_string()],
+        };
+    }
+    match Command::new("cargo").args(command.iter().skip(1)).output() {
+        Ok(output) => {
+            let updated = output.status.success();
+            UpdateReport {
+                current_version: env!("CARGO_PKG_VERSION").to_string(),
+                command,
+                shell,
+                run: true,
+                cargo_available,
+                status: if updated { "updated" } else { "failed" }.to_string(),
+                code: output.status.code(),
+                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                next: if updated {
+                    vec!["octopus --version".to_string(), "octopus start".to_string()]
+                } else {
+                    vec!["octopus update".to_string(), "cargo --version".to_string()]
+                },
+            }
+        }
+        Err(error) => UpdateReport {
+            current_version: env!("CARGO_PKG_VERSION").to_string(),
+            command,
+            shell,
+            run: true,
+            cargo_available,
+            status: "failed_to_start".to_string(),
+            code: None,
+            stdout: String::new(),
+            stderr: error.to_string(),
+            next: vec!["octopus update".to_string(), "cargo --version".to_string()],
+        },
+    }
+}
+
+fn update_command() -> Vec<String> {
+    [
+        "cargo",
+        "install",
+        "--git",
+        "https://github.com/dangoZhang/Octopus",
+        "octopus-core",
+        "--locked",
+        "--bin",
+        "octopus",
+        "--force",
+    ]
+    .iter()
+    .map(|value| value.to_string())
+    .collect()
 }
 
 fn check_report(tentacle_id: &str, selected: Option<usize>) -> Result<CheckReport, String> {
@@ -11486,7 +11673,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | start [addr] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [addr] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -11526,7 +11713,7 @@ mod tests {
         parse_bridge_env_overlay, percent_encode_path, pet_report, pet_report_for_state,
         preflight_report, prepare_bridge_state, product_report, provider_status_report,
         real_machine_record_status_from_parts, repair_report, run, skill_reports, starter_report,
-        tentacles_root_ready, usage, write_pet_image_report, Language,
+        tentacles_root_ready, update_report, usage, write_pet_image_report, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
@@ -13468,6 +13655,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("context [kind query]"));
         assert!(usage().contains("provider save <profile>"));
         assert!(usage().contains("provider status"));
+        assert!(usage().contains("update [--run]"));
         assert!(usage().contains("starter [objective]"));
         assert!(usage().contains("report"));
         assert!(usage().contains("preflight [--live]"));
@@ -14037,6 +14225,26 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "state.json".to_string(),
             "--json".to_string(),
             "report".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "update".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "update".to_string(),
+            "--dry-run".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "update".to_string(),
+            "--run".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),
@@ -15658,6 +15866,19 @@ JSON
         assert!(content.contains("installed_tentacles"));
         assert!(content.contains("tools/read.sh"));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn update_report_defaults_to_dry_run_command() {
+        let report = update_report(false);
+
+        assert_eq!(report.current_version, env!("CARGO_PKG_VERSION"));
+        assert!(!report.run);
+        assert_eq!(report.status, "ready");
+        assert!(report.shell.contains("cargo install --git"));
+        assert!(report.command.contains(&"octopus-core".to_string()));
+        assert!(report.next.contains(&"octopus update --run".to_string()));
+        assert!(report.next.contains(&"octopus start".to_string()));
     }
 
     #[test]
