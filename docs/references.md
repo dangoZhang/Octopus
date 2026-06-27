@@ -2,6 +2,12 @@
 
 Octopus is not a paper clone. It uses these works as pressure tests for the architecture.
 
+## Biological Octopus
+
+- [Xitong Liang, Peking University](https://cqb.pku.edu.cn/cqben/info/1002/1923.htm): frames cephalopods as a model for alternative AI and robotics algorithms because they coordinate high-dimensional skin patterns and soft-arm control. Octopus maps this to a clean intent layer plus local nervous systems at the tool edge.
+- [The dynamics of pattern matching in camouflaging cuttlefish](https://www.nature.com/articles/s41586-023-06259-2): shows flexible, non-stereotyped chromatophore component use during camouflage. Octopus maps this to stable Needs with replaceable implementations: Need describes what, tentacles choose how, the router learns who is good at what.
+- [Neuronal segmentation in cephalopod arms](https://www.nature.com/articles/s41467-024-55475-5): shows segmented arm-cord organization and sucker maps. Octopus maps this to tentacles with local modules, local feedback, and compact Feed back to the clean brain.
+
 ## Tool Use
 
 - [ReAct: Synergizing Reasoning and Acting in Language Models](https://arxiv.org/abs/2210.03629): shows the value of combining reasoning and environment actions. Octopus keeps the main brain lighter by moving concrete action work into tentacles.

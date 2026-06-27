@@ -6,6 +6,7 @@ Updated: 2026-06-27
 
 - Clean brain emits cognitive `Need`; it does not choose tools.
 - Tentacles own LLM prompt, tool metadata, runtime code, and evolution policy.
+- Product story now frames tentacles as local nervous systems: Need stays stable, implementation is replaceable, and RouteBook learns the best supply path from feedback.
 - Harness stores memory, route scores, OAuth grants, installed tentacles, goal state, Feed traces, and check history.
 - Harness also stores scored repair outcomes so repair sessions can become route-learning and heartbeat evidence.
 - Three beats exist: heartbeat, memory compaction, and harness route/evolution recommendation.
@@ -233,6 +234,7 @@ Updated: 2026-06-27
 - Added a native HTML Update panel for safe dry-run update reports and copyable reinstall commands.
 - Removed the old secondary startup CLI route, moved preflight/app docs to `octopus start`, and kept the local app API under the whole-project server.
 - Rolled the cleanup/version cadence to `0.0.13` after launch-and-open startup, bundled seed startup, dry-run update, native update reports, human Goal constraints, clean-brain agenda/model routing, removed stale demo CI checks, removed secondary startup route, README/docs route cleanup, and version consistency.
+- Added the biological Octopus research angle to README, Research Map, and Architecture: Liang lab cephalopod control, flexible chromatophore components, and segmented arm nervous systems now ground the local-nervous-system tentacle model.
 
 ## Remaining Gaps
 

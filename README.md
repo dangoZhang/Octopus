@@ -1,16 +1,21 @@
 # Octopus 🐙
 
-> A clean-brain agent runtime where tools think at the edge.
+> Clean brain. Independent tentacles.
 
 [Open the app](https://dangozhang.github.io/Octopus/app.html) · [Docs](https://dangozhang.github.io/Octopus/) · [Install guide](docs/quickstart.md)
 
-Most agents turn one model into a crowded operator: hold the goal, remember context, read tool manuals, choose commands, parse logs, and repair the adapters that just failed. The hard part starts after the brain is already full.
+Biological octopuses do not push every signal through one brain. Their arms contain local nervous systems. Behavior emerges from intent, local control, and feedback.
 
-Octopus gives the center a smaller job. The main model carries only `Goal + Mem + Need + Feed`. It asks for cognition: verify this, reproduce that, compare options, remember a fact, forget stale context, execute a job, repair a broken path. Tool choice and implementation stay out of its context.
+Octopus brings that idea to agents. The main model carries only `Goal + Mem + Need + Feed`. It asks for cognition: verify this, reproduce that, compare options, remember a fact, forget stale context, execute a job, repair a broken path.
 
-The edge does the work. A tentacle is an LLM prompt, tool metadata, runtime code, local grants, traces, and an editable harness. It can think while using SWE tools, computer-use tools, repo maintenance flows, or local scripts; then it returns compact Feed and improves from scored outcomes.
+The edge does the work. Octopus turns tools into local nervous systems: an LLM prompt, tool metadata, runtime code, local grants, traces, and an editable harness. A tentacle chooses how to observe, execute, verify, and compress Feed without polluting the clean brain.
 
 The runtime keeps three pulses alive: liveness, memory, and harness evolution. A pixel Octopus changes color from real work states, giving the agent a visible body instead of only logs.
+
+```text
+Goal -> Brain -> Need -> Tentacle Intelligence -> Action -> Feed -> Brain
+Heartbeat -> Action Data -> Tentacle harness change
+```
 
 ## Install & Launch
 
