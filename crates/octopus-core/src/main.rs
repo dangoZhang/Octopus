@@ -227,6 +227,47 @@ struct SkillReport {
     llm_ready: bool,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct StarterReport {
+    objective: String,
+    policy: String,
+    state_path: String,
+    installed: Vec<String>,
+    recommendations: Vec<StarterRecommendation>,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct StarterRecommendation {
+    id: String,
+    name: String,
+    source_kind: String,
+    reason: String,
+    installed: bool,
+    llm_ready: bool,
+    needs: Vec<String>,
+    tools: Vec<String>,
+    runtimes: Vec<String>,
+    evolution_surfaces: Vec<String>,
+    install_command: String,
+    first_need_command: String,
+    check_command: String,
+}
+
+#[derive(Debug)]
+struct StarterCandidate {
+    id: String,
+    name: String,
+    source_kind: String,
+    descriptions: BTreeSet<String>,
+    installed: bool,
+    llm_ready: bool,
+    needs: BTreeSet<String>,
+    tools: BTreeSet<String>,
+    runtimes: BTreeSet<String>,
+    evolution_surfaces: BTreeSet<String>,
+}
+
 #[derive(Clone, Debug, serde::Serialize)]
 struct ProviderProfile {
     id: String,
@@ -1637,6 +1678,23 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
+        Some("starter") => {
+            let objective = rest
+                .get(1..)
+                .filter(|values| !values.is_empty())
+                .map(|values| values.join(" "));
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let report = starter_report(&loaded, &state, default_tentacles_root(), objective)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_starter_report(&report, language);
+            }
+            Ok(())
+        }
         Some("skills") => {
             let root = rest
                 .get(1)
@@ -2288,6 +2346,57 @@ fn print_skill_reports(reports: &[SkillReport], language: Language) {
             join_or_none(&report.evolution_surfaces),
             report.description
         );
+    }
+}
+
+fn print_starter_report(report: &StarterReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus starter");
+            println!("objective: {}", report.objective);
+            println!("policy: {}", report.policy);
+            println!("state: {}", report.state_path);
+            println!("installed: {}", join_or_none(&report.installed));
+            println!("recommendations:");
+            for item in &report.recommendations {
+                let status = if item.installed {
+                    "installed"
+                } else {
+                    "available"
+                };
+                println!(
+                    "- {} [{}; {}; llm={}] {}",
+                    item.id, item.source_kind, status, item.llm_ready, item.reason
+                );
+                println!("  install: {}", item.install_command);
+                println!("  first_need: {}", item.first_need_command);
+                println!("  check: {}", item.check_command);
+            }
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼启动推荐");
+            println!("目标: {}", report.objective);
+            println!("策略: {}", report.policy);
+            println!("状态文件: {}", report.state_path);
+            println!("已安装: {}", join_or_none(&report.installed));
+            println!("推荐:");
+            for item in &report.recommendations {
+                let status = if item.installed {
+                    "已安装"
+                } else {
+                    "可安装"
+                };
+                println!(
+                    "- {} [{}; {}; LLM={}] {}",
+                    item.id, item.source_kind, status, item.llm_ready, item.reason
+                );
+                println!("  安装: {}", item.install_command);
+                println!("  第一条Need: {}", item.first_need_command);
+                println!("  检查: {}", item.check_command);
+            }
+            println!("下一步: {}", join_or_none(&report.next));
+        }
     }
 }
 
@@ -3386,6 +3495,7 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "install"
             | "skills"
             | "catalog"
+            | "starter"
             | "manifests"
             | "providers"
             | "routes"
@@ -4161,6 +4271,323 @@ fn skill_reports(state: &HarnessState, root: PathBuf) -> Result<Vec<SkillReport>
     Ok(reports)
 }
 
+fn starter_report(
+    state: &HarnessState,
+    state_path: &Path,
+    root: PathBuf,
+    objective: Option<String>,
+) -> Result<StarterReport, String> {
+    let objective = objective
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| state.goal.as_ref().map(|goal| goal.objective.clone()))
+        .unwrap_or_else(|| "start Octopus on this project".to_string());
+    let keywords = starter_keywords(&objective);
+    let mut candidates = BTreeMap::<String, StarterCandidate>::new();
+    for skill in skill_reports(state, root)? {
+        let entry = candidates
+            .entry(skill.source.clone())
+            .or_insert_with(|| StarterCandidate {
+                id: skill.source.clone(),
+                name: title_from_id(&skill.source),
+                source_kind: skill.source_kind.clone(),
+                descriptions: BTreeSet::new(),
+                installed: skill.installed,
+                llm_ready: skill.llm_ready,
+                needs: BTreeSet::new(),
+                tools: BTreeSet::new(),
+                runtimes: BTreeSet::new(),
+                evolution_surfaces: BTreeSet::new(),
+            });
+        entry.descriptions.insert(skill.description);
+        entry.installed |= skill.installed;
+        entry.llm_ready |= skill.llm_ready;
+        entry.needs.extend(skill.needs);
+        entry.tools.extend(skill.tools);
+        entry.runtimes.extend(skill.runtimes);
+        entry.evolution_surfaces.extend(skill.evolution_surfaces);
+    }
+
+    let mut scored = candidates
+        .into_values()
+        .map(|candidate| {
+            let matched = starter_matches(&candidate, &keywords);
+            let score = (matched.len() as i32 * 10) + starter_priority_score(&candidate.id);
+            (score, matched, candidate)
+        })
+        .collect::<Vec<_>>();
+    scored.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then_with(|| starter_priority(&left.2.id).cmp(&starter_priority(&right.2.id)))
+            .then_with(|| left.2.id.cmp(&right.2.id))
+    });
+
+    let state_path_text = state_path.to_string_lossy().to_string();
+    let mut recommendations = Vec::new();
+    for (_, matched, candidate) in scored.into_iter().take(6) {
+        let needs = candidate.needs.iter().cloned().collect::<Vec<_>>();
+        let tools = candidate.tools.iter().cloned().collect::<Vec<_>>();
+        let runtimes = candidate.runtimes.iter().cloned().collect::<Vec<_>>();
+        let evolution_surfaces = candidate
+            .evolution_surfaces
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        let first_need = starter_need_kind(&objective, &needs);
+        let reason = if matched.is_empty() {
+            "starter coverage from manifest metadata".to_string()
+        } else {
+            format!("matches {}", matched.join(", "))
+        };
+        recommendations.push(StarterRecommendation {
+            id: candidate.id.clone(),
+            name: candidate.name,
+            source_kind: candidate.source_kind,
+            reason,
+            installed: candidate.installed,
+            llm_ready: candidate.llm_ready,
+            needs,
+            tools,
+            runtimes,
+            evolution_surfaces,
+            install_command: octopus_state_command(
+                state_path,
+                &["install".to_string(), candidate.id.clone()],
+            ),
+            first_need_command: octopus_state_command(
+                state_path,
+                &["need".to_string(), first_need, shell_value(&objective)],
+            ),
+            check_command: octopus_state_command(
+                state_path,
+                &["check".to_string(), candidate.id.clone()],
+            ),
+        });
+    }
+
+    let mut installed = state.installed_profiles.clone();
+    installed.extend(
+        state
+            .installed_tentacles
+            .iter()
+            .map(|tentacle| tentacle.id.clone()),
+    );
+    installed.sort();
+    installed.dedup();
+
+    let mut next = Vec::new();
+    if let Some(first) = recommendations.first() {
+        if !first.installed {
+            next.push(first.install_command.clone());
+        }
+        next.push(first.first_need_command.clone());
+        next.push(first.check_command.clone());
+    }
+    next.push("octopus bridge".to_string());
+    next.sort();
+    next.dedup();
+
+    Ok(StarterReport {
+        objective,
+        policy: "choose starter tentacles from profile and manifest metadata; no tool execution"
+            .to_string(),
+        state_path: state_path_text,
+        installed,
+        recommendations,
+        next,
+    })
+}
+
+fn starter_keywords(objective: &str) -> BTreeSet<String> {
+    let mut keywords = words_for_match(objective);
+    if contains_any(
+        &keywords,
+        &[
+            "bug", "code", "edit", "file", "fix", "patch", "repo", "test",
+        ],
+    ) {
+        keywords.extend(words_for_match(
+            "code repo edit inspect patch test swe repository implementation",
+        ));
+    }
+    if contains_any(
+        &keywords,
+        &[
+            "browser", "computer", "desktop", "mcp", "screen", "ui", "window",
+        ],
+    ) {
+        keywords.extend(words_for_match(
+            "computer desktop browser window screenshot mcp ui clipboard",
+        ));
+    }
+    if contains_any(
+        &keywords,
+        &["github", "pr", "publish", "release", "workflow", "ci"],
+    ) {
+        keywords.extend(words_for_match(
+            "github pull request workflow release maintainer publish",
+        ));
+    }
+    if contains_any(
+        &keywords,
+        &["beat", "evolve", "harness", "heartbeat", "repair"],
+    ) {
+        keywords.extend(words_for_match(
+            "harness repair heartbeat evolution adapter diagnostics",
+        ));
+    }
+    if contains_any(
+        &keywords,
+        &["compare", "evidence", "research", "source", "verify"],
+    ) {
+        keywords.extend(words_for_match(
+            "verify compare observe evidence source research",
+        ));
+    }
+    if contains_any(&keywords, &["forget", "memory", "recall", "remember"]) {
+        keywords.extend(words_for_match("memory remember recall forget compact"));
+    }
+    if contains_any(&keywords, &["bash", "script", "shell"]) {
+        keywords.extend(words_for_match("bash shell script execute"));
+    }
+    if contains_any(
+        &keywords,
+        &["feed", "json", "python", "runtime", "structured"],
+    ) {
+        keywords.extend(words_for_match("json python structured feed runtime"));
+    }
+    keywords
+}
+
+fn starter_matches(candidate: &StarterCandidate, keywords: &BTreeSet<String>) -> Vec<String> {
+    let haystack = words_for_match(&format!(
+        "{} {} {} {} {} {}",
+        candidate.id,
+        candidate.name,
+        candidate
+            .descriptions
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" "),
+        candidate
+            .needs
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" "),
+        candidate
+            .tools
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" "),
+        candidate
+            .runtimes
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" ")
+    ));
+    let mut matched = keywords
+        .iter()
+        .filter(|keyword| haystack.contains(*keyword))
+        .take(6)
+        .cloned()
+        .collect::<Vec<_>>();
+    matched.sort();
+    matched
+}
+
+fn words_for_match(value: &str) -> BTreeSet<String> {
+    value
+        .split(|ch: char| !ch.is_ascii_alphanumeric())
+        .filter_map(|word| {
+            let normalized = word.to_ascii_lowercase();
+            ((normalized.len() > 2 || matches!(normalized.as_str(), "ci" | "pr" | "ui"))
+                && !starter_stopword(&normalized))
+            .then_some(normalized)
+        })
+        .collect()
+}
+
+fn starter_stopword(word: &str) -> bool {
+    matches!(
+        word,
+        "and"
+            | "are"
+            | "can"
+            | "for"
+            | "from"
+            | "how"
+            | "into"
+            | "make"
+            | "next"
+            | "should"
+            | "that"
+            | "the"
+            | "this"
+            | "use"
+            | "what"
+            | "with"
+    )
+}
+
+fn contains_any(words: &BTreeSet<String>, values: &[&str]) -> bool {
+    values.iter().any(|value| words.contains(*value))
+}
+
+fn starter_priority(id: &str) -> i32 {
+    match id {
+        "swe-agent" => 0,
+        "computer-use-agent" => 1,
+        "harness-repair-agent" => 2,
+        "json-feed" => 3,
+        "repo-maintainer" => 4,
+        "bash-only" => 5,
+        "research" => 6,
+        "memory" => 7,
+        "visual" => 8,
+        _ => 20,
+    }
+}
+
+fn starter_priority_score(id: &str) -> i32 {
+    20 - starter_priority(id)
+}
+
+fn starter_need_kind(objective: &str, needs: &[String]) -> String {
+    let words = words_for_match(objective);
+    let contains = |value: &str| needs.iter().any(|need| need == value);
+    if contains_any(&words, &["run", "execute", "build", "fix", "publish"]) && contains("execute") {
+        "execute".to_string()
+    } else if contains_any(&words, &["check", "test", "verify"]) && contains("verify") {
+        "verify".to_string()
+    } else if contains_any(&words, &["compare", "choose"]) && contains("compare") {
+        "compare".to_string()
+    } else if contains_any(&words, &["remember", "memory"]) && contains("remember") {
+        "remember".to_string()
+    } else if contains("observe") {
+        "observe".to_string()
+    } else {
+        needs
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "observe".to_string())
+    }
+}
+
+fn octopus_state_command(state_path: &Path, args: &[String]) -> String {
+    let mut parts = vec!["octopus".to_string()];
+    if state_path != Path::new(".octopus/state.json") {
+        parts.push("--state".to_string());
+        parts.push(shell_value(&state_path.to_string_lossy()));
+    }
+    parts.extend(args.iter().cloned());
+    parts.join(" ")
+}
+
 fn need_label(kind: &NeedKind) -> String {
     match kind {
         NeedKind::Verify => "verify",
@@ -4468,6 +4895,12 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             "ready",
             "Goal/Mem/Need/Feed exploration returns Need suggestions without tool execution",
             Some("octopus explore"),
+        ),
+        product_capability(
+            "clean_brain_audit",
+            "ready",
+            "clean-brain Goal and exploration reports flag Need text that carries tool or implementation burden",
+            Some("octopus brain --live \"what should the brain ask next?\""),
         ),
         product_capability(
             "need_queue",
@@ -5519,6 +5952,7 @@ fn print_brain_explore(report: &BrainExploreReport, language: Language) {
                     .unwrap_or("none")
             );
             println!("summary: {}", report.summary);
+            println!("audit: {}", brain_audit_line(&report.audit));
             for need in &report.needs {
                 println!("need: {} {}", need_label(&need.kind), need.query);
             }
@@ -5539,6 +5973,7 @@ fn print_brain_explore(report: &BrainExploreReport, language: Language) {
                     .unwrap_or("无")
             );
             println!("摘要: {}", report.summary);
+            println!("审计: {}", brain_audit_line(&report.audit));
             for need in &report.needs {
                 println!("Need: {} {}", need_label(&need.kind), need.query);
             }
@@ -5567,6 +6002,7 @@ fn print_brain_goal(report: &BrainGoalReport, language: Language) {
             println!("goal: {}", report.goal.objective);
             println!("constraints: {}", report.goal.constraints.len());
             println!("summary: {}", report.summary);
+            println!("audit: {}", brain_audit_line(&report.audit));
             for need in &report.needs {
                 println!("need: {} {}", need_label(&need.kind), need.query);
             }
@@ -5581,6 +6017,7 @@ fn print_brain_goal(report: &BrainGoalReport, language: Language) {
             println!("目标: {}", report.goal.objective);
             println!("约束: {}", report.goal.constraints.len());
             println!("摘要: {}", report.summary);
+            println!("审计: {}", brain_audit_line(&report.audit));
             for need in &report.needs {
                 println!("Need: {} {}", need_label(&need.kind), need.query);
             }
@@ -5589,6 +6026,19 @@ fn print_brain_goal(report: &BrainGoalReport, language: Language) {
             }
         }
     }
+}
+
+fn brain_audit_line(audit: &octopus_core::BrainNeedAudit) -> String {
+    if audit.issue_count == 0 {
+        return audit.summary.clone();
+    }
+    let signals = audit
+        .issues
+        .iter()
+        .map(|issue| format!("#{} {}", issue.index, issue.signal))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{} ({signals})", audit.summary)
 }
 
 fn print_need_queue_save(report: &NeedQueueSaveReport, language: Language) {
@@ -7934,7 +8384,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -8701,6 +9151,20 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     fn cli_catalog_and_env_commands_run() {
         let _env = env_guard();
         run(vec!["catalog".to_string()]).unwrap();
+        run(vec![
+            "starter".to_string(),
+            "fix".to_string(),
+            "repo".to_string(),
+            "tests".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--json".to_string(),
+            "starter".to_string(),
+            "use".to_string(),
+            "desktop".to_string(),
+        ])
+        .unwrap();
         run(vec!["providers".to_string()]).unwrap();
         run(vec!["--json".to_string(), "providers".to_string()]).unwrap();
         run(vec!["provider".to_string(), "status".to_string()]).unwrap();
@@ -8779,6 +9243,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("context [kind query]"));
         assert!(usage().contains("provider save <profile>"));
         assert!(usage().contains("provider status"));
+        assert!(usage().contains("starter [objective]"));
         assert!(usage().contains("report"));
         assert!(usage().contains("preflight [--live]"));
         assert!(usage().contains("preflight script [path]"));
@@ -9008,6 +9473,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "state.json".to_string(),
             "--json".to_string(),
             "bootstrap".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "starter".to_string(),
+            "fix".to_string(),
+            "repo".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),

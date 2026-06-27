@@ -21,6 +21,7 @@ The loop stays small enough to inspect and strong enough to grow: ask, feed evid
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
 octopus --version
 octopus bootstrap
+octopus starter "make this repo easier to use"
 octopus bridge
 ```
 
@@ -30,6 +31,7 @@ Run the first local loop:
 
 ```bash
 octopus goal set "make this repo easier to use"
+octopus starter "make this repo easier to use"
 octopus brain "what should the brain ask next?"
 octopus explore --save "what should the brain ask next?"
 octopus needs

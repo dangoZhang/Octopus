@@ -389,6 +389,7 @@ pub struct BrainExploreReport {
     pub recent: Vec<BrainContextTurn>,
     pub summary: String,
     pub needs: Vec<GoalNeedSuggestion>,
+    pub audit: BrainNeedAudit,
     pub next: Vec<String>,
 }
 
@@ -413,7 +414,26 @@ pub struct BrainGoalReport {
     pub goal: Goal,
     pub summary: String,
     pub needs: Vec<GoalNeedSuggestion>,
+    pub audit: BrainNeedAudit,
     pub next: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainNeedAudit {
+    pub status: Status,
+    pub summary: String,
+    pub clean_count: usize,
+    pub issue_count: usize,
+    pub issues: Vec<BrainNeedAuditIssue>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainNeedAuditIssue {
+    pub index: usize,
+    pub kind: NeedKind,
+    pub query: String,
+    pub signal: String,
+    pub guidance: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -1854,6 +1874,7 @@ impl HarnessState {
             previous_goal,
             goal,
             summary,
+            audit: audit_clean_brain_needs(&refinement.needs),
             needs: refinement.needs,
             next,
         }
@@ -1867,6 +1888,7 @@ impl HarnessState {
         summary: impl Into<String>,
         needs: Vec<GoalNeedSuggestion>,
     ) -> BrainExploreReport {
+        let audit = audit_clean_brain_needs(&needs);
         let next = if needs.is_empty() {
             vec!["octopus goal set \"describe your goal\"".to_string()]
         } else {
@@ -1890,6 +1912,7 @@ impl HarnessState {
             recent: brain.turns,
             summary: summary.into(),
             needs,
+            audit,
             next,
         }
     }
@@ -7364,6 +7387,79 @@ fn local_brain_explore_needs(brain: &BrainContextReport, prompt: &str) -> Vec<Go
         .collect()
 }
 
+fn audit_clean_brain_needs(needs: &[GoalNeedSuggestion]) -> BrainNeedAudit {
+    let issues = needs
+        .iter()
+        .enumerate()
+        .filter_map(|(index, need)| {
+            implementation_signal(&need.query).map(|signal| BrainNeedAuditIssue {
+                index: index + 1,
+                kind: need.kind.clone(),
+                query: need.query.clone(),
+                signal: signal.to_string(),
+                guidance: "rewrite as a cognitive request and let Feed choose implementation"
+                    .to_string(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let issue_count = issues.len();
+    let clean_count = needs.len().saturating_sub(issue_count);
+    let status = if issue_count == 0 {
+        Status::Satisfied
+    } else {
+        Status::Partial
+    };
+    let summary = if issue_count == 0 {
+        "all Needs stay cognitive".to_string()
+    } else {
+        format!("{issue_count} Need(s) carry implementation detail")
+    };
+    BrainNeedAudit {
+        status,
+        summary,
+        clean_count,
+        issue_count,
+        issues,
+    }
+}
+
+fn implementation_signal(query: &str) -> Option<&'static str> {
+    let trimmed = query.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let command_prefixes = [
+        "cargo ", "git ", "python ", "python3 ", "node ", "npm ", "pnpm ", "yarn ", "curl ",
+        "bash ", "sh ", "gh ", "octopus ",
+    ];
+    if trimmed.contains("```")
+        || trimmed.contains("$ ")
+        || command_prefixes
+            .iter()
+            .any(|prefix| lower.starts_with(prefix))
+    {
+        return Some("command");
+    }
+    let implementation_terms = [
+        " tool",
+        " api",
+        " mcp",
+        " shell",
+        "terminal",
+        "clipboard",
+        "browser",
+        "endpoint",
+    ];
+    if implementation_terms.iter().any(|term| lower.contains(term)) {
+        return Some("tool_or_api");
+    }
+    let file_markers = [
+        ".rs", ".py", ".js", ".ts", ".json", ".toml", ".yaml", ".yml", ".md", "/", "\\",
+    ];
+    if file_markers.iter().any(|marker| lower.contains(marker)) {
+        return Some("file_or_path");
+    }
+    None
+}
+
 fn status_key(status: &Status) -> &'static str {
     match status {
         Status::Satisfied => "satisfied",
@@ -8385,6 +8481,8 @@ mod tests {
             .needs
             .iter()
             .any(|need| need.kind == NeedKind::Verify));
+        assert_eq!(report.audit.status, Status::Satisfied);
+        assert_eq!(report.audit.issue_count, 0);
         assert!(state.feed_traces.is_empty());
         assert!(state.routes.scores.is_empty());
     }
@@ -8422,6 +8520,45 @@ mod tests {
         assert_eq!(report.source, "llm");
         assert_eq!(report.summary, "clean exploration");
         assert_eq!(report.needs[0].kind, NeedKind::Compare);
+        assert_eq!(report.audit.status, Status::Satisfied);
+        assert_eq!(report.audit.summary, "all Needs stay cognitive");
+    }
+
+    #[test]
+    fn clean_brain_need_audit_flags_implementation_burden_without_feed() {
+        let state = HarnessState {
+            goal: Some(Goal::new("keep main brain clean")),
+            ..HarnessState::default()
+        };
+        let report = state.clean_brain_explore_from_draft(
+            "what next",
+            5,
+            BrainExploreDraft {
+                summary: "external reply".to_string(),
+                needs: vec![
+                    GoalNeedSuggestion {
+                        kind: NeedKind::Verify,
+                        query: "check whether the goal is satisfied".to_string(),
+                    },
+                    GoalNeedSuggestion {
+                        kind: NeedKind::Execute,
+                        query: "cargo test -p octopus-core".to_string(),
+                    },
+                    GoalNeedSuggestion {
+                        kind: NeedKind::Observe,
+                        query: "read crates/octopus-core/src/lib.rs".to_string(),
+                    },
+                ],
+            },
+        );
+
+        assert_eq!(report.audit.status, Status::Partial);
+        assert_eq!(report.audit.clean_count, 1);
+        assert_eq!(report.audit.issue_count, 2);
+        assert_eq!(report.audit.issues[0].signal, "command");
+        assert_eq!(report.audit.issues[1].signal, "file_or_path");
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
     }
 
     #[test]
@@ -8464,6 +8601,7 @@ mod tests {
         );
         assert_eq!(report.summary, "goal tuned");
         assert_eq!(report.needs[0].kind, NeedKind::Verify);
+        assert_eq!(report.audit.status, Status::Satisfied);
         assert_eq!(state.goal_turns.len(), 1);
         assert_eq!(state.pending_need_queue_count(), 1);
         assert_eq!(saved.queued.len(), 1);

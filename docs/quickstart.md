@@ -5,6 +5,8 @@
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
 octopus --version
+octopus bootstrap
+octopus starter "make this repo easier to use"
 octopus doctor
 ```
 
@@ -16,6 +18,8 @@ cargo install --path crates/octopus-core --bin octopus --force
 tmp=$(mktemp -d)
 octopus demo dangoZhang/Octopus
 octopus catalog
+octopus starter "fix repo tests"
+octopus --json starter "use desktop and browser"
 octopus skills
 octopus manifests
 octopus providers
@@ -176,6 +180,7 @@ json-feed observe
 Octopus context
 Octopus think
 plan_source: rule
+audit: all Needs stay cognitive
 feed_trace: json-feed/feed via rule
 Feed traces
 Octopus repair
