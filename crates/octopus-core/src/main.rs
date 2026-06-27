@@ -3117,6 +3117,9 @@ fn bridge_command_allowed(args: &[String]) -> bool {
     if command == "feedback" {
         return bridge_feedback_allowed(args);
     }
+    if command == "repair" {
+        return bridge_repair_allowed(args);
+    }
     if command == "provider" {
         return bridge_provider_allowed(args);
     }
@@ -3133,7 +3136,6 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "brain"
             | "explore"
             | "needs"
-            | "repair"
             | "think"
             | "need"
             | "bootstrap"
@@ -3157,6 +3159,26 @@ fn bridge_command_allowed(args: &[String]) -> bool {
             | "adapt"
             | "self-iterate"
     )
+}
+
+fn bridge_repair_allowed(args: &[String]) -> bool {
+    let Some(index) = bridge_command_index(args) else {
+        return false;
+    };
+    let rest = &args[index + 1..];
+    if rest.first().map(String::as_str) != Some("score") {
+        return true;
+    }
+    let Some(trace_index) = rest.get(1) else {
+        return false;
+    };
+    let Some(status) = rest.get(2) else {
+        return false;
+    };
+    parse_trace_index(trace_index).is_ok()
+        && parse_status(status).is_ok_and(|status| {
+            matches!(status, Status::Satisfied | Status::Partial | Status::Failed)
+        })
 }
 
 fn bridge_preflight_allowed(args: &[String]) -> bool {
@@ -7996,6 +8018,34 @@ mod tests {
             "--json".to_string(),
             "repair".to_string(),
             ".".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "repair".to_string(),
+            "score".to_string(),
+            "1".to_string(),
+            "satisfied".to_string(),
+            "reviewed from app".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "repair".to_string(),
+            "score".to_string(),
+            "0".to_string(),
+            "satisfied".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "repair".to_string(),
+            "score".to_string(),
+            "1".to_string(),
+            "unsupported".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),
