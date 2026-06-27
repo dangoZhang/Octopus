@@ -359,9 +359,29 @@ struct RepairReport {
     state_path: String,
     tentacle: String,
     feed: Feed,
+    repair_plan: Option<RepairPlanReport>,
     queued: Vec<NeedQueueItem>,
     queue: NeedQueueReport,
     next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct RepairPlanReport {
+    path: String,
+    status: String,
+    schema: String,
+    session: String,
+    target_tentacle: String,
+    target_tool: String,
+    candidate: String,
+    review_boundary: String,
+    check_command: String,
+    grant_command: String,
+    apply_command: String,
+    score_command: String,
+    suggested_commands: String,
+    next_need_kind: String,
+    next_need_query: String,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -1943,6 +1963,15 @@ fn print_repair_report(report: &RepairReport, language: Language) {
             if let Some(index) = report.feed.metadata.get("feed_trace_index") {
                 println!("trace_index: {index}");
             }
+            if let Some(plan) = &report.repair_plan {
+                println!("repair_plan: {}", plan.path);
+                println!("plan_status: {}", plan.status);
+                println!("target: {}/{}", plan.target_tentacle, plan.target_tool);
+                print_optional_line("check", &plan.check_command);
+                print_optional_line("grant", &plan.grant_command);
+                print_optional_line("apply", &plan.apply_command);
+                print_optional_line("score", &plan.score_command);
+            }
             println!("queued: {}", report.queued.len());
             for item in &report.queued {
                 println!(
@@ -1962,6 +1991,15 @@ fn print_repair_report(report: &RepairReport, language: Language) {
             if let Some(index) = report.feed.metadata.get("feed_trace_index") {
                 println!("Feed轨迹编号: {index}");
             }
+            if let Some(plan) = &report.repair_plan {
+                println!("修复计划: {}", plan.path);
+                println!("计划状态: {}", plan.status);
+                println!("目标: {}/{}", plan.target_tentacle, plan.target_tool);
+                print_optional_line("检查", &plan.check_command);
+                print_optional_line("授权", &plan.grant_command);
+                print_optional_line("应用", &plan.apply_command);
+                print_optional_line("评分", &plan.score_command);
+            }
             println!("排队Need: {}", report.queued.len());
             for item in &report.queued {
                 println!(
@@ -1973,6 +2011,12 @@ fn print_repair_report(report: &RepairReport, language: Language) {
             }
             println!("下一步: {}", join_or_none(&report.next));
         }
+    }
+}
+
+fn print_optional_line(label: &str, value: &str) {
+    if !value.trim().is_empty() {
+        println!("{label}: {value}");
     }
 }
 
@@ -5006,7 +5050,12 @@ fn repair_report(
     } else {
         None
     };
-    let need = Need::new(NeedKind::Observe, query.clone());
+    let need_kind = if latest_repair_plan_for_query(&query).is_some() {
+        NeedKind::Verify
+    } else {
+        NeedKind::Observe
+    };
+    let need = Need::new(need_kind, query.clone());
     let mut feed = feed_tentacle(&root, tentacle_id, &need, llm_config, &state.grants)?;
     feed.metadata
         .insert("tentacle".to_string(), tentacle_id.to_string());
@@ -5023,11 +5072,24 @@ fn repair_report(
             feed.summary.clone(),
         ));
     }
+    let repair_plan = repair_plan_report_from_feed(&feed);
     let queue = state.need_queue_report(8);
     let mut next = queued
         .iter()
         .map(|item| format!("octopus needs take {}", item.index))
         .collect::<Vec<_>>();
+    if let Some(plan) = &repair_plan {
+        for command in [
+            &plan.check_command,
+            &plan.grant_command,
+            &plan.apply_command,
+            &plan.score_command,
+        ] {
+            if !command.trim().is_empty() {
+                next.push(command.to_string());
+            }
+        }
+    }
     next.push("octopus needs".to_string());
     next.push("octopus beat 200".to_string());
     next.push("octopus traces".to_string());
@@ -5037,10 +5099,80 @@ fn repair_report(
         state_path: state_path.to_string_lossy().to_string(),
         tentacle: tentacle_id.to_string(),
         feed,
+        repair_plan,
         queued,
         queue,
         next,
     })
+}
+
+fn latest_repair_plan_for_query(query: &str) -> Option<PathBuf> {
+    let workspace = repair_workspace_from_query(query).ok()?;
+    let repair_root = workspace.join(".octopus/harness-repair");
+    let mut latest: Option<(SystemTime, PathBuf)> = None;
+    for entry in fs::read_dir(repair_root).ok()? {
+        let path = entry.ok()?.path().join("REPAIR_PLAN.json");
+        if !path.exists() {
+            continue;
+        }
+        let modified = fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .unwrap_or(UNIX_EPOCH);
+        if latest.as_ref().map_or(true, |(time, _)| modified > *time) {
+            latest = Some((modified, path));
+        }
+    }
+    latest.map(|(_, path)| path)
+}
+
+fn repair_workspace_from_query(query: &str) -> Result<PathBuf, String> {
+    let token = query
+        .split_whitespace()
+        .next()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(".");
+    let mut path = PathBuf::from(token);
+    if !path.is_absolute() {
+        path = env::current_dir()
+            .map_err(|error| error.to_string())?
+            .join(path);
+    }
+    if path.is_file() {
+        path = path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+    }
+    if !path.exists() || !path.is_dir() {
+        return env::current_dir().map_err(|error| error.to_string());
+    }
+    path.canonicalize().map_err(|error| error.to_string())
+}
+
+fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
+    let metadata = &feed.metadata;
+    let path = metadata.get("repair_plan")?.to_string();
+    Some(RepairPlanReport {
+        path,
+        status: metadata_value(metadata, "repair_plan_status"),
+        schema: metadata_value(metadata, "repair_plan_schema"),
+        session: metadata_value(metadata, "repair_plan_session"),
+        target_tentacle: metadata_value(metadata, "target_tentacle"),
+        target_tool: metadata_value(metadata, "target_tool"),
+        candidate: metadata_value(metadata, "candidate"),
+        review_boundary: metadata_value(metadata, "review_boundary"),
+        check_command: metadata_value(metadata, "check_command"),
+        grant_command: metadata_value(metadata, "grant_command"),
+        apply_command: metadata_value(metadata, "apply_command"),
+        score_command: metadata_value(metadata, "score_command"),
+        suggested_commands: metadata_value(metadata, "suggested_commands"),
+        next_need_kind: metadata_value(metadata, "next_need_kind"),
+        next_need_query: metadata_value(metadata, "next_need_query"),
+    })
+}
+
+fn metadata_value(metadata: &BTreeMap<String, String>, key: &str) -> String {
+    metadata.get(key).cloned().unwrap_or_default()
 }
 
 fn repair_next_need_from_feed(feed: &Feed) -> Option<GoalNeedSuggestion> {
@@ -8678,8 +8810,8 @@ mod tests {
         bridge_command_allowed, bridge_command_name, check_report, http_content_length,
         install_report, is_broken_pipe_panic, localize_summary, parse_bridge_env_overlay,
         percent_encode_path, pet_report, pet_report_for_state, preflight_report, product_report,
-        provider_status_report, real_machine_record_status_from_parts, run, skill_reports,
-        starter_report, usage, Language,
+        provider_status_report, real_machine_record_status_from_parts, repair_report, run,
+        skill_reports, starter_report, usage, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
@@ -9654,6 +9786,53 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(queued.source, "harness-repair-agent");
         assert_eq!(queued.need.kind, NeedKind::Verify);
         assert!(queued.need.query.contains("Feed trace"));
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_repair_report_exposes_latest_repair_plan() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-repair-plan-report-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+        let state = state_path.to_string_lossy().to_string();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "install".to_string(),
+            "harness-repair-agent".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state,
+            "need".to_string(),
+            "execute".to_string(),
+            dir.to_string_lossy().to_string(),
+        ])
+        .unwrap();
+
+        let mut restored = HarnessState::load(&state_path).unwrap();
+        let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        assert_eq!(
+            report.feed.metadata.get("tool").map(String::as_str),
+            Some("heartbeat_repair")
+        );
+        let plan = report.repair_plan.expect("repair plan report");
+        assert!(plan.path.ends_with("REPAIR_PLAN.json"));
+        assert_eq!(plan.status, "review_required");
+        assert_eq!(plan.target_tool, "repair_session");
+        assert!(plan.grant_command.contains("harness:write"));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command == &plan.grant_command));
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
     }

@@ -1543,6 +1543,8 @@
         const feed = report.feed || null;
         root.appendChild(feedSummary({ status: feed && feed.status }, feed));
         root.appendChild(reportList("Feed", feed ? [feed] : [], feedItem));
+        const plan = repairPlanSummary(report.repair_plan);
+        if (plan) root.appendChild(plan);
         const controls = repairScoreControls(report);
         if (controls) root.appendChild(controls);
         if (currentRepairScoreReport) {
@@ -1551,6 +1553,39 @@
         }
         root.appendChild(reportList("Queued Need", report.queued || [], needQueueItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function repairPlanSummary(plan) {
+        if (!plan) return null;
+        const section = document.createElement("div");
+        section.className = "stack";
+        const title = document.createElement("h3");
+        title.textContent = "Repair Plan";
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Plan", plan.path || "none"],
+          ["Status", plan.status || "unknown"],
+          ["Target", `${plan.target_tentacle || "unknown"}/${plan.target_tool || "unknown"}`],
+          ["Candidate", plan.candidate || "none"],
+          ["Check", plan.check_command || "none"],
+          ["Grant", plan.grant_command || "none"],
+          ["Apply", plan.apply_command || "none"],
+          ["Score", plan.score_command || "none"],
+          ["Next Need", `${plan.next_need_kind || "verify"} ${plan.next_need_query || ""}`],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          span.title = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        section.append(title, grid);
+        return section;
       }
 
       function repairTraceIndex(report) {

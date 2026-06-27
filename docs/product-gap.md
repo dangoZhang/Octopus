@@ -43,7 +43,7 @@ Updated: 2026-06-27
 - The native HTML app can paste an external brain reply and apply it to Need Queue or Goal through the bridge.
 - The native HTML app can take or drop individual queued Needs, write the pending Need Queue into a local reviewable Feed script, and write offline or live clean-brain review sessions.
 - `harness-repair-agent` can diagnose state, traces, check history, evolution artifacts, repo dirtiness, provider env, and local adapters as structured Feed.
-- `repair [query]` runs the harness-repair tentacle, records the Feed trace, and queues the tentacle's structured next Need for review.
+- `repair [query]` runs the harness-repair tentacle, records the Feed trace, exposes the latest repair plan when present, and queues the tentacle's structured next Need for review.
 - The native HTML app can score a repair Feed as satisfied, partial, or failed, then render the recent repair outcome memory.
 - Repair scoring mirrors session-backed outcomes into `.octopus/harness-repair/<session>/OUTCOME.md` and `outcomes.jsonl`.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
@@ -180,6 +180,7 @@ Updated: 2026-06-27
 - Rolled the cleanup/version cadence to `0.0.10` after starter recommendation grouping/filtering, product-page README trim, clean-brain Need audit, repair-score journals, repair-session outcome/code context, app/report wording cleanup, and version consistency.
 - Added repair-session action plans so each session writes `REPAIR_PLAN.json` with check, grant, apply, score, code-context, and outcome-memory boundaries.
 - Added heartbeat repair plan pickup so verify Needs read the latest `REPAIR_PLAN.json` and return the next review/grant/apply/score Feed.
+- Added repair-plan surfacing in `octopus repair` and the native Repair panel so users can see the latest plan path and review commands without digging into metadata.
 - Added starter recommendation evidence signals so each card can explain its group, objective matches, Needs, tools, runtimes, evolution surfaces, LLM readiness, and install state.
 
 ## Remaining Gaps
@@ -193,7 +194,7 @@ Updated: 2026-06-27
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, clean-brain layer diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
 - GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
-- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, render/filter starter recommendation cards, run starter install/check/first-Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect repair plans, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, render/filter starter recommendation cards, run starter install/check/first-Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
