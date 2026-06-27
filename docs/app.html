@@ -473,6 +473,7 @@
           <div class="toolbar">
             <button type="button" data-run="init">Init</button>
             <button type="button" data-run="bootstrap">Bootstrap</button>
+            <button type="button" data-run="starter">Starter</button>
             <button type="button" data-run="install">Install</button>
             <button type="button" id="installGuide">Install Report</button>
             <button type="button" id="runChecks">Run Checks</button>
@@ -614,6 +615,7 @@
           "octopus bridge",
           `octopus --state ${shellQuote(state)} init`,
           `octopus --state ${shellQuote(state)} --json bootstrap`,
+          `octopus --state ${shellQuote(state)} --json starter ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json install ${tentacle}`,
           `octopus --state ${shellQuote(state)} --json check ${tentacle}`,
@@ -664,6 +666,7 @@
         const args = {
           init: [...base, "init"],
           bootstrap: [...base, "--json", "bootstrap"],
+          starter: [...base, "--json", "starter", goal],
           install: [...base, "install", tentacle],
           goalset: [...base, "goal", "set", goal],
           chat: [...base, "chat", goal],
