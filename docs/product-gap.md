@@ -37,6 +37,7 @@ Updated: 2026-06-27
 - The native HTML app can paste an external brain reply and apply it to Need Queue or Goal through the bridge.
 - `harness-repair-agent` can diagnose state, traces, check history, evolution artifacts, repo dirtiness, provider env, and local adapters as structured Feed.
 - `repair [query]` runs the harness-repair tentacle, records the Feed trace, and queues the tentacle's structured next Need for review.
+- The native HTML app can score a repair Feed as satisfied, partial, or failed, then render the recent repair outcome memory.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
 - The HTML install guide can expand each check to inspect stdout, stderr, exit code, and recent harness check history.
 - `check <tentacle> [index]` records compact harness history and the HTML install guide can rerun one check at a time.
@@ -153,19 +154,21 @@ Updated: 2026-06-27
 - Rolled the cleanup/version cadence to `0.0.8` after clean-brain Goal history/import, provider-routed clean-brain calls, harness repair queue/drafts, real-machine record gate, and README/control-surface cleanup.
 - Added harness repair outcome memory so reviewed repair sessions can be scored locally and reused by later repair sessions without exposing tool logs to the clean brain.
 - Added `repair score <trace-index> <status>` so reviewed repair Feed can update route learning, pet state, product reports, and heartbeat compaction.
+- Tightened README into a product-page first surface with the clear-brain value, pixel Octopus, runnable install path, and current usable loop above docs links.
+- Added native HTML Repair outcome controls so a repair session can be scored from the app without shell use.
 
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
 - LLM evolution can generate candidates and provider-assisted patch drafts from manifest surfaces, scored outcomes, recent Feed traces, and check history; local candidates now also target traced or failing runtime files, and harness beat can start from Feed trace or check feedback while app and CLI patch writes stay review/grant-bound.
-- Harness-repair diagnosis can now queue its next Need and remember reviewed session outcomes; closing the loop still needs real provider-backed repairs scored through that outcome journal.
+- Harness-repair diagnosis can now queue its next Need, remember reviewed session outcomes, and accept repair scoring from CLI or the native app; closing the loop still needs real provider-backed repairs scored through that outcome journal.
 - Product reporting is available in CLI and app; report quality still needs feedback from real project states.
 - Preflight now exposes the release gate and record template; current readiness still depends on running that gate with live provider, OAuth PR publishing, scored feedback data, and appending a current-head or docs-only parent-recorded result.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, clean-brain layer diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
 - GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
-- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, run structured Feed tests, score Feed traces, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, run structured Feed tests, score Feed traces, score repair outcomes, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
@@ -175,7 +178,7 @@ Updated: 2026-06-27
 - Exercise Feed feedback outcomes from real tasks against the new route report and tune route choices from that evidence.
 - Exercise clipboard read/write on a real desktop with grants and record OS-specific behavior.
 - Apply and score the next Feed-trace- or check-driven seed-tentacle improvement through the app review/grant loop.
-- Run `repair` after bootstrap, take the queued Need, and score whether the resulting Feed improves the harness.
+- Run `repair` after bootstrap, take the queued Need, and score whether the resulting Feed improves the harness from the app.
 - Use `octopus report` after every product cycle to pick the next highest-impact gap.
 - Exercise provider-assisted patch drafts with a real LLM provider and score the result through the review/grant loop.
 - Turn window/browser diagnostics into richer native control adapters.

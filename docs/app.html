@@ -590,6 +590,7 @@
       let currentExploreReport = null;
       let currentNeedQueueReport = null;
       let currentRepairReport = null;
+      let currentRepairScoreReport = null;
 
       function render(stateName = "harness") {
         currentPetState = stateName;
@@ -626,6 +627,7 @@
           `octopus --state ${shellQuote(state)} --json explore --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json needs`,
           `octopus --state ${shellQuote(state)} --json repair ${shellQuote(target)}`,
+          `octopus --state ${shellQuote(state)} --json repair score 1 satisfied ${shellQuote("repair improved harness")}`,
           `octopus --state ${shellQuote(state)} --json need ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} --json context ${need} ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} feedback 1 satisfied ${shellQuote("feed worked")}`,
@@ -945,6 +947,7 @@
         try {
           const report = await runBridgeJson(["--state", state, "--json", "repair", target]);
           currentRepairReport = report;
+          currentRepairScoreReport = null;
           currentNeedQueueReport = report.queue || null;
           renderRepairReport(report);
           if (report.queue) renderNeedQueueReport(report.queue);
@@ -1368,10 +1371,88 @@
         const root = $("repairReport");
         root.className = "stack";
         root.textContent = "";
-        root.appendChild(feedSummary({ status: report.feed && report.feed.status }, report.feed));
-        root.appendChild(reportList("Feed", report.feed ? [report.feed] : [], feedItem));
+        const feed = report.feed || null;
+        root.appendChild(feedSummary({ status: feed && feed.status }, feed));
+        root.appendChild(reportList("Feed", feed ? [feed] : [], feedItem));
+        const controls = repairScoreControls(report);
+        if (controls) root.appendChild(controls);
+        if (currentRepairScoreReport) {
+          root.appendChild(repairScoreSummary(currentRepairScoreReport));
+          root.appendChild(reportList("Recent Repair Outcomes", currentRepairScoreReport.recent || [], repairOutcomeItem));
+        }
         root.appendChild(reportList("Queued Need", report.queued || [], needQueueItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function repairTraceIndex(report) {
+        return traceIndexForFeed(report && report.feed);
+      }
+
+      function repairScoreControls(report) {
+        const trace = repairTraceIndex(report);
+        if (!trace) return null;
+        const wrap = document.createElement("div");
+        wrap.className = "feedback-controls";
+        const noteLabel = document.createElement("label");
+        noteLabel.textContent = "Repair outcome";
+        const note = document.createElement("input");
+        note.value = `reviewed repair feed #${trace}`;
+        noteLabel.appendChild(note);
+        const buttons = document.createElement("div");
+        buttons.className = "toolbar";
+        [
+          ["satisfied", "Satisfied"],
+          ["partial", "Partial"],
+          ["failed", "Failed"],
+        ].forEach(([status, label]) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = label;
+          button.addEventListener("click", () => scoreRepair(trace, status, note.value));
+          buttons.appendChild(button);
+        });
+        wrap.append(noteLabel, buttons);
+        return wrap;
+      }
+
+      function repairScoreSummary(report) {
+        const outcome = report && report.outcome;
+        if (!outcome) return null;
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Outcome", outcome.index ? `#${outcome.index}` : "none"],
+          ["Trace", outcome.trace_index ? `#${outcome.trace_index}` : "none"],
+          ["Status", outcome.status || "unknown"],
+          ["Score", outcome.score == null ? "none" : Number(outcome.score).toFixed(2)],
+          ["Summary", outcome.summary || "none"],
+          ["Recent", String((report.recent || []).length)],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        return grid;
+      }
+
+      function repairOutcomeItem(outcome) {
+        const item = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = outcome.status === "satisfied" ? "badge ok" : outcome.status === "failed" ? "badge failed" : "badge";
+        badge.textContent = `${outcome.status || "unknown"} · ${outcome.score == null ? "n/a" : Number(outcome.score).toFixed(2)}`;
+        const command = document.createElement("span");
+        command.className = "check-command";
+        command.textContent = `#${outcome.index || "?"} · trace ${outcome.trace_index || "none"}`;
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        meta.textContent = outcome.summary || "no summary";
+        item.append(badge, command, meta);
+        return item;
       }
 
       function needQueueItem(item) {
@@ -1889,6 +1970,36 @@
         }
       }
 
+      async function scoreRepair(trace, status, summary) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        try {
+          const report = await runBridgeJson([
+            "--state",
+            state,
+            "--json",
+            "repair",
+            "score",
+            String(trace),
+            status,
+            summary || "reviewed repair outcome",
+          ]);
+          currentRepairScoreReport = report;
+          if (currentRepairReport) {
+            const feed = currentRepairReport.feed;
+            if (feed) {
+              feed.status = status;
+              feed.summary = summary || feed.summary;
+              feed.metadata = feed.metadata || {};
+              feed.metadata.feed_trace_index = String(trace);
+            }
+            renderRepairReport(currentRepairReport);
+          }
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("output").textContent = String(error);
+        }
+      }
+
       function beatItem(beat) {
         const item = document.createElement("li");
         const badge = document.createElement("span");
@@ -2332,6 +2443,7 @@
         currentExploreReport = null;
         currentNeedQueueReport = null;
         currentRepairReport = null;
+        currentRepairScoreReport = null;
         render();
       });
       $("installGuide").addEventListener("click", runInstallReport);
@@ -2383,6 +2495,7 @@
           currentExploreReport = null;
           currentNeedQueueReport = null;
           currentRepairReport = null;
+          currentRepairScoreReport = null;
           $("providerReport").className = "metric";
           $("providerReport").innerHTML = "<span>No provider status yet.</span>";
           $("feedReport").className = "metric";
