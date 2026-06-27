@@ -1613,6 +1613,35 @@ where
         .map_err(|error| format!("invalid clean-brain explore JSON: {error}"))
 }
 
+fn brain_brief_from_chat<C>(
+    brain: &BrainContextReport,
+    prompt: &str,
+    client: &mut C,
+) -> Result<BrainExploreDraft, String>
+where
+    C: ChatClient,
+{
+    let context = serde_json::json!({
+        "policy": brain.policy,
+        "slots": brain.slots,
+        "goal": brain.goal,
+        "mem": brain.mem,
+        "recent_need_feed": brain.turns,
+    });
+    let response = client.chat(&[
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain brief layer. You see only Goal, Mem, Need, and Feed. Compress the current cognitive state into a compact brief for another strong model, then express the next cognitive Needs only. Do not choose tools, APIs, files, commands, routes, tentacles, or implementation. Return only JSON: {\"summary\":\"short cognitive brief\",\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!("Clean brain context JSON: {context}\nUser brief prompt: {prompt}"),
+        ),
+    ])?;
+    serde_json::from_str::<BrainExploreDraft>(&response.content)
+        .map_err(|error| format!("invalid clean-brain brief JSON: {error}"))
+}
+
 fn brain_intent_from_chat<C>(
     brain: &BrainContextReport,
     prompt: &str,
@@ -2292,6 +2321,40 @@ impl HarnessState {
         self.brain_explore_report(brain, prompt, "external_chat", draft.summary, draft.needs)
     }
 
+    pub fn clean_brain_brief(&self, prompt: impl Into<String>, limit: usize) -> BrainExploreReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let needs = local_brain_brief_needs(&brain, &prompt);
+        let summary = format!("clean-brain brief for {}", clean_focus(&brain, &prompt));
+        self.brain_brief_report(brain, prompt, "local_brief", summary, needs)
+    }
+
+    pub fn clean_brain_brief_with_client<C>(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        client: &mut C,
+    ) -> Result<BrainExploreReport, String>
+    where
+        C: ChatClient,
+    {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let draft = brain_brief_from_chat(&brain, &prompt, client)?;
+        Ok(self.brain_brief_report(brain, prompt, "llm_brief", draft.summary, draft.needs))
+    }
+
+    pub fn clean_brain_brief_from_draft(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        draft: BrainExploreDraft,
+    ) -> BrainExploreReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        self.brain_brief_report(brain, prompt, "external_brief", draft.summary, draft.needs)
+    }
+
     pub fn clean_brain_intent(
         &self,
         prompt: impl Into<String>,
@@ -2942,6 +3005,35 @@ impl HarnessState {
         } else {
             report.next.push(format!(
                 "octopus brain --intent --save {}",
+                shell_arg(&prompt)
+            ));
+        }
+        report.next.sort();
+        report.next.dedup();
+        report
+    }
+
+    fn brain_brief_report(
+        &self,
+        brain: BrainContextReport,
+        prompt: String,
+        source: &str,
+        summary: impl Into<String>,
+        needs: Vec<GoalNeedSuggestion>,
+    ) -> BrainExploreReport {
+        let mut report = self.brain_explore_report(brain, prompt.clone(), source, summary, needs);
+        report
+            .next
+            .push("octopus brain --brief --session".to_string());
+        if report.audit.clean_needs.is_empty() {
+            if report.audit.issue_count == 0 {
+                report
+                    .next
+                    .push(format!("octopus brain --brief {}", shell_arg(&prompt)));
+            }
+        } else {
+            report.next.push(format!(
+                "octopus brain --brief --save {}",
                 shell_arg(&prompt)
             ));
         }
@@ -8859,6 +8951,45 @@ fn local_brain_explore_needs(brain: &BrainContextReport, prompt: &str) -> Vec<Go
         .collect()
 }
 
+fn local_brain_brief_needs(brain: &BrainContextReport, prompt: &str) -> Vec<GoalNeedSuggestion> {
+    let focus = clean_focus(brain, prompt);
+    let mut needs = vec![
+        GoalNeedSuggestion {
+            kind: NeedKind::Observe,
+            query: format!("compact current cognitive state for {focus}"),
+        },
+        GoalNeedSuggestion {
+            kind: NeedKind::Verify,
+            query: format!("which claims in the brief are supported for {focus}"),
+        },
+    ];
+    if brain.mem.is_empty() {
+        needs.push(GoalNeedSuggestion {
+            kind: NeedKind::Remember,
+            query: format!("brief-worthy durable context for {focus}"),
+        });
+    } else {
+        needs.push(GoalNeedSuggestion {
+            kind: NeedKind::Recall,
+            query: format!("memory that should be carried into the brief for {focus}"),
+        });
+    }
+    if let Some(turn) = brain.turns.last() {
+        needs.push(GoalNeedSuggestion {
+            kind: NeedKind::Compare,
+            query: format!("latest Feed against the brief for {}", turn.need.query),
+        });
+    }
+    let mut seen = BTreeMap::new();
+    needs
+        .into_iter()
+        .filter(|need| {
+            let key = format!("{}:{}", kind_key(&need.kind), need.query);
+            seen.insert(key, ()).is_none()
+        })
+        .collect()
+}
+
 fn local_brain_intent_needs(brain: &BrainContextReport, prompt: &str) -> Vec<GoalNeedSuggestion> {
     let focus = clean_focus(brain, prompt);
     let mut needs = vec![
@@ -10537,6 +10668,88 @@ mod tests {
         assert_eq!(report.needs[0].kind, NeedKind::Compare);
         assert_eq!(report.audit.status, Status::Satisfied);
         assert_eq!(report.audit.summary, "all Needs stay cognitive");
+    }
+
+    #[test]
+    fn clean_brain_brief_compacts_context_without_feed() {
+        let mut state = HarnessState {
+            goal: Some(Goal::new("keep latest model context clean")),
+            ..HarnessState::default()
+        };
+        state
+            .memory
+            .remember("brief should carry durable goal context");
+        let need = Need::new(NeedKind::Verify, "goal evidence");
+        state.record_feed_trace_from_feed(&Feed::satisfied(
+            &need,
+            "verified clean boundary",
+            "swe-agent",
+        ));
+
+        let report = state.clean_brain_brief("prepare next model turn", 5);
+        let saved = state.queue_exploration_report(&report);
+
+        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
+        assert_eq!(report.source, "local_brief");
+        assert!(report.summary.contains("clean-brain brief"));
+        assert!(report
+            .needs
+            .iter()
+            .any(|need| need.kind == NeedKind::Observe));
+        assert!(report
+            .needs
+            .iter()
+            .any(|need| need.kind == NeedKind::Verify));
+        assert!(report
+            .needs
+            .iter()
+            .any(|need| need.kind == NeedKind::Recall));
+        assert_eq!(report.audit.status, Status::Satisfied);
+        assert!(report
+            .next
+            .iter()
+            .any(|next| next.contains("brain --brief --save")));
+        assert_eq!(saved.queued.len(), report.audit.clean_needs.len());
+        assert!(state.routes.scores.is_empty());
+    }
+
+    #[test]
+    fn clean_brain_brief_with_client_keeps_context_clean() {
+        struct FakeChat;
+
+        impl ChatClient for FakeChat {
+            fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                let combined = messages
+                    .iter()
+                    .map(|message| message.content.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert!(combined.contains("clean-brain brief layer"));
+                assert!(combined.contains("Goal, Mem, Need, and Feed"));
+                assert!(combined.contains("Do not choose tools"));
+                assert!(!combined.contains("ToolSpec"));
+                Ok(ChatResponse {
+                    content: r#"{"summary":"compact cognitive brief","needs":[{"kind":"verify","query":"which claims remain uncertain"},{"kind":"compare","query":"which goal direction deserves attention"}]}"#.to_string(),
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
+        let state = HarnessState {
+            goal: Some(Goal::new("give the next LLM a clean brief")),
+            ..HarnessState::default()
+        };
+        let mut client = FakeChat;
+        let report = state
+            .clean_brain_brief_with_client("compress the brain state", 5, &mut client)
+            .unwrap();
+
+        assert_eq!(report.source, "llm_brief");
+        assert_eq!(report.summary, "compact cognitive brief");
+        assert_eq!(report.needs[0].kind, NeedKind::Verify);
+        assert_eq!(report.audit.status, Status::Satisfied);
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
     }
 
     #[test]
