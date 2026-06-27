@@ -44,17 +44,9 @@ Use an OpenAI-compatible provider for live clean-brain calls and tool-side plann
 octopus provider save openai
 source .octopus/llm.env
 octopus provider check
-octopus brain --llm-prefix OCTOPUS_LLM --agenda --save "what matters next?"
-octopus brain --council --models OCTOPUS_LLM --save "ask clean brains"
-octopus brain --intent --save "what should the brain intend next?"
 octopus brain --brief --save "compress the clean brain state"
-octopus brain --agenda --save "what matters next?"
-octopus brain --clarify --save "what should the user clarify?"
-octopus brain --deliberate --save "think before the next Need"
-octopus brain --reflect --save "what evidence is missing?"
-octopus brain --memory --save "what should be remembered?"
-octopus brain --focus compare --save "which path should the brain compare?"
-octopus brain --live --save "what should the brain ask next?"
+octopus brain --intent --save "what should the brain ask next?"
+octopus need verify .
 ```
 
 Strong-model knobs such as `OCTOPUS_LLM_REASONING_EFFORT`, `OCTOPUS_LLM_MAX_TOKENS`, and `OCTOPUS_LLM_EXTRA_BODY` stay in provider env, outside Need text.
@@ -66,4 +58,4 @@ Strong-model knobs such as `OCTOPUS_LLM_REASONING_EFFORT`, `OCTOPUS_LLM_MAX_TOKE
 - Tool-side LLM planning with grants, traces, route scores, feedback scoring, and reviewable feedback-driven harness evolution.
 - Native HTML app server, install reports, provider setup, preflight gates, and pixel pet SVG export.
 
-Pre-release line: `0.0.14`. `0.1.0` waits for recorded real-machine testing.
+Pre-release line: `0.0.15`. `0.1.0` waits for recorded real-machine testing.

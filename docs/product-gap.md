@@ -263,6 +263,7 @@ Updated: 2026-06-28
 - Added `first-run --live` plus native app CLI/live loop buttons so the whole-project first run can include live provider readiness without making network calls the default.
 - Added `preflight record append` plus native app append buttons so checked real-machine evidence can move into the release log without manual copy/paste.
 - Made `evolve score` return a full score report with recent outcomes, next recommendation, apply artifacts, and native app rendering so feedback directly drives the next harness move.
+- Rolled the cleanup/version cadence to `0.0.15` after clean-brain brief compaction, live first-run gating, real-machine record append, score-to-next harness evolution, README trim, app cleanup, and version consistency.
 
 ## Remaining Gaps
 
