@@ -50,6 +50,18 @@ def load_json(path):
         return {}
 
 
+def load_jsonl(path, limit=5):
+    if not path.exists():
+        return []
+    rows = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return rows[-limit:]
+
+
 def rel(path, root):
     try:
         return str(path.relative_to(root))
@@ -270,6 +282,9 @@ workspace = workspace_from(sys.argv[2:], payload)
 loaded_provider_keys = load_provider_env(workspace)
 state_path = Path(os.environ.get("OCTOPUS_STATE", workspace / ".octopus" / "state.json")).expanduser()
 state = load_json(state_path)
+repair_root = workspace / ".octopus" / "harness-repair"
+repair_outcomes = load_jsonl(repair_root / "outcomes.jsonl", 6)
+latest_repair_outcome = repair_outcomes[-1] if repair_outcomes else {}
 feed_traces = state.get("feed_traces") or []
 check_history = state.get("check_history") or []
 latest_trace = feed_traces[-1] if feed_traces else {}
@@ -322,12 +337,18 @@ elif latest_trace and str(latest_trace.get("status", "")).lower() in {"failed", 
     target_tentacle = str(latest_trace.get("tentacle") or "unknown")
     source = compact(latest_trace.get("summary", "feed_trace"))
     next_need = f"execute beat repair for {target_tentacle}"
+elif str(latest_repair_outcome.get("outcome_status", "")).lower() in {"failed", "partial"}:
+    target_tentacle = str(latest_repair_outcome.get("target_tentacle") or "unknown")
+    candidate = str(latest_repair_outcome.get("candidate") or "none")
+    source = f"repair_outcome:{compact(latest_repair_outcome.get('session', 'session'))}"
+    next_need = f"execute beat repair after {latest_repair_outcome.get('outcome_status')} repair outcome"
+    commands = ["octopus beat 200", "octopus repair .", "octopus report"]
 elif not provider_ready:
     next_need = "verify provider setup"
     source = "provider_env_missing"
     commands = ["octopus provider save openai", "octopus provider status"]
 
-session_root = workspace / ".octopus" / "harness-repair"
+session_root = repair_root
 session_root.mkdir(parents=True, exist_ok=True)
 session_id = time.strftime("%Y%m%d-%H%M%S")
 session_dir = session_root / session_id
@@ -342,6 +363,11 @@ prompt_md = session_dir / "PROMPT.md"
 draft_md = session_dir / "DRAFT.md"
 next_need_json = session_dir / "NEXT_NEED.json"
 command_script = session_dir / "COMMANDS.sh"
+outcome_command = (
+    "tentacles/harness-repair-agent/tools/repair_outcome.sh "
+    f"{shlex.quote(str(workspace))} {shlex.quote(rel(session_json, workspace))} "
+    "satisfied \"repair improved Feed\""
+)
 next_need_kind, next_need_query = need_parts(next_need)
 session = {
     "schema_version": "octopus-harness-repair-session-v1",
@@ -357,6 +383,8 @@ session = {
         "check_history": len(check_history),
         "apply_plans": len(apply_plans),
         "proposals": len(proposals),
+        "repair_outcomes": len(repair_outcomes),
+        "latest_repair_outcome": latest_repair_outcome,
         "provider_ready": provider_ready,
         "provider_env_loaded": loaded_provider_keys,
         "repair_llm_enabled": enabled_flag("OCTOPUS_REPAIR_LLM"),
@@ -380,6 +408,9 @@ command_script.write_text(
             "",
             "# Review this generated harness repair script before running it.",
             *commands,
+            "",
+            "# After review, record the outcome so later repair sessions can learn from it.",
+            outcome_command,
             "",
         ]
     ),
@@ -412,7 +443,14 @@ prompt_md.write_text(
             f"- check history: {len(check_history)}",
             f"- apply plans: {len(apply_plans)}",
             f"- proposals: {len(proposals)}",
+            f"- repair outcomes: {len(repair_outcomes)}",
             f"- provider ready: {provider_ready}",
+            "",
+            "recent repair outcomes:",
+            *[
+                f"- {compact(item.get('outcome_status', 'unknown'))}: {compact(item.get('summary', ''))}"
+                for item in repair_outcomes[-3:]
+            ],
             "",
             "artifacts:",
             f"- session: `{rel(session_json, workspace)}`",
@@ -451,6 +489,7 @@ session_md.write_text(
             f"draft: `{rel(draft_md, workspace)}`",
             f"next need: `{rel(next_need_json, workspace)}`",
             f"commands: `{rel(command_script, workspace)}`",
+            f"outcome command: `{outcome_command}`",
         ]
     )
     + "\n",
@@ -469,6 +508,8 @@ metadata = {
     "llm_prefix": draft["prefix"],
     "next_need_file": rel(next_need_json, workspace),
     "command_script": rel(command_script, workspace),
+    "outcome_command": outcome_command,
+    "repair_outcome_count": str(len(repair_outcomes)),
     "target_tentacle": target_tentacle,
     "candidate": candidate,
     "next_need_kind": next_need_kind,

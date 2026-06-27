@@ -52,6 +52,17 @@
       }
     },
     {
+      "id": "repair_outcome",
+      "description": "Record a reviewed harness repair session outcome so future repair sessions can learn from it.",
+      "input": "workspace root, SESSION.json path, outcome status, and summary, or octopus-json-v1 Need",
+      "output": "JSON Feed with OUTCOME.md, outcomes.jsonl path, and next Need",
+      "implementation": {
+        "kind": "shell",
+        "entrypoint": "tools/repair_outcome.sh",
+        "contract": "octopus-json-v1"
+      }
+    },
+    {
       "id": "adapter_probe",
       "description": "Probe local command, provider, desktop, and GitHub adapters needed by common tentacles.",
       "input": "octopus-json-v1 tool call or workspace root",
@@ -91,11 +102,13 @@
       "tools/diagnose_harness.sh . | python3 -m json.tool > /dev/null",
       "tools/heartbeat_repair.sh . | python3 -m json.tool > /dev/null",
       "tools/repair_session.sh $(mktemp -d) | python3 -m json.tool > /dev/null",
+      "tmp=$(mktemp -d); tools/repair_session.sh \"$tmp\" > /dev/null; tools/repair_outcome.sh \"$tmp\" satisfied reviewed | python3 -m json.tool > /dev/null",
       "tools/adapter_probe.sh . | python3 -m json.tool > /dev/null"
     ],
     "constraints": [
       "Return repair plans as Feed before writing patches.",
       "Keep provider repair drafts optional and reviewable.",
+      "Record repair outcomes before using them as future repair evidence.",
       "Require explicit harness:write grants before apply artifacts.",
       "Keep clean-brain context limited to Goal, Mem, Need, and Feed."
     ]
