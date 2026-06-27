@@ -42,9 +42,9 @@
     },
     {
       "id": "repair_session",
-      "description": "Write a reviewable LLM-ready self-repair session from heartbeat, evolution, and adapter signals.",
+      "description": "Write a reviewable self-repair session and optional provider-generated repair draft from heartbeat, evolution, and adapter signals.",
       "input": "workspace root or octopus-json-v1 Need",
-      "output": "JSON Feed with SESSION, PROMPT, NEXT_NEED, COMMANDS paths, and the next repair Need",
+      "output": "JSON Feed with SESSION, PROMPT, DRAFT, NEXT_NEED, COMMANDS paths, and the next repair Need",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/repair_session.sh",
@@ -95,6 +95,7 @@
     ],
     "constraints": [
       "Return repair plans as Feed before writing patches.",
+      "Keep provider repair drafts optional and reviewable.",
       "Require explicit harness:write grants before apply artifacts.",
       "Keep clean-brain context limited to Goal, Mem, Need, and Feed."
     ]

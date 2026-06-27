@@ -10,7 +10,10 @@ fi
 python3 - "$payload_file" "$@" <<'PY'
 import json
 import os
+import re
+import shlex
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -58,6 +61,58 @@ def compact(value, limit=180):
     return " ".join(str(value).split())[:limit]
 
 
+def enabled_flag(name):
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def first_env(names, default=""):
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return default
+
+
+def expand_env_value(value):
+    def replace_default(match):
+        return os.environ.get(match.group(1), match.group(2)) or ""
+
+    value = re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*):-([^}]*)\}", replace_default, value)
+    return re.sub(
+        r"\$([A-Za-z_][A-Za-z0-9_]*)",
+        lambda match: os.environ.get(match.group(1), ""),
+        value,
+    )
+
+
+def load_provider_env(workspace):
+    path = workspace / ".octopus" / "llm.env"
+    loaded = []
+    if not path.exists():
+        return loaded
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        try:
+            parts = shlex.split(line, comments=True, posix=True)
+        except ValueError:
+            continue
+        for part in parts:
+            if "=" not in part:
+                continue
+            key, value = part.split("=", 1)
+            if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key):
+                continue
+            if key in os.environ:
+                continue
+            os.environ[key] = expand_env_value(value)
+            loaded.append(key)
+    return loaded
+
+
 def need_parts(value):
     text = compact(value, 240)
     if not text:
@@ -71,8 +126,148 @@ def need_parts(value):
     return "execute", text
 
 
+def llm_draft(prompt, session, workspace):
+    prefix = first_env(
+        ["OCTOPUS_REPAIR_LLM_PREFIX", "OCTOPUS_EVOLVE_LLM_PREFIX"],
+        "OCTOPUS_LLM",
+    )
+    if not enabled_flag("OCTOPUS_REPAIR_LLM"):
+        return {
+            "status": "disabled",
+            "prefix": prefix,
+            "model": "",
+            "content": "Set `OCTOPUS_REPAIR_LLM=1` to let this tentacle ask the configured provider for a reviewable repair draft.",
+        }
+
+    model = os.environ.get(f"{prefix}_MODEL", "").strip()
+    if not model:
+        return {
+            "status": "missing_config",
+            "prefix": prefix,
+            "model": "",
+            "content": f"{prefix}_MODEL is required. Run `octopus provider save openai {prefix}` or source `.octopus/llm.env`.",
+        }
+
+    base_url = os.environ.get(f"{prefix}_BASE_URL", "https://api.openai.com/v1").strip()
+    endpoint = f"{base_url.rstrip('/')}/chat/completions"
+    api_key = os.environ.get(f"{prefix}_API_KEY", "").strip()
+    curl_command = os.environ.get(f"{prefix}_CURL", "curl")
+    try:
+        curl_parts = shlex.split(curl_command) or ["curl"]
+    except ValueError:
+        curl_parts = ["curl"]
+    if not shutil.which(curl_parts[0]) and not Path(curl_parts[0]).exists():
+        return {
+            "status": "missing_config",
+            "prefix": prefix,
+            "model": model,
+            "content": f"{prefix}_CURL command is not available: {curl_parts[0]}",
+        }
+    try:
+        timeout_seconds = int(os.environ.get(f"{prefix}_TIMEOUT", "60"))
+    except ValueError:
+        timeout_seconds = 60
+
+    body = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are the Octopus harness-repair-agent tentacle brain. "
+                    "Use Need, Tool, Action, and Feed evidence only. "
+                    "Return a compact review draft with diagnosis, proposed edit, checks, and next Need."
+                ),
+            },
+            {
+                "role": "user",
+                "content": "\n\n".join(
+                    [
+                        prompt,
+                        "SESSION_JSON:",
+                        json.dumps(session, ensure_ascii=True, indent=2),
+                    ]
+                ),
+            },
+        ],
+        "temperature": 0.2,
+    }
+    command = [
+        *curl_parts,
+        "-sS",
+        "--max-time",
+        str(timeout_seconds),
+        "-X",
+        "POST",
+        endpoint,
+        "-H",
+        "Content-Type: application/json",
+    ]
+    if api_key:
+        command.extend(["-H", f"Authorization: Bearer {api_key}"])
+    command.extend(["--data-binary", "@-"])
+    try:
+        result = subprocess.run(
+            command,
+            input=json.dumps(body).encode("utf-8"),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout_seconds + 5,
+            check=False,
+        )
+    except Exception as error:
+        return {
+            "status": "failed",
+            "prefix": prefix,
+            "model": model,
+            "content": compact(error, 600),
+        }
+    if result.returncode != 0:
+        return {
+            "status": "failed",
+            "prefix": prefix,
+            "model": model,
+            "content": compact(result.stderr.decode("utf-8", errors="replace"), 600),
+        }
+    try:
+        data = json.loads(result.stdout.decode("utf-8", errors="replace"))
+        content = data["choices"][0]["message"]["content"].strip()
+    except Exception:
+        return {
+            "status": "failed",
+            "prefix": prefix,
+            "model": model,
+            "content": compact(result.stdout.decode("utf-8", errors="replace"), 600),
+        }
+    if not content:
+        content = "Provider returned an empty repair draft."
+    return {"status": "generated", "prefix": prefix, "model": model, "content": content}
+
+
+def draft_markdown(draft, prompt_path, session_path, workspace):
+    lines = [
+        "# Harness Repair Draft",
+        "",
+        f"status: `{draft['status']}`",
+        f"prefix: `{draft['prefix']}`",
+    ]
+    if draft.get("model"):
+        lines.append(f"model: `{draft['model']}`")
+    lines.extend(
+        [
+            f"prompt: `{rel(prompt_path, workspace)}`",
+            f"session: `{rel(session_path, workspace)}`",
+            "",
+            draft.get("content", "").rstrip(),
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 payload = load_payload(sys.argv[1])
 workspace = workspace_from(sys.argv[2:], payload)
+loaded_provider_keys = load_provider_env(workspace)
 state_path = Path(os.environ.get("OCTOPUS_STATE", workspace / ".octopus" / "state.json")).expanduser()
 state = load_json(state_path)
 feed_traces = state.get("feed_traces") or []
@@ -83,7 +278,15 @@ evolution_root = workspace / ".octopus" / "evolution"
 apply_plans = sorted(evolution_root.glob("*/apply/*.json")) if evolution_root.exists() else []
 proposals = sorted(evolution_root.glob("*/proposal.json")) if evolution_root.exists() else []
 available = {name: bool(shutil.which(name)) for name in ["git", "python3", "bash", "curl", "gh", "node"]}
-provider_ready = bool(os.environ.get("OPENAI_API_KEY")) or (workspace / ".octopus" / "llm.env").exists()
+repair_llm_prefix = first_env(
+    ["OCTOPUS_REPAIR_LLM_PREFIX", "OCTOPUS_EVOLVE_LLM_PREFIX"],
+    "OCTOPUS_LLM",
+)
+provider_ready = (
+    bool(os.environ.get("OPENAI_API_KEY"))
+    or (workspace / ".octopus" / "llm.env").exists()
+    or bool(os.environ.get(f"{repair_llm_prefix}_MODEL"))
+)
 
 target_tentacle = "unknown"
 candidate = "none"
@@ -136,6 +339,7 @@ session_dir.mkdir(parents=True)
 session_json = session_dir / "SESSION.json"
 session_md = session_dir / "SESSION.md"
 prompt_md = session_dir / "PROMPT.md"
+draft_md = session_dir / "DRAFT.md"
 next_need_json = session_dir / "NEXT_NEED.json"
 command_script = session_dir / "COMMANDS.sh"
 next_need_kind, next_need_query = need_parts(next_need)
@@ -154,6 +358,9 @@ session = {
         "apply_plans": len(apply_plans),
         "proposals": len(proposals),
         "provider_ready": provider_ready,
+        "provider_env_loaded": loaded_provider_keys,
+        "repair_llm_enabled": enabled_flag("OCTOPUS_REPAIR_LLM"),
+        "repair_llm_prefix": repair_llm_prefix,
         "commands": available,
     },
 }
@@ -211,11 +418,21 @@ prompt_md.write_text(
             f"- session: `{rel(session_json, workspace)}`",
             f"- next need: `{rel(next_need_json, workspace)}`",
             f"- commands: `{rel(command_script, workspace)}`",
+            f"- draft: `{rel(draft_md, workspace)}`",
         ]
     )
     + "\n",
     encoding="utf-8",
 )
+draft = llm_draft(prompt_md.read_text(encoding="utf-8"), session, workspace)
+draft_md.write_text(draft_markdown(draft, prompt_md, session_json, workspace), encoding="utf-8")
+session["draft"] = {
+    "status": draft["status"],
+    "path": rel(draft_md, workspace),
+    "prefix": draft["prefix"],
+    "model": draft.get("model", ""),
+}
+session_json.write_text(json.dumps(session, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
 session_md.write_text(
     "\n".join(
         [
@@ -231,6 +448,7 @@ session_md.write_text(
             "",
             f"json: `{rel(session_json, workspace)}`",
             f"prompt: `{rel(prompt_md, workspace)}`",
+            f"draft: `{rel(draft_md, workspace)}`",
             f"next need: `{rel(next_need_json, workspace)}`",
             f"commands: `{rel(command_script, workspace)}`",
         ]
@@ -246,6 +464,9 @@ metadata = {
     "session": rel(session_json, workspace),
     "session_markdown": rel(session_md, workspace),
     "prompt": rel(prompt_md, workspace),
+    "draft": rel(draft_md, workspace),
+    "llm_draft_status": draft["status"],
+    "llm_prefix": draft["prefix"],
     "next_need_file": rel(next_need_json, workspace),
     "command_script": rel(command_script, workspace),
     "target_tentacle": target_tentacle,
@@ -259,7 +480,7 @@ print(
     json.dumps(
         {
             "status": "satisfied",
-            "output": f"harness repair session: {rel(session_md, workspace)}; next Need: {next_need}",
+            "output": f"harness repair session: {rel(session_md, workspace)}; draft: {draft['status']}; next Need: {next_need}",
             "evidence": [
                 {
                     "source": "harness-repair-agent/repair_session",

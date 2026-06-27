@@ -32,7 +32,7 @@ Agent tool-combo tentacles:
 - `swe-agent`: repo work through `read`, `edit`, inspection, patch, and test tools.
 - `computer-use-agent`: local UI work through configurable MCP calls, local commands, screenshots, URLs, browser status, front-window status, clipboard adapters, and desktop probes.
 - `repo-maintainer`: OAuth-bounded self-iteration with repo inspection, PR drafts, and explicit PR publishing.
-- `harness-repair-agent`: heartbeat, evolution, state, adapter diagnostics, and LLM-ready repair-session artifacts that return the next reviewable repair Feed.
+- `harness-repair-agent`: heartbeat, evolution, state, adapter diagnostics, and optional LLM repair drafts that return the next reviewable repair Feed.
 - `bash-only`: transparent write-and-run harness for audit and replay.
 
 Runtime seeds:

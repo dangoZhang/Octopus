@@ -100,7 +100,7 @@ next: octopus preflight record, octopus preflight script, octopus report
 - `swe-agent`: read, edit, patch, inspect, test.
 - `computer-use-agent`: browser/window diagnostics, clipboard, MCP, local desktop probes.
 - `repo-maintainer`: repo inspection, PR drafts, grant-bound publishing.
-- `harness-repair-agent`: state, traces, checks, adapters, and evolution diagnosis.
+- `harness-repair-agent`: state, traces, checks, adapters, evolution diagnosis, and optional repair drafts.
 - `bash-only`: transparent write-and-run execution.
 - `json-feed`: `octopus-json-v1` runtime seed.
 

@@ -5923,7 +5923,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 ),
                 tool_meta_with_contract(
                     "repair_session",
-                    "Write a reviewable local self-repair session from heartbeat, evolution, and adapter signals.",
+                    "Write a reviewable local self-repair session plus optional provider repair draft.",
                     "shell",
                     "tentacles/harness-repair-agent/tools/repair_session.sh",
                     OCTOPUS_JSON_CONTRACT,
@@ -5945,6 +5945,7 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                 ],
                 &[
                     "Return repair plans as Feed; do not patch the kernel directly.",
+                    "Keep provider repair drafts optional and reviewable.",
                     "Prefer reviewable .octopus/evolution artifacts and explicit harness:write grants.",
                 ],
             ),
@@ -9386,6 +9387,8 @@ print(json.dumps({
             .install_manifest(&root, "harness-repair-agent")
             .unwrap();
         let mut tentacle = ManifestTentacle::new(installed);
+        let old_repair_llm = std::env::var("OCTOPUS_REPAIR_LLM").ok();
+        std::env::remove_var("OCTOPUS_REPAIR_LLM");
         let feed = tentacle.feed(&Need::new(
             NeedKind::Execute,
             workspace.to_string_lossy().to_string(),
@@ -9398,7 +9401,7 @@ print(json.dumps({
             Some("repair_session")
         );
         assert!(workspace.join(".octopus/harness-repair").exists());
-        for key in ["prompt", "next_need_file", "command_script"] {
+        for key in ["prompt", "draft", "next_need_file", "command_script"] {
             let path = feed
                 .metadata
                 .get(key)
@@ -9407,6 +9410,10 @@ print(json.dumps({
             assert!(path.exists(), "{key} should exist at {}", path.display());
         }
         assert_eq!(
+            feed.metadata.get("llm_draft_status").map(String::as_str),
+            Some("disabled")
+        );
+        assert_eq!(
             feed.metadata.get("next_need_kind").map(String::as_str),
             Some("verify")
         );
@@ -9414,6 +9421,11 @@ print(json.dumps({
             .evidence
             .iter()
             .any(|evidence| evidence.source == "harness-repair-agent/repair_session"));
+        if let Some(value) = old_repair_llm {
+            std::env::set_var("OCTOPUS_REPAIR_LLM", value);
+        } else {
+            std::env::remove_var("OCTOPUS_REPAIR_LLM");
+        }
         let _ = fs::remove_dir_all(workspace);
     }
 

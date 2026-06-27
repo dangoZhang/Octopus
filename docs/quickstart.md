@@ -147,7 +147,7 @@ tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "build 
 
 `beat 200` can now do the same from check history: failed or partial checks for a known tentacle become a harness-beat recommendation with an apply plan. In `docs/app.html`, the Harness Beat panel shows the candidate, plan path, apply-plan preview, next action, Harness Grant, Write Apply, and review buttons that write `evolve score` feedback.
 
-`harness-repair-agent` reads those heartbeat/evolution artifacts as a normal tentacle Feed. Its `repair_session` tool writes `.octopus/harness-repair/SESSION.*`, `PROMPT.md`, `NEXT_NEED.json`, and `COMMANDS.sh`, then returns the next grant, apply, or score step.
+`harness-repair-agent` reads those heartbeat/evolution artifacts as a normal tentacle Feed. Its `repair_session` tool writes `.octopus/harness-repair/SESSION.*`, `PROMPT.md`, `DRAFT.md`, `NEXT_NEED.json`, and `COMMANDS.sh`, then returns the next grant, apply, or score step. Set `OCTOPUS_REPAIR_LLM=1` to let the configured provider fill `DRAFT.md`; otherwise it stays an offline review artifact.
 
 ## Expected Signals
 
