@@ -1246,11 +1246,11 @@ where
         .map_err(|error| format!("invalid clean-brain goal JSON: {error}"))
 }
 
-#[derive(Deserialize)]
-struct BrainExploreDraft {
-    summary: String,
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainExploreDraft {
+    pub summary: String,
     #[serde(default)]
-    needs: Vec<GoalNeedSuggestion>,
+    pub needs: Vec<GoalNeedSuggestion>,
 }
 
 fn brain_explore_from_chat<C>(
@@ -1647,6 +1647,17 @@ impl HarnessState {
         Ok(self.brain_explore_report(brain, prompt, "llm", draft.summary, draft.needs))
     }
 
+    pub fn clean_brain_explore_from_draft(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        draft: BrainExploreDraft,
+    ) -> BrainExploreReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        self.brain_explore_report(brain, prompt, "external_chat", draft.summary, draft.needs)
+    }
+
     pub fn clean_brain_goal(&mut self, prompt: impl Into<String>, limit: usize) -> BrainGoalReport {
         let prompt = prompt.into();
         let brain = self.context_report(None, limit).brain;
@@ -1683,6 +1694,17 @@ impl HarnessState {
         let brain = self.context_report(None, limit).brain;
         let refinement = brain_goal_from_chat(&brain, &prompt, client)?;
         Ok(self.apply_clean_brain_goal(brain, prompt, "llm", refinement))
+    }
+
+    pub fn clean_brain_goal_from_refinement(
+        &mut self,
+        prompt: impl Into<String>,
+        limit: usize,
+        refinement: GoalRefinement,
+    ) -> BrainGoalReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        self.apply_clean_brain_goal(brain, prompt, "external_chat", refinement)
     }
 
     pub fn clean_brain_prompt(&self, prompt: impl Into<String>, limit: usize) -> BrainPromptReport {

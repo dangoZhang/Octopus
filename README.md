@@ -40,13 +40,15 @@ Open the local control surface:
 octopus bridge
 ```
 
-Then visit `http://127.0.0.1:8765/app.html` for brain prompts, exploration, Need Queue, preflight, and the pixel pet.
+Then visit `http://127.0.0.1:8765/app.html` for brain prompts, external brain replies, exploration, Need Queue, preflight, and the pixel pet.
 
 Try the core flow:
 
 ```bash
 octopus goal set "make this repo easier to use"
 octopus brain "what should the brain ask next?"
+octopus brain --apply-json '{"summary":"external chat explored","needs":[{"kind":"verify","query":"goal evidence stays clean"}]}' --save "what should the brain ask next?"
+octopus brain --goal --apply-json '{"objective":"make this repo easier to use","constraints":["Need only"],"summary":"external goal refined","needs":[{"kind":"observe","query":"goal history"}]}' --save "make the goal sharper"
 octopus brain --goal --live --save "make the goal sharper"
 octopus brain --live "what should the brain ask next?"
 octopus brain --live --save "what should the brain ask next?"
@@ -87,6 +89,7 @@ next: octopus preflight record, octopus preflight script, octopus report
 
 - Local bootstrap, doctor, report, preflight, release-gate script, and real-machine record template.
 - Goal refinement, clean-brain goal tuning, clean-brain exploration, context inspection, Feed traces, and feedback scoring.
+- External chat replies can be imported into Goal or Need Queue without running Feed.
 - Seed tentacles for SWE work, computer-use diagnostics, repo maintenance, harness repair, bash-only execution, and structured JSON Feed.
 - OpenAI-compatible chat, live clean-brain exploration, tool-side planning, and harness evolution candidates.
 - Native HTML app for setup, providers, traces, checks, grants, pet state, and harness review.

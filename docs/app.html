@@ -398,6 +398,9 @@
           <label>Goal
             <textarea id="goal">build a clean-brain agent</textarea>
           </label>
+          <label>Brain reply
+            <textarea id="brainReply">{"summary":"external chat explored","needs":[{"kind":"verify","query":"goal evidence stays clean"}]}</textarea>
+          </label>
           <div class="row">
             <label>Need
               <select id="need">
@@ -479,6 +482,8 @@
             <button type="button" id="runBrainPrompt">Brain Prompt</button>
             <button type="button" id="runBrainLive">Brain Live</button>
             <button type="button" id="runBrainGoal">Brain Goal</button>
+            <button type="button" id="applyBrainReply">Apply Reply</button>
+            <button type="button" id="applyBrainGoal">Apply Goal</button>
             <button type="button" id="runExplore">Explore</button>
             <button type="button" id="saveExplore">Save Explore</button>
             <button type="button" id="runNeedQueue">Need Queue</button>
@@ -601,6 +606,8 @@
           `octopus --state ${shellQuote(state)} --json status`,
           `octopus --state ${shellQuote(state)} --json brain ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --goal --live --save ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --apply reply.json --save ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --goal --apply reply.json --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json explore ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json explore --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json needs`,
@@ -840,6 +847,41 @@
           currentNeedQueueReport = report.queue || null;
           renderExploreReport(report.goal || {});
           renderNeedQueueReport(report.queue || {});
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("exploreReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function applyBrainReply(refineGoal = false) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        const reply = $("brainReply").value.trim();
+        if (!reply) {
+          $("exploreReport").textContent = "empty brain reply";
+          return;
+        }
+        $("exploreReport").textContent = refineGoal ? "applying goal..." : "applying reply...";
+        try {
+          const args = refineGoal
+            ? ["--state", state, "--json", "brain", "--goal", "--apply-json", reply, "--save", goal]
+            : ["--state", state, "--json", "brain", "--apply-json", reply, "--save", goal];
+          const report = await runBridgeJson(args);
+          if (refineGoal) {
+            currentExploreReport = report.goal || null;
+            currentNeedQueueReport = report.queue || null;
+            renderExploreReport(report.goal || {});
+            renderNeedQueueReport(report.queue || {});
+            const status = await runBridgeJson(["--state", state, "--json", "status"]);
+            currentGoalStatusReport = status;
+            renderGoalStatusReport(status);
+          } else {
+            currentExploreReport = report.explore || null;
+            currentNeedQueueReport = report.queue || null;
+            renderExploreReport(report.explore || {});
+            renderNeedQueueReport(report.queue || {});
+          }
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("exploreReport").textContent = String(error);
@@ -2145,6 +2187,7 @@
       $("reset").addEventListener("click", () => {
         $("state").value = ".octopus/state.json";
         $("goal").value = "build a clean-brain agent";
+        $("brainReply").value = "{\"summary\":\"external chat explored\",\"needs\":[{\"kind\":\"verify\",\"query\":\"goal evidence stays clean\"}]}";
         $("need").value = "observe";
         $("target").value = ".";
         $("tentacle").value = "swe-agent";
@@ -2200,6 +2243,8 @@
       $("runGoalStatus").addEventListener("click", runGoalStatusReport);
       $("runBrainLive").addEventListener("click", () => runBrainLiveReport(false));
       $("runBrainGoal").addEventListener("click", runBrainGoalReport);
+      $("applyBrainReply").addEventListener("click", () => applyBrainReply(false));
+      $("applyBrainGoal").addEventListener("click", () => applyBrainReply(true));
       $("runExplore").addEventListener("click", () => runExploreReport(false));
       $("saveExplore").addEventListener("click", () => runExploreReport(true));
       $("runNeedQueue").addEventListener("click", runNeedQueueReport);
@@ -2217,7 +2262,7 @@
       document.querySelectorAll("[data-run]").forEach((button) => {
         button.addEventListener("click", () => runBridge(button.dataset.run));
       });
-      ["state", "goal", "need", "target", "tentacle", "bridge", "providerPrefix", "providerProfile"].forEach((id) => {
+      ["state", "goal", "brainReply", "need", "target", "tentacle", "bridge", "providerPrefix", "providerProfile"].forEach((id) => {
         $(id).addEventListener("input", () => {
           currentInstallReport = null;
           currentCheckReport = null;

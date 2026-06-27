@@ -25,12 +25,14 @@ Updated: 2026-06-27
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
 - `status --json` exposes recent clean-brain Goal turns so Goal refinement history stays visible without replaying Feed.
 - `brain [prompt]` exports pasteable clean-brain chat messages from Goal/Mem/Need/Feed for any model UI.
+- `brain --apply <file|->` and `brain --apply-json <json>` import external chat replies into Goal or Need Queue without running Feed.
 - `brain --goal [--live] [--save] [prompt]` lets the clean brain refine Goal and optional queued Needs without running Feed.
 - `brain --live [--save] [prompt]` calls the clean-brain provider and can store returned Needs without running Feed.
 - `explore [prompt]` lets the clean brain suggest cognitive Needs from Goal/Mem/Need/Feed without running Feed.
 - `explore --save [prompt]` stores suggested Needs in a reviewable Need Queue; `needs take <index>` returns the command without executing Feed.
 - The native HTML app can run `--json bootstrap` through the bridge from the command panel.
 - The native HTML app can show current Goal, status, refinements, and recent clean-brain Goal turns from persisted state.
+- The native HTML app can paste an external brain reply and apply it to Need Queue or Goal through the bridge.
 - `harness-repair-agent` can diagnose state, traces, check history, evolution artifacts, repo dirtiness, provider env, and local adapters as structured Feed.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
 - The HTML install guide can expand each check to inspect stdout, stderr, exit code, and recent harness check history.
@@ -128,6 +130,7 @@ Updated: 2026-06-27
 - Added `brain [prompt]` in CLI, JSON, product report, and native app so clean-brain context can be used with any chat model without provider setup.
 - Added `brain --goal [--live] [--save]` in CLI, JSON, and native app so the clean brain can maintain Goal and queue Needs without Feed execution.
 - Added recent Goal turns to JSON status and the native HTML Goal panel so users can inspect Goal changes without running another Feed.
+- Added `brain --apply` and `brain --apply-json` plus native HTML apply buttons so external Chat UIs can feed clean-brain JSON back into Goal or Need Queue without tool context.
 - Added a separate clean-brain LLM provider layer, `brain --live [--save]`, and more OpenAI-compatible provider profiles for model routing without tool context.
 - Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and bridge API.
 - Polished README and docs homepages into product-page copy with the value story first and runnable install commands kept visible.
@@ -147,7 +150,7 @@ Updated: 2026-06-27
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, clean-brain layer diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
 - GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
-- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, run structured Feed tests, score Feed traces, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, run structured Feed tests, score Feed traces, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
