@@ -3317,8 +3317,11 @@ fn bootstrap_workspace(
         format!("octopus --state {state_arg} report"),
         format!("octopus --state {state_arg} context observe ."),
         format!("octopus --state {state_arg} think swe-agent observe README.md"),
+        format!("octopus --state {state_arg} think harness-repair-agent execute ."),
+        format!("octopus --state {state_arg} need execute \"repair harness session\""),
         format!("octopus --state {state_arg} need observe README.md"),
         format!("octopus --state {state_arg} check swe-agent"),
+        format!("octopus --state {state_arg} check harness-repair-agent"),
         format!("octopus --state {state_arg} pet"),
     ];
     next.extend(report.next.iter().cloned());
@@ -4105,6 +4108,20 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             "ready",
             "harness beat recommendations can be granted and written as reviewable apply artifacts",
             Some("octopus evolve apply swe-agent 03-runtime-code"),
+        ),
+        product_capability(
+            "harness_self_repair",
+            if status
+                .tentacles
+                .iter()
+                .any(|tentacle| tentacle.id == "harness-repair-agent")
+            {
+                "ready"
+            } else {
+                "available"
+            },
+            "harness-repair-agent can turn heartbeat, evolution, and adapter signals into reviewable repair Feed",
+            Some("octopus install harness-repair-agent"),
         ),
         product_capability(
             "goal_setting",
@@ -7811,6 +7828,12 @@ mod tests {
         let selected = check_report("computer-use-agent", Some(1)).unwrap();
         assert_eq!(selected.results.len(), 1);
         assert!(selected.results[0].command.contains("window_status"));
+        let repair = check_report("harness-repair-agent", None).unwrap();
+        assert!(repair.passed);
+        assert!(repair
+            .results
+            .iter()
+            .any(|result| result.command.contains("repair_session.sh")));
         assert!(check_report("json-feed", Some(99))
             .unwrap_err()
             .contains("out of range"));
@@ -8158,6 +8181,10 @@ mod tests {
             .capabilities
             .iter()
             .any(|item| item.id == "clean_brain"));
+        assert!(report
+            .capabilities
+            .iter()
+            .any(|item| item.id == "harness_self_repair"));
         assert!(report
             .gaps
             .iter()

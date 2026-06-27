@@ -28,6 +28,7 @@ The bet is simple: give tools their own intelligence, and the main model gets ro
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus
 octopus --version
 octopus bootstrap
+octopus need execute "repair harness session"
 octopus doctor
 octopus preflight
 octopus preflight script

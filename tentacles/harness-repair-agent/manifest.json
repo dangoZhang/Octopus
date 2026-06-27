@@ -41,6 +41,17 @@
       }
     },
     {
+      "id": "repair_session",
+      "description": "Write a reviewable local self-repair session from heartbeat, evolution, and adapter signals.",
+      "input": "workspace root or octopus-json-v1 Need",
+      "output": "JSON Feed with session artifact paths and the next repair Need",
+      "implementation": {
+        "kind": "shell",
+        "entrypoint": "tools/repair_session.sh",
+        "contract": "octopus-json-v1"
+      }
+    },
+    {
       "id": "adapter_probe",
       "description": "Probe local command, provider, desktop, and GitHub adapters needed by common tentacles.",
       "input": "octopus-json-v1 tool call or workspace root",
@@ -79,6 +90,7 @@
     "checks": [
       "tools/diagnose_harness.sh . | python3 -m json.tool > /dev/null",
       "tools/heartbeat_repair.sh . | python3 -m json.tool > /dev/null",
+      "tools/repair_session.sh $(mktemp -d) | python3 -m json.tool > /dev/null",
       "tools/adapter_probe.sh . | python3 -m json.tool > /dev/null"
     ],
     "constraints": [

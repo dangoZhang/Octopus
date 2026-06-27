@@ -3007,6 +3007,9 @@ impl ManifestTentacle {
                 ]
                 .as_slice()
             }
+            NeedKind::Observe if self.route_id == "harness-repair-agent" => {
+                ["diagnose_harness", "adapter_probe", "heartbeat_repair"].as_slice()
+            }
             NeedKind::Observe => [
                 "inspect_repo",
                 "window_status",
@@ -3019,6 +3022,9 @@ impl ManifestTentacle {
                 "mcp",
             ]
             .as_slice(),
+            NeedKind::Verify if self.route_id == "harness-repair-agent" => {
+                ["heartbeat_repair", "diagnose_harness", "adapter_probe"].as_slice()
+            }
             NeedKind::Verify | NeedKind::Reproduce => [
                 "run_tests",
                 "github_status",
@@ -3034,6 +3040,9 @@ impl ManifestTentacle {
                 if self.route_id == "computer-use-agent" && is_clipboard_query(&need.query) =>
             {
                 ["clipboard_write", "bash", "mcp", "open_url"].as_slice()
+            }
+            NeedKind::Execute if self.route_id == "harness-repair-agent" => {
+                ["repair_session", "heartbeat_repair", "adapter_probe"].as_slice()
             }
             NeedKind::Execute => ["write_and_run", "bash", "mcp", "open_url"].as_slice(),
             _ => [].as_slice(),
@@ -5872,6 +5881,72 @@ pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
                     "OCTOPUS_PR_DRY_RUN=1 tentacles/repo-maintainer/tools/publish_pr.sh $(mktemp -d) dangoZhang/Octopus octopus/improve-usability 'Improve usability' README.md",
                 ],
                 &["Wait for explicit OAuth/user grant before publishing branch or PR work."],
+            ),
+            llm_ready: true,
+        },
+        TentacleProfile {
+            id: "harness-repair-agent".to_string(),
+            name: "Harness Repair Tentacle".to_string(),
+            description:
+                "Heartbeat and environment self-repair planning through editable code-as-harness."
+                    .to_string(),
+            brain: llm_brain(
+                "Harness repair planner",
+                "Read heartbeat, evolution, state, and adapter signals, then return the next compact repair Feed.",
+            ),
+            skills: vec![SkillManifest {
+                id: "harness-self-repair".to_string(),
+                name: "Harness Self Repair".to_string(),
+                description: "Diagnose heartbeat/evolution signals and plan the next grant-bound harness repair.".to_string(),
+                needs: vec![NeedKind::Observe, NeedKind::Verify, NeedKind::Execute],
+                tools: vec![
+                    "tentacles/harness-repair-agent/tools/diagnose_harness.sh".to_string(),
+                    "tentacles/harness-repair-agent/tools/heartbeat_repair.sh".to_string(),
+                    "tentacles/harness-repair-agent/tools/repair_session.sh".to_string(),
+                    "tentacles/harness-repair-agent/tools/adapter_probe.sh".to_string(),
+                ],
+            }],
+            tools: vec![
+                tool_meta_with_contract(
+                    "diagnose_harness",
+                    "Read Octopus state, Feed traces, checks, evolution artifacts, and docs readiness.",
+                    "shell",
+                    "tentacles/harness-repair-agent/tools/diagnose_harness.sh",
+                    OCTOPUS_JSON_CONTRACT,
+                ),
+                tool_meta_with_contract(
+                    "heartbeat_repair",
+                    "Turn heartbeat evolution artifacts into a review, grant, apply, and score plan.",
+                    "shell",
+                    "tentacles/harness-repair-agent/tools/heartbeat_repair.sh",
+                    OCTOPUS_JSON_CONTRACT,
+                ),
+                tool_meta_with_contract(
+                    "repair_session",
+                    "Write a reviewable local self-repair session from heartbeat, evolution, and adapter signals.",
+                    "shell",
+                    "tentacles/harness-repair-agent/tools/repair_session.sh",
+                    OCTOPUS_JSON_CONTRACT,
+                ),
+                tool_meta_with_contract(
+                    "adapter_probe",
+                    "Probe provider, MCP, GitHub, desktop, bridge, and command readiness.",
+                    "shell",
+                    "tentacles/harness-repair-agent/tools/adapter_probe.sh",
+                    OCTOPUS_JSON_CONTRACT,
+                ),
+            ],
+            evolution: evolution_policy(
+                &[
+                    "tentacles/harness-repair-agent/tools/diagnose_harness.sh . | python3 -m json.tool > /dev/null",
+                    "tentacles/harness-repair-agent/tools/heartbeat_repair.sh . | python3 -m json.tool > /dev/null",
+                    "tentacles/harness-repair-agent/tools/repair_session.sh $(mktemp -d) | python3 -m json.tool > /dev/null",
+                    "tentacles/harness-repair-agent/tools/adapter_probe.sh . | python3 -m json.tool > /dev/null",
+                ],
+                &[
+                    "Return repair plans as Feed; do not patch the kernel directly.",
+                    "Prefer reviewable .octopus/evolution artifacts and explicit harness:write grants.",
+                ],
             ),
             llm_ready: true,
         },
@@ -9255,6 +9330,79 @@ print(json.dumps({
             .evolution_surfaces
             .contains(&"runtime_code".to_string()));
         assert!(state.install_manifest(&root, "missing").is_err());
+    }
+
+    #[test]
+    fn harness_repair_manifest_installs_and_feeds_diagnostics() {
+        let mut state = HarnessState::default();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let installed = state
+            .install_manifest(&root, "harness-repair-agent")
+            .unwrap();
+        assert_eq!(installed.brain_kind, "llm");
+        assert!(installed.brain_prompt.contains("harness state"));
+        assert!(installed.runtime_kinds.contains(&"shell".to_string()));
+        assert!(installed.tool_meta.iter().any(|tool| {
+            tool.id == "diagnose_harness" && tool.contract.as_deref() == Some(OCTOPUS_JSON_CONTRACT)
+        }));
+
+        let workspace =
+            std::env::temp_dir().join(format!("octopus-repair-session-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&workspace);
+        fs::create_dir_all(workspace.join(".octopus")).unwrap();
+        fs::write(
+            workspace.join(".octopus/state.json"),
+            r#"{"installed_tentacles":[{"id":"harness-repair-agent"}],"feed_traces":[],"check_history":[]}"#,
+        )
+        .unwrap();
+
+        let mut tentacle = ManifestTentacle::new(installed);
+        let feed = tentacle.feed(&Need::new(
+            NeedKind::Observe,
+            workspace.to_string_lossy().to_string(),
+        ));
+
+        assert_eq!(feed.status, Status::Satisfied);
+        assert!(feed.summary.contains("harness diagnosis"));
+        assert_eq!(
+            feed.metadata.get("tentacle_brain").map(String::as_str),
+            Some("harness-repair-agent")
+        );
+        assert_eq!(
+            feed.metadata.get("contract").map(String::as_str),
+            Some(OCTOPUS_JSON_CONTRACT)
+        );
+        assert!(feed
+            .evidence
+            .iter()
+            .any(|evidence| evidence.source == "diagnose_harness"));
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let installed = state
+            .install_manifest(&root, "harness-repair-agent")
+            .unwrap();
+        let mut tentacle = ManifestTentacle::new(installed);
+        let feed = tentacle.feed(&Need::new(
+            NeedKind::Execute,
+            workspace.to_string_lossy().to_string(),
+        ));
+
+        assert_eq!(feed.status, Status::Satisfied);
+        assert!(feed.summary.contains("harness repair session"));
+        assert_eq!(
+            feed.metadata.get("tool").map(String::as_str),
+            Some("repair_session")
+        );
+        assert!(workspace.join(".octopus/harness-repair").exists());
+        assert!(feed
+            .evidence
+            .iter()
+            .any(|evidence| evidence.source == "harness-repair-agent/repair_session"));
+        let _ = fs::remove_dir_all(workspace);
     }
 
     #[test]
