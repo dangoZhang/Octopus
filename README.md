@@ -55,7 +55,7 @@ octopus brain --live --save "what should the brain ask next?"
 ```text
 Octopus preflight
 target: 0.1.0
-version: 0.0.10
+version: 0.0.11
 brain: Goal + Mem + Need + Feed
 tentacle: Need + Tool + Action + Tool + Action -> Feed
 feed_trace_index: 1
@@ -71,7 +71,7 @@ Octopus can bootstrap local state, recommend starter tentacles with evidence, ru
 
 - Runtime: Rust CLI plus local HTML app and bridge.
 - Checks: CI covers install path, manifests, app pages, provider surfaces, Feed traces, and seed tentacle flows.
-- Current line: `0.0.10`. `0.1.0` waits for recorded real-machine release testing.
+- Current line: `0.0.11`. `0.1.0` waits for recorded real-machine release testing.
 - License: MIT.
 
 ## Links

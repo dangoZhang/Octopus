@@ -186,6 +186,7 @@ Updated: 2026-06-27
 - Added trace-aware repair score commands so report/app score prompts use the concrete Feed trace instead of a placeholder.
 - Added starter recommendation evidence signals so each card can explain its group, objective matches, Needs, tools, runtimes, evolution surfaces, LLM readiness, and install state.
 - Reworked README into a product-page share surface with a first-screen story, edge-intelligence insight, differentiators, install/use path, and usable pre-release boundary.
+- Rolled the cleanup/version cadence to `0.0.11` after repair action plans, heartbeat plan pickup, repair plan/report/app surfacing, REVIEW.md bundles, trace-aware repair scoring, and README product landing polish.
 
 ## Remaining Gaps
 
