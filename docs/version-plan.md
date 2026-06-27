@@ -9,7 +9,7 @@ Cadence from this plan forward:
 
 Release checklist:
 
-- README stays product-page first, with the clean-brain story and install path visible.
+- README stays product-page first, with the clean-brain value and install path visible.
 - `docs/product-gap.md` records current shape, filled gaps, and next fill.
 - CI stays green for Rust, Python, manifests, tentacle runtime checks, pet page, and install path.
 - `octopus preflight --live` is the release-readiness summary before `0.1.0` tags.
