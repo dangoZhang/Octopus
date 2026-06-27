@@ -93,9 +93,7 @@ Harness changes stay reviewable: plans, patches, repair bundles, and scores are 
 
 ```bash
 tmp=$(mktemp -d)
-octopus --state "$tmp/state.json" bootstrap
-octopus --state "$tmp/state.json" need observe README.md
-octopus --state "$tmp/state.json" feedback latest satisfied "feed worked"
+octopus --state "$tmp/state.json" first-run "preflight local evidence"
 octopus --state "$tmp/state.json" preflight
 octopus --state "$tmp/state.json" preflight record "$tmp/real-machine-record.md"
 octopus --state "$tmp/state.json" preflight record check "$tmp/real-machine-record.md"

@@ -80,7 +80,7 @@ Updated: 2026-06-28
 - `report` emits a state-aware product report with clean-brain context, tentacle context, capability status, gaps, and next commands.
 - The native HTML app can render the same product report from the local app API.
 - `preflight [--live]` turns the `0.1.0` readiness gate into CLI, JSON, and native HTML checks without live provider calls unless requested.
-- `preflight script [path]` writes a reviewable local release-gate script that runs bootstrap, Feed, checks, feedback, beat, pet, report, and optional live provider/PR dry-run gates.
+- `preflight script [path]` writes a reviewable local release-gate script that starts from `first-run`, then runs context, thinking, trace, repair, check, route, beat, pet, report, and optional live provider/PR dry-run gates.
 - `preflight record [path]` writes a real-machine evidence template with GitHub install, core loop, start/app, live provider, and PR dry-run commands; `preflight record check [path]` audits completed fields before appending it.
 - Real-machine record audit accepts the current `Start/app` result field while keeping legacy `Bridge/app` records valid.
 - The SWE test harness clears outer Octopus state variables before running project tests, so `check swe-agent` validates the target repo without leaking the caller's temporary state.
@@ -252,6 +252,7 @@ Updated: 2026-06-28
 - Rolled the cleanup/version cadence to `0.0.14` after biological research grounding, Doctor readiness, provider reasoning controls, release-gate hardening, seed check stability, First Run scored Feed feedback, app wording cleanup, and version consistency.
 - Added First Run record actions so the native app can generate and check the real-machine preflight record from the same launch path.
 - Added CLI `first-run [objective]` so headless installs and real-machine records can run the same scored local loop without manually copying eight commands.
+- Tightened the biological research grounding around Liang's cephalopod program, flexible cuttlefish camouflage, and segmented cephalopod arms, then connected preflight feedback evidence to `first-run`.
 
 ## Remaining Gaps
 

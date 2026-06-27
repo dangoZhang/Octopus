@@ -10,7 +10,7 @@ use octopus_core::{
     BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant, ChatClient, ChatMessage,
     ChatRole, CheckHistoryInput, CheckHistoryRecord, ContextReport, EnvironmentReport,
     EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome,
-    EvolutionRecommendation, Feed, Feedback, FeedFeedbackOutcome, FeedTraceRecord, Goal, GoalChat,
+    EvolutionRecommendation, Feed, FeedFeedbackOutcome, FeedTraceRecord, Feedback, Goal, GoalChat,
     GoalNeedSuggestion, GoalRefinement, Harness, HarnessBeatEvolution, HarnessState, HeartBeat,
     HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem,
     NeedQueueReport, NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport,
@@ -5255,7 +5255,9 @@ fn first_run_report(state_path: PathBuf, objective: String) -> Result<FirstRunRe
     let mut goal = Goal::new(objective.clone());
     add_goal_constraint(&mut goal, "keep tools outside the brain");
     loaded.goal = Some(goal.clone());
-    loaded.save(&state_path).map_err(|error| error.to_string())?;
+    loaded
+        .save(&state_path)
+        .map_err(|error| error.to_string())?;
     let starter = starter_report(
         &loaded,
         &state_path,
@@ -7299,7 +7301,10 @@ fn preflight_report(
                 status.check_history_count,
                 state.evolution_outcomes.len()
             ),
-            "octopus need observe README.md; octopus feedback latest satisfied \"reviewed\"",
+            format!(
+                "octopus --state {} first-run \"collect local feedback evidence\"",
+                shell_arg(&state_path.to_string_lossy())
+            ),
         ),
         preflight_check(
             "github_pr_path",
@@ -7615,9 +7620,11 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
         ),
         preflight_check(
             "command_coverage",
-            content.contains("preflight --live") && content.contains("self-iterate pr"),
+            content.contains("first-run")
+                && content.contains("preflight --live")
+                && content.contains("self-iterate pr"),
             true,
-            "record should include live provider and PR dry-run commands",
+            "record should include first-run, live provider, and PR dry-run commands",
             "regenerate with octopus preflight record",
         ),
     ];
@@ -7670,22 +7677,14 @@ fn record_pass_decision_ready(value: &str) -> bool {
 fn preflight_script_commands() -> Vec<String> {
     [
         "octopus --version",
-        "octopus --state \"$STATE\" bootstrap",
+        "octopus --state \"$STATE\" first-run \"preflight local evidence\"",
         "octopus --state \"$STATE\" doctor",
-        "octopus --state \"$STATE\" install swe-agent",
-        "octopus --state \"$STATE\" install computer-use-agent",
-        "octopus --state \"$STATE\" install harness-repair-agent",
-        "octopus --state \"$STATE\" install bash-only",
-        "octopus --state \"$STATE\" goal set \"build a clean-brain agent\"",
-        "octopus --state \"$STATE\" explore \"what should the brain ask next?\"",
         "octopus --state \"$STATE\" context observe .",
         "octopus --state \"$STATE\" think swe-agent observe README.md",
-        "octopus --state \"$STATE\" need observe README.md",
         "octopus --state \"$STATE\" traces",
         "octopus --state \"$STATE\" repair .",
         "octopus --state \"$STATE\" needs",
         "octopus --state \"$STATE\" check swe-agent",
-        "octopus --state \"$STATE\" feedback latest satisfied \"preflight feed worked\"",
         "octopus --state \"$STATE\" routes observe README.md",
         "octopus --state \"$STATE\" beat 200",
         "octopus --state \"$STATE\" pet harness",
@@ -9829,8 +9828,14 @@ fn print_first_run_report(report: &FirstRunReport, language: Language) {
             println!("state: {}", report.state_path);
             println!("objective: {}", report.objective);
             println!("evidence_target: {}", report.evidence_target);
-            println!("seed_tentacles: {}", join_or_none(&report.bootstrap.seed_tentacles));
-            println!("starter_recommendations: {}", report.starter.recommendations.len());
+            println!(
+                "seed_tentacles: {}",
+                join_or_none(&report.bootstrap.seed_tentacles)
+            );
+            println!(
+                "starter_recommendations: {}",
+                report.starter.recommendations.len()
+            );
             println!("feed: {:?} {}", report.feed.status, report.feed.summary);
             println!(
                 "feedback: {:?} trace #{}",
@@ -9849,7 +9854,10 @@ fn print_first_run_report(report: &FirstRunReport, language: Language) {
             println!("状态文件: {}", report.state_path);
             println!("目标: {}", report.objective);
             println!("证据目标: {}", report.evidence_target);
-            println!("种子触手: {}", join_or_none(&report.bootstrap.seed_tentacles));
+            println!(
+                "种子触手: {}",
+                join_or_none(&report.bootstrap.seed_tentacles)
+            );
             println!("推荐触手: {}", report.starter.recommendations.len());
             println!("Feed: {:?} {}", report.feed.status, report.feed.summary);
             println!(
@@ -12440,10 +12448,10 @@ mod tests {
     use super::{
         app_open_command, bridge_command_allowed, bridge_command_name, bridge_static,
         bridge_static_asset, check_preflight_record, check_report, default_tentacles_root_for,
-        first_run_report, http_content_length, install_report, is_broken_pipe_panic, localize_summary,
-        materialize_bundled_tentacles_root, parse_bridge_env_overlay, parse_start_options,
-        percent_encode_path, pet_report, pet_report_for_state, preflight_report,
-        prepare_bridge_state, product_report, provider_status_report,
+        first_run_report, http_content_length, install_report, is_broken_pipe_panic,
+        localize_summary, materialize_bundled_tentacles_root, parse_bridge_env_overlay,
+        parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
+        preflight_report, prepare_bridge_state, product_report, provider_status_report,
         real_machine_record_status_from_parts, repair_report, run, skill_reports, starter_report,
         tentacles_root_ready, update_report, usage, write_pet_image_report, Language,
     };
@@ -14599,7 +14607,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         std::env::set_current_dir(&dir).unwrap();
         let state_path = dir.join(".octopus/state.json");
 
-        let report = first_run_report(state_path.clone(), "validate first run".to_string()).unwrap();
+        let report =
+            first_run_report(state_path.clone(), "validate first run".to_string()).unwrap();
 
         assert_eq!(report.objective, "validate first run");
         assert_eq!(report.evidence_target, "README.md");
@@ -15966,15 +15975,20 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .iter()
             .any(|item| item.id == "live_provider" && item.status == "skipped"));
         assert!(preflight
+            .checks
+            .iter()
+            .any(|item| { item.id == "feedback_data" && item.next.contains("first-run") }));
+        assert!(preflight
             .next
             .iter()
             .any(|item| item.contains("preflight --live")));
         let script = fs::read_to_string(&script_path).unwrap();
-        assert!(script.contains("octopus --state \"$STATE\" bootstrap"));
+        assert!(script.contains("octopus --state \"$STATE\" first-run"));
         assert!(script.contains("OCTOPUS_PREFLIGHT_LIVE"));
         let record = fs::read_to_string(&record_path).unwrap();
         assert!(record.contains("# Real-Machine Record"));
         assert!(record.contains("Package version"));
+        assert!(record.contains("first-run"));
         assert!(record.contains("preflight --live"));
         assert!(record.contains("self-iterate pr"));
         let audit = check_preflight_record(&record_path).unwrap();

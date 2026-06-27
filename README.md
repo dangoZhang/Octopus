@@ -6,6 +6,8 @@
 
 Biological octopuses do not push every signal through one brain. Their arms contain local nervous systems. Behavior emerges from intent, local control, and feedback.
 
+That biology is the product bet: high-level intent, distributed local control, and layered feedback can make agents faster to think with. See the [research map](docs/references.md).
+
 Octopus brings that idea to agents. The main model carries only `Goal + Mem + Need + Feed`. It asks for cognition: verify this, reproduce that, compare options, remember a fact, forget stale context, execute a job, repair a broken path.
 
 The edge does the work. Octopus turns tools into local nervous systems: an LLM prompt, tool metadata, runtime code, local grants, traces, and an editable harness. A tentacle chooses how to observe, execute, verify, and compress Feed without polluting the clean brain.

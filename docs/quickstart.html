@@ -127,9 +127,7 @@ octopus repair .</code></pre>
 
       <h2>Release Gate</h2>
       <pre><code>tmp=$(mktemp -d)
-octopus --state "$tmp/state.json" bootstrap
-octopus --state "$tmp/state.json" need observe README.md
-octopus --state "$tmp/state.json" feedback latest satisfied "feed worked"
+octopus --state "$tmp/state.json" first-run "preflight local evidence"
 octopus --state "$tmp/state.json" preflight
 octopus --state "$tmp/state.json" preflight record "$tmp/real-machine-record.md"
 octopus --state "$tmp/state.json" preflight record check "$tmp/real-machine-record.md"</code></pre>

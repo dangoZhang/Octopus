@@ -32,7 +32,7 @@ Rust is the kernel language because this layer must be fast, typed, portable, an
 
 Context boundary: clean-brain LLM context is `Goal + Mem + Need + Feed`; tentacle LLM context is `Need + Tool + Action + Tool + Action -> Feed`; harness evolution sees manifest surfaces, outcomes, checks, and constraints so it can modify prompt, metadata, runtime code, or policy without moving tool burden into the clean brain.
 
-Biological analogy: octopus arms act like local nervous systems. Octopus follows that pressure: the brain owns intent, attention, and evaluation; tentacles own local implementation. A stable Need such as `verify repo health` can route through bash-only, SWE, repo-maintainer, or another tentacle. Need describes what, tentacles choose how, and RouteBook learns who is good at what.
+Biological analogy: octopus behavior combines high-level intent, distributed local control, and layered feedback. Octopus follows that pressure: the brain owns intent, attention, and evaluation; tentacles own local implementation. A stable Need such as `verify repo health` can route through bash-only, SWE, repo-maintainer, or another tentacle. Need describes what, tentacles choose how, and RouteBook learns who is good at what.
 
 `bootstrap [tentacles-root]` creates the local state files, adapts to the current project, installs the built-in seed tentacles, pulses the heartbeat, and returns a product report plus next commands. It does not grant high-risk tool scopes.
 
@@ -64,7 +64,7 @@ Every executed Feed is also written to a compact harness trace journal and retur
 
 `tentacles/` contains editable harness code. A tentacle is LLM brain prompt, tool metadata, implementation code, and evolution policy. Each manifest declares evolution surfaces: `brain_prompt`, `tool_meta`, `runtime_code`, and `evolution_policy`. Agent tool-combo seeds cover SWE repo tools, computer-use tools with configurable MCP calls plus browser/window diagnostics and clipboard adapters, repo-maintainer tools, harness-repair diagnostics, and one transparent write-and-run harness. Runtime seeds such as `json-feed` prove the same contract can run beyond shell.
 
-Tentacles can be segmented internally without exposing every local step to the main brain. A SWE tentacle can observe, hypothesize, patch, test, and explain inside its local harness, then return one compact Feed. Local modules may exchange local feedback; the clean brain still receives only Goal, Mem, Need, and Feed.
+Tentacles can be segmented internally without exposing every local step to the main brain. A SWE tentacle can observe, hypothesize, patch, test, and explain inside its local harness, then return one compact Feed. Like segmented arm cords with local sucker maps, local modules may exchange feedback while the clean brain still receives only Goal, Mem, Need, and Feed.
 
 `contract: octopus-json-v1` lets any runtime receive the same Need/tool/tentacle JSON envelope through stdin and return compact text or structured JSON feedback. Legacy executable entrypoints still work. Tools can declare `permission`; missing grants return `needs_authorization` before the entrypoint starts.
 
