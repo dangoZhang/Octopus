@@ -50,6 +50,8 @@ octopus provider check
 octopus brain --live --save "what should the brain ask next?"
 ```
 
+Set `OCTOPUS_BRAIN_GOAL_LLM_PREFIX`, `OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX`, `OCTOPUS_BRAIN_REWRITE_LLM_PREFIX`, or `OCTOPUS_BRAIN_QUEUE_LLM_PREFIX` to route clean-brain jobs to different models.
+
 ## Example Output
 
 ```text
