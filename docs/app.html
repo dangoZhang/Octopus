@@ -1379,6 +1379,8 @@
         root.className = "stack";
         root.textContent = "";
         root.appendChild(exploreSummary(report));
+        root.appendChild(brainAuditSummary(report.audit || {}));
+        root.appendChild(reportList("Audit Issues", (report.audit && report.audit.issues) || [], brainAuditIssueItem));
         root.appendChild(reportList("Needs", report.needs || [], exploreNeedItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
@@ -1658,6 +1660,7 @@
           ["Goal", goal.objective || "none"],
           ["Constraints", String((goal.constraints || []).length)],
           ["Summary", report.summary || "none"],
+          ["Audit", report.audit ? report.audit.summary || "clean" : "not run"],
         ].forEach(([label, value]) => {
           const metric = document.createElement("div");
           metric.className = "metric";
@@ -1669,6 +1672,41 @@
           grid.appendChild(metric);
         });
         return grid;
+      }
+
+      function brainAuditSummary(audit) {
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Audit Status", audit.status || "unknown"],
+          ["Clean Needs", String(audit.clean_count || 0)],
+          ["Issues", String(audit.issue_count || 0)],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        return grid;
+      }
+
+      function brainAuditIssueItem(issue) {
+        const item = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = "badge failed";
+        badge.textContent = issue.signal || "implementation";
+        const command = document.createElement("span");
+        command.className = "check-command";
+        command.textContent = `#${issue.index || "?"} · ${issue.kind || "need"}`;
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        meta.textContent = issue.guidance || issue.query || "";
+        item.append(badge, command, meta);
+        return item;
       }
 
       function goalSummary(report) {
