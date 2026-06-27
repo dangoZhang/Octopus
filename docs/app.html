@@ -1374,7 +1374,7 @@
         const feed = report.feed || null;
         root.appendChild(feedSummary({ status: feed && feed.status }, feed));
         root.appendChild(reportList("Feed", feed ? [feed] : [], feedItem));
-        const controls = repairFeedbackControls(feed);
+        const controls = repairScoreControls(report);
         if (controls) root.appendChild(controls);
         if (currentRepairScoreReport) {
           root.appendChild(repairScoreSummary(currentRepairScoreReport));
@@ -1384,13 +1384,17 @@
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
-      function repairFeedbackControls(feed) {
-        const trace = traceIndexForFeed(feed);
+      function repairTraceIndex(report) {
+        return traceIndexForFeed(report && report.feed);
+      }
+
+      function repairScoreControls(report) {
+        const trace = repairTraceIndex(report);
         if (!trace) return null;
         const wrap = document.createElement("div");
         wrap.className = "feedback-controls";
         const noteLabel = document.createElement("label");
-        noteLabel.textContent = "Repair outcome note";
+        noteLabel.textContent = "Repair outcome";
         const note = document.createElement("input");
         note.value = `reviewed repair feed #${trace}`;
         noteLabel.appendChild(note);
@@ -1412,7 +1416,8 @@
       }
 
       function repairScoreSummary(report) {
-        const outcome = report.outcome || {};
+        const outcome = report && report.outcome;
+        if (!outcome) return null;
         const grid = document.createElement("div");
         grid.className = "report-grid";
         [
@@ -1976,10 +1981,19 @@
             "score",
             String(trace),
             status,
-            summary || "reviewed from repair panel",
+            summary || "reviewed repair outcome",
           ]);
           currentRepairScoreReport = report;
-          if (currentRepairReport) renderRepairReport(currentRepairReport);
+          if (currentRepairReport) {
+            const feed = currentRepairReport.feed;
+            if (feed) {
+              feed.status = status;
+              feed.summary = summary || feed.summary;
+              feed.metadata = feed.metadata || {};
+              feed.metadata.feed_trace_index = String(trace);
+            }
+            renderRepairReport(currentRepairReport);
+          }
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("output").textContent = String(error);
@@ -2481,6 +2495,7 @@
           currentExploreReport = null;
           currentNeedQueueReport = null;
           currentRepairReport = null;
+          currentRepairScoreReport = null;
           $("providerReport").className = "metric";
           $("providerReport").innerHTML = "<span>No provider status yet.</span>";
           $("feedReport").className = "metric";

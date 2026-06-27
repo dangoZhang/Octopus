@@ -1,24 +1,24 @@
 # Octopus 🐙
 
-> A clean brain for agents, with tools that can think, act, and improve outside the main model context.
+> A local agent harness for a clean brain and tools that can think.
 
-Most agents make one model carry everything: task, memory, tool schemas, shell details, logs, routing, and repair notes. Octopus splits that burden. The main brain asks for the cognitive supply it needs; each tentacle owns its prompt, tool metadata, runtime code, permissions, and improvement trail, then sends back compact evidence.
+Most agents ask one model to carry the whole room: goal, memory, tool schemas, shell output, route choices, repair notes, and every failed attempt. Octopus keeps the head light. The main model asks for the evidence it needs; tool-side tentacles plan, run, remember, and return compact Feed.
 
-That small shift keeps reasoning clean while the harness keeps learning from real Feed, checks, grants, and scores.
+That gives you a small loop with a real product surface: ask, feed evidence back, score the result, then let the harness learn without dragging tool clutter into the next thought.
 
-## Think Less About Tools
+## Why It Feels Different
 
-- 🐙 **Clean brain**: the model sees only `Goal + Mem + Need + Feed`.
-- 🧠 **Thinking tentacles**: SWE, computer-use, repo-maintainer, harness-repair, bash-only, and JSON Feed seeds carry their own tool-side planning.
-- 🫀 **Three beats**: heartbeat keeps liveness, memory beat compacts recall, harness beat turns failed checks or Feed traces into reviewable repair plans.
-- 🎨 **Color state**: the pixel Octopus changes color from real Need/Feed/beat events, with square fallback for chat shells.
-- 🔐 **Local grants**: risky tool actions require explicit scopes before runtime execution.
-- ⚙️ **Rust kernel**: the non-evolvable base stays typed, fast, portable, and hard to accidentally rewrite.
+- 🐙 The brain sees only `Goal + Mem + Need + Feed`.
+- 🧠 Tentacles carry their own prompt, tool metadata, runtime code, grants, and repair trail.
+- 🫀 Three beats keep the system alive: liveness, memory compaction, and harness improvement.
+- 🎨 The pixel Octopus changes color from real Need, Feed, beat, repair, and score events.
+- 🔐 Local grants gate risky tool actions before execution.
+- ⚙️ A Rust kernel keeps the non-evolvable base small, typed, and fast.
 
-## Install & Run
+## Quick Install & Use
 
 ```bash
-cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus
+cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
 octopus --version
 octopus bootstrap
 octopus bridge
@@ -26,19 +26,19 @@ octopus bridge
 
 Open `http://127.0.0.1:8765/app.html`.
 
-Try the core loop:
+Try the loop:
 
 ```bash
 octopus goal set "make this repo easier to use"
 octopus brain "what should the brain ask next?"
-octopus brain --session "what should the brain ask next?"
-octopus brain --apply-json '{"summary":"external chat explored","needs":[{"kind":"verify","query":"goal evidence stays clean"}]}' --save "what should the brain ask next?"
 octopus explore --save "what should the brain ask next?"
 octopus needs
 octopus context observe .
 octopus need observe README.md
 octopus repair .
+octopus repair score 1 satisfied "repair improved harness"
 octopus feedback 1 satisfied "useful evidence"
+octopus routes observe .
 octopus beat 200
 octopus pet
 ```
@@ -50,20 +50,18 @@ octopus provider save openai
 source .octopus/llm.env
 octopus provider check
 octopus brain --live --save "what should the brain ask next?"
-octopus brain --session --live "what should the brain ask next?"
 ```
 
-## Use It Today
+## What Runs Today
 
-- Bootstrap a local harness and seed tentacles in one command.
-- Inspect the exact clean-brain context before a model call.
-- Write external Chat session files with prompt, messages, reply template, optional live draft, and apply command.
-- Import external chat replies into Goal or Need Queue without Feed execution.
-- Let tentacles plan from their own manifest, tools, grants, and optional LLM.
-- Run structured Feed, store traces, score outcomes, and update routing.
-- Generate reviewable harness repair sessions, optional repair drafts, and evolution apply plans.
-- Use the native HTML app for providers, external brain replies, Need Queue, repairs, Feed tests, grants, traces, preflight, and the pixel Octopus.
-- Gate releases with `octopus preflight`, a generated script, and a real-machine record.
+- Bootstrap a local state, seed agent-style tentacles, and open the native HTML app.
+- Use SWE, computer-use, repo-maintainer, harness-repair, bash-only, and JSON Feed seeds.
+- Inspect the clean-brain context before any model call.
+- Import external chat replies into Goal or Need Queue without running tools.
+- Let tentacles plan from their own manifest, grants, tools, and optional LLM.
+- Store Feed traces, score outcomes, update routing, and drive pet color.
+- Generate reviewable harness repair sessions and score repair outcomes.
+- Gate future releases with `octopus preflight`, generated scripts, and real-machine records.
 
 ## Proof
 

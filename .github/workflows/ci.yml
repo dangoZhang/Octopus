@@ -174,8 +174,10 @@ jobs:
       - run: grep -q "Repair" docs/app.html
       - run: grep -q "runRepairReport" docs/app.html
       - run: grep -q "renderRepairReport" docs/app.html
+      - run: grep -q "repairScoreControls" docs/app.html
       - run: grep -q "scoreRepair" docs/app.html
       - run: grep -q "repair score" docs/app.html
+      - run: grep -q "Repair outcome" docs/app.html
       - run: grep -q "feedEvidenceDetails" docs/app.html
       - run: grep -q "checkOutputDetails" docs/app.html
       - run: grep -q "check-output" docs/app.html

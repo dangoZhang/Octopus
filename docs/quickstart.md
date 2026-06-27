@@ -82,7 +82,7 @@ octopus bridge
 ```
 
 Open `http://127.0.0.1:8765/app.html`. The app can bootstrap a local state, install tentacles, inspect context, apply external brain replies, run a structured Feed test, score Feed or repair outcomes, show grant/check/next reports, and grant local Octopus tool scopes.
-The Feed panel can score the latest trace as satisfied, partial, or failed; that feedback updates harness route data and pet color.
+The Feed panel can score the latest trace as satisfied, partial, or failed; the Repair panel can score repair outcomes through the same harness journal. Both feedback paths update route data and pet color.
 It can also save provider env to `.octopus/llm.env`; bridge reads that file when it runs child Octopus commands.
 
 ## Tentacle Run
@@ -137,7 +137,7 @@ octopus provider save gemini OCTOPUS_GEMINI "$tmp/gemini.env"
 octopus doctor
 ```
 
-The native app can generate or save provider env, show the same provider layers, run an explicit provider check, render `octopus report`, render `octopus preflight`, run harness repair into Need Queue, and write local preflight script/record artifacts.
+The native app can generate or save provider env, show the same provider layers, run an explicit provider check, render `octopus report`, render `octopus preflight`, run harness repair into Need Queue, score repair outcomes, and write local preflight script/record artifacts.
 
 ## Self-Iteration
 

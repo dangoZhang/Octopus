@@ -153,13 +153,14 @@ Updated: 2026-06-27
 - Rolled the cleanup/version cadence to `0.0.8` after clean-brain Goal history/import, provider-routed clean-brain calls, harness repair queue/drafts, real-machine record gate, and README/control-surface cleanup.
 - Added harness repair outcome memory so reviewed repair sessions can be scored locally and reused by later repair sessions without exposing tool logs to the clean brain.
 - Added `repair score <trace-index> <status>` so reviewed repair Feed can update route learning, pet state, product reports, and heartbeat compaction.
-- Added native HTML repair score controls so harness-repair outcome memory can be written from the app.
+- Tightened README into a product-page first surface with the clear-brain value, pixel Octopus, runnable install path, and current usable loop above docs links.
+- Added native HTML Repair outcome controls so a repair session can be scored from the app without shell use.
 
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
 - LLM evolution can generate candidates and provider-assisted patch drafts from manifest surfaces, scored outcomes, recent Feed traces, and check history; local candidates now also target traced or failing runtime files, and harness beat can start from Feed trace or check feedback while app and CLI patch writes stay review/grant-bound.
-- Harness-repair diagnosis can now queue its next Need and remember app-scored session outcomes; closing the loop still needs real provider-backed repairs scored through that outcome journal.
+- Harness-repair diagnosis can now queue its next Need, remember reviewed session outcomes, and accept repair scoring from CLI or the native app; closing the loop still needs real provider-backed repairs scored through that outcome journal.
 - Product reporting is available in CLI and app; report quality still needs feedback from real project states.
 - Preflight now exposes the release gate and record template; current readiness still depends on running that gate with live provider, OAuth PR publishing, scored feedback data, and appending a current-head or docs-only parent-recorded result.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
