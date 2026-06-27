@@ -1,24 +1,21 @@
 # Octopus 🐙
 
-> Build agents that keep the main brain clear without making tools dumb.
+> Ship agents whose main brain stays readable while tools plan, act, and repair at the edge.
 
-Most agents make one model carry everything: the goal, memory, tool manuals, shell noise, repair notes, and every failed attempt. Octopus gives the main brain a clean desk. It says what evidence it needs; independent tentacles decide how to get it, run the right tools, remember the result, and send back compact Feed.
-
-The trick is small but sharp: the core thought loop stays `Goal + Mem + Need + Feed`; tool work lives inside tentacles with their own prompt, tool metadata, runtime code, permissions, and repair trail.
+Most agent loops ask one model to think, remember tool manuals, choose commands, read noisy logs, and repair itself inside the same crowded context. Octopus splits that load. The main brain stays small: `Goal + Mem + Need + Feed`. Each tentacle carries its own LLM prompt, tool metadata, runtime code, grants, traces, and evolution policy, then returns compact Feed the brain can use.
 
 ## Why
 
-The clean brain should not memorize every tool manual before it can think. Octopus keeps that burden in the harness, where it can be tested, scored, repaired, and evolved as code.
+Tool intelligence should live close to the work. Octopus lets the center ask for evidence, lets the arms decide how to get it, and lets feedback improve the harness without polluting the brain.
 
-## What it does
+## What It Does
 
-- 🐙 Keeps the brain on `Goal + Mem + Need + Feed`, so thinking stays inspectable.
-- 🧠 Lets tentacles plan with their own LLM prompt, tool metadata, runtime code, permissions, and repair trail.
-- 🛠️ Ships seed tentacles for SWE, computer-use, repo-maintainer, harness-repair, bash-only, and JSON Feed.
-- 🫀 Runs three beats: heartbeat, memory compaction, and harness improvement from scored feedback.
-- 🎨 Shows a pixel Octopus that changes color from real Need, Feed, repair, beat, blocked, and success events.
-- 🔐 Stops risky tools with `needs_authorization` until a local grant exists.
-- ⚙️ Uses a small Rust base while leaving code-as-harness easy for Octopus to inspect and evolve.
+- 🐙 The brain asks for evidence, validation, comparison, memory, execution, or repair; it does not carry tool manuals.
+- 🧠 Tentacles can think while using tools: SWE repo work, computer-use, repo maintenance, harness repair, bash-only scripts, and JSON Feed.
+- 🫀 Heartbeat, memory beat, and harness beat keep runtime state, compact memory, and turn scored failures into reviewable improvements.
+- 🎨 The pixel Octopus changes color from real Need, Feed, repair, beat, blocked, and success events: 🟥 🟨 🟩 🟦.
+- 🔐 Risky tools stop at `needs_authorization` until a local grant exists.
+- ⚙️ The base is small Rust; the evolving surface stays in readable manifests and code-as-harness.
 
 ## Quick Install & Use
 
@@ -44,7 +41,7 @@ octopus beat 200
 octopus pet
 ```
 
-Add an OpenAI-compatible provider only when you want live clean-brain or tentacle planning:
+Add an OpenAI-compatible provider when you want live clean-brain calls or tool-side planning:
 
 ```bash
 octopus provider save openai
@@ -53,7 +50,7 @@ octopus provider check
 octopus brain --live --save "what should the brain ask next?"
 ```
 
-## Example output
+## Example Output
 
 ```text
 brain: Goal + Mem + Need + Feed
@@ -63,13 +60,15 @@ pixel: 🟥
 status: Satisfied
 ```
 
-## Proof
+## What Works Today
 
-Octopus can bootstrap a local state, recommend starter tentacles, run Feed through manifest tools, inspect the exact clean-brain context, score Feed and repair outcomes, keep route evidence, write reviewable harness-evolution patches, and expose the whole loop through a local HTML app.
+Octopus can bootstrap local state, recommend starter tentacles with evidence, run Feed through manifest tools, inspect the exact clean-brain context, score Feed and repair outcomes, keep route evidence, write reviewable harness-evolution patches, and expose the loop through a local HTML app.
+
+## Proof
 
 - Runtime: Rust CLI plus local HTML app and bridge.
 - Checks: CI covers install path, manifests, app pages, provider surfaces, Feed traces, and seed tentacle flows.
-- Current line: `0.0.10`; `0.1.0` waits for recorded real-machine release testing.
+- Current line: `0.0.10`. `0.1.0` waits for recorded real-machine release testing.
 - License: MIT.
 
 ## Links
