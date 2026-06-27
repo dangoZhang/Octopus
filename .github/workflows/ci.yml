@@ -171,7 +171,8 @@ jobs:
       - run: grep -q "Copy env" docs/app.html
       - run: grep -q "OCTOPUS_BRAIN_GOAL_LLM_PREFIX" crates/octopus-core/src/main.rs
       - run: grep -q "OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX" crates/octopus-core/src/main.rs
-      - run: grep -q "OCTOPUS_BRAIN_GOAL_LLM_PREFIX" README.md
+      - run: grep -q "tools think at the edge" README.md
+      - run: grep -q "Install & Launch" README.md
       - run: grep -q "Deliberate Session" docs/app.html
       - run: grep -q "OCTOPUS_BRAIN_GOAL_LLM_PREFIX" docs/quickstart.md
       - run: grep -q "Install Report" docs/app.html
