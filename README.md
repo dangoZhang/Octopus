@@ -1,23 +1,27 @@
 # Octopus 🐙
 
-> Ship agents whose main brain stays readable while tools plan, act, and repair at the edge.
+> Independent-thinking tools for agents with a clean brain.
 
-Most agent loops ask one model to think, remember tool manuals, choose commands, read noisy logs, and repair itself inside the same crowded context. Octopus splits that load. The main brain stays small: `Goal + Mem + Need + Feed`. Each tentacle carries its own LLM prompt, tool metadata, runtime code, grants, traces, and evolution policy, then returns compact Feed the brain can use.
+[Open the app](https://dangozhang.github.io/Octopus/app.html) · [Read the docs](https://dangozhang.github.io/Octopus/) · [Install guide](docs/quickstart.md)
 
-## Why
+Agents get noisy when one model has to carry tool manuals, command syntax, logs, memory, permissions, and repair steps in the same context. Octopus moves that load to intelligent tentacles. The center asks for cognition. The edge gathers evidence, runs tools, learns from feedback, and returns compact Feed.
 
-Tool intelligence should live close to the work. Octopus lets the center ask for evidence, lets the arms decide how to get it, and lets feedback improve the harness without polluting the brain.
+## The Agent Brain Got Too Loud
 
-## What It Does
+Octopus keeps the main context small: `Goal + Mem + Need + Feed`.
 
-- 🐙 The brain asks for evidence, validation, comparison, memory, execution, or repair; it does not carry tool manuals.
-- 🧠 Tentacles can think while using tools: SWE repo work, computer-use, repo maintenance, harness repair, bash-only scripts, and JSON Feed.
-- 🫀 Heartbeat, memory beat, and harness beat keep runtime state, compact memory, and turn scored failures into reviewable improvements.
-- 🎨 The pixel Octopus changes color from real Need, Feed, repair, beat, blocked, and success events: 🟥 🟨 🟩 🟦.
-- 🔐 Risky tools stop at `needs_authorization` until a local grant exists.
-- ⚙️ The base is small Rust; the evolving surface stays in readable manifests and code-as-harness.
+A Need is cognitive: verify, reproduce, compare, remember, forget, execute, or repair. It does not need to name tools, APIs, commands, files, or implementation steps. Tentacles own that burden through their own prompt, tool metadata, runtime code, grants, traces, and evolution policy.
 
-## Quick Install & Use
+## What Feels Different
+
+- 🧠 Clean center: export, review, rewrite, and import Needs without dragging tool manuals into the main brain.
+- 🐙 Thinking tentacles: SWE, computer-use, repo maintenance, harness repair, bash-only, and JSON Feed ship as editable agent tool suites.
+- 🫀 Three pulses: heartbeat tracks liveness, memory beat compacts state, and harness beat turns failures into reviewable repairs.
+- 🎨 Pixel state: the Octopus changes color from real Need, Feed, repair, beat, blocked, and success events.
+- 🔐 Local grants: risky tools stop at `needs_authorization` until the local workspace allows them.
+- ⚙️ Rust kernel, code-as-harness: the base stays small while the tool surface stays readable, testable, and replaceable.
+
+## Download, Open, Run
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
@@ -28,7 +32,7 @@ octopus bridge
 
 Open `http://127.0.0.1:8765/app.html`.
 
-Run the first local loop:
+Run a first clean loop:
 
 ```bash
 octopus goal set "make this repo easier to use"
@@ -36,7 +40,6 @@ octopus brain --session "what should the brain ask next?"
 octopus context observe .
 octopus need observe README.md
 octopus feedback 1 satisfied "useful evidence"
-octopus routes observe .
 octopus beat 200
 octopus pet
 ```
@@ -50,35 +53,24 @@ octopus provider check
 octopus brain --live --save "what should the brain ask next?"
 ```
 
-## Example Output
+## Usable Today
 
-```text
-Octopus preflight
-target: 0.1.0
-version: 0.0.11
-brain: Goal + Mem + Need + Feed
-tentacle: Need + Tool + Action + Tool + Action -> Feed
-feed_trace_index: 1
-pixel: 🟥
-status: Satisfied
-```
+- Bootstrap local state and install seed tentacles.
+- Recommend first-run tentacles and learn from accepted, ignored, or failed choices.
+- Export clean-brain prompts, run external chat sessions, and rewrite polluted Needs before queueing them.
+- Run manifest Feed through permissioned tools, record traces, score outcomes, and update route evidence.
+- Inspect and operate the loop through the local HTML app and pixel Octopus.
+- Generate harness evolution proposals and reviewable apply plans from failed Feed, checks, or repair outcomes.
 
-## What Works Today
+## Pre-0.1 Line
 
-Octopus can bootstrap local state, recommend starter tentacles with evidence, run Feed through manifest tools, inspect the exact clean-brain context, score Feed and repair outcomes, keep route evidence, write reviewable harness-evolution patches, and expose the loop through a local HTML app.
+Octopus is on the `0.0.x` line. The kernel, app, starter tentacles, provider bridge, Feed traces, feedback scoring, repair plans, and Pages docs are working. `0.1.0` waits for recorded real-machine release testing with live providers, desktop adapters, and PR publishing.
 
-## Proof
+## Docs
 
-- Runtime: Rust CLI plus local HTML app and bridge.
-- Checks: CI covers install path, manifests, app pages, provider surfaces, Feed traces, and seed tentacle flows.
-- Current line: `0.0.11`. `0.1.0` waits for recorded real-machine release testing.
-- License: MIT.
-
-## Links
-
-- App: [docs/app.html](docs/app.html)
-- Pixel Octopus: [docs/pet.html](docs/pet.html)
-- Install guide: [docs/quickstart.md](docs/quickstart.md)
-- Architecture: [docs/architecture.md](docs/architecture.md)
-- Real-machine gate: [docs/real-machine-test.md](docs/real-machine-test.md)
-- Tentacle contract: [tentacles/README.md](tentacles/README.md)
+- [Product app](docs/app.html)
+- [Pixel Octopus](docs/pet.html)
+- [Install guide](docs/quickstart.md)
+- [Architecture](docs/architecture.md)
+- [Real-machine gate](docs/real-machine-test.md)
+- [Tentacle contract](tentacles/README.md)

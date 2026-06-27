@@ -206,46 +206,20 @@
       <section>
         <div class="shell">
           <h2>装好就能跑</h2>
-          <pre><code>cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus
-octopus --version
-octopus doctor
-octopus demo dangoZhang/Octopus
+          <pre><code>cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
 octopus --lang zh bootstrap
-octopus --lang zh skills
-octopus --lang zh providers
-octopus provider status
-octopus install swe-agent
-octopus install harness-repair-agent
+octopus starter "build a clean-brain agent"
+octopus bridge</code></pre>
+          <p>打开 <code>http://127.0.0.1:8765/app.html</code>。</p>
+          <pre><code>octopus --lang zh doctor
 octopus goal set "build a clean-brain agent"
-octopus chat "build a clean-brain agent"
-octopus brain "what should the brain ask next?"
 octopus brain --session "what should the brain ask next?"
-octopus brain --goal --session "make the goal sharper"
-octopus brain --apply-json '{"summary":"external chat explored","needs":[{"kind":"verify","query":"goal evidence stays clean"}]}' --save "what should the brain ask next?"
-octopus brain --goal --apply-json '{"objective":"build a clean-brain agent","constraints":["Need only"],"summary":"external goal refined","needs":[{"kind":"observe","query":"goal history"}]}' --save "make the goal sharper"
-octopus brain --goal --live --save "make the goal sharper"
-octopus brain --live "what should the brain ask next?"
-octopus brain --live --save "what should the brain ask next?"
-octopus brain --session --live "what should the brain ask next?"
-octopus explore "what should the brain ask next?"
-octopus explore --save "what should the brain ask next?"
-octopus needs
-octopus think swe-agent observe README.md
-octopus need observe .
-octopus traces
-octopus repair .
-octopus needs
-octopus report
-octopus preflight
-octopus preflight script
-octopus preflight record
-octopus pet
-octopus --lang zh doctor
+octopus need observe README.md
+octopus feedback 1 satisfied "useful evidence"
+octopus routes observe .
 octopus --lang zh beat 200
-tmp=$(mktemp -d)
-(cd "$tmp" &amp;&amp; octopus scaffold my-feed python)
-(cd "$tmp" &amp;&amp; octopus probe my-feed observe README.md)</code></pre>
-          <p><a href="../quickstart.html">完整流程</a>。<a href="../app.html">打开 HTML App</a>。内核保持小，SDK 和触手围绕它进化。</p>
+octopus pet</code></pre>
+          <p><a href="../quickstart.html">完整流程</a>。<a href="../app.html">打开 HTML App</a>。内核保持小，触手、SDK、harness code 围绕它进化。</p>
         </div>
       </section>
     </main>

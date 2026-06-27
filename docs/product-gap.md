@@ -27,7 +27,7 @@ Updated: 2026-06-27
 - Starter recommendations are grouped for first-run work: repo, desktop, self-iteration, repair, research, script, runtime, memory, and visual.
 - Starter recommendation cards now include group reasons and manifest-derived signals so first-run users can see why a tentacle was recommended.
 - Starter recommendations now record accepted, ignored, and failed first-run choices as harness feedback, and later ranking uses that feedback score.
-- README now opens as a product landing page: clean-brain story, thinking tentacles, pixel Octopus, install path, usable surface, and maturity line are visible before docs links.
+- README and docs homepages now open as product landing pages: clean-brain value, thinking tentacles, pixel Octopus, install path, usable surface, and maturity line are visible before docs links.
 - The native HTML app can fetch `--json install` reports, render grants/checks/next actions, and grant local Octopus tool scopes through the bridge.
 - `goal set <objective>` lets a human set the clean-brain Goal without running Feed or touching route learning.
 - `status --json` exposes recent clean-brain Goal turns so Goal refinement history stays visible without replaying Feed.
@@ -191,6 +191,7 @@ Updated: 2026-06-27
 - Reworked README into a product-page share surface with a first-screen story, edge-intelligence insight, differentiators, install/use path, and usable pre-release boundary.
 - Added starter choice feedback so accepted, ignored, and failed starter picks become compact harness records, influence later recommendation ranking, update pet state, and show in the native HTML app.
 - Rolled the cleanup/version cadence to `0.0.11` after repair action plans, heartbeat plan pickup, repair plan/report/app surfacing, REVIEW.md bundles, trace-aware repair scoring, starter choice feedback, and README product landing polish.
+- Tightened README plus English and Chinese docs homepages into shorter product pages with the value promise, install path, first clean loop, usable surface, and pre-`0.1.0` boundary visible before deep docs.
 
 ## Remaining Gaps
 

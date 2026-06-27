@@ -5389,7 +5389,7 @@ fn latest_repair_plan_for_query(query: &str) -> Option<PathBuf> {
         let modified = fs::metadata(&path)
             .and_then(|metadata| metadata.modified())
             .unwrap_or(UNIX_EPOCH);
-        if latest.as_ref().map_or(true, |(time, _)| modified > *time) {
+        if latest.as_ref().is_none_or(|(time, _)| modified > *time) {
             latest = Some((modified, path));
         }
     }
