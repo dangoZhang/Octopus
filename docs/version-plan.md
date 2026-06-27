@@ -25,7 +25,7 @@ Real-machine test gate for `0.1.0` and later tags:
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
-Last cleanup/version correction: `0.0.12` on 2026-06-27. Scope: clean-brain clarification/reflection/memory/council/synthesis, full local bridge startup, embedded HTML app fallback, and version consistency; no tag cut.
+Last cleanup/version correction: `0.0.12` on 2026-06-27. Scope: bridge startup, pixel pet SVG export, clean-brain clarification, reflection, memory, council, synthesis, provider slots, native app controls, embedded HTML app fallback, README/version consistency, and cleanup scan; no tag cut.
 
 Product commits toward `0.0.13`: 0/8.
 
