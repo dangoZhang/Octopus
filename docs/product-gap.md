@@ -25,6 +25,7 @@ Updated: 2026-06-27
 - `start` is the product-facing launch path; the old standalone demo route has been removed from CLI, doctor, and docs.
 - `start --open` keeps the same whole-project startup path and attempts to open the native app after the bridge binds.
 - The native HTML app defaults its bridge to local Octopus when opened from docs pages, and auto-renders a read-only startup snapshot when served by `octopus start`.
+- The native HTML app can render the dry-run update report and copy the explicit reinstall command while bridge blocks `update --run`.
 - `update` reports the current GitHub reinstall command by default, and `update --run` performs the cargo reinstall explicitly.
 - `bootstrap` creates local state files, adapts to the project, installs seed tentacles, pulses heartbeat, and returns a product report plus next commands.
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
@@ -228,6 +229,7 @@ Updated: 2026-06-27
 - Added native app startup auto-checks so locally served app sessions immediately show product report, provider readiness, and starter recommendations.
 - Added per-call clean-brain model routing with `brain --llm-prefix` and council model override with `brain --council --models`, so strong-model selection stays outside Need text and Feed execution.
 - Added `octopus start --open` and moved user-facing install paths to the one-command launch-and-open flow.
+- Added a native HTML Update panel for safe dry-run update reports and copyable reinstall commands.
 
 ## Remaining Gaps
 
@@ -240,7 +242,7 @@ Updated: 2026-06-27
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, clean-brain slot diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
 - GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
-- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, draft/apply agenda reports, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect repair plans, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, render/filter starter recommendation cards with choice feedback, run starter install/check/first-Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, render update reports, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, draft/apply agenda reports, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect repair plans, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, render/filter starter recommendation cards with choice feedback, run starter install/check/first-Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill

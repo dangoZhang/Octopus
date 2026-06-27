@@ -528,6 +528,7 @@
             <button type="button" id="providerEnv">Provider Env</button>
             <button type="button" id="providerSave">Provider Save</button>
             <button type="button" id="providerCheck">Provider Check</button>
+            <button type="button" id="runUpdate">Update</button>
             <button type="button" data-run="pet">Pet</button>
             <button type="button" data-run="doctor">Doctor</button>
             <button type="button" id="runReport">Report</button>
@@ -559,6 +560,10 @@
           <div class="provider-report stack">
             <h2>Provider</h2>
             <div id="providerReport" class="metric"><span>No provider status yet.</span></div>
+          </div>
+          <div class="update-report stack">
+            <h2>Update</h2>
+            <div id="updateReport" class="metric"><span>No update report yet.</span></div>
           </div>
           <div class="goal-report stack">
             <h2>Goal</h2>
@@ -610,6 +615,7 @@
       let currentCheckReport = null;
       let currentBeatReport = null;
       let currentProviderReport = null;
+      let currentUpdateReport = null;
       let currentFeedReport = null;
       let currentContextReport = null;
       let currentProductReport = null;
@@ -1525,6 +1531,19 @@
         }
       }
 
+      async function runUpdateReport(updateOutput = true) {
+        $("updateReport").textContent = "checking...";
+        try {
+          const report = await runBridgeJson(["--json", "update"]);
+          currentUpdateReport = report;
+          renderUpdateReport(report);
+          if (updateOutput) $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("updateReport").textContent = String(error);
+          if (updateOutput) $("output").textContent = String(error);
+        }
+      }
+
       async function runProductReport(updateOutput = true) {
         const state = $("state").value.trim() || ".octopus/state.json";
         $("productReport").textContent = "loading...";
@@ -1545,6 +1564,7 @@
         await Promise.allSettled([
           runProductReport(false),
           runProviderStatus(false),
+          runUpdateReport(false),
           runStarterReport(false),
         ]);
         if ($("output").textContent === "checking local Octopus start...") {
@@ -1708,6 +1728,15 @@
         root.appendChild(reportList("Saved", [report.path || ".octopus/llm.env"], textItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
         root.appendChild(providerEnvShellDetails(env));
+      }
+
+      function renderUpdateReport(report) {
+        const root = $("updateReport");
+        root.className = "stack";
+        root.textContent = "";
+        root.appendChild(updateSummary(report));
+        root.appendChild(updateCommandDetails(report));
+        root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
       function renderProductReport(report) {
@@ -2727,6 +2756,47 @@
         return grid;
       }
 
+      function updateSummary(report) {
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Version", report.current_version || "unknown"],
+          ["Status", report.status || "unknown"],
+          ["Mode", report.run ? "run" : "dry-run"],
+          ["Cargo", report.cargo_available ? "available" : "missing"],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        return grid;
+      }
+
+      function updateCommandDetails(report) {
+        const details = document.createElement("details");
+        details.open = true;
+        const summary = document.createElement("summary");
+        summary.textContent = "Reinstall command";
+        const pre = document.createElement("pre");
+        pre.className = "check-output";
+        const code = document.createElement("code");
+        code.textContent = report.shell || (report.command || []).join(" ");
+        pre.appendChild(code);
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.textContent = "Copy command";
+        copy.addEventListener("click", async () => {
+          await navigator.clipboard.writeText(code.textContent);
+        });
+        details.append(summary, pre, copy);
+        return details;
+      }
+
       function feedSummary(report, feed) {
         const metadata = (feed && feed.metadata) || {};
         const need = (feed && feed.need) || {};
@@ -3373,6 +3443,8 @@
         $("installReport").innerHTML = "<span>No report yet.</span>";
         $("providerReport").className = "metric";
         $("providerReport").innerHTML = "<span>No provider status yet.</span>";
+        $("updateReport").className = "metric";
+        $("updateReport").innerHTML = "<span>No update report yet.</span>";
         $("feedReport").className = "metric";
         $("feedReport").innerHTML = "<span>No feed yet.</span>";
         $("routeReport").className = "metric";
@@ -3401,6 +3473,7 @@
         currentCheckReport = null;
         currentBeatReport = null;
         currentProviderReport = null;
+        currentUpdateReport = null;
         currentFeedReport = null;
         currentContextReport = null;
         currentProductReport = null;
@@ -3465,6 +3538,7 @@
       $("providerEnv").addEventListener("click", runProviderEnv);
       $("providerSave").addEventListener("click", runProviderSave);
       $("providerCheck").addEventListener("click", runProviderCheck);
+      $("runUpdate").addEventListener("click", runUpdateReport);
       $("runReport").addEventListener("click", runProductReport);
       $("runPreflight").addEventListener("click", runPreflightReport);
       $("runPreflightScript").addEventListener("click", runPreflightScript);
@@ -3481,6 +3555,7 @@
           currentCheckReport = null;
           currentBeatReport = null;
           currentProviderReport = null;
+          currentUpdateReport = null;
           currentFeedReport = null;
           currentContextReport = null;
           currentProductReport = null;
@@ -3498,6 +3573,8 @@
           currentRepairScoreReport = null;
           $("providerReport").className = "metric";
           $("providerReport").innerHTML = "<span>No provider status yet.</span>";
+          $("updateReport").className = "metric";
+          $("updateReport").innerHTML = "<span>No update report yet.</span>";
           $("feedReport").className = "metric";
           $("feedReport").innerHTML = "<span>No feed yet.</span>";
           $("routeReport").className = "metric";
