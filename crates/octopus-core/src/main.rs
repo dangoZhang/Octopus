@@ -377,6 +377,20 @@ struct ProductGap {
     next: String,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct BrainSessionReport {
+    policy: String,
+    mode: String,
+    prompt: String,
+    session_dir: String,
+    prompt_path: String,
+    messages_path: String,
+    reply_path: String,
+    command_path: String,
+    apply_command: String,
+    next: Vec<String>,
+}
+
 const DEFAULT_PROVIDER_ENV_PATH: &str = ".octopus/llm.env";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -646,6 +660,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let mut live = false;
             let mut save = false;
             let mut refine_goal = false;
+            let mut session = false;
             let mut apply_path = None;
             let mut apply_json = None;
             let mut prompt = Vec::new();
@@ -655,6 +670,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     "--live" => live = true,
                     "--save" => save = true,
                     "--goal" => refine_goal = true,
+                    "--session" => session = true,
                     "--apply" => {
                         brain_index += 1;
                         let Some(path) = rest.get(brain_index) else {
@@ -678,7 +694,17 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let prompt = prompt
                 .or_else(|| loaded.goal.as_ref().map(|goal| goal.objective.clone()))
                 .unwrap_or_else(|| "what should the brain ask next?".to_string());
-            if let Some(payload) = apply_json
+            if session {
+                let report = write_brain_session(&loaded, &state, &prompt, refine_goal)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_brain_session(&report, language);
+                }
+            } else if let Some(payload) = apply_json
                 .map(Ok)
                 .or_else(|| apply_path.map(|path| read_brain_apply_payload(&path)))
                 .transpose()?
@@ -4163,6 +4189,12 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             Some("octopus brain --apply reply.json --save"),
         ),
         product_capability(
+            "brain_session",
+            "ready",
+            "writes prompt, messages, reply template, and apply command for external chat",
+            Some("octopus brain --session"),
+        ),
+        product_capability(
             "tentacle_brains",
             if status.tentacles.is_empty() {
                 "available"
@@ -5355,6 +5387,39 @@ fn print_brain_prompt(report: &BrainPromptReport, language: Language) {
             );
             println!("消息: {}", report.messages.len());
             println!("{}", report.prompt_text);
+            for next in &report.next {
+                println!("下一步: {next}");
+            }
+        }
+    }
+}
+
+fn print_brain_session(report: &BrainSessionReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus brain session");
+            println!("mode: {}", report.mode);
+            println!("brain: {}", report.policy);
+            println!("session: {}", report.session_dir);
+            println!("prompt: {}", report.prompt_path);
+            println!("messages: {}", report.messages_path);
+            println!("reply: {}", report.reply_path);
+            println!("commands: {}", report.command_path);
+            println!("apply: {}", report.apply_command);
+            for next in &report.next {
+                println!("next: {next}");
+            }
+        }
+        Language::Zh => {
+            println!("章鱼主脑会话");
+            println!("模式: {}", report.mode);
+            println!("主脑: {}", report.policy);
+            println!("会话: {}", report.session_dir);
+            println!("提示词: {}", report.prompt_path);
+            println!("消息: {}", report.messages_path);
+            println!("回复: {}", report.reply_path);
+            println!("命令: {}", report.command_path);
+            println!("应用: {}", report.apply_command);
             for next in &report.next {
                 println!("下一步: {next}");
             }
@@ -7014,6 +7079,155 @@ fn read_brain_apply_payload(path: &str) -> Result<String, String> {
     fs::read_to_string(path).map_err(|error| format!("failed to read {path}: {error}"))
 }
 
+fn write_brain_session(
+    state: &HarnessState,
+    state_path: &Path,
+    prompt: &str,
+    refine_goal: bool,
+) -> Result<BrainSessionReport, String> {
+    let prompt_report = state.clean_brain_prompt(prompt.to_string(), 6);
+    let (mode, messages, reply_template) = if refine_goal {
+        (
+            "goal".to_string(),
+            brain_goal_session_messages(&prompt_report),
+            serde_json::json!({
+                "objective": prompt_report
+                    .goal
+                    .as_ref()
+                    .map(|goal| goal.objective.as_str())
+                    .unwrap_or(prompt),
+                "constraints": ["Need only"],
+                "summary": "short goal update",
+                "needs": [
+                    {"kind": "observe", "query": "short cognitive request"}
+                ]
+            }),
+        )
+    } else {
+        (
+            "explore".to_string(),
+            prompt_report.messages.clone(),
+            serde_json::json!({
+                "summary": "short exploration",
+                "needs": [
+                    {"kind": "verify", "query": "short cognitive request"}
+                ]
+            }),
+        )
+    };
+    let session_dir = next_brain_session_dir(state_path)?;
+    fs::create_dir_all(&session_dir).map_err(|error| error.to_string())?;
+
+    let prompt_path = session_dir.join("PROMPT.md");
+    let messages_path = session_dir.join("messages.json");
+    let reply_path = session_dir.join("REPLY.json");
+    let command_path = session_dir.join("COMMANDS.sh");
+    let state_arg = shell_arg(state_path.to_string_lossy().as_ref());
+    let prompt_arg = shell_arg(prompt);
+    let reply_arg = shell_arg(reply_path.to_string_lossy().as_ref());
+    let apply_command = if refine_goal {
+        format!("octopus --state {state_arg} brain --goal --apply {reply_arg} --save {prompt_arg}")
+    } else {
+        format!("octopus --state {state_arg} brain --apply {reply_arg} --save {prompt_arg}")
+    };
+
+    fs::write(
+        &prompt_path,
+        brain_session_prompt_markdown(&prompt_report, &messages, &mode, &apply_command),
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        &messages_path,
+        serde_json::to_string_pretty(&messages).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        &reply_path,
+        serde_json::to_string_pretty(&reply_template).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        &command_path,
+        format!(
+            "#!/usr/bin/env sh\nset -eu\n# Paste the model reply into REPLY.json first.\n{apply_command}\n"
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+
+    Ok(BrainSessionReport {
+        policy: prompt_report.policy,
+        mode,
+        prompt: prompt.to_string(),
+        session_dir: session_dir.to_string_lossy().to_string(),
+        prompt_path: prompt_path.to_string_lossy().to_string(),
+        messages_path: messages_path.to_string_lossy().to_string(),
+        reply_path: reply_path.to_string_lossy().to_string(),
+        command_path: command_path.to_string_lossy().to_string(),
+        apply_command: apply_command.clone(),
+        next: vec![
+            "paste PROMPT.md or messages.json into a chat model".to_string(),
+            "replace REPLY.json with the model JSON reply".to_string(),
+            apply_command,
+        ],
+    })
+}
+
+fn brain_goal_session_messages(report: &BrainPromptReport) -> Vec<ChatMessage> {
+    let context = serde_json::json!({
+        "policy": report.policy,
+        "slots": ["Goal", "Mem", "Need", "Feed"],
+        "goal": report.goal,
+        "mem": report.mem,
+        "recent_need_feed": report.recent,
+    });
+    vec![
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain goal layer. You see only Goal, Mem, Need, and Feed. Refine the Goal and suggest cognitive Needs only. Do not choose tools, APIs, files, commands, routes, tentacles, or implementation. Return only JSON: {\"objective\":\"short goal\",\"constraints\":[\"short constraint\"],\"summary\":\"short goal update\",\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!(
+                "Clean brain context JSON: {context}\nUser goal prompt: {}",
+                report.prompt
+            ),
+        ),
+    ]
+}
+
+fn brain_session_prompt_markdown(
+    report: &BrainPromptReport,
+    messages: &[ChatMessage],
+    mode: &str,
+    apply_command: &str,
+) -> String {
+    let message_text = messages
+        .iter()
+        .map(|message| format!("{:?}:\n{}", message.role, message.content))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    format!(
+        "# Octopus Brain Session\n\nmode: {mode}\npolicy: {}\nprompt: {}\n\n## Messages\n\n{}\n\n## Reply Schema\n\nPaste model JSON into `REPLY.json`.\n\n## Apply\n\n```sh\n{}\n```\n",
+        report.policy, report.prompt, message_text, apply_command
+    )
+}
+
+fn next_brain_session_dir(state_path: &Path) -> Result<PathBuf, String> {
+    let root = state_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new(".octopus"))
+        .join("brain");
+    fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    for index in 1..10000 {
+        let candidate = root.join(format!("session-{index}"));
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    Err("no available brain session slot".to_string())
+}
+
 fn parse_brain_reply<T>(payload: &str, label: &str) -> Result<T, String>
 where
     T: serde::de::DeserializeOwned,
@@ -7034,7 +7248,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop index] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop index] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -7349,6 +7563,56 @@ mod tests {
     }
 
     #[test]
+    fn cli_brain_session_writes_external_chat_artifacts_without_feed() {
+        let _env = env_guard();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-brain-session-{}", std::process::id()));
+        let state_path = dir.join("state.json");
+        let state = state_path.to_string_lossy().to_string();
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "goal".to_string(),
+            "set".to_string(),
+            "clean".to_string(),
+            "brain".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--session".to_string(),
+            "--goal".to_string(),
+            "tighten".to_string(),
+            "goal".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert_eq!(restored.goal.as_ref().unwrap().objective, "clean brain");
+        assert!(restored.feed_traces.is_empty());
+        assert!(restored.routes.scores.is_empty());
+        let session = dir.join("brain").join("session-1");
+        assert!(session.join("PROMPT.md").exists());
+        assert!(session.join("messages.json").exists());
+        assert!(session.join("REPLY.json").exists());
+        assert!(session.join("COMMANDS.sh").exists());
+        let command = fs::read_to_string(session.join("COMMANDS.sh")).unwrap();
+        assert!(command.contains("brain --goal --apply"));
+        let reply = fs::read_to_string(session.join("REPLY.json")).unwrap();
+        assert!(reply.contains("\"objective\""));
+        assert!(reply.contains("\"needs\""));
+        let messages = fs::read_to_string(session.join("messages.json")).unwrap();
+        assert!(messages.contains("Goal + Mem + Need + Feed"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn cli_explore_save_and_needs_take_keep_feed_read_only() {
         let _env = env_guard();
         let path = std::env::temp_dir().join(format!(
@@ -7626,7 +7890,7 @@ mod tests {
         assert!(usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
         assert!(usage().contains(
-            "brain [--goal] [--live] [--save] [--apply path|-] [--apply-json json] [prompt]"
+            "brain [--goal] [--live] [--save] [--session] [--apply path|-] [--apply-json json] [prompt]"
         ));
         assert!(usage().contains("explore [--save] [prompt]"));
         assert!(usage().contains("needs [take|drop index]"));
