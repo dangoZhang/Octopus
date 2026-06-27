@@ -14,9 +14,9 @@ Updated: 2026-06-27
 - Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools, repo-maintainer, harness-repair diagnostics, and a write-and-run harness.
 - `json-feed` is a runtime seed for the `octopus-json-v1` contract.
 - Memory is a heart/beat; visual is the color-changing pet layer.
-- LLM adapters support OpenAI-compatible providers for chat goal refinement, clean-brain Goal/Clarify/Deliberate/Council/Synthesize/Explore/Rewrite/Queue/Memory jobs, manifest tool planning, and harness evolution candidate generation.
+- LLM adapters support OpenAI-compatible providers for chat goal refinement, clean-brain Goal/Clarify/Agenda/Deliberate/Council/Synthesize/Explore/Rewrite/Queue/Memory jobs, manifest tool planning, and harness evolution candidate generation.
 - `providers` and `provider <name> [prefix]` expose reusable LLM profile setup for OpenAI, local servers, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.
-- `provider status` reports chat, clean-brain model slots including clarification, memory, and synthesis, tentacle-planning, and harness-evolution LLM readiness without a network call.
+- `provider status` reports chat, clean-brain model slots including clarification, agenda, memory, and synthesis, tentacle-planning, and harness-evolution LLM readiness without a network call.
 - `provider save` writes reusable provider env to `.octopus/llm.env` by default, and start overlays that file onto child Octopus commands.
 - The native HTML app can generate or save provider env, render provider layer readiness, and run an explicit live provider check through start.
 - `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path; `bridge` remains a compatibility alias.
@@ -39,6 +39,7 @@ Updated: 2026-06-27
 - `brain --apply <file|->` and `brain --apply-json <json>` import external chat replies into Goal or Need Queue without running Feed; `brain --rewrite --session --apply...` writes an external-chat rewrite session, and `brain --rewrite --live --apply...` can rewrite polluted Need candidates through the clean-brain provider before queueing.
 - `brain --goal [--live] [--save] [prompt]` lets the clean brain refine Goal and optional queued Needs without running Feed.
 - `brain --clarify [--live] [--save] [prompt]` lets the clean brain ask human-facing questions and draft cognitive Needs before Feed when the Goal or next Need is underspecified.
+- `brain --agenda [--live] [--save] [prompt]` lets the clean brain build a compact cognitive agenda from Goal/Mem/Need/Feed and queue only clean Needs before Feed.
 - `brain --deliberate [--live] [--save] [prompt]` lets the clean brain produce observations, questions, options, risks, and cognitive Needs before Feed.
 - `brain --reflect [--live] [--save] [prompt]` lets the clean brain reflect on goal state, evidence, gaps, questions, and cognitive Needs before Feed.
 - `brain --memory [--live] [--save] [prompt]` lets the clean brain turn Goal/Mem/Need/Feed into remember, recall, forget, or verify Needs for the memory heart before Feed.
@@ -46,12 +47,12 @@ Updated: 2026-06-27
 - `brain --synthesize --apply-json <json> [--live] [--save] [prompt]` treats multiple clean-brain model drafts as Feed for a synthesis Need, then returns one audited Need set, with `brain --synthesize --session --apply-json <json>` for reviewable external-chat synthesis.
 - `brain --live [--save] [prompt]` calls the clean-brain provider and can store returned Needs without running Feed.
 - `explore [prompt]` lets the clean brain suggest cognitive Needs from Goal/Mem/Need/Feed without running Feed.
-- Clean-brain Goal, clarification, memory, reflection, and exploration reports now include a Need audit that flags tool/API/command/file burden and exposes only clean Needs for follow-up commands or queueing.
+- Clean-brain Goal, clarification, agenda, memory, reflection, and exploration reports now include a Need audit that flags tool/API/command/file burden and exposes only clean Needs for follow-up commands or queueing.
 - `explore --save [prompt]` stores only audit-clean Needs in a reviewable Need Queue; `needs session [--live] [prompt]` writes a clean-brain review session, `needs take <index>` returns one command, and `needs script [path]` writes a reviewable Feed script without executing it.
 - The native HTML app can run `--json bootstrap` through the bridge from the command panel.
 - The native HTML app can show current Goal, status, refinements, and recent clean-brain Goal turns from persisted state.
 - The native HTML app can paste an external brain reply and apply it to Need Queue or Goal through the bridge.
-- The native HTML app can run Clarify Session, Clarify, and Apply Clarify controls so goal questions can be drafted or imported without Feed execution.
+- The native HTML app can run Clarify Session, Clarify, Apply Clarify, Agenda Session, Agenda, and Apply Agenda controls so questions and cognitive priorities can be drafted or imported without Feed execution.
 - The native HTML app can run Memory Session, Memory, and Apply Memory controls so memory Needs can be drafted or imported without Feed execution.
 - The native HTML app can take or drop individual queued Needs, write the pending Need Queue into a local reviewable Feed script, and write offline or live clean-brain review sessions.
 - `harness-repair-agent` can diagnose state, traces, check history, evolution artifacts, repo dirtiness, provider env, and local adapters as structured Feed.
@@ -168,8 +169,9 @@ Updated: 2026-06-27
 - Added `clean_needs` to the clean-brain Need audit and changed Goal/Explore save paths so polluted Needs are not queued or turned into next Feed commands.
 - Added provider-backed `brain --rewrite` plus native HTML Rewrite Reply so dirty model Needs can be rewritten into cognitive Needs before queueing.
 - Added `brain --rewrite --session` plus native HTML Rewrite Session so any external chat UI can rewrite polluted Need candidates without tool context or Feed execution.
-- Added clean-brain model slots so Goal, Clarify, Deliberate, Reflect, Memory, Synthesize, Explore, Rewrite, and Need Queue review can route to different OpenAI-compatible providers without changing brain context.
+- Added clean-brain model slots so Goal, Clarify, Agenda, Deliberate, Reflect, Memory, Synthesize, Explore, Rewrite, and Need Queue review can route to different OpenAI-compatible providers without changing brain context.
 - Added `brain --clarify` plus native HTML Clarify controls so the clean brain can ask human-facing questions and queue only clean cognitive Needs before Feed.
+- Added `brain --agenda` plus native HTML Agenda controls so the clean brain can prioritize Goal/Mem/Need/Feed into an audited cognitive agenda without tool context.
 - Added `brain --deliberate` plus native HTML Deliberate controls so strong LLMs can spend tokens on pure cognitive observations, questions, options, risks, and Needs without tool context.
 - Added `brain --reflect` plus native HTML Reflect controls so the clean brain can inspect goal state, evidence, gaps, and next Needs without tool context.
 - Added `brain --memory` plus native HTML Memory controls so the clean brain can draft remember, recall, forget, and verify Needs for the memory heart without Feed execution.
@@ -228,7 +230,7 @@ Updated: 2026-06-27
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, bridge env loading, clean-brain slot diagnostics, and live validation; provider-specific edge cases still need real-machine feedback.
 - GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
-- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect repair plans, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, render/filter starter recommendation cards with choice feedback, run starter install/check/first-Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
+- The HTML app can run, stream, generate/save provider env, inspect provider readiness, check a live provider, inspect clean-brain context and Goal history, draft/apply agenda reports, apply external brain replies, take/drop queued Needs, write pending Needs as a script, run structured Feed tests, score Feed traces, score repair outcomes, inspect repair plans, inspect tentacle thinking, show Feed traces, guide tentacle install/grants, show install check status/history, expose check output, rerun one check, render/filter starter recommendation cards with choice feedback, run starter install/check/first-Need actions, show harness-beat evolution recommendations with apply-plan previews, grant/write reviewable apply artifacts, and score recommendation feedback through a local bridge; richer desktop UX still needs work.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill

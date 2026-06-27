@@ -48,6 +48,8 @@ octopus --state "$tmp/state.json" brain --goal --session "make the goal sharper"
 octopus --state "$tmp/state.json" brain --apply-json '{"summary":"external chat explored","needs":[{"kind":"verify","query":"goal evidence stays clean"}]}' --save "what should the brain ask next?"
 octopus --state "$tmp/state.json" brain --goal --apply-json '{"objective":"build a clean-brain agent","constraints":["Need only"],"summary":"external goal refined","needs":[{"kind":"observe","query":"goal history"}]}' --save "make the goal sharper"
 octopus --state "$tmp/state.json" brain --goal --live --save "make the goal sharper"
+octopus --state "$tmp/state.json" brain --agenda --session "what matters next?"
+octopus --state "$tmp/state.json" brain --agenda --save "what matters next?"
 octopus --state "$tmp/state.json" brain --reflect --session "what evidence is missing?"
 octopus --state "$tmp/state.json" brain --live "what should the brain ask next?"
 octopus --state "$tmp/state.json" brain --live --save "what should the brain ask next?"
@@ -130,6 +132,7 @@ octopus provider save openai OCTOPUS_LLM "$tmp/llm.env"
 # Optional: route clean-brain jobs to different provider prefixes.
 export OCTOPUS_BRAIN_GOAL_LLM_PREFIX=OCTOPUS_LLM
 export OCTOPUS_BRAIN_CLARIFY_LLM_PREFIX=OCTOPUS_LLM
+export OCTOPUS_BRAIN_AGENDA_LLM_PREFIX=OCTOPUS_LLM
 export OCTOPUS_BRAIN_DELIBERATE_LLM_PREFIX=OCTOPUS_LLM
 export OCTOPUS_BRAIN_REFLECT_LLM_PREFIX=OCTOPUS_LLM
 export OCTOPUS_BRAIN_MEMORY_LLM_PREFIX=OCTOPUS_LLM
@@ -141,11 +144,13 @@ export OCTOPUS_BRAIN_COUNCIL_LLM_PREFIXES=OCTOPUS_LLM
 octopus provider check
 octopus --state "$tmp/state.json" brain --goal --live --save "make the goal sharper"
 octopus --state "$tmp/state.json" brain --clarify --live --save "what should the user clarify?"
+octopus --state "$tmp/state.json" brain --agenda --live --save "what matters next?"
 octopus --state "$tmp/state.json" brain --deliberate --live --save "think before the next Need"
 octopus --state "$tmp/state.json" brain --reflect --live --save "what evidence is missing?"
 octopus --state "$tmp/state.json" brain --memory --live --save "what should be remembered?"
 octopus --state "$tmp/state.json" brain --council --save "ask multiple clean brains"
 octopus --state "$tmp/state.json" brain --clarify --session "what should the user clarify?"
+octopus --state "$tmp/state.json" brain --agenda --session "what matters next?"
 octopus --state "$tmp/state.json" brain --deliberate --session "think before the next Need"
 octopus --state "$tmp/state.json" brain --reflect --session "what evidence is missing?"
 octopus --state "$tmp/state.json" brain --memory --session "what should be remembered?"
