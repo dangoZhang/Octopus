@@ -5,10 +5,10 @@
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
 octopus --version
-octopus bootstrap
-octopus starter "make this repo easier to use"
-octopus doctor
+octopus bridge
 ```
+
+Open `http://127.0.0.1:8765/app.html`. `bridge` prepares local state, seed tentacles, heartbeat state, and the native app surface.
 
 ## Source Build
 

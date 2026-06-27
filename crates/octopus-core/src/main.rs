@@ -1427,7 +1427,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         Some("bridge") => {
             let addr = rest.get(1).map(String::as_str).unwrap_or("127.0.0.1:8765");
-            run_bridge(addr)
+            run_bridge(addr, state.clone())
         }
         Some("demo") => {
             let repository = rest
@@ -3605,10 +3605,11 @@ fn print_provider_status(report: &ProviderStatusReport, language: Language) {
     }
 }
 
-fn run_bridge(addr: &str) -> Result<(), String> {
+fn run_bridge(addr: &str, state_path: PathBuf) -> Result<(), String> {
     let listener =
         TcpListener::bind(addr).map_err(|error| format!("bridge bind failed: {error}"))?;
-    println!("Octopus bridge: http://{addr}");
+    let startup = prepare_bridge_state(state_path)?;
+    print_bridge_startup(&startup, addr);
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
@@ -3622,6 +3623,19 @@ fn run_bridge(addr: &str) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn prepare_bridge_state(state_path: PathBuf) -> Result<BootstrapReport, String> {
+    bootstrap_workspace(state_path, default_tentacles_root())
+}
+
+fn print_bridge_startup(report: &BootstrapReport, addr: &str) {
+    println!("Octopus start");
+    println!("state: {}", report.state_path);
+    println!("seeds: {}", join_or_none(&report.seed_tentacles));
+    println!("installed: {}", join_or_none(&report.installed_tentacles));
+    println!("app: http://{addr}/app.html");
+    println!("Octopus bridge: http://{addr}");
 }
 
 fn handle_bridge_connection(stream: &mut TcpStream) -> Result<(), String> {
@@ -5990,6 +6004,12 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
                 .join("docs/app.html")
                 .to_string_lossy()
                 .to_string(),
+            Some("octopus bridge"),
+        ),
+        product_capability(
+            "local_project_start",
+            if app_exists { "ready" } else { "missing" },
+            "bridge prepares local state, seed tentacles, heartbeat state, and serves the native app",
             Some("octopus bridge"),
         ),
         product_capability(
@@ -9987,9 +10007,10 @@ mod tests {
     use super::{
         bridge_command_allowed, bridge_command_name, check_report, http_content_length,
         install_report, is_broken_pipe_panic, localize_summary, parse_bridge_env_overlay,
-        percent_encode_path, pet_report, pet_report_for_state, preflight_report, product_report,
-        provider_status_report, real_machine_record_status_from_parts, repair_report, run,
-        skill_reports, starter_report, usage, write_pet_image_report, Language,
+        percent_encode_path, pet_report, pet_report_for_state, preflight_report,
+        prepare_bridge_state, product_report, provider_status_report,
+        real_machine_record_status_from_parts, repair_report, run, skill_reports, starter_report,
+        usage, write_pet_image_report, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
@@ -9997,7 +10018,7 @@ mod tests {
         StarterFeedbackStatus, Status,
     };
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::sync::{Mutex, MutexGuard, OnceLock};
 
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -11271,6 +11292,35 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(installed.contains(&"harness-repair-agent"));
         assert!(dir.join(".octopus/llm.env.example").exists());
         assert!(restored.last_pet_event.is_some());
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn bridge_startup_prepares_whole_project_state() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!("octopus-bridge-start-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let state = dir.join(".octopus/state.json");
+
+        let report = prepare_bridge_state(PathBuf::from(&state)).unwrap();
+        let restored = HarnessState::load(&state).unwrap();
+        let installed = restored
+            .installed_tentacles
+            .iter()
+            .map(|tentacle| tentacle.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(report.state_path, state.to_string_lossy());
+        assert!(installed.contains(&"swe-agent"));
+        assert!(installed.contains(&"computer-use-agent"));
+        assert!(installed.contains(&"harness-repair-agent"));
+        assert!(restored.last_pet_event.is_some());
+        assert!(dir.join(".octopus/llm.env.example").exists());
+
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
     }

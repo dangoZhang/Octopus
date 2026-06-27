@@ -19,6 +19,7 @@ Updated: 2026-06-27
 - `provider status` reports chat, clean-brain model slots including synthesis, tentacle-planning, and harness-evolution LLM readiness without a network call.
 - `provider save` writes reusable provider env to `.octopus/llm.env` by default, and bridge overlays that file onto child Octopus commands.
 - The native HTML app can generate or save provider env, render provider layer readiness, and run an explicit live provider check through the bridge.
+- `bridge` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
 - `bootstrap` creates local state files, adapts to the project, installs seed tentacles, pulses heartbeat, and returns a product report plus next commands.
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
@@ -198,6 +199,7 @@ Updated: 2026-06-27
 - Rolled the cleanup/version cadence to `0.0.11` after repair action plans, heartbeat plan pickup, repair plan/report/app surfacing, REVIEW.md bundles, trace-aware repair scoring, starter choice feedback, and README product landing polish.
 - Tightened README to story plus Quick Install & Use, and kept English and Chinese docs homepages as shorter product pages with the value promise, first clean loop, usable surface, and pre-`0.1.0` boundary visible before deep docs.
 - Added `pet image [state] [path]` so the color-changing pixel Octopus can be exported as SVG from the same state mapping used by CLI and HTML.
+- Made `octopus bridge` start the whole local project surface by bootstrapping state and seed tentacles before serving the native app.
 
 ## Remaining Gaps
 
