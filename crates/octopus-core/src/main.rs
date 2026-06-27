@@ -8387,6 +8387,7 @@ Append the completed result to `docs/real-machine-test.md` after the run.
 
 - Install and doctor:
 - Core loop:
+- Product bridge:
 - Start/app:
 - Live provider:
 - PR dry run:
@@ -8430,6 +8431,7 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
     let result_fields: &[&[&str]] = &[
         &["Install and doctor"],
         &["Core loop"],
+        &["Product bridge"],
         &["Start/app", "Bridge/app"],
         &["Live provider"],
         &["PR dry run"],
@@ -8488,7 +8490,7 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
             } else {
                 format!("missing {}", missing_results.join(", "))
             },
-            "fill Install, Core loop, Start/app, Live provider, and PR dry run results",
+            "fill Install, Core loop, Product bridge, Start/app, Live provider, and PR dry run results",
         ),
         preflight_check(
             "pass_decision",
@@ -8500,10 +8502,11 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
         preflight_check(
             "command_coverage",
             content.contains("first-run")
+                && content.contains("bridge_goal_surface")
                 && content.contains("preflight --live")
                 && content.contains("self-iterate pr"),
             true,
-            "record should include first-run, live provider, and PR dry-run commands",
+            "record should include first-run, bridge_goal_surface, live provider, and PR dry-run commands",
             "regenerate with octopus preflight record",
         ),
     ];
@@ -8661,6 +8664,7 @@ fn preflight_record_commands(state_path: &Path, current_head: Option<&str>) -> V
     }));
     commands.extend([
         "\"$OCTOPUS\" --state \"$STATE\" preflight".to_string(),
+        "\"$OCTOPUS\" --state \"$STATE\" preflight | grep bridge_goal_surface".to_string(),
         "\"$OCTOPUS\" provider status".to_string(),
         "\"$OCTOPUS\" provider check \"${OCTOPUS_LLM_PREFIX:-OCTOPUS_LLM}\"".to_string(),
         "\"$OCTOPUS\" --state \"$STATE\" preflight --live".to_string(),
@@ -17896,6 +17900,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("# Real-Machine Record"));
         assert!(record.contains("Package version"));
         assert!(record.contains("first-run"));
+        assert!(record.contains("bridge_goal_surface"));
         assert!(record.contains("preflight --live"));
         assert!(record.contains("self-iterate pr"));
         let audit = check_preflight_record(&record_path).unwrap();
@@ -17910,6 +17915,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .replace("- Python:", "- Python: 3.14")
             .replace("- Install and doctor:", "- Install and doctor: pass")
             .replace("- Core loop:", "- Core loop: pass")
+            .replace("- Product bridge:", "- Product bridge: pass")
             .replace("- Start/app:", "- Start/app: pass")
             .replace("- Live provider:", "- Live provider: pass")
             .replace("- PR dry run:", "- PR dry run: pass")

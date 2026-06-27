@@ -90,6 +90,7 @@ Updated: 2026-06-28
 - `preflight [--live]` turns the `0.1.0` readiness gate into CLI, JSON, and native HTML checks without live provider calls unless requested.
 - `preflight script [path]` writes a reviewable local release-gate script that starts from `first-run`, then runs context, thinking, trace, repair, check, route, beat, pet, report, and optional live provider/PR dry-run gates.
 - `preflight record [path]` writes a real-machine evidence template with GitHub install, core loop, start/app, live provider, and PR dry-run commands; `preflight record check [path]` audits completed fields before appending it.
+- Real-machine records now include a Product bridge result and a `bridge_goal_surface` command so the brain-goal input boundary is signed off on real machines.
 - `preflight record append [path] [log]` appends a passed real-machine record to `docs/real-machine-test.md` idempotently, and the native app exposes the same default-path action.
 - Real-machine record audit accepts the current `Start/app` result field while keeping legacy `Bridge/app` records valid.
 - The SWE test harness clears outer Octopus state variables before running project tests, so `check swe-agent` validates the target repo without leaking the caller's temporary state.
@@ -278,6 +279,7 @@ Updated: 2026-06-28
 - Restricted the local product bridge so direct user mutation is brain-goal only; Need, Feed feedback, repair, evolve, installs, checks, provider writes, preflight record writes, OAuth grants, and pet image writes stay internal or developer-only.
 - Added structured bridge denial feedback for non-goal user writes, including policy id and suggested Goal commands.
 - Added the product bridge boundary to the `0.1.0` preflight evidence.
+- Added product-bridge evidence to the real-machine record template and audit.
 
 ## Remaining Gaps
 
