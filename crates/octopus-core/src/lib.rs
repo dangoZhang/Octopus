@@ -353,6 +353,7 @@ pub struct GoalSnapshot {
     pub objective: String,
     pub refinements: usize,
     pub status: GoalStatus,
+    pub turns: Vec<GoalTurn>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -386,6 +387,25 @@ pub struct BrainPromptReport {
     pub messages: Vec<ChatMessage>,
     pub prompt_text: String,
     pub next: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainGoalReport {
+    pub policy: String,
+    pub source: String,
+    pub prompt: String,
+    pub previous_goal: Option<Goal>,
+    pub goal: Goal,
+    pub summary: String,
+    pub needs: Vec<GoalNeedSuggestion>,
+    pub next: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainGoalSaveReport {
+    pub goal: BrainGoalReport,
+    pub queued: Vec<NeedQueueItem>,
+    pub queue: NeedQueueReport,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -1197,11 +1217,40 @@ where
         .map_err(|error| format!("invalid goal refinement JSON: {error}"))
 }
 
-#[derive(Deserialize)]
-struct BrainExploreDraft {
-    summary: String,
+fn brain_goal_from_chat<C>(
+    brain: &BrainContextReport,
+    prompt: &str,
+    client: &mut C,
+) -> Result<GoalRefinement, String>
+where
+    C: ChatClient,
+{
+    let context = serde_json::json!({
+        "policy": brain.policy,
+        "slots": brain.slots,
+        "goal": brain.goal,
+        "mem": brain.mem,
+        "recent_need_feed": brain.turns,
+    });
+    let response = client.chat(&[
+        ChatMessage::new(
+            ChatRole::System,
+            "You are the Octopus clean-brain goal layer. You see only Goal, Mem, Need, and Feed. Refine the Goal and suggest cognitive Needs only. Do not choose tools, APIs, files, commands, routes, tentacles, or implementation. Return only JSON: {\"objective\":\"short goal\",\"constraints\":[\"short constraint\"],\"summary\":\"short goal update\",\"needs\":[{\"kind\":\"observe|verify|reproduce|compare|remember|forget|recall|execute\",\"query\":\"short cognitive request\"}]}",
+        ),
+        ChatMessage::new(
+            ChatRole::User,
+            format!("Clean brain context JSON: {context}\nUser goal prompt: {prompt}"),
+        ),
+    ])?;
+    serde_json::from_str::<GoalRefinement>(&response.content)
+        .map_err(|error| format!("invalid clean-brain goal JSON: {error}"))
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrainExploreDraft {
+    pub summary: String,
     #[serde(default)]
-    needs: Vec<GoalNeedSuggestion>,
+    pub needs: Vec<GoalNeedSuggestion>,
 }
 
 fn brain_explore_from_chat<C>(
@@ -1598,6 +1647,66 @@ impl HarnessState {
         Ok(self.brain_explore_report(brain, prompt, "llm", draft.summary, draft.needs))
     }
 
+    pub fn clean_brain_explore_from_draft(
+        &self,
+        prompt: impl Into<String>,
+        limit: usize,
+        draft: BrainExploreDraft,
+    ) -> BrainExploreReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        self.brain_explore_report(brain, prompt, "external_chat", draft.summary, draft.needs)
+    }
+
+    pub fn clean_brain_goal(&mut self, prompt: impl Into<String>, limit: usize) -> BrainGoalReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let refinement = if self.goal.is_some() {
+            GoalRefinement {
+                objective: None,
+                constraints: clean_optional(Some(&prompt))
+                    .map(|value| vec![value.to_string()])
+                    .unwrap_or_default(),
+                summary: Some("goal refined locally".to_string()),
+                needs: local_brain_explore_needs(&brain, &prompt),
+            }
+        } else {
+            GoalRefinement {
+                objective: clean_optional(Some(&prompt)).map(str::to_string),
+                constraints: Vec::new(),
+                summary: Some("goal set locally".to_string()),
+                needs: local_brain_explore_needs(&brain, &prompt),
+            }
+        };
+        self.apply_clean_brain_goal(brain, prompt, "local", refinement)
+    }
+
+    pub fn clean_brain_goal_with_client<C>(
+        &mut self,
+        prompt: impl Into<String>,
+        limit: usize,
+        client: &mut C,
+    ) -> Result<BrainGoalReport, String>
+    where
+        C: ChatClient,
+    {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        let refinement = brain_goal_from_chat(&brain, &prompt, client)?;
+        Ok(self.apply_clean_brain_goal(brain, prompt, "llm", refinement))
+    }
+
+    pub fn clean_brain_goal_from_refinement(
+        &mut self,
+        prompt: impl Into<String>,
+        limit: usize,
+        refinement: GoalRefinement,
+    ) -> BrainGoalReport {
+        let prompt = prompt.into();
+        let brain = self.context_report(None, limit).brain;
+        self.apply_clean_brain_goal(brain, prompt, "external_chat", refinement)
+    }
+
     pub fn clean_brain_prompt(&self, prompt: impl Into<String>, limit: usize) -> BrainPromptReport {
         let prompt = prompt.into();
         let brain = self.context_report(None, limit).brain;
@@ -1640,6 +1749,88 @@ impl HarnessState {
         }
     }
 
+    fn apply_clean_brain_goal(
+        &mut self,
+        brain: BrainContextReport,
+        prompt: String,
+        source: &str,
+        refinement: GoalRefinement,
+    ) -> BrainGoalReport {
+        let previous_goal = self.goal.clone();
+        let objective = clean_optional(refinement.objective.as_deref())
+            .or_else(|| previous_goal.as_ref().map(|goal| goal.objective.as_str()))
+            .or_else(|| clean_optional(Some(&prompt)))
+            .unwrap_or("clean-brain goal")
+            .to_string();
+        let mut goal = previous_goal
+            .clone()
+            .unwrap_or_else(|| Goal::new(objective.clone()));
+        goal.objective = objective;
+        for constraint in &refinement.constraints {
+            if let Some(constraint) = clean_optional(Some(constraint.as_str())) {
+                if !goal.constraints.iter().any(|item| item == constraint) {
+                    goal.refine(constraint.to_string());
+                }
+            }
+        }
+        goal.signals
+            .insert("brain_goal_source".to_string(), source.to_string());
+        if !refinement.needs.is_empty() {
+            let suggested = refinement
+                .needs
+                .iter()
+                .map(|need| format!("{}: {}", kind_key(&need.kind), need.query))
+                .collect::<Vec<_>>()
+                .join(" | ");
+            goal.signals
+                .insert("suggested_needs".to_string(), suggested);
+        }
+        let summary = clean_optional(refinement.summary.as_deref())
+            .map(str::to_string)
+            .unwrap_or_else(|| "goal refined by clean brain".to_string());
+        let turn = GoalTurn {
+            index: self.goal_turns.len() as u64 + 1,
+            message: prompt.clone(),
+            summary: summary.clone(),
+            status: Status::Satisfied,
+        };
+        self.goal = Some(goal.clone());
+        self.goal_turns.push(turn);
+        let next = if refinement.needs.is_empty() {
+            vec![
+                "octopus brain --live \"what should the brain ask next?\"".to_string(),
+                "octopus context".to_string(),
+            ]
+        } else {
+            let mut next = refinement
+                .needs
+                .iter()
+                .map(|need| {
+                    format!(
+                        "octopus need {} {}",
+                        kind_key(&need.kind),
+                        shell_arg(&need.query)
+                    )
+                })
+                .collect::<Vec<_>>();
+            next.push(format!(
+                "octopus brain --goal --save {}",
+                shell_arg(&prompt)
+            ));
+            next
+        };
+        BrainGoalReport {
+            policy: brain.policy,
+            source: source.to_string(),
+            prompt,
+            previous_goal,
+            goal,
+            summary,
+            needs: refinement.needs,
+            next,
+        }
+    }
+
     fn brain_explore_report(
         &self,
         brain: BrainContextReport,
@@ -1672,6 +1863,36 @@ impl HarnessState {
             summary: summary.into(),
             needs,
             next,
+        }
+    }
+
+    pub fn queue_goal_report(&mut self, report: &BrainGoalReport) -> BrainGoalSaveReport {
+        let mut queued = Vec::new();
+        for need in &report.needs {
+            if let Some(existing) = self
+                .need_queue
+                .iter()
+                .find(|item| item.status == NeedQueueStatus::Pending && item.need == *need)
+            {
+                queued.push(existing.clone());
+                continue;
+            }
+            self.next_need_queue_index += 1;
+            let item = NeedQueueItem {
+                index: self.next_need_queue_index,
+                need: need.clone(),
+                source: report.source.clone(),
+                prompt: report.prompt.clone(),
+                summary: report.summary.clone(),
+                status: NeedQueueStatus::Pending,
+            };
+            self.need_queue.push(item.clone());
+            queued.push(item);
+        }
+        BrainGoalSaveReport {
+            goal: report.clone(),
+            queued,
+            queue: self.need_queue_report(8),
         }
     }
 
@@ -1826,6 +2047,17 @@ impl HarnessState {
             objective: goal.objective.clone(),
             refinements: goal.constraints.len(),
             status: goal.status.clone(),
+            turns: {
+                let mut turns = self
+                    .goal_turns
+                    .iter()
+                    .rev()
+                    .take(6)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                turns.reverse();
+                turns
+            },
         });
         let mut warnings = Vec::new();
         if self.installed_tentacles.is_empty() {
@@ -7800,6 +8032,11 @@ mod tests {
             report.goal.as_ref().unwrap().objective,
             "build a clean-brain agent"
         );
+        assert_eq!(report.goal.as_ref().unwrap().turns.len(), 1);
+        assert_eq!(
+            report.goal.as_ref().unwrap().turns[0].summary,
+            "remembered m1"
+        );
         assert_eq!(
             report.active_grants,
             vec!["github:dangoZhang/Octopus".to_string()]
@@ -7939,6 +8176,53 @@ mod tests {
         assert_eq!(report.source, "llm");
         assert_eq!(report.summary, "clean exploration");
         assert_eq!(report.needs[0].kind, NeedKind::Compare);
+    }
+
+    #[test]
+    fn clean_brain_goal_refines_goal_without_feed() {
+        struct FakeChat;
+
+        impl ChatClient for FakeChat {
+            fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                let combined = messages
+                    .iter()
+                    .map(|message| message.content.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert!(combined.contains("Goal, Mem, Need, and Feed"));
+                assert!(combined.contains("Do not choose tools"));
+                Ok(ChatResponse {
+                    content: r#"{"objective":"build a focused Octopus","constraints":["keep execution outside the brain"],"summary":"goal tuned","needs":[{"kind":"verify","query":"goal boundary is clear"}]}"#.to_string(),
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
+        let mut state = HarnessState {
+            goal: Some(Goal::new("build Octopus")),
+            ..HarnessState::default()
+        };
+        let mut client = FakeChat;
+
+        let report = state
+            .clean_brain_goal_with_client("tighten goal", 5, &mut client)
+            .unwrap();
+        let saved = state.queue_goal_report(&report);
+
+        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
+        assert_eq!(report.source, "llm");
+        assert_eq!(report.goal.objective, "build a focused Octopus");
+        assert_eq!(
+            report.goal.constraints,
+            vec!["keep execution outside the brain".to_string()]
+        );
+        assert_eq!(report.summary, "goal tuned");
+        assert_eq!(report.needs[0].kind, NeedKind::Verify);
+        assert_eq!(state.goal_turns.len(), 1);
+        assert_eq!(state.pending_need_queue_count(), 1);
+        assert_eq!(saved.queued.len(), 1);
+        assert!(state.feed_traces.is_empty());
+        assert!(state.routes.scores.is_empty());
     }
 
     #[test]

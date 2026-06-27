@@ -105,6 +105,9 @@ octopus --state "$tmp/state.json" installed
 octopus --state "$tmp/state.json" goal set "build a clean-brain agent"
 octopus --state "$tmp/state.json" chat "build a clean-brain agent"
 octopus --state "$tmp/state.json" brain "what should the brain ask next?"
+octopus --state "$tmp/state.json" brain --apply-json '{"summary":"external chat explored","needs":[{"kind":"verify","query":"goal evidence stays clean"}]}' --save "what should the brain ask next?"
+octopus --state "$tmp/state.json" brain --goal --apply-json '{"objective":"build a clean-brain agent","constraints":["Need only"],"summary":"external goal refined","needs":[{"kind":"observe","query":"goal history"}]}' --save "make the goal sharper"
+octopus --state "$tmp/state.json" brain --goal --live --save "make the goal sharper"
 octopus --state "$tmp/state.json" brain --live "what should the brain ask next?"
 octopus --state "$tmp/state.json" brain --live --save "what should the brain ask next?"
 octopus --state "$tmp/state.json" explore "what should the brain ask next?"
@@ -130,7 +133,7 @@ octopus --state "$tmp/state.json" goal</code></pre>
 
       <h2>Local App</h2>
       <pre><code>octopus bridge</code></pre>
-      <p>Open <code>http://127.0.0.1:8765/app.html</code>. The app can bootstrap a local state, install tentacles, inspect context, run harness repair into Need Queue, run a structured Feed test, show grant/check/next reports, and grant local Octopus tool scopes.</p>
+      <p>Open <code>http://127.0.0.1:8765/app.html</code>. The app can bootstrap a local state, install tentacles, inspect context, apply external brain replies, run harness repair into Need Queue, run a structured Feed test, show grant/check/next reports, and grant local Octopus tool scopes.</p>
       <p>It can also save provider env to <code>.octopus/llm.env</code>; bridge reads that file when it runs child Octopus commands.</p>
 
       <h2>Tentacle Run</h2>
@@ -155,7 +158,9 @@ octopus provider save openai OCTOPUS_LLM "$tmp/llm.env"
 . "$tmp/llm.env"
 octopus provider check
 
+octopus --state "$tmp/state.json" brain --goal --live --save "make the goal sharper"
 octopus --state "$tmp/state.json" brain --live "what should the brain ask next?"
+octopus --state "$tmp/state.json" brain --apply-json '{"summary":"external chat explored","needs":[{"kind":"compare","query":"provider and external chat paths"}]}' --save "what should the brain ask next?"
 octopus --state "$tmp/state.json" chat "make the harness self-evolve"
 octopus --state "$tmp/state.json" think swe-agent observe README.md
 octopus --state "$tmp/state.json" --json need observe README.md 1 1
