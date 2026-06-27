@@ -40,13 +40,12 @@ octopus provider save openai
 source .octopus/llm.env
 octopus provider check
 octopus brain --deliberate --save "think before the next Need"
-octopus brain --synthesize --apply-json '{"summary":"model jury","drafts":[{"source":"model-a","needs":[{"kind":"verify","query":"whether the goal is satisfied"}]}]}' --save "merge model drafts"
 octopus brain --live --save "what should the brain ask next?"
 ```
 
 ## Works Today
 
-- Clean-brain Goal, Need, Feed, queue, context, deliberation, synthesis, and external-chat sessions.
+- Clean-brain Goal, Need, Feed, queue, context, deliberation, council, synthesis, and external-chat sessions.
 - Seed tentacles for SWE work, computer-use adapters, repo maintenance, harness repair, and write-and-run local execution.
 - Tool-side LLM planning with grants, traces, route scores, feedback scoring, and reviewable harness evolution drafts.
 - Native HTML app, local bridge, install reports, provider setup, preflight gates, and pixel pet SVG export.

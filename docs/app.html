@@ -490,6 +490,7 @@
             <button type="button" id="runBrainSynthesisSession">Synthesize Session</button>
             <button type="button" id="runBrainLive">Brain Live</button>
             <button type="button" id="runBrainDeliberate">Deliberate</button>
+            <button type="button" id="runBrainCouncil">Brain Council</button>
             <button type="button" id="runBrainGoal">Brain Goal</button>
             <button type="button" id="applyBrainReply">Apply Reply</button>
             <button type="button" id="applyBrainDeliberation">Apply Deliberate</button>
@@ -641,6 +642,7 @@
           `octopus --state ${shellQuote(state)} --json brain --session --live ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --goal --session --live ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --goal --live --save ${shellQuote(goal)}`,
+          `octopus --state ${shellQuote(state)} --json brain --council --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --synthesize --session --apply drafts.json ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --synthesize --apply synthesis.json --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json brain --apply reply.json --save ${shellQuote(goal)}`,
@@ -979,6 +981,23 @@
           currentExploreReport = report.deliberation || null;
           currentNeedQueueReport = report.queue || null;
           renderExploreReport(report.deliberation || {});
+          renderNeedQueueReport(report.queue || {});
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("exploreReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runBrainCouncilReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        const goal = $("goal").value.trim() || "build a clean-brain agent";
+        $("exploreReport").textContent = "collecting council...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "brain", "--council", "--save", goal]);
+          currentExploreReport = (report.council && report.council.synthesis) || null;
+          currentNeedQueueReport = report.queue || null;
+          renderExploreReport((report.council && report.council.synthesis) || {});
           renderNeedQueueReport(report.queue || {});
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
@@ -3116,6 +3135,7 @@
       $("runGoalStatus").addEventListener("click", runGoalStatusReport);
       $("runBrainLive").addEventListener("click", () => runBrainLiveReport(false));
       $("runBrainDeliberate").addEventListener("click", runBrainDeliberateReport);
+      $("runBrainCouncil").addEventListener("click", runBrainCouncilReport);
       $("runBrainGoal").addEventListener("click", runBrainGoalReport);
       $("applyBrainReply").addEventListener("click", () => applyBrainReply(false));
       $("applyBrainDeliberation").addEventListener("click", applyBrainDeliberation);
