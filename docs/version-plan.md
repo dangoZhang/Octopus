@@ -27,6 +27,6 @@ Real-machine test gate for `0.1.0` and later tags:
 
 Last cleanup/version correction: `0.0.12` on 2026-06-27. Scope: bridge startup, pixel pet SVG export, clean-brain clarification, reflection, memory, council, synthesis, provider slots, native app controls, embedded HTML app fallback, README/version consistency, and cleanup scan; no tag cut.
 
-Product commits toward `0.0.13`: 5/8.
+Product commits toward `0.0.13`: 6/8.
 
 Next planned cleanup/version commit: `0.0.13`.

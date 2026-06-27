@@ -23,6 +23,7 @@ Updated: 2026-06-27
 - `start` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
 - `start` and `bootstrap` can materialize editable bundled seed tentacles under `.octopus/bundled-tentacles` when source tentacles are unavailable.
 - `start` is the product-facing launch path; the old standalone demo route has been removed from CLI, doctor, and docs.
+- `start --open` keeps the same whole-project startup path and attempts to open the native app after the bridge binds.
 - The native HTML app defaults its bridge to local Octopus when opened from docs pages, and auto-renders a read-only startup snapshot when served by `octopus start`.
 - `update` reports the current GitHub reinstall command by default, and `update --run` performs the cargo reinstall explicitly.
 - `bootstrap` creates local state files, adapts to the project, installs seed tentacles, pulses heartbeat, and returns a product report plus next commands.
@@ -226,6 +227,7 @@ Updated: 2026-06-27
 - Removed the standalone demo route and rebuilt Quick Install & Use around launching the whole project with `octopus start`.
 - Added native app startup auto-checks so locally served app sessions immediately show product report, provider readiness, and starter recommendations.
 - Added per-call clean-brain model routing with `brain --llm-prefix` and council model override with `brain --council --models`, so strong-model selection stays outside Need text and Feed execution.
+- Added `octopus start --open` and moved user-facing install paths to the one-command launch-and-open flow.
 
 ## Remaining Gaps
 

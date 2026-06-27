@@ -75,8 +75,8 @@
 
       <h2>Install</h2>
       <pre><code>cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
-octopus start</code></pre>
-      <p>Open <code>http://127.0.0.1:8765/app.html</code>.</p>
+octopus start --open</code></pre>
+      <p><code>start --open</code> opens <code>http://127.0.0.1:8765/app.html</code>. Use <code>octopus start</code> on headless machines.</p>
       <p><code>start</code> prepares <code>.octopus/</code> state, installs editable seed tentacles, pulses the three hearts, serves the native app and pixel pet, loads <code>.octopus/llm.env</code>, and falls back to bundled app/tentacle files when no source checkout is present.</p>
       <pre><code>octopus update
 octopus update --run</code></pre>
@@ -86,7 +86,7 @@ octopus update --run</code></pre>
 cd Octopus
 cargo run -p octopus-core --bin octopus -- start</code></pre>
       <pre><code>cargo install --path crates/octopus-core --bin octopus --force
-octopus start</code></pre>
+octopus start --open</code></pre>
 
       <h2>First Loop</h2>
       <pre><code>octopus goal set "make this repo easier to use"

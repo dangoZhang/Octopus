@@ -4,10 +4,10 @@
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
-octopus start
+octopus start --open
 ```
 
-Open `http://127.0.0.1:8765/app.html`.
+`start --open` opens `http://127.0.0.1:8765/app.html`. Use `octopus start` on headless machines.
 
 `start` is the whole-project entry: it prepares `.octopus/` state, installs editable seed tentacles, pulses the three hearts, serves the native app and pixel pet, loads `.octopus/llm.env`, and falls back to bundled app/tentacle files when no source checkout is present.
 
@@ -30,7 +30,7 @@ Or install the local binary:
 
 ```bash
 cargo install --path crates/octopus-core --bin octopus --force
-octopus start
+octopus start --open
 ```
 
 ## First Loop

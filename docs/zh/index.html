@@ -210,8 +210,8 @@
 octopus update
 octopus --lang zh bootstrap
 octopus starter "build a clean-brain agent"
-octopus start</code></pre>
-          <p>打开 <code>http://127.0.0.1:8765/app.html</code>。</p>
+octopus start --open</code></pre>
+          <p><code>start --open</code> 会打开 <code>http://127.0.0.1:8765/app.html</code>；无浏览器环境用 <code>octopus start</code>。</p>
           <pre><code>octopus --lang zh doctor
 octopus goal set "build a clean-brain agent"
 octopus brain --session "what should the brain ask next?"

@@ -1967,9 +1967,13 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
-        Some("start" | "bridge") => {
+        Some("start") => {
+            let options = parse_start_options(&rest)?;
+            run_bridge(&options.addr, state.clone(), options.open)
+        }
+        Some("bridge") => {
             let addr = rest.get(1).map(String::as_str).unwrap_or("127.0.0.1:8765");
-            run_bridge(addr, state.clone())
+            run_bridge(addr, state.clone(), false)
         }
         Some("init") => {
             let root = rest
@@ -2509,7 +2513,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                             &state,
                             &["starter".to_string(), shell_value(&objective)],
                         ),
-                        "octopus start".to_string(),
+                        "octopus start --open".to_string(),
                     ],
                 };
                 if json {
@@ -4224,11 +4228,45 @@ fn print_provider_status(report: &ProviderStatusReport, language: Language) {
     }
 }
 
-fn run_bridge(addr: &str, state_path: PathBuf) -> Result<(), String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StartOptions {
+    addr: String,
+    open: bool,
+}
+
+fn parse_start_options(rest: &[String]) -> Result<StartOptions, String> {
+    let mut addr = None;
+    let mut open = false;
+    for value in rest.iter().skip(1) {
+        match value.as_str() {
+            "--open" => open = true,
+            option if option.starts_with("--") => {
+                return Err(format!("unknown start option: {option}"));
+            }
+            value => {
+                if addr.replace(value.to_string()).is_some() {
+                    return Err("start accepts at most one address".to_string());
+                }
+            }
+        }
+    }
+    Ok(StartOptions {
+        addr: addr.unwrap_or_else(|| "127.0.0.1:8765".to_string()),
+        open,
+    })
+}
+
+fn run_bridge(addr: &str, state_path: PathBuf, open_app: bool) -> Result<(), String> {
     let listener =
         TcpListener::bind(addr).map_err(|error| format!("bridge bind failed: {error}"))?;
     let startup = prepare_bridge_state(state_path)?;
     print_bridge_startup(&startup, addr);
+    if open_app {
+        let url = format!("http://{addr}/app.html");
+        if let Err(error) = open_app_url(&url) {
+            eprintln!("open warning: {error}");
+        }
+    }
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
@@ -4242,6 +4280,37 @@ fn run_bridge(addr: &str, state_path: PathBuf) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn open_app_url(url: &str) -> Result<(), String> {
+    let (command, args) = app_open_command(url);
+    let status = Command::new(command)
+        .args(args)
+        .status()
+        .map_err(|error| format!("{command} failed: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("{command} exited with {status}"))
+    }
+}
+
+fn app_open_command(url: &str) -> (&'static str, Vec<String>) {
+    if cfg!(target_os = "macos") {
+        ("open", vec![url.to_string()])
+    } else if cfg!(target_os = "windows") {
+        (
+            "cmd",
+            vec![
+                "/C".to_string(),
+                "start".to_string(),
+                "".to_string(),
+                url.to_string(),
+            ],
+        )
+    } else {
+        ("xdg-open", vec![url.to_string()])
+    }
 }
 
 fn prepare_bridge_state(state_path: PathBuf) -> Result<BootstrapReport, String> {
@@ -5578,7 +5647,7 @@ fn starter_report(
         next.push(first.first_need_command.clone());
         next.push(first.check_command.clone());
     }
-    next.push("octopus start".to_string());
+    next.push("octopus start --open".to_string());
     next.sort();
     next.dedup();
 
@@ -6565,13 +6634,13 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
                 .join("docs/app.html")
                 .to_string_lossy()
                 .to_string(),
-            Some("octopus start"),
+            Some("octopus start --open"),
         ),
         product_capability(
             "local_project_start",
             if app_exists { "ready" } else { "missing" },
-            "start prepares local state, seed tentacles, heartbeat state, and serves the native app",
-            Some("octopus start"),
+            "start prepares local state, seed tentacles, heartbeat state, serves the native app, and can open it",
+            Some("octopus start --open"),
         ),
         product_capability(
             "local_update",
@@ -8526,7 +8595,7 @@ fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorRepo
     } else if llm.curl_available {
         next.push(format!("octopus provider check {}", llm.config_prefix));
     }
-    next.push("octopus start".to_string());
+    next.push("octopus start --open".to_string());
     next.push("octopus update".to_string());
     next.push(format!("open {}", pet.path));
     next.sort();
@@ -9620,7 +9689,7 @@ fn update_report(run_update: bool) -> UpdateReport {
             stderr: String::new(),
             next: vec![
                 "octopus update --run".to_string(),
-                "octopus start".to_string(),
+                "octopus start --open".to_string(),
             ],
         };
     }
@@ -9652,7 +9721,10 @@ fn update_report(run_update: bool) -> UpdateReport {
                 stdout: String::from_utf8_lossy(&output.stdout).to_string(),
                 stderr: String::from_utf8_lossy(&output.stderr).to_string(),
                 next: if updated {
-                    vec!["octopus --version".to_string(), "octopus start".to_string()]
+                    vec![
+                        "octopus --version".to_string(),
+                        "octopus start --open".to_string(),
+                    ]
                 } else {
                     vec!["octopus update".to_string(), "cargo --version".to_string()]
                 },
@@ -11656,7 +11728,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [addr] | bridge [addr] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | bridge [addr] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -11690,13 +11762,14 @@ fn parse_status(value: &str) -> Result<Status, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bridge_command_allowed, bridge_command_name, bridge_static, bridge_static_asset,
-        check_report, default_tentacles_root_for, http_content_length, install_report,
-        is_broken_pipe_panic, localize_summary, materialize_bundled_tentacles_root,
-        parse_bridge_env_overlay, percent_encode_path, pet_report, pet_report_for_state,
-        preflight_report, prepare_bridge_state, product_report, provider_status_report,
-        real_machine_record_status_from_parts, repair_report, run, skill_reports, starter_report,
-        tentacles_root_ready, update_report, usage, write_pet_image_report, Language,
+        app_open_command, bridge_command_allowed, bridge_command_name, bridge_static,
+        bridge_static_asset, check_report, default_tentacles_root_for, http_content_length,
+        install_report, is_broken_pipe_panic, localize_summary, materialize_bundled_tentacles_root,
+        parse_bridge_env_overlay, parse_start_options, percent_encode_path, pet_report,
+        pet_report_for_state, preflight_report, prepare_bridge_state, product_report,
+        provider_status_report, real_machine_record_status_from_parts, repair_report, run,
+        skill_reports, starter_report, tentacles_root_ready, update_report, usage,
+        write_pet_image_report, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
@@ -13722,7 +13795,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "env".to_string(),
         ])
         .unwrap();
-        assert!(usage().contains("start [addr]"));
+        assert!(usage().contains("start [--open] [addr]"));
         assert!(usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
         assert!(usage().contains(
@@ -13744,6 +13817,32 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("traces [limit]"));
         assert!(usage().contains("feedback <trace-index>"));
         assert!(usage().contains("bootstrap [tentacles-root]"));
+    }
+
+    #[test]
+    fn start_options_parse_open_and_address() {
+        let default = parse_start_options(&["start".to_string()]).unwrap();
+        assert_eq!(default.addr, "127.0.0.1:8765");
+        assert!(!default.open);
+
+        let open = parse_start_options(&[
+            "start".to_string(),
+            "--open".to_string(),
+            "127.0.0.1:18765".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(open.addr, "127.0.0.1:18765");
+        assert!(open.open);
+
+        let url = "http://127.0.0.1:8765/app.html";
+        let (_command, args) = app_open_command(url);
+        assert!(args.iter().any(|arg| arg == url));
+        assert!(parse_start_options(&[
+            "start".to_string(),
+            "127.0.0.1:1".to_string(),
+            "127.0.0.1:2".to_string(),
+        ])
+        .is_err());
     }
 
     #[test]
@@ -16032,7 +16131,7 @@ JSON
         assert!(report.shell.contains("cargo install --git"));
         assert!(report.command.contains(&"octopus-core".to_string()));
         assert!(report.next.contains(&"octopus update --run".to_string()));
-        assert!(report.next.contains(&"octopus start".to_string()));
+        assert!(report.next.contains(&"octopus start --open".to_string()));
     }
 
     #[test]
