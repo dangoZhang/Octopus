@@ -601,7 +601,8 @@
     <script>
       const $ = (id) => document.getElementById(id);
       const shellQuote = (value) => `'${String(value).replaceAll("'", "'\\''")}'`;
-      const defaultBridge = () => location.protocol.startsWith("http") ? location.origin : "http://127.0.0.1:8765";
+      const isLocalHost = (host) => ["localhost", "127.0.0.1", "::1"].includes(host);
+      const defaultBridge = () => location.protocol.startsWith("http") && isLocalHost(location.hostname) ? location.origin : "http://127.0.0.1:8765";
       let currentPetState = "harness";
       let currentInstallReport = null;
       let currentCheckReport = null;
@@ -768,7 +769,7 @@
           if (updateOutput) $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("starterReport").textContent = String(error);
-          $("output").textContent = String(error);
+          if (updateOutput) $("output").textContent = String(error);
         }
       }
 
@@ -1436,7 +1437,7 @@
           }
         } catch (error) {
           $("providerReport").textContent = String(error);
-          $("output").textContent = String(error);
+          if (updateOutput) $("output").textContent = String(error);
         }
       }
 
@@ -1484,17 +1485,30 @@
         }
       }
 
-      async function runProductReport() {
+      async function runProductReport(updateOutput = true) {
         const state = $("state").value.trim() || ".octopus/state.json";
         $("productReport").textContent = "loading...";
         try {
           const report = await runBridgeJson(["--state", state, "--json", "report"]);
           currentProductReport = report;
           renderProductReport(report);
-          $("output").textContent = JSON.stringify(report, null, 2);
+          if (updateOutput) $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("productReport").textContent = String(error);
-          $("output").textContent = String(error);
+          if (updateOutput) $("output").textContent = String(error);
+        }
+      }
+
+      async function runStartupSnapshot() {
+        if (!location.protocol.startsWith("http") || !isLocalHost(location.hostname)) return;
+        $("output").textContent = "checking local Octopus start...";
+        await Promise.allSettled([
+          runProductReport(false),
+          runProviderStatus(false),
+          runStarterReport(false),
+        ]);
+        if ($("output").textContent === "checking local Octopus start...") {
+          $("output").textContent = "Octopus start connected.";
         }
       }
 
@@ -3471,6 +3485,7 @@
       });
       $("bridge").value = defaultBridge();
       render();
+      runStartupSnapshot();
     </script>
   </body>
 </html>
