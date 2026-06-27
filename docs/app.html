@@ -481,6 +481,8 @@
               <button type="button" id="firstRunFeed">Feed</button>
               <button type="button" id="firstRunFeedback">Feedback</button>
               <button type="button" id="firstRunPreflight">Preflight</button>
+              <button type="button" id="firstRunRecord">Record</button>
+              <button type="button" id="firstRunRecordCheck">Check Record</button>
               <button type="button" id="firstRunBeat">Beat</button>
             </div>
           </section>
@@ -904,6 +906,28 @@
           const report = await runBridgeJson(["--state", state, "--json", "preflight"]);
           currentPreflightReport = report;
           renderPreflightReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+          return report;
+        });
+      }
+
+      async function runFirstRunRecord() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        return runFirstRunTask("Record", async () => {
+          const report = await runBridgeJson(["--state", state, "--json", "preflight", "record"]);
+          currentPreflightReport = report;
+          renderPreflightRecordReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+          return report;
+        });
+      }
+
+      async function runFirstRunRecordCheck() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        return runFirstRunTask("Check Record", async () => {
+          const report = await runBridgeJson(["--state", state, "--json", "preflight", "record", "check"]);
+          currentPreflightReport = report;
+          renderPreflightRecordCheckReport(report);
           $("output").textContent = JSON.stringify(report, null, 2);
           return report;
         });
@@ -3905,6 +3929,8 @@
       $("firstRunFeed").addEventListener("click", runFirstRunFeed);
       $("firstRunFeedback").addEventListener("click", runFirstRunFeedback);
       $("firstRunPreflight").addEventListener("click", runFirstRunPreflight);
+      $("firstRunRecord").addEventListener("click", runFirstRunRecord);
+      $("firstRunRecordCheck").addEventListener("click", runFirstRunRecordCheck);
       $("firstRunBeat").addEventListener("click", runFirstRunBeat);
       $("installGuide").addEventListener("click", runInstallReport);
       $("runChecks").addEventListener("click", runChecks);
