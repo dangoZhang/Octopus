@@ -68,7 +68,7 @@ octopus brain --live --save "what should the brain ask next?"
 ```text
 Octopus preflight
 target: 0.1.0
-version: 0.0.8
+version: 0.0.9
 brain: Goal + Mem + Need + Feed
 tentacle: Need + Tool + Action + Tool + Action -> Feed
 next: octopus preflight record, octopus preflight script, octopus report

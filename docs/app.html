@@ -491,6 +491,7 @@
             <button type="button" id="runExplore">Explore</button>
             <button type="button" id="saveExplore">Save Explore</button>
             <button type="button" id="runNeedQueue">Need Queue</button>
+            <button type="button" id="runNeedScript">Need Script</button>
             <button type="button" id="runRepair">Repair</button>
             <button type="button" data-run="think">Think</button>
             <button type="button" id="runContext">Context</button>
@@ -589,6 +590,7 @@
       let currentRouteReport = null;
       let currentExploreReport = null;
       let currentNeedQueueReport = null;
+      let currentNeedQueueActionReport = null;
       let currentRepairReport = null;
       let currentRepairScoreReport = null;
 
@@ -626,6 +628,7 @@
           `octopus --state ${shellQuote(state)} --json explore ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json explore --save ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json needs`,
+          `octopus --state ${shellQuote(state)} --json needs script`,
           `octopus --state ${shellQuote(state)} --json repair ${shellQuote(target)}`,
           `octopus --state ${shellQuote(state)} --json repair score 1 satisfied ${shellQuote("repair improved harness")}`,
           `octopus --state ${shellQuote(state)} --json need ${need} ${shellQuote(target)}`,
@@ -932,7 +935,22 @@
         try {
           const report = await runBridgeJson(["--state", state, "--json", "needs"]);
           currentNeedQueueReport = report;
+          currentNeedQueueActionReport = null;
           renderNeedQueueReport(report);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("needQueueReport").textContent = String(error);
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function runNeedScriptReport() {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        $("needQueueReport").textContent = "writing script...";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "needs", "script"]);
+          currentNeedQueueActionReport = null;
+          renderNeedQueueScriptReport(report);
           $("output").textContent = JSON.stringify(report, null, 2);
         } catch (error) {
           $("needQueueReport").textContent = String(error);
@@ -1362,8 +1380,59 @@
           grid.appendChild(metric);
         });
         root.appendChild(grid);
+        const actionSummary = needQueueActionSummary(currentNeedQueueActionReport);
+        if (actionSummary) root.appendChild(actionSummary);
         root.appendChild(reportList("Pending", report.pending || [], needQueueItem));
         root.appendChild(reportList("History", report.history || [], needQueueItem));
+        root.appendChild(reportList("Next", report.next || [], textItem));
+      }
+
+      function needQueueActionSummary(report) {
+        if (!report || !report.item) return null;
+        const item = report.item;
+        const need = item.need || {};
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Queue action", report.action || item.status || "updated"],
+          ["Need", `${need.kind || "need"}: ${need.query || ""}`],
+          ["Command", report.command || "none"],
+          ["Next", (report.next || []).join(" · ") || "octopus needs"],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        return grid;
+      }
+
+      function renderNeedQueueScriptReport(report) {
+        const root = $("needQueueReport");
+        root.className = "stack";
+        root.textContent = "";
+        const grid = document.createElement("div");
+        grid.className = "report-grid";
+        [
+          ["Brain", report.policy || "Goal + Mem + Need + Feed"],
+          ["Path", report.script_path || "none"],
+          ["Commands", String(report.command_count || 0)],
+        ].forEach(([label, value]) => {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = value;
+          metric.append(strong, span);
+          grid.appendChild(metric);
+        });
+        root.appendChild(grid);
+        root.appendChild(reportList("Script Commands", report.commands || [], textItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
 
@@ -1468,7 +1537,58 @@
         meta.className = "check-meta";
         meta.textContent = item.source ? `source=${item.source}` : "clean-brain queue";
         element.append(badge, command, meta);
+        const controls = needQueueControls(item);
+        if (controls) element.appendChild(controls);
         return element;
+      }
+
+      function needQueueControls(item) {
+        if (item.status !== "pending" || !item.index) return null;
+        const wrap = document.createElement("div");
+        wrap.className = "toolbar";
+        [
+          ["Take", () => takeQueuedNeed(item.index)],
+          ["Drop", () => dropQueuedNeed(item.index)],
+        ].forEach(([label, handler]) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = label;
+          button.addEventListener("click", handler);
+          wrap.appendChild(button);
+        });
+        return wrap;
+      }
+
+      async function takeQueuedNeed(index) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        try {
+          const report = await runBridgeJson(["--state", state, "--json", "needs", "take", String(index)]);
+          currentNeedQueueActionReport = { ...report, action: "taken" };
+          const queue = await runBridgeJson(["--state", state, "--json", "needs"]);
+          currentNeedQueueReport = queue;
+          renderNeedQueueReport(queue);
+          $("output").textContent = JSON.stringify(report, null, 2);
+        } catch (error) {
+          $("output").textContent = String(error);
+        }
+      }
+
+      async function dropQueuedNeed(index) {
+        const state = $("state").value.trim() || ".octopus/state.json";
+        try {
+          const item = await runBridgeJson(["--state", state, "--json", "needs", "drop", String(index)]);
+          currentNeedQueueActionReport = {
+            action: "dropped",
+            item,
+            next: ["octopus needs"],
+          };
+          const queue = await runBridgeJson(["--state", state, "--json", "needs"]);
+          currentNeedQueueReport = queue;
+          renderNeedQueueReport(queue);
+          $("output").textContent = JSON.stringify(item, null, 2);
+        } catch (error) {
+          $("output").textContent = String(error);
+        }
       }
 
       function exploreSummary(report) {
@@ -2442,6 +2562,7 @@
         currentRouteReport = null;
         currentExploreReport = null;
         currentNeedQueueReport = null;
+        currentNeedQueueActionReport = null;
         currentRepairReport = null;
         currentRepairScoreReport = null;
         render();
@@ -2463,6 +2584,7 @@
       $("runExplore").addEventListener("click", () => runExploreReport(false));
       $("saveExplore").addEventListener("click", () => runExploreReport(true));
       $("runNeedQueue").addEventListener("click", runNeedQueueReport);
+      $("runNeedScript").addEventListener("click", runNeedScriptReport);
       $("runRepair").addEventListener("click", runRepairReport);
       $("runContext").addEventListener("click", runContextReport);
       $("providerEnv").addEventListener("click", runProviderEnv);
@@ -2494,6 +2616,7 @@
           currentRouteReport = null;
           currentExploreReport = null;
           currentNeedQueueReport = null;
+          currentNeedQueueActionReport = null;
           currentRepairReport = null;
           currentRepairScoreReport = null;
           $("providerReport").className = "metric";
