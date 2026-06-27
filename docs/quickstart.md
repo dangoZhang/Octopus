@@ -51,6 +51,7 @@ octopus goal set --constraint "keep tools outside the brain" "make this repo eas
 octopus goal refine "prefer cognitive Needs over tool instructions"
 octopus brain --session "what should the brain ask next?"
 octopus brain --align --save "does this still follow the goal?"
+octopus brain --scout --save "map what the brain should understand next"
 octopus brain --focus verify --save "what proof matters?"
 octopus need observe README.md
 octopus feedback latest satisfied "useful evidence"
