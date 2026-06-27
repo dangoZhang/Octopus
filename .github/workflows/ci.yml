@@ -134,10 +134,10 @@ jobs:
       - run: grep -q '"harness-self-repair"' tentacles/harness-repair-agent/manifest.json
       - run: grep -q data-state docs/pet.html
       - run: grep -q "pixel-pet" docs/pet.html
-      - run: grep -q "octopus think" docs/index.html
-      - run: grep -q "octopus traces" docs/index.html
-      - run: grep -q "octopus report" docs/index.html
-      - run: grep -q "octopus preflight" docs/index.html
+      - run: grep -q "think swe-agent" docs/quickstart.md
+      - run: grep -q "Feed traces" docs/quickstart.md
+      - run: grep -q "octopus report" docs/quickstart.md
+      - run: grep -q "octopus preflight" docs/quickstart.md
       - run: grep -q "Command Surface" docs/app.html
       - run: grep -q "Starter" docs/app.html
       - run: grep -q "runStarterReport" docs/app.html
