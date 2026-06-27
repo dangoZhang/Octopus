@@ -1853,7 +1853,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
-        Some("bridge") => {
+        Some("start" | "bridge") => {
             let addr = rest.get(1).map(String::as_str).unwrap_or("127.0.0.1:8765");
             run_bridge(addr, state.clone())
         }
@@ -2411,7 +2411,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                             &state,
                             &["starter".to_string(), shell_value(&objective)],
                         ),
-                        "octopus bridge".to_string(),
+                        "octopus start".to_string(),
                     ],
                 };
                 if json {
@@ -4087,7 +4087,7 @@ fn print_bridge_startup(report: &BootstrapReport, addr: &str) {
     println!("seeds: {}", join_or_none(&report.seed_tentacles));
     println!("installed: {}", join_or_none(&report.installed_tentacles));
     println!("app: http://{addr}/app.html");
-    println!("Octopus bridge: http://{addr}");
+    println!("bridge: http://{addr}");
 }
 
 fn handle_bridge_connection(stream: &mut TcpStream) -> Result<(), String> {
@@ -5495,7 +5495,7 @@ fn starter_report(
         next.push(first.first_need_command.clone());
         next.push(first.check_command.clone());
     }
-    next.push("octopus bridge".to_string());
+    next.push("octopus start".to_string());
     next.sort();
     next.dedup();
 
@@ -6476,13 +6476,13 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
                 .join("docs/app.html")
                 .to_string_lossy()
                 .to_string(),
-            Some("octopus bridge"),
+            Some("octopus start"),
         ),
         product_capability(
             "local_project_start",
             if app_exists { "ready" } else { "missing" },
-            "bridge prepares local state, seed tentacles, heartbeat state, and serves the native app",
-            Some("octopus bridge"),
+            "start prepares local state, seed tentacles, heartbeat state, and serves the native app",
+            Some("octopus start"),
         ),
         product_capability(
             "starter_panel",
@@ -6798,7 +6798,7 @@ fn preflight_report(
             docs_ready,
             true,
             "README, docs homepage, app, and pixel pet files",
-            "octopus bridge",
+            "octopus start",
         ),
         preflight_check(
             "provider_layers",
@@ -11199,7 +11199,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | start [addr] | bridge [addr] | demo [repo] | goal [set objective] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -13021,6 +13021,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "env".to_string(),
         ])
         .unwrap();
+        assert!(usage().contains("start [addr]"));
         assert!(usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
         assert!(usage().contains(

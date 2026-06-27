@@ -16,10 +16,10 @@ The runtime keeps three pulses alive: liveness, memory, and harness evolution. A
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
-octopus bridge
+octopus start
 ```
 
-Open `http://127.0.0.1:8765/app.html`. The bridge prepares local state, seed tentacles, heartbeats, and the native app surface. If no source checkout is present, it creates editable seed tentacles under `.octopus/bundled-tentacles`.
+Open `http://127.0.0.1:8765/app.html`. `start` prepares local state, seed tentacles, heartbeats, and the native app surface. If no source checkout is present, it creates editable seed tentacles under `.octopus/bundled-tentacles`.
 
 Run a first loop:
 

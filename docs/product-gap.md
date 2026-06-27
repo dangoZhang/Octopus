@@ -17,11 +17,11 @@ Updated: 2026-06-27
 - LLM adapters support OpenAI-compatible providers for chat goal refinement, clean-brain Goal/Clarify/Deliberate/Council/Synthesize/Explore/Rewrite/Queue/Memory jobs, manifest tool planning, and harness evolution candidate generation.
 - `providers` and `provider <name> [prefix]` expose reusable LLM profile setup for OpenAI, local servers, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.
 - `provider status` reports chat, clean-brain model slots including clarification, memory, and synthesis, tentacle-planning, and harness-evolution LLM readiness without a network call.
-- `provider save` writes reusable provider env to `.octopus/llm.env` by default, and bridge overlays that file onto child Octopus commands.
-- The native HTML app can generate or save provider env, render provider layer readiness, and run an explicit live provider check through the bridge.
-- `bridge` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
-- `bridge` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
-- `bridge` and `bootstrap` can materialize editable bundled seed tentacles under `.octopus/bundled-tentacles` when source tentacles are unavailable.
+- `provider save` writes reusable provider env to `.octopus/llm.env` by default, and start overlays that file onto child Octopus commands.
+- The native HTML app can generate or save provider env, render provider layer readiness, and run an explicit live provider check through start.
+- `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path; `bridge` remains a compatibility alias.
+- `start` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
+- `start` and `bootstrap` can materialize editable bundled seed tentacles under `.octopus/bundled-tentacles` when source tentacles are unavailable.
 - `bootstrap` creates local state files, adapts to the project, installs seed tentacles, pulses heartbeat, and returns a product report plus next commands.
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
@@ -215,6 +215,7 @@ Updated: 2026-06-27
 - Made `octopus bridge` start the whole local project surface by bootstrapping state and seed tentacles before serving the native app.
 - Embedded native HTML pages into the Rust binary as a bridge fallback so installed binaries can serve the app even when source docs are unavailable.
 - Embedded seed tentacle files into the binary and materialized them as editable local harness files for installed whole-project startup.
+- Added `octopus start` as the product-facing whole-project launcher while keeping `octopus bridge` compatible.
 
 ## Remaining Gaps
 
