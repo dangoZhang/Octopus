@@ -10149,6 +10149,7 @@ print(json.dumps({
             "next_need_file",
             "command_script",
             "code_context",
+            "repair_plan",
         ] {
             let path = feed
                 .metadata
@@ -10178,6 +10179,19 @@ print(json.dumps({
         let code_context_text = fs::read_to_string(&code_context).unwrap();
         assert!(code_context_text.contains("Harness Repair Code Context"));
         assert!(code_context_text.contains("repair_session.sh"));
+        assert_eq!(
+            feed.metadata.get("repair_plan_status").map(String::as_str),
+            Some("review_required")
+        );
+        let repair_plan = feed
+            .metadata
+            .get("repair_plan")
+            .map(|path| workspace.join(path))
+            .expect("repair plan metadata path");
+        let repair_plan_text = fs::read_to_string(&repair_plan).unwrap();
+        assert!(repair_plan_text.contains("octopus-harness-repair-plan-v1"));
+        assert!(repair_plan_text.contains("\"target_tool\": \"repair_session\""));
+        assert!(repair_plan_text.contains("\"checks\""));
         let session = feed
             .metadata
             .get("session")

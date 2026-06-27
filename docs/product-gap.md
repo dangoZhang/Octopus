@@ -68,7 +68,7 @@ Updated: 2026-06-27
 - LLM-generated evolution candidates can carry a provider-assisted unified diff into drafts and authorized apply artifacts.
 - Harness beat turns recent failed or partial check history, Feed traces, or repair outcomes into a written evolution proposal, recommendation, and apply plan.
 - Harness beat recommendations can be granted, written as reviewable apply artifacts, reviewed, and scored from the native HTML app.
-- `harness-repair-agent` can read heartbeat/evolution/state signals, probe adapter readiness, write `.octopus/harness-repair/SESSION.*`, `PROMPT.md`, optional provider-backed `DRAFT.md`, `NEXT_NEED.json`, `COMMANDS.sh`, `OUTCOME_MEMORY.md`, and `CODE_CONTEXT.md`, record reviewed `OUTCOME.md` plus `.octopus/harness-repair/outcomes.jsonl`, then feed merged outcome memory and target code context into later repair sessions.
+- `harness-repair-agent` can read heartbeat/evolution/state signals, probe adapter readiness, write `.octopus/harness-repair/SESSION.*`, `PROMPT.md`, optional provider-backed `DRAFT.md`, `NEXT_NEED.json`, `COMMANDS.sh`, `OUTCOME_MEMORY.md`, `CODE_CONTEXT.md`, and `REPAIR_PLAN.json`, record reviewed `OUTCOME.md` plus `.octopus/harness-repair/outcomes.jsonl`, then feed merged outcome memory and target code context into later reviewable repair plans.
 - The SWE read tool now returns a compact file/range header and line-numbered evidence.
 
 ## Filled So Far
@@ -176,12 +176,13 @@ Updated: 2026-06-27
 - Added first-run starter grouping and HTML filters so users can narrow recommendations by repo, desktop, self-iteration, repair, research, script, runtime, memory, or visual work.
 - Added repair-session code context so target tentacle manifests and tool code are written into `CODE_CONTEXT.md` and provider draft context.
 - Rolled the cleanup/version cadence to `0.0.10` after starter recommendations/app cards/filters, clean-brain Need audit, repair-score journals, and repair-session outcome/code context.
+- Added repair-session action plans so each session writes `REPAIR_PLAN.json` with check, grant, apply, score, code-context, and outcome-memory boundaries.
 
 ## Remaining Gaps
 
 - Self-iteration now has an OAuth-scoped PR adapter; real-machine `gh` publishing still needs feedback.
 - LLM evolution can generate candidates and provider-assisted patch drafts from manifest surfaces, scored outcomes, recent Feed traces, and check history; local candidates now also target traced or failing runtime files, and harness beat can start from Feed trace or check feedback while app and CLI patch writes stay review/grant-bound.
-- Harness-repair diagnosis can now queue its next Need, remember reviewed session outcomes, feed merged outcome memory and target code context into repair sessions, accept repair scoring from CLI or the native app, mirror session-backed scores into the outcome journal, and feed failed or partial repair outcomes into harness beat evolution; closing the loop still needs real provider-backed repair runs scored from real projects.
+- Harness-repair diagnosis can now queue its next Need, remember reviewed session outcomes, feed merged outcome memory and target code context into repair sessions, write reviewable action plans, accept repair scoring from CLI or the native app, mirror session-backed scores into the outcome journal, and feed failed or partial repair outcomes into harness beat evolution; closing the loop still needs real provider-backed repair runs scored from real projects.
 - Product reporting is available in CLI and app; report quality still needs feedback from real project states.
 - Preflight now exposes the release gate and record template; current readiness still depends on running that gate with live provider, OAuth PR publishing, scored feedback data, and appending a current-head or docs-only parent-recorded result.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.

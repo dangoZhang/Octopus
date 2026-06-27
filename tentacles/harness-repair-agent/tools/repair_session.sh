@@ -341,6 +341,73 @@ def need_parts(value):
     return "execute", text
 
 
+def shell_arg(value):
+    return shlex.quote(str(value))
+
+
+def build_action_plan(
+    workspace,
+    session_path,
+    target_tentacle,
+    candidate,
+    source,
+    next_need,
+    commands,
+    next_need_payload,
+    code_context,
+    outcome_memory_path,
+    draft_path,
+    plan_path,
+):
+    target = code_context.get("tentacle") or target_tentacle or "unknown"
+    tool = code_context.get("tool") or "unknown"
+    tool_path = code_context.get("tool_path") or ""
+    check_commands = []
+    if target and target != "unknown":
+        check_commands.append(f"octopus check {shell_arg(target)}")
+    if tool_path and tool_path.endswith(".sh"):
+        check_commands.append(
+            f"{shell_arg(tool_path)} {shell_arg(workspace)} | python3 -m json.tool > /dev/null"
+        )
+    if not check_commands:
+        check_commands.append("octopus report")
+    grant_command = (
+        f"octopus oauth octopus evolve:{shell_arg(target)} harness:write"
+        if target and target != "unknown"
+        else "octopus oauth octopus harness:write"
+    )
+    apply_command = (
+        f"octopus evolve apply {shell_arg(target)} {shell_arg(candidate)}"
+        if target and target != "unknown" and candidate not in {"none", "recommended", "unknown"}
+        else "octopus beat 200"
+    )
+    return {
+        "schema_version": "octopus-harness-repair-plan-v1",
+        "status": "review_required",
+        "workspace": str(workspace),
+        "session": rel(session_path, workspace),
+        "target_tentacle": target,
+        "target_tool": tool,
+        "target_tool_path": tool_path,
+        "candidate": candidate,
+        "source": source,
+        "next_need": next_need_payload,
+        "inputs": {
+            "code_context": rel(plan_path.parent / "CODE_CONTEXT.md", workspace),
+            "outcome_memory": rel(outcome_memory_path, workspace),
+            "draft": rel(draft_path, workspace),
+        },
+        "review_boundary": "Review CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands.",
+        "commands": {
+            "checks": check_commands,
+            "grant": grant_command,
+            "apply": apply_command,
+            "score": "octopus repair score <trace-index> satisfied \"repair improved Feed\"",
+            "suggested": commands,
+        },
+    }
+
+
 def llm_draft(prompt, session, workspace):
     prefix = first_env(
         ["OCTOPUS_REPAIR_LLM_PREFIX", "OCTOPUS_EVOLVE_LLM_PREFIX"],
@@ -579,6 +646,7 @@ next_need_json = session_dir / "NEXT_NEED.json"
 command_script = session_dir / "COMMANDS.sh"
 outcome_memory_md = session_dir / "OUTCOME_MEMORY.md"
 code_context_md = session_dir / "CODE_CONTEXT.md"
+repair_plan_json = session_dir / "REPAIR_PLAN.json"
 outcome_command = (
     "octopus repair score <trace-index> satisfied \"repair improved Feed\""
 )
@@ -603,6 +671,7 @@ session = {
     "commands": commands,
     "outcome_memory": rel(outcome_memory_md, workspace),
     "code_context": rel(code_context_md, workspace),
+    "repair_plan": rel(repair_plan_json, workspace),
     "code_context_target": {
         "tentacle": code_context["tentacle"],
         "tool": code_context["tool"],
@@ -637,6 +706,24 @@ outcome_memory_md.write_text(
     encoding="utf-8",
 )
 code_context_md.write_text(code_context["markdown"], encoding="utf-8")
+repair_plan = build_action_plan(
+    workspace,
+    session_json,
+    target_tentacle,
+    candidate,
+    source,
+    next_need,
+    commands,
+    next_need_payload,
+    code_context,
+    outcome_memory_md,
+    draft_md,
+    repair_plan_json,
+)
+repair_plan_json.write_text(
+    json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
+    encoding="utf-8",
+)
 command_script.write_text(
     "\n".join(
         [
@@ -707,6 +794,11 @@ prompt_md.write_text(
             "code context excerpt:",
             code_context["prompt_excerpt"],
             "",
+            "repair action plan:",
+            f"- plan artifact: `{rel(repair_plan_json, workspace)}`",
+            f"- review boundary: {repair_plan['review_boundary']}",
+            f"- checks: {', '.join(repair_plan['commands']['checks'])}",
+            "",
             "artifacts:",
             f"- session: `{rel(session_json, workspace)}`",
             f"- next need: `{rel(next_need_json, workspace)}`",
@@ -714,6 +806,7 @@ prompt_md.write_text(
             f"- draft: `{rel(draft_md, workspace)}`",
             f"- outcome memory: `{rel(outcome_memory_md, workspace)}`",
             f"- code context: `{rel(code_context_md, workspace)}`",
+            f"- repair plan: `{rel(repair_plan_json, workspace)}`",
         ]
     )
     + "\n",
@@ -727,6 +820,11 @@ session["draft"] = {
     "prefix": draft["prefix"],
     "model": draft.get("model", ""),
 }
+repair_plan["inputs"]["draft"] = rel(draft_md, workspace)
+repair_plan_json.write_text(
+    json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
+    encoding="utf-8",
+)
 session_json.write_text(json.dumps(session, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
 session_md.write_text(
     "\n".join(
@@ -748,6 +846,7 @@ session_md.write_text(
             f"commands: `{rel(command_script, workspace)}`",
             f"outcome memory: `{rel(outcome_memory_md, workspace)}`",
             f"code context: `{rel(code_context_md, workspace)}`",
+            f"repair plan: `{rel(repair_plan_json, workspace)}`",
             f"outcome command: `{outcome_command}`",
         ]
     )
@@ -769,6 +868,8 @@ metadata = {
     "command_script": rel(command_script, workspace),
     "outcome_memory": rel(outcome_memory_md, workspace),
     "code_context": rel(code_context_md, workspace),
+    "repair_plan": rel(repair_plan_json, workspace),
+    "repair_plan_status": repair_plan["status"],
     "code_context_tentacle": code_context["tentacle"],
     "code_context_tool": code_context["tool"],
     "code_context_tool_path": code_context["tool_path"],

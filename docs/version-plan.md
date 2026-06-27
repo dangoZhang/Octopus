@@ -27,6 +27,6 @@ Real-machine test gate for `0.1.0` and later tags:
 
 Last cleanup/version correction: `0.0.10` on 2026-06-27. Scope: starter tentacle recommendations and app cards, clean-brain Need audit, repair-score outcome journals, repair-session outcome/code context, and harness-repair documentation polish; no tag cut.
 
-Product commits toward `0.0.11`: 0/8.
+Product commits toward `0.0.11`: 1/8.
 
 Next planned cleanup/version commit: `0.0.11`.
