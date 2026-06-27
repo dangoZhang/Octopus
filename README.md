@@ -31,15 +31,10 @@ Update later with `octopus update --run`.
 Run a first loop:
 
 ```bash
-octopus goal set --constraint "keep tools outside the brain" "make this repo easier to use"
-octopus brain --session "what should the brain ask next?"
-octopus brain --focus verify --save "what proof matters?"
-octopus context observe .
-octopus need observe README.md
-octopus feedback latest satisfied "useful evidence"
-octopus beat 200
-octopus pet
+octopus first-run "make this repo easier to use"
 ```
+
+`first-run` sets a clean Goal, installs seed tentacles, asks a safe observe Need, records Feed feedback, pulses the hearts, and returns Doctor plus Preflight evidence.
 
 Use an OpenAI-compatible provider for live clean-brain calls and tool-side planning:
 

@@ -38,6 +38,15 @@ octopus start --open
 Run these from the project you want Octopus to inhabit:
 
 ```bash
+octopus first-run "make this repo easier to use"
+```
+
+That command sets a clean Goal, bootstraps seed tentacles, runs a safe observe Feed, scores the latest trace, pulses the hearts, and returns Doctor plus Preflight evidence.
+
+Manual equivalent:
+
+```bash
+octopus bootstrap
 octopus goal set --constraint "keep tools outside the brain" "make this repo easier to use"
 octopus goal refine "prefer cognitive Needs over tool instructions"
 octopus brain --session "what should the brain ask next?"

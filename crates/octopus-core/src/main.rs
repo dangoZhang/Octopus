@@ -10,7 +10,7 @@ use octopus_core::{
     BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant, ChatClient, ChatMessage,
     ChatRole, CheckHistoryInput, CheckHistoryRecord, ContextReport, EnvironmentReport,
     EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome,
-    EvolutionRecommendation, Feed, FeedFeedbackOutcome, FeedTraceRecord, Goal, GoalChat,
+    EvolutionRecommendation, Feed, Feedback, FeedFeedbackOutcome, FeedTraceRecord, Goal, GoalChat,
     GoalNeedSuggestion, GoalRefinement, Harness, HarnessBeatEvolution, HarnessState, HeartBeat,
     HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem,
     NeedQueueReport, NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport,
@@ -278,6 +278,23 @@ struct BootstrapReport {
     installed_tentacles: Vec<String>,
     skipped_tentacles: Vec<String>,
     report: ProductReport,
+    next: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+struct FirstRunReport {
+    state_path: String,
+    objective: String,
+    evidence_target: String,
+    bootstrap: BootstrapReport,
+    goal: Goal,
+    starter: StarterReport,
+    feed: Feedback,
+    feedback: FeedFeedbackOutcome,
+    beat: HeartbeatReport,
+    product: ProductReport,
+    preflight: PreflightReport,
+    doctor: DoctorReport,
     next: Vec<String>,
 }
 
@@ -2091,6 +2108,23 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             } else {
                 print_bootstrap_report(&report, language);
+            }
+            Ok(())
+        }
+        Some("first-run") => {
+            let objective = rest
+                .get(1..)
+                .filter(|values| !values.is_empty())
+                .map(|values| values.join(" "))
+                .unwrap_or_else(default_first_run_objective);
+            let report = first_run_report(state.clone(), objective)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_first_run_report(&report, language);
             }
             Ok(())
         }
@@ -5198,6 +5232,73 @@ fn bootstrap_workspace(
         installed_tentacles,
         skipped_tentacles,
         report,
+        next,
+    })
+}
+
+fn default_first_run_objective() -> String {
+    "make this project easier to use".to_string()
+}
+
+fn first_run_evidence_target() -> String {
+    if Path::new("README.md").is_file() {
+        "README.md".to_string()
+    } else {
+        ".".to_string()
+    }
+}
+
+fn first_run_report(state_path: PathBuf, objective: String) -> Result<FirstRunReport, String> {
+    let evidence_target = first_run_evidence_target();
+    let bootstrap = bootstrap_workspace(state_path.clone(), default_tentacles_root())?;
+    let mut loaded = HarnessState::load(&state_path).map_err(|error| error.to_string())?;
+    let mut goal = Goal::new(objective.clone());
+    add_goal_constraint(&mut goal, "keep tools outside the brain");
+    loaded.goal = Some(goal.clone());
+    loaded.save(&state_path).map_err(|error| error.to_string())?;
+    let starter = starter_report(
+        &loaded,
+        &state_path,
+        default_tentacles_root(),
+        Some(objective.clone()),
+    )?;
+    let mut harness = harness_for_need(loaded, &NeedKind::Observe)?;
+    let feed = harness.feed(&[Need::new(NeedKind::Observe, evidence_target.clone())]);
+    let trace_index = resolve_feed_trace_selector("latest", &harness.state)?;
+    let feedback = harness.state.record_feed_feedback(
+        trace_index,
+        Status::Satisfied,
+        "first run evidence".to_string(),
+    )?;
+    let beat = harness.state.beat(200);
+    harness
+        .state
+        .save(&state_path)
+        .map_err(|error| error.to_string())?;
+    let product = product_report(&harness.state, &state_path)?;
+    let preflight = preflight_report(&harness.state, &state_path, false)?;
+    let doctor = doctor_report(&harness.state, state_path.clone())?;
+    let state_arg = shell_arg(&state_path.to_string_lossy());
+    let next = vec![
+        format!("octopus --state {state_arg} preflight"),
+        format!("octopus --state {state_arg} preflight record"),
+        format!("octopus --state {state_arg} start --open"),
+        "octopus provider check".to_string(),
+        format!("octopus --state {state_arg} self-iterate pr dangoZhang/Octopus \"review first-run evidence\""),
+    ];
+    Ok(FirstRunReport {
+        state_path: state_path.to_string_lossy().to_string(),
+        objective,
+        evidence_target,
+        bootstrap,
+        goal,
+        starter,
+        feed,
+        feedback,
+        beat,
+        product,
+        preflight,
+        doctor,
         next,
     })
 }
@@ -9714,6 +9815,58 @@ fn print_bootstrap_report(report: &BootstrapReport, language: Language) {
     }
 }
 
+fn print_first_run_report(report: &FirstRunReport, language: Language) {
+    let feedback_gate = report
+        .preflight
+        .checks
+        .iter()
+        .find(|check| check.id == "feedback_data")
+        .map(|check| check.status.as_str())
+        .unwrap_or("missing");
+    match language {
+        Language::En => {
+            println!("Octopus first run");
+            println!("state: {}", report.state_path);
+            println!("objective: {}", report.objective);
+            println!("evidence_target: {}", report.evidence_target);
+            println!("seed_tentacles: {}", join_or_none(&report.bootstrap.seed_tentacles));
+            println!("starter_recommendations: {}", report.starter.recommendations.len());
+            println!("feed: {:?} {}", report.feed.status, report.feed.summary);
+            println!(
+                "feedback: {:?} trace #{}",
+                report.feedback.status, report.feedback.trace.index
+            );
+            println!("heartbeats: {}", report.beat.beats.len());
+            println!("capabilities: {}", report.product.capabilities.len());
+            println!("gaps: {}", report.product.gaps.len());
+            println!("preflight_feedback: {feedback_gate}");
+            println!("release_ready: {}", report.preflight.release_ready);
+            println!("doctor_warnings: {}", report.doctor.warnings.len());
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼首次运行");
+            println!("状态文件: {}", report.state_path);
+            println!("目标: {}", report.objective);
+            println!("证据目标: {}", report.evidence_target);
+            println!("种子触手: {}", join_or_none(&report.bootstrap.seed_tentacles));
+            println!("推荐触手: {}", report.starter.recommendations.len());
+            println!("Feed: {:?} {}", report.feed.status, report.feed.summary);
+            println!(
+                "反馈: {:?} trace #{}",
+                report.feedback.status, report.feedback.trace.index
+            );
+            println!("心跳: {}", report.beat.beats.len());
+            println!("能力数: {}", report.product.capabilities.len());
+            println!("缺口数: {}", report.product.gaps.len());
+            println!("Preflight反馈门: {feedback_gate}");
+            println!("可发布: {}", report.preflight.release_ready);
+            println!("Doctor警告: {}", report.doctor.warnings.len());
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
 fn print_adapt_report(report: &AdaptReport, language: Language) {
     match language {
         Language::En => {
@@ -12199,7 +12352,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--clarify] [--agenda] [--deliberate] [--synthesize] [--council] [--reflect] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -12287,7 +12440,7 @@ mod tests {
     use super::{
         app_open_command, bridge_command_allowed, bridge_command_name, bridge_static,
         bridge_static_asset, check_preflight_record, check_report, default_tentacles_root_for,
-        http_content_length, install_report, is_broken_pipe_panic, localize_summary,
+        first_run_report, http_content_length, install_report, is_broken_pipe_panic, localize_summary,
         materialize_bundled_tentacles_root, parse_bridge_env_overlay, parse_start_options,
         percent_encode_path, pet_report, pet_report_for_state, preflight_report,
         prepare_bridge_state, product_report, provider_status_report,
@@ -14423,6 +14576,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("provider status"));
         assert!(usage().contains("update [--run]"));
         assert!(usage().contains("goal [set [--constraint text] objective|refine text]"));
+        assert!(usage().contains("first-run [objective]"));
         assert!(usage().contains("starter [objective]"));
         assert!(usage().contains("report"));
         assert!(usage().contains("preflight [--live]"));
@@ -14432,6 +14586,40 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("traces [limit]"));
         assert!(usage().contains("feedback <trace-index|latest>"));
         assert!(usage().contains("bootstrap [tentacles-root]"));
+    }
+
+    #[test]
+    fn first_run_report_writes_scored_feed_evidence() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!("octopus-first-run-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("README.md"), "# First run proof\n").unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+
+        let report = first_run_report(state_path.clone(), "validate first run".to_string()).unwrap();
+
+        assert_eq!(report.objective, "validate first run");
+        assert_eq!(report.evidence_target, "README.md");
+        assert_eq!(report.feedback.status, Status::Satisfied);
+        assert_eq!(
+            report.feedback.trace.metadata.get("feedback_status"),
+            Some(&"satisfied".to_string())
+        );
+        assert!(report
+            .preflight
+            .checks
+            .iter()
+            .any(|check| check.id == "feedback_data" && check.status == "pass"));
+        assert!(state_path.exists());
+        let state = HarnessState::load(&state_path).unwrap();
+        assert_eq!(state.feed_traces.len(), 1);
+        assert!(state.last_pet_event.is_some());
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

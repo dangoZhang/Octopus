@@ -692,6 +692,7 @@
           "octopus start --open",
           `octopus --state ${shellQuote(state)} init`,
           `octopus --state ${shellQuote(state)} --json bootstrap`,
+          `octopus --state ${shellQuote(state)} --json first-run ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json starter ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} --json starter feedback ${tentacle} accepted ${shellQuote(goal)}`,
           `octopus --state ${shellQuote(state)} install ${tentacle}`,
