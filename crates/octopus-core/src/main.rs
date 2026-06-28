@@ -8975,10 +8975,12 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
             content.contains("first-run")
                 && content.contains("bridge_goal_surface")
                 && content.contains("provider matrix")
+                && content.contains("provider matrix run")
+                && content.contains("provider matrix check")
                 && content.contains("preflight --live")
                 && content.contains("self-iterate pr"),
             true,
-            "record should include first-run, bridge_goal_surface, provider matrix, live provider, and PR dry-run commands",
+            "record should include first-run, bridge_goal_surface, provider matrix run/check, live provider, and PR dry-run commands",
             "regenerate with octopus preflight record",
         ),
     ];
@@ -16996,6 +16998,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("provider save <profile>"));
         assert!(usage().contains("provider status"));
         assert!(usage().contains("provider matrix [path]"));
+        assert!(usage().contains("provider matrix run [path]"));
         assert!(usage().contains("provider matrix check [path]"));
         assert!(usage().contains("update [--run]"));
         assert!(usage().contains("goal [set [--constraint text] objective|refine text]"));
@@ -18484,6 +18487,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("first-run"));
         assert!(record.contains("bridge_goal_surface"));
         assert!(record.contains("provider matrix"));
+        assert!(record.contains("provider matrix run"));
+        assert!(record.contains("provider matrix check"));
         assert!(record.contains("preflight --live"));
         assert!(record.contains("self-iterate pr"));
         let audit = check_preflight_record(&record_path).unwrap();

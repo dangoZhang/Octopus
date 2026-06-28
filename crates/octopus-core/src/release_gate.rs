@@ -167,6 +167,9 @@ pub(crate) fn preflight_record_commands(
         "\"$OCTOPUS\" --state \"$STATE\" preflight | grep bridge_goal_surface".to_string(),
         "\"$OCTOPUS\" provider status".to_string(),
         "\"$OCTOPUS\" provider matrix \"$tmp/provider-matrix.md\"".to_string(),
+        "\"$OCTOPUS\" --state \"$STATE\" provider matrix run \"$tmp/provider-matrix.md\""
+            .to_string(),
+        "\"$OCTOPUS\" provider matrix check \"$tmp/provider-matrix.md\"".to_string(),
         "\"$OCTOPUS\" provider check \"${OCTOPUS_LLM_PREFIX:-OCTOPUS_LLM}\"".to_string(),
         "\"$OCTOPUS\" --state \"$STATE\" preflight --live".to_string(),
         "\"$OCTOPUS\" start 127.0.0.1:18765 &".to_string(),
