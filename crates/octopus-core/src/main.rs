@@ -14,14 +14,14 @@ use octopus_core::{
     CodexCliConfig, ContextReport, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan,
     EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed, FeedFeedbackOutcome,
     FeedTraceRecord, Feedback, Goal, GoalChat, GoalNeedSuggestion, GoalRefinement, Harness,
-    HarnessBeatEvolution, HarnessState, HeartBeat, HeartbeatReport, InstalledTentacle,
-    LoadedTentacleManifest, Need, NeedKind, NeedQueueItem, NeedQueueReport, NeedQueueSaveReport,
-    NeedQueueStatus, NeedQueueTakeReport, OpenAiCompatibleChatClient, OpenAiCompatibleConfig,
-    OpenAiCompatibleTuning, RepairOutcome, RouteReport, SelfIterationPlan, StarterFeedbackInput,
-    StarterFeedbackRecord, StarterFeedbackStatus, Status, StatusReport, TentacleEvolutionProposal,
-    TentacleManifestReport, TentacleProfile, TentacleScaffold, TentacleThinkingPlan,
-    TentacleToolAction, TentacleToolCandidate, ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY,
-    TENTACLE_CONTEXT_POLICY,
+    HarnessBeatEvolution, HarnessLearningSummary, HarnessState, HeartBeat, HeartbeatReport,
+    InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem, NeedQueueReport,
+    NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport, OpenAiCompatibleChatClient,
+    OpenAiCompatibleConfig, OpenAiCompatibleTuning, RepairOutcome, RouteReport, SelfIterationPlan,
+    StarterFeedbackInput, StarterFeedbackRecord, StarterFeedbackStatus, Status, StatusReport,
+    TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile, TentacleScaffold,
+    TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate, ToolPermission,
+    CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -662,6 +662,7 @@ struct ProductReport {
     state_exists: bool,
     context: ProductContextPolicy,
     boundary: core_boundary::CoreBoundaryReport,
+    harness_learning: HarnessLearningSummary,
     capabilities: Vec<ProductCapability>,
     gaps: Vec<ProductGap>,
     next: Vec<String>,
@@ -7822,6 +7823,10 @@ fn print_status_report(report: &StatusReport, language: Language) {
                     outcome.index, outcome.status, outcome.summary
                 );
             }
+            println!(
+                "harness_learning: {}",
+                harness_learning_line(&report.harness_learning)
+            );
             println!("warnings: {}", join_or_none(&report.warnings));
             println!("next: {}", report.next_action);
         }
@@ -7859,10 +7864,44 @@ fn print_status_report(report: &StatusReport, language: Language) {
                     outcome.index, outcome.status, outcome.summary
                 );
             }
+            println!(
+                "Harness学习: {}",
+                harness_learning_line(&report.harness_learning)
+            );
             println!("警告: {}", join_or_none(&report.warnings));
             println!("下一步: {}", report.next_action);
         }
     }
+}
+
+fn harness_learning_line(summary: &HarnessLearningSummary) -> String {
+    let target = summary.target_tentacle.as_deref().unwrap_or("none");
+    let candidate = summary.candidate.as_deref().unwrap_or("none");
+    let status = summary
+        .status
+        .as_ref()
+        .map(|status| format!("{status:?}"))
+        .unwrap_or_else(|| "none".to_string());
+    let score = summary
+        .score
+        .map(|score| format!("{score:.2}"))
+        .unwrap_or_else(|| "none".to_string());
+    let text = summary.summary.as_deref().unwrap_or("no feedback yet");
+    format!(
+        "{} repair={} evolve={} target={} candidate={} status={} score={} summary={}",
+        summary.source,
+        summary.repair_outcomes,
+        summary.evolution_outcomes,
+        target,
+        candidate,
+        status,
+        score,
+        truncate_chars(&compact_status_line(text), 120)
+    )
+}
+
+fn compact_status_line(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn print_context_report(report: &ContextReport, language: Language) {
@@ -8436,6 +8475,16 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             Some("octopus install harness-repair-agent"),
         ),
         product_capability(
+            "harness_learning",
+            if status.harness_learning.source == "none" {
+                "waiting_for_feedback"
+            } else {
+                "ready"
+            },
+            harness_learning_line(&status.harness_learning),
+            Some(status.harness_learning.next_action.as_str()),
+        ),
+        product_capability(
             "goal_setting",
             "ready",
             "human goals and constraints can be set or refined without Feed execution",
@@ -8620,6 +8669,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             feedback_loop: "Need -> Feed -> Feedback".to_string(),
         },
         boundary,
+        harness_learning: status.harness_learning,
         capabilities,
         gaps,
         next,
@@ -9327,6 +9377,10 @@ fn print_product_report(report: &ProductReport, language: Language) {
             println!("loop: {}", report.context.feedback_loop);
             println!("boundary: {}", report.boundary.policy);
             println!(
+                "harness_learning: {}",
+                harness_learning_line(&report.harness_learning)
+            );
+            println!(
                 "stable_rust: {}",
                 join_or_none(
                     &report
@@ -9388,6 +9442,10 @@ fn print_product_report(report: &ProductReport, language: Language) {
             println!("触手上下文: {}", report.context.tentacle);
             println!("循环: {}", report.context.feedback_loop);
             println!("边界: {}", report.boundary.policy);
+            println!(
+                "Harness学习: {}",
+                harness_learning_line(&report.harness_learning)
+            );
             println!(
                 "稳定 Rust: {}",
                 join_or_none(
@@ -20078,6 +20136,17 @@ JSON
         assert!(restored.evolution_outcomes[0]
             .summary
             .contains("repair outcome #1"));
+        let status = restored.status_report();
+        assert_eq!(status.evolution_outcome_count, 1);
+        assert_eq!(status.harness_learning.source, "repair_outcome");
+        assert_eq!(
+            status.harness_learning.target_tentacle.as_deref(),
+            Some("swe-agent")
+        );
+        assert_eq!(
+            status.harness_learning.candidate.as_deref(),
+            Some("03-runtime-code")
+        );
         let evolution_plan =
             workspace.join(".octopus/evolution/swe-agent/apply/03-runtime-code.md");
         let evolution_json =

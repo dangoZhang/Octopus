@@ -410,6 +410,7 @@ pub struct StatusReport {
     pub feed_trace_count: usize,
     pub check_history_count: usize,
     pub repair_outcome_count: usize,
+    pub evolution_outcome_count: usize,
     pub starter_feedback_count: usize,
     pub installed_profiles: Vec<String>,
     pub tentacles: Vec<TentacleStatus>,
@@ -420,8 +421,23 @@ pub struct StatusReport {
     pub latest_need_queue_item: Option<NeedQueueItem>,
     pub latest_check: Option<CheckHistoryRecord>,
     pub latest_repair_outcome: Option<RepairOutcome>,
+    pub latest_evolution_outcome: Option<EvolutionOutcome>,
+    pub harness_learning: HarnessLearningSummary,
     pub latest_starter_feedback: Option<StarterFeedbackRecord>,
     pub warnings: Vec<String>,
+    pub next_action: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct HarnessLearningSummary {
+    pub source: String,
+    pub repair_outcomes: usize,
+    pub evolution_outcomes: usize,
+    pub target_tentacle: Option<String>,
+    pub candidate: Option<String>,
+    pub status: Option<Status>,
+    pub score: Option<f32>,
+    pub summary: Option<String>,
     pub next_action: String,
 }
 
@@ -4188,6 +4204,7 @@ impl HarnessState {
         } else {
             format!("octopus{state_args} beat 200")
         };
+        let harness_learning = self.harness_learning_summary(&state_args);
         StatusReport {
             hearts: vec![
                 HeartBeat {
@@ -4218,6 +4235,7 @@ impl HarnessState {
             feed_trace_count: self.feed_traces.len(),
             check_history_count: self.check_history.len(),
             repair_outcome_count: self.repair_outcomes.len(),
+            evolution_outcome_count: self.evolution_outcomes.len(),
             starter_feedback_count: self.starter_feedback.len(),
             installed_profiles: self.installed_profiles.clone(),
             tentacles,
@@ -4228,10 +4246,82 @@ impl HarnessState {
             latest_need_queue_item: self.need_queue.last().cloned(),
             latest_check: self.check_history.last().cloned(),
             latest_repair_outcome: self.repair_outcomes.last().cloned(),
+            latest_evolution_outcome: self.evolution_outcomes.last().cloned(),
+            harness_learning,
             latest_starter_feedback: self.starter_feedback.last().cloned(),
             warnings,
             next_action,
         }
+    }
+
+    fn harness_learning_summary(&self, state_args: &str) -> HarnessLearningSummary {
+        let prefer_evolution = self
+            .last_pet_event
+            .as_ref()
+            .is_some_and(|event| event.source == "evolve score");
+        if prefer_evolution {
+            if let Some(summary) = self.evolution_learning_summary(state_args) {
+                return summary;
+            }
+        }
+        if let Some(outcome) = self.repair_outcomes.last() {
+            let target = outcome
+                .target_tentacle
+                .clone()
+                .unwrap_or_else(|| outcome.tentacle_id.clone());
+            let candidate = outcome.candidate.clone();
+            let next_action = if !target.trim().is_empty() {
+                format!(
+                    "octopus{state_args} evolve recommend {}",
+                    shell_arg(&target)
+                )
+            } else {
+                format!("octopus{state_args} beat 200")
+            };
+            return HarnessLearningSummary {
+                source: "repair_outcome".to_string(),
+                repair_outcomes: self.repair_outcomes.len(),
+                evolution_outcomes: self.evolution_outcomes.len(),
+                target_tentacle: Some(target),
+                candidate,
+                status: Some(outcome.status.clone()),
+                score: Some(outcome.score),
+                summary: Some(outcome.summary.clone()),
+                next_action,
+            };
+        }
+        if let Some(summary) = self.evolution_learning_summary(state_args) {
+            return summary;
+        }
+        HarnessLearningSummary {
+            source: "none".to_string(),
+            repair_outcomes: 0,
+            evolution_outcomes: 0,
+            target_tentacle: None,
+            candidate: None,
+            status: None,
+            score: None,
+            summary: None,
+            next_action: format!("octopus{state_args} beat 200"),
+        }
+    }
+
+    fn evolution_learning_summary(&self, state_args: &str) -> Option<HarnessLearningSummary> {
+        let outcome = self.evolution_outcomes.last()?;
+        Some(HarnessLearningSummary {
+            source: "evolution_outcome".to_string(),
+            repair_outcomes: self.repair_outcomes.len(),
+            evolution_outcomes: self.evolution_outcomes.len(),
+            target_tentacle: Some(outcome.tentacle_id.clone()),
+            candidate: Some(outcome.candidate_id.clone()),
+            status: Some(outcome.status.clone()),
+            score: Some(outcome.score),
+            summary: Some(outcome.summary.clone()),
+            next_action: format!(
+                "octopus{state_args} evolve recommend {}",
+                shell_arg(&outcome.tentacle_id)
+            ),
+        })
     }
 
     fn memory_context_records(&self, limit: usize) -> Vec<MemoryContextRecord> {
@@ -10758,6 +10848,16 @@ mod tests {
                 .score(&NeedKind::Execute, "evolve:swe-agent:03-runtime-code")
                 > 1.0
         );
+        let report = state.status_report();
+        assert_eq!(report.harness_learning.source, "evolution_outcome");
+        assert_eq!(
+            report.harness_learning.target_tentacle.as_deref(),
+            Some("swe-agent")
+        );
+        assert_eq!(
+            report.harness_learning.candidate.as_deref(),
+            Some("03-runtime-code")
+        );
     }
 
     #[test]
@@ -10939,6 +11039,7 @@ mod tests {
             vec!["heartbeat", "memory", "harness"]
         );
         assert_eq!(empty.next_action, "octopus adapt".to_string());
+        assert_eq!(empty.harness_learning.source, "none");
         assert!(empty
             .warnings
             .contains(&"no installed tentacle manifests".to_string()));
@@ -10977,11 +11078,51 @@ mod tests {
             vec!["github:dangoZhang/Octopus".to_string()]
         );
         assert_eq!(report.next_action, "octopus beat 200".to_string());
+        let trace = harness.state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Verify, "repair swe-agent feed"),
+            status: Status::Partial,
+            evidence: vec![Evidence::new("repair", "targeted repair")],
+            summary: "repair session".to_string(),
+            metadata: BTreeMap::from([
+                ("tentacle".to_string(), "harness-repair-agent".to_string()),
+                ("tool".to_string(), "repair_session".to_string()),
+                ("target_tentacle".to_string(), "swe-agent".to_string()),
+                ("candidate".to_string(), "03-runtime-code".to_string()),
+            ]),
+        });
+        harness
+            .state
+            .record_repair_outcome(
+                Some(trace.index),
+                Status::Partial,
+                "line evidence still weak",
+            )
+            .unwrap();
+        let report = harness.state.status_report();
+        assert_eq!(report.evolution_outcome_count, 0);
+        assert_eq!(report.harness_learning.source, "repair_outcome");
+        assert_eq!(
+            report.harness_learning.target_tentacle.as_deref(),
+            Some("swe-agent")
+        );
+        assert_eq!(
+            report.harness_learning.candidate.as_deref(),
+            Some("03-runtime-code")
+        );
+        assert_eq!(report.harness_learning.status, Some(Status::Partial));
+        assert_eq!(
+            report.harness_learning.next_action,
+            "octopus evolve recommend swe-agent"
+        );
         let state_path = Path::new("/tmp/octopus state.json");
         let with_state = harness.state.status_report_with_state(Some(state_path));
         assert_eq!(
             with_state.next_action,
             "octopus --state '/tmp/octopus state.json' beat 200".to_string()
+        );
+        assert_eq!(
+            with_state.harness_learning.next_action,
+            "octopus --state '/tmp/octopus state.json' evolve recommend swe-agent"
         );
     }
 
