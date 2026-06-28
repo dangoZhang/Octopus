@@ -36,6 +36,8 @@ curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
 octopus download
+octopus --version
+octopus start --check 127.0.0.1:18765
 octopus start --open
 ```
 
@@ -79,4 +81,4 @@ octopus first-run "make this repo easier to use"
 - [英文架构](docs/architecture.md)
 - [产品 gap log](docs/product-gap.md)
 
-当前版本线是 `0.0.22`。`0.1.0` 需要完整真实机器记录、live provider gate、GitHub OAuth/PR 路径和发布前 preflight 全部通过。
+当前版本线是 `0.0.23`。`0.1.0` 需要完整真实机器记录、live provider gate、GitHub OAuth/PR 路径和发布前 preflight 全部通过。

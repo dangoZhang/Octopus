@@ -1,6 +1,6 @@
 # Version Plan
 
-Current version: `0.0.22`.
+Current version: `0.0.23`.
 
 Cadence from this plan forward:
 
@@ -38,8 +38,8 @@ Road to `0.1.0`:
 - `0.0.24`: full core audit before `0.1.0`; remove redundant code, development residue, and fallback logic that conflicts with the clean-brain and code-as-harness boundary.
 - `0.1.0`: first release candidate only after the `0.0.24` audit and recorded real-machine test evidence pass.
 
-Last cleanup/version correction: `0.0.22` on 2026-06-28. Scope: product tutorial pages, Chinese tutorial and recipes, About story page, Goal-first recipes, homepage/mobile guide polish, Quick Install & Use HTML refresh, static app evidence links, and version consistency; no tag cut.
+Last cleanup/version correction: `0.0.23` on 2026-06-28. Scope: download command, Pages download manifest, hosted install script, install verification, post-install verify commands, release-gate artifact checks, real-machine record coverage, and version consistency; no tag cut.
 
-Product commits toward `0.0.23`: 8/8.
+Product commits toward `0.0.24`: 0/8.
 
-Next planned cleanup/version commit: `0.0.23`.
+Next planned cleanup/version commit: `0.0.24`.

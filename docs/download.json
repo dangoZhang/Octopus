@@ -1,5 +1,5 @@
 {
-  "current_version": "0.0.22",
+  "current_version": "0.0.23",
   "repository": "https://github.com/dangoZhang/Octopus",
   "source_archive_url": "https://github.com/dangoZhang/Octopus/archive/refs/heads/main.zip",
   "cargo_package": "octopus-core",
@@ -66,6 +66,8 @@
     }
   ],
   "next": [
+    "octopus --version",
+    "octopus start --check 127.0.0.1:18765",
     "octopus start --open",
     "octopus first-run \"make this repo easier to use\""
   ]

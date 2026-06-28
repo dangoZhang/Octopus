@@ -18036,6 +18036,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(manifest["verify"][1]["shell"], report.verify[1].shell);
         assert_eq!(manifest["start"], report.start);
         assert_eq!(manifest["docs"][1]["url"], report.docs[1].url);
+        assert_eq!(manifest["next"][0], report.next[0]);
+        assert_eq!(manifest["next"][1], report.next[1]);
     }
 
     #[test]
