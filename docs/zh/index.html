@@ -145,11 +145,25 @@
 
       @media (max-width: 760px) {
         h1 {
-          font-size: 48px;
+          max-width: 300px;
+          font-size: 38px;
         }
 
         .lead {
+          max-width: 320px;
           font-size: 17px;
+        }
+
+        nav {
+          align-items: flex-start;
+          flex-wrap: wrap;
+          padding: 12px 0;
+        }
+
+        .links {
+          width: 100%;
+          overflow-x: auto;
+          padding-bottom: 4px;
         }
 
         .grid {
@@ -166,6 +180,7 @@
           <a href="../">English</a>
           <a href="../../README.zh-CN.md">中文 README</a>
           <a href="./tutorial.html">产品教学</a>
+          <a href="./recipes.html">使用场景</a>
           <a href="./quickstart.md">快速开始</a>
           <a href="./architecture.md">架构</a>
           <a href="../pet.html">章鱼变色</a>
@@ -178,7 +193,7 @@
     <main>
       <section class="hero shell">
         <div>
-          <h1>工具会思考，大脑才干净。</h1>
+          <h1>工具会思考。<br />大脑更干净。</h1>
           <p class="lead">Octopus 是一个 Rust agent kernel。模型只说自己需要什么；环境学会怎样满足它；触手在执行工具前先思考。</p>
         </div>
       </section>
@@ -219,7 +234,7 @@ octopus first-run --live "make this repo easier to use"
 octopus routes observe .
 octopus --lang zh beat 200
 octopus pet</code></pre>
-          <p><a href="./tutorial.html">产品教学</a>。<a href="../use.html">5 分钟使用教学</a>。<a href="./quickstart.md">中文完整流程</a>。<a href="./architecture.md">中文架构说明</a>。<a href="../app.html">打开 HTML App</a>。内核保持小，触手、SDK、harness code 围绕它进化。</p>
+          <p><a href="./tutorial.html">产品教学</a>。<a href="./recipes.html">使用场景</a>。<a href="../use.html">5 分钟使用教学</a>。<a href="./quickstart.md">中文完整流程</a>。<a href="./architecture.md">中文架构说明</a>。<a href="../app.html">打开 HTML App</a>。内核保持小，触手、SDK、harness code 围绕它进化。</p>
         </div>
       </section>
     </main>

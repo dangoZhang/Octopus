@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Octopus 使用场景</title>
+    <meta name="description" content="Octopus 的 Goal-first 使用场景：网页试用、本地仓库、模型接入、发布证据。" />
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #111318;
+        --muted: #5b6474;
+        --line: #d8dde6;
+        --paper: #ffffff;
+        --soft: #f5f7fa;
+        --teal: #0f766e;
+        --coral: #cf4d32;
+        --gold: #a16207;
+        --blue: #2563eb;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .shell {
+        width: min(1080px, calc(100% - 32px));
+        margin: 0 auto;
+      }
+
+      header {
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.94);
+        position: sticky;
+        top: 0;
+        z-index: 2;
+      }
+
+      nav {
+        min-height: 64px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .brand {
+        font-weight: 800;
+      }
+
+      .links {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .button {
+        border: 1px solid var(--ink);
+        border-radius: 8px;
+        padding: 9px 12px;
+        text-decoration: none;
+        color: var(--ink);
+        font-weight: 700;
+      }
+
+      .hero {
+        min-height: 68vh;
+        display: grid;
+        align-content: center;
+        padding: 66px 0 38px;
+      }
+
+      h1 {
+        margin: 0;
+        max-width: 820px;
+        font-size: 72px;
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      .lead {
+        max-width: 730px;
+        margin: 22px 0 0;
+        color: var(--muted);
+        font-size: 20px;
+        line-height: 1.65;
+      }
+
+      section {
+        padding: 46px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      h2 {
+        margin: 0 0 14px;
+        font-size: 30px;
+      }
+
+      h3 {
+        margin: 0 0 8px;
+        font-size: 19px;
+        overflow-wrap: anywhere;
+      }
+
+      p,
+      li {
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      .recipes {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .recipe {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        min-width: 0;
+        padding: 18px;
+      }
+
+      .recipe:nth-child(1) {
+        border-top: 5px solid var(--teal);
+      }
+
+      .recipe:nth-child(2) {
+        border-top: 5px solid var(--coral);
+      }
+
+      .recipe:nth-child(3) {
+        border-top: 5px solid var(--gold);
+      }
+
+      .recipe:nth-child(4) {
+        border-top: 5px solid var(--blue);
+      }
+
+      .tag {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      pre {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--soft);
+        padding: 14px;
+        line-height: 1.5;
+      }
+
+      code {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-size: 14px;
+      }
+
+      footer {
+        padding: 30px 0;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+      }
+
+      @media (max-width: 760px) {
+        nav {
+          align-items: flex-start;
+          flex-wrap: wrap;
+          padding: 12px 0;
+        }
+
+        .links {
+          width: 100%;
+          overflow-x: auto;
+          padding-bottom: 4px;
+        }
+
+        h1 {
+          max-width: 340px;
+          font-size: 42px;
+        }
+
+        .lead {
+          max-width: 340px;
+          font-size: 17px;
+        }
+
+        .recipes {
+          grid-template-columns: 1fr;
+        }
+
+        .recipe,
+        .recipe * {
+          max-width: 100%;
+          min-width: 0;
+        }
+
+        .recipe {
+          overflow: hidden;
+        }
+
+        .recipe h3,
+        .recipe p,
+        .recipe pre {
+          max-width: 300px;
+        }
+
+        pre code {
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <nav class="shell" aria-label="主导航">
+        <div class="brand">Octopus 章鱼</div>
+        <div class="links">
+          <a href="./">首页</a>
+          <a href="./tutorial.html">产品教学</a>
+          <a href="../app.html">网页试用</a>
+          <a href="./quickstart.md">安装</a>
+          <a href="../recipes.html">English</a>
+          <a class="button" href="https://github.com/dangoZhang/Octopus">GitHub</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero shell">
+        <div>
+          <h1>从 Goal 开始，让触手执行。</h1>
+          <p class="lead">这些是 Octopus 现在最应该顺手的任务：网页端看清 Need/Feed，本地仓库跑完整产品，接入模型，收集发布证据。用户只改 Goal，内部 harness 自己供给执行。</p>
+        </div>
+      </section>
+
+      <section>
+        <div class="shell recipes">
+          <article class="recipe">
+            <div class="tag">Browser</div>
+            <h3>生成 Hello World</h3>
+            <p>不安装也能看核心差异。页面先显示干净大脑生成的 Need，再由浏览器触手执行并返回 Feed。</p>
+            <pre><code>打开 docs/app.html
+填入 API key
+点击 Hello World 或 Draw Octopus</code></pre>
+          </article>
+
+          <article class="recipe">
+            <div class="tag">Local Repo</div>
+            <h3>在仓库里启动完整产品</h3>
+            <p>在目标项目目录运行。用户继续调整 Goal；Need、路由、Feed、记忆和 harness 信号由 agent 处理。</p>
+            <pre><code>octopus start --open
+octopus first-run "make this repo easier to use"
+octopus chat "make setup clearer"</code></pre>
+          </article>
+
+          <article class="recipe">
+            <div class="tag">Model</div>
+            <h3>接入 Codex 或兼容模型</h3>
+            <p>Provider 是运行环境，不应该污染 Need。它只负责让干净大脑和触手智能真正可用。</p>
+            <pre><code>octopus provider save codex
+source .octopus/llm.env
+octopus provider status
+octopus first-run --live "make this repo easier to use"</code></pre>
+          </article>
+
+          <article class="recipe">
+            <div class="tag">Evidence</div>
+            <h3>证明本地产品能跑</h3>
+            <p>发布前或排查机器环境时使用。它们是观察面，第一用户路径仍然是 Goal。</p>
+            <pre><code>octopus start --check
+octopus doctor
+octopus report
+octopus preflight</code></pre>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <div class="shell">
+          <h2>每个场景应该证明什么</h2>
+          <ul>
+            <li>主脑只表达 Need，不绑定实现。</li>
+            <li>触手拥有 prompt、tool metadata、runtime code、permission、trace 和局部思考。</li>
+            <li>heartbeat、memory、harness 的证据能改进下一次 Feed 供给。</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="shell"><a href="./tutorial.html">产品教学</a> · <a href="./quickstart.md">快速开始</a> · <a href="./architecture.md">架构说明</a></div>
+    </footer>
+  </body>
+</html>

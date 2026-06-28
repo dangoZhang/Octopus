@@ -36,7 +36,8 @@ Octopus/
     ├── version-plan.md
     ├── real-machine-test.md
     └── zh/
-        └── tutorial.html      Chinese product tutorial from browser demo to local run.
+        ├── tutorial.html      Chinese product tutorial from browser demo to local run.
+        └── recipes.html       Chinese Goal-first recipes.
 ```
 
 ## Boundary
