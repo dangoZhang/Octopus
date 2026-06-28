@@ -122,3 +122,11 @@ The `0.0.24` audit must update this file with:
 - Moved harness units: none; this pass updates release evidence to match the current source layout.
 - Remaining candidates: cleanup/version commit for `0.0.24`, then real-machine gate evidence before `0.1.0`.
 - Commands: `rg` for core boundary symbols, `cargo fmt --all --check`, `cargo check -q -p octopus-core`, `cargo test -q -p octopus-core start_check_writes_local_app_evidence_for_preflight`, `cargo test -q -p octopus-core cli_status_and_doctor_commands_run`, `cargo test -q -p octopus-core first_run_report_writes_scored_feed_evidence`.
+
+## 0.0.24 Closeout
+
+- Commit scanned: `e5cbf2c`.
+- Completed passes: hidden planner fallback removal, explicit seed tool contracts, bundled harness boundary, download manifest boundary, shared shell display quoting, pixel pet boundary, profile registry boundary, and boundary report alignment.
+- Current source shape: stable Rust owns kernel/product/release/startup support; editable Feed supply remains in `tentacles/` and profile registry data.
+- Remaining before `0.1.0`: recorded real-machine gate evidence on the `0.0.24` line.
+- Commands: `rg` version scan, `cargo fmt --all --check`, `cargo check -q -p octopus-core`, `cargo test -q -p octopus-core static_download_manifest_matches_cli_report`, `cargo test -q -p octopus-core download_artifacts_preflight_check_passes_for_current_docs`, `cargo test -q -p octopus-core start_check_writes_local_app_evidence_for_preflight`.
