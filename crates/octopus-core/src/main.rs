@@ -826,6 +826,7 @@ struct BrainSessionReport {
 }
 
 const DEFAULT_PROVIDER_ENV_PATH: &str = ".octopus/llm.env";
+const DEFAULT_PROVIDER_MATRIX_PATH: &str = ".octopus/provider-matrix.md";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Language {
@@ -2439,7 +2440,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     let path = rest
                         .get(3)
                         .map(PathBuf::from)
-                        .unwrap_or_else(|| PathBuf::from(".octopus/provider-matrix.md"));
+                        .unwrap_or_else(|| PathBuf::from(DEFAULT_PROVIDER_MATRIX_PATH));
                     let report = check_provider_matrix_record(&path)?;
                     if json {
                         println!(
@@ -2455,7 +2456,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 let path = rest
                     .get(2)
                     .map(PathBuf::from)
-                    .unwrap_or_else(|| PathBuf::from(".octopus/provider-matrix.md"));
+                    .unwrap_or_else(|| PathBuf::from(DEFAULT_PROVIDER_MATRIX_PATH));
                 let report = write_provider_matrix_record(&path)?;
                 if json {
                     println!(
@@ -4917,6 +4918,24 @@ fn check_provider_matrix_record(path: &Path) -> Result<ProviderMatrixCheckReport
         checks,
         next,
     })
+}
+
+fn provider_matrix_check_evidence(report: &ProviderMatrixCheckReport) -> String {
+    let failed = report
+        .checks
+        .iter()
+        .filter(|check| check.status != "pass")
+        .map(|check| format!("{}={}", check.id, check.status))
+        .collect::<Vec<_>>();
+    if failed.is_empty() {
+        format!("passed=true checks={}", report.checks.len())
+    } else {
+        format!(
+            "passed=false checks={} blockers={}",
+            report.checks.len(),
+            failed.join("; ")
+        )
+    }
 }
 
 fn provider_matrix_target_section<'a>(
@@ -7489,6 +7508,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
     let manifests =
         inspect_tentacle_manifests(default_tentacles_root()).map_err(|error| error.to_string())?;
     let provider = provider_status_report();
+    let provider_matrix = check_provider_matrix_record(Path::new(DEFAULT_PROVIDER_MATRIX_PATH))?;
     let profile_registry = profile_registry_report(state_path);
     let boundary = core_boundary::report(state_path);
     let pet_exists = repo_root().join("docs/pet.html").exists();
@@ -7823,6 +7843,16 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             Some("octopus provider status"),
         ),
         product_capability(
+            "provider_matrix_record",
+            if provider_matrix.passed {
+                "ready"
+            } else {
+                "needs_record"
+            },
+            provider_matrix_check_evidence(&provider_matrix),
+            Some("octopus provider matrix check"),
+        ),
+        product_capability(
             "self_iteration",
             if github_ready {
                 "pr_ready"
@@ -7874,6 +7904,13 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             "provider_feedback",
             "LLM-backed Goal chat, clean brain, tentacle planning, or evolution coverage is incomplete",
             next,
+        ));
+    }
+    if !provider_matrix.passed {
+        gaps.push(product_gap(
+            "provider_matrix_record",
+            "current-head OAuth, API-key, local model, and gateway provider evidence is incomplete",
+            "octopus provider matrix; fill results; octopus provider matrix check",
         ));
     }
     if status.feed_trace_count == 0 {
@@ -7991,6 +8028,7 @@ fn preflight_report(
     let product = product_report(state, state_path)?;
     let doctor = doctor_report(state, state_path.to_path_buf())?;
     let provider = provider_status_report();
+    let provider_matrix = check_provider_matrix_record(Path::new(DEFAULT_PROVIDER_MATRIX_PATH))?;
     let status = &doctor.status;
     let current_head = git_short_head();
     let real_machine_doc = repo_root().join("docs/real-machine-test.md");
@@ -8139,6 +8177,13 @@ fn preflight_report(
                 .collect::<Vec<_>>()
                 .join("; "),
             "octopus provider save openai; source .octopus/llm.env; octopus provider status",
+        ),
+        preflight_check(
+            "provider_matrix_record",
+            provider_matrix.passed,
+            true,
+            provider_matrix_check_evidence(&provider_matrix),
+            "octopus provider matrix; fill results; octopus provider matrix check",
         ),
         preflight_status_check(
             "live_provider",
