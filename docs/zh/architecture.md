@@ -18,6 +18,7 @@ Tentacle: Need + Tool + Action + Tool + Action -> Feed
 crates/octopus-core/
   src/lib.rs      Rust kernel：合同、状态、路由、Feed、heartbeat、tentacle 执行
   src/main.rs     CLI、本地 app server、provider、preflight、repair、release gate
+  src/app_bridge.rs  本地 app bridge 输入策略、拒绝响应、provider env overlay
   src/release_gate.rs  preflight check、真实机器记录解析、release gate 脚本命令
 
 tentacles/
@@ -36,6 +37,7 @@ cowork/
 ## 当前能力
 
 产品面只允许用户写入 Goal：`chat`、`goal set/refine`、`brain --goal` 和 `first-run` 的目标输入。Need、Feed、feedback、repair、evolve、install、check、provider 写入由 agent loop 或开发者流程驱动。
+本地 app bridge 的输入策略已拆到 `app_bridge.rs`，和 CLI/server 编排分开。
 
 - `bootstrap`：初始化状态，安装 seed tentacles，触发 heartbeat。
 - `first-run`：跑一次完整本地闭环并生成 preflight 证据。
