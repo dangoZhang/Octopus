@@ -40,6 +40,6 @@ Road to `0.1.0`:
 
 Last cleanup/version correction: `0.0.24` on 2026-06-28. Scope: full core audit, hidden planner fallback removal, explicit seed tool contracts, CLI split for bundled harness/download/pet/profile-registry support, shared shell display quoting, and boundary report alignment; no tag cut.
 
-Product commits toward `0.0.25`: 2/8.
+Product commits toward `0.0.25`: 4/8.
 
 Next planned cleanup/version commit: `0.0.25`.

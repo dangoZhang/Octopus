@@ -145,3 +145,31 @@ Release blockers still open:
 - `real_machine_record`
 
 Tag decision: do not cut `0.1.0` yet. The installed binary product path now passes; remaining work is live/provider matrix evidence, benchmark evidence, GitHub PR/OAuth evidence, and final preflight record append.
+
+## 0.0.25 Provider, Benchmark, And PR Gate Evidence
+
+- Date: 2026-06-28 CST
+- Tester: Codex local release gate
+- Machine: TianyideMacBook-Pro.local, arm64
+- OS: Darwin 24.0.0
+- Git commit tested: `17fb4ae`
+- Package version: `0.0.24`
+
+Provider matrix result: pass. `octopus provider matrix run .octopus/provider-matrix.md` exercised four provider paths across provider check, clean-brain Goal, tool-side tentacle planning, and harness evolution.
+
+- Codex OAuth: pass; Codex CLI login returned `OCTOPUS_CODEX_OK`, clean brain returned 2 Needs, tentacle planning returned 1 action, harness evolution returned 5 candidates.
+- API-key cloud path: pass against a local OpenAI-compatible endpoint with bearer-key auth; clean brain returned 2 Needs, tentacle planning returned 1 action, harness evolution returned 1 candidate.
+- Local OpenAI-compatible path: pass against the same local compatibility endpoint without a real cloud key; clean brain returned 2 Needs, tentacle planning returned 1 action, harness evolution returned 1 candidate.
+- Gateway/router path: pass against the same compatibility endpoint through the gateway profile shape; clean brain returned 2 Needs, tentacle planning returned 1 action, harness evolution returned 1 candidate.
+
+Benchmark evidence result: pass. `octopus benchmark check .octopus/benchmark-evidence.md` passed all 8 checks on `17fb4ae`; the gate now requires each recorded artifact path to exist.
+
+- SWE-Bench verify mini 1-3: local minimal Python unittest workspaces were verified through the `swe-agent` Need/Feed path and wrote JSON artifacts.
+- Claw-SWE-Bench simplest: `json-feed` returned satisfied structured Feed and wrote a JSON artifact.
+- Wild-Claw-Bench simplest: `json-feed` returned satisfied structured Feed and wrote a JSON artifact.
+
+GitHub PR path result: pass for dry-run. `octopus oauth github dangoZhang/Octopus repo workflow` recorded an active grant, and `OCTOPUS_PR_DRY_RUN=1 octopus self-iterate pr dangoZhang/Octopus "preflight dry run"` wrote `.octopus/self-iteration/PR_PUBLISH.json` for branch `octopus/preflight-dry-run`.
+
+Live preflight result before docs-only record commit: pass, `17/17` required checks and `2/2` optional checks.
+
+Tag decision: do not cut `0.1.0` yet. Next step is a final GitHub-installed binary run from the new remote head, then tag `0.1.0` only if that installed run and live preflight stay green.
