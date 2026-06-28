@@ -225,6 +225,7 @@ Updated: 2026-06-28
 - Removed the First Run panel's obsolete granular write buttons so `octopus start --open` no longer presents a first-use path that the bridge policy rejects.
 - Added core/harness boundary diagnostics to product report, preflight, CLI output, and native HTML so the stable Rust surface and editable code-as-harness surface stay visible.
 - Added a product tutorial page and linked it from README, docs home, quickstart, Chinese docs entry, and the embedded app static page map.
+- Rolled the cleanup/version cadence to `0.0.17` after product path cleanup, bridge clarity, readiness diagnostics, core/harness boundary evidence, product use guide, docs/static fallback cleanup, and version consistency.
 - Added `preflight script [path]` plus native HTML access so release-gate commands can be generated, reviewed, and run on a real machine.
 - Added `preflight record [path]` plus native HTML access so real-machine evidence can be generated as a reviewable Markdown record before appending to the gate log.
 - Made the real-machine record gate self-reference-safe for docs-only record commits.
