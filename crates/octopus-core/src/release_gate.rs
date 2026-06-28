@@ -192,6 +192,9 @@ pub(crate) fn preflight_record_commands(
             )
     }));
     commands.extend([
+        "\"$OCTOPUS\" download".to_string(),
+        "\"$OCTOPUS\" --json download > \"$tmp/download.json\"".to_string(),
+        "grep '\"install_script_url\"' \"$tmp/download.json\"".to_string(),
         "\"$OCTOPUS\" --state \"$STATE\" preflight".to_string(),
         "\"$OCTOPUS\" --state \"$STATE\" preflight | grep bridge_goal_surface".to_string(),
         "\"$OCTOPUS\" provider status".to_string(),
@@ -211,6 +214,10 @@ pub(crate) fn preflight_record_commands(
         "sleep 1".to_string(),
         "curl -fsS http://127.0.0.1:18765/app.html >/dev/null".to_string(),
         "curl -fsS 'http://127.0.0.1:18765/pet.html?state=harness' >/dev/null".to_string(),
+        "curl -fsS http://127.0.0.1:18765/download.json | grep '\"cargo_package\"'"
+            .to_string(),
+        "curl -fsS http://127.0.0.1:18765/install.sh | grep 'cargo install'"
+            .to_string(),
         "curl -fsS -X POST http://127.0.0.1:18765/api/run -H 'content-type: application/json' --data-binary \"{\\\"args\\\":[\\\"--state\\\",\\\"$STATE\\\",\\\"--json\\\",\\\"doctor\\\"]}\"".to_string(),
         "kill \"$START_PID\"".to_string(),
         "\"$OCTOPUS\" --state \"$STATE\" self-iterate dangoZhang/Octopus".to_string(),

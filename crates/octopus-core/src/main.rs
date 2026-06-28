@@ -9257,6 +9257,7 @@ Append the completed result to `docs/real-machine-test.md` after the run.
 ## Results
 
 - Install and doctor:
+- Download artifacts:
 - Core loop:
 - Product bridge:
 - Start/app:
@@ -9302,6 +9303,7 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
         .collect::<Vec<_>>();
     let result_fields: &[&[&str]] = &[
         &["Install and doctor"],
+        &["Download artifacts"],
         &["Core loop"],
         &["Product bridge"],
         &["Start/app", "Bridge/app"],
@@ -9363,7 +9365,7 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
             } else {
                 format!("missing {}", missing_results.join(", "))
             },
-            "fill Install, Core loop, Product bridge, Start/app, Live provider, Benchmark evidence, and PR dry run results",
+            "fill Install, Download artifacts, Core loop, Product bridge, Start/app, Live provider, Benchmark evidence, and PR dry run results",
         ),
         preflight_check(
             "pass_decision",
@@ -9375,6 +9377,9 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
         preflight_check(
             "command_coverage",
             content.contains("first-run")
+                && content.contains("download")
+                && content.contains("download.json")
+                && content.contains("install.sh")
                 && content.contains("bridge_goal_surface")
                 && content.contains("provider matrix")
                 && content.contains("provider matrix run")
@@ -9385,7 +9390,7 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
                 && content.contains("start --check")
                 && content.contains("self-iterate pr"),
             true,
-            "record should include first-run, bridge_goal_surface, provider matrix run/check, live provider, benchmark record/check, start --check, and PR dry-run commands",
+            "record should include first-run, download artifacts, bridge_goal_surface, provider matrix run/check, live provider, benchmark record/check, start --check, and PR dry-run commands",
             "regenerate with octopus preflight record",
         ),
     ];
@@ -19399,6 +19404,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("# Real-Machine Record"));
         assert!(record.contains("Package version"));
         assert!(record.contains("first-run"));
+        assert!(record.contains("\"$OCTOPUS\" download"));
+        assert!(record.contains("--json download"));
+        assert!(record.contains("/download.json"));
+        assert!(record.contains("/install.sh"));
+        assert!(record.contains("Download artifacts"));
         assert!(record.contains("bridge_goal_surface"));
         assert!(record.contains("provider matrix"));
         assert!(record.contains("provider matrix run"));
@@ -19420,6 +19430,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .replace("- Rust:", "- Rust: stable")
             .replace("- Python:", "- Python: 3.14")
             .replace("- Install and doctor:", "- Install and doctor: pass")
+            .replace("- Download artifacts:", "- Download artifacts: pass")
             .replace("- Core loop:", "- Core loop: pass")
             .replace("- Product bridge:", "- Product bridge: pass")
             .replace("- Start/app:", "- Start/app: pass")

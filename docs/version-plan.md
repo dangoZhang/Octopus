@@ -40,6 +40,6 @@ Road to `0.1.0`:
 
 Last cleanup/version correction: `0.0.22` on 2026-06-28. Scope: product tutorial pages, Chinese tutorial and recipes, About story page, Goal-first recipes, homepage/mobile guide polish, Quick Install & Use HTML refresh, static app evidence links, and version consistency; no tag cut.
 
-Product commits toward `0.0.23`: 4/8.
+Product commits toward `0.0.23`: 5/8.
 
 Next planned cleanup/version commit: `0.0.23`.
