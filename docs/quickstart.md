@@ -131,3 +131,19 @@ octopus pet
 ```
 
 These are observation surfaces. They should explain what the agent did without asking the user to drive tools directly.
+
+## 0.1.0 Release Gate
+
+```bash
+tmp=$(mktemp -d)
+octopus --state "$tmp/state.json" first-run "preflight local evidence"
+octopus --state "$tmp/state.json" preflight
+octopus benchmark record
+# Fill .octopus/benchmark-evidence.md with SWE/Claw/Wild case ids, commands, pass results, summaries, and artifacts.
+octopus benchmark check
+octopus --state "$tmp/state.json" preflight record "$tmp/real-machine-record.md"
+octopus --state "$tmp/state.json" preflight record check "$tmp/real-machine-record.md"
+octopus --state "$tmp/state.json" preflight record append "$tmp/real-machine-record.md" docs/real-machine-test.md
+```
+
+`0.1.0` needs the local loop, live provider, benchmark evidence, GitHub OAuth/PR path, and real-machine record to pass.

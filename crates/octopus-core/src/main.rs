@@ -9182,6 +9182,7 @@ Append the completed result to `docs/real-machine-test.md` after the run.
 - Product bridge:
 - Start/app:
 - Live provider:
+- Benchmark evidence:
 - PR dry run:
 
 ## Decision
@@ -9226,6 +9227,7 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
         &["Product bridge"],
         &["Start/app", "Bridge/app"],
         &["Live provider"],
+        &["Benchmark evidence"],
         &["PR dry run"],
     ];
     let missing_results = result_fields
@@ -9282,7 +9284,7 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
             } else {
                 format!("missing {}", missing_results.join(", "))
             },
-            "fill Install, Core loop, Product bridge, Start/app, Live provider, and PR dry run results",
+            "fill Install, Core loop, Product bridge, Start/app, Live provider, Benchmark evidence, and PR dry run results",
         ),
         preflight_check(
             "pass_decision",
@@ -9298,11 +9300,13 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
                 && content.contains("provider matrix")
                 && content.contains("provider matrix run")
                 && content.contains("provider matrix check")
+                && content.contains("benchmark record")
+                && content.contains("benchmark check")
                 && content.contains("preflight --live")
                 && content.contains("start --check")
                 && content.contains("self-iterate pr"),
             true,
-            "record should include first-run, bridge_goal_surface, provider matrix run/check, live provider, start --check, and PR dry-run commands",
+            "record should include first-run, bridge_goal_surface, provider matrix run/check, live provider, benchmark record/check, start --check, and PR dry-run commands",
             "regenerate with octopus preflight record",
         ),
     ];
@@ -19149,6 +19153,9 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("provider matrix"));
         assert!(record.contains("provider matrix run"));
         assert!(record.contains("provider matrix check"));
+        assert!(record.contains("benchmark record"));
+        assert!(record.contains("benchmark check"));
+        assert!(record.contains("Benchmark evidence"));
         assert!(record.contains("preflight --live"));
         assert!(record.contains("start --check"));
         assert!(record.contains("self-iterate pr"));
@@ -19167,6 +19174,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .replace("- Product bridge:", "- Product bridge: pass")
             .replace("- Start/app:", "- Start/app: pass")
             .replace("- Live provider:", "- Live provider: pass")
+            .replace("- Benchmark evidence:", "- Benchmark evidence: pass")
             .replace("- PR dry run:", "- PR dry run: pass")
             .replace("- Pass or fail:", "- Pass or fail: pass");
         fs::write(&record_path, filled).unwrap();

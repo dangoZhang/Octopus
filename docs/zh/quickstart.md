@@ -125,9 +125,12 @@ octopus repair .
 tmp=$(mktemp -d)
 octopus --state "$tmp/state.json" first-run "preflight local evidence"
 octopus --state "$tmp/state.json" preflight
+octopus benchmark record
+# 填写 .octopus/benchmark-evidence.md：SWE/Claw/Wild case id、命令、通过结果、摘要和产物路径。
+octopus benchmark check
 octopus --state "$tmp/state.json" preflight record "$tmp/real-machine-record.md"
 octopus --state "$tmp/state.json" preflight record check "$tmp/real-machine-record.md"
 octopus --state "$tmp/state.json" preflight record append "$tmp/real-machine-record.md" docs/real-machine-test.md
 ```
 
-`0.1.0` 需要本地闭环、live provider、GitHub OAuth/PR 路径和真实机器记录都通过。
+`0.1.0` 需要本地闭环、live provider、benchmark 证据、GitHub OAuth/PR 路径和真实机器记录都通过。
