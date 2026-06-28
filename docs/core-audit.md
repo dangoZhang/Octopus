@@ -112,3 +112,13 @@ The `0.0.24` audit must update this file with:
 - Moved harness units: none; this pass separates editable harness registry observation from CLI dispatch.
 - Remaining candidates: one more product cleanup pass, review historical docs/log residue, then perform the cleanup/version commit for `0.0.24`.
 - Commands: `rg` for profile registry symbols, `cargo fmt --all --check`, `cargo check -q -p octopus-core`, `cargo test -q -p octopus-core cli_status_and_doctor_commands_run`, `cargo test -q -p octopus-core start_check_writes_local_app_evidence_for_preflight`, `cargo test -q -p octopus-core first_run_report_writes_scored_feed_evidence`.
+
+## Audit Pass 8: Boundary Report Matches Split Modules
+
+- Commit scanned: `af1b19b`.
+- Reviewed files: `core_boundary.rs`, split stable Rust modules, product report/preflight boundary tests, `docs/product-gap.md`, `docs/version-plan.md`, and this audit log.
+- Removed residue: the boundary report no longer describes only the old four-file Rust surface after the CLI split.
+- Kept core behavior: stable Rust remains the kernel/product/release/startup shell, while editable Feed supply remains in `tentacles/` and profile registry data.
+- Moved harness units: none; this pass updates release evidence to match the current source layout.
+- Remaining candidates: cleanup/version commit for `0.0.24`, then real-machine gate evidence before `0.1.0`.
+- Commands: `rg` for core boundary symbols, `cargo fmt --all --check`, `cargo check -q -p octopus-core`, `cargo test -q -p octopus-core start_check_writes_local_app_evidence_for_preflight`, `cargo test -q -p octopus-core cli_status_and_doctor_commands_run`, `cargo test -q -p octopus-core first_run_report_writes_scored_feed_evidence`.

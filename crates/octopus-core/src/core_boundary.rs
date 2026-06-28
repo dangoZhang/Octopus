@@ -29,14 +29,35 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
             "product-app",
         ),
         path_report(
+            root.join("crates/octopus-core/src/bundled_harness.rs"),
+            "installed-bundle-materializer",
+        ),
+        path_report(
+            root.join("crates/octopus-core/src/download.rs"),
+            "download-manifest",
+        ),
+        path_report(root.join("crates/octopus-core/src/pet.rs"), "pixel-pet"),
+        path_report(
+            root.join("crates/octopus-core/src/profile_registry.rs"),
+            "profile-registry-observer",
+        ),
+        path_report(
             root.join("crates/octopus-core/src/release_gate.rs"),
             "release-gate",
+        ),
+        path_report(
+            root.join("crates/octopus-core/src/shell_words.rs"),
+            "command-display",
         ),
     ];
     let product_app = vec![
         path_report(
             root.join("crates/octopus-core/src/app_bridge.rs"),
             "rust-server",
+        ),
+        path_report(
+            root.join("crates/octopus-core/src/pet.rs"),
+            "pixel-pet-rust",
         ),
         path_report(root.join("docs/app.html"), "native-html"),
         path_report(root.join("docs/pet.html"), "pixel-pet"),

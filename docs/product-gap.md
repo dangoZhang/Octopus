@@ -33,6 +33,7 @@ Updated: 2026-06-28
 - Blocked local app bridge writes now return `user_writes_brain_goal_only` plus suggested Goal commands, so old/internal controls fail with product guidance instead of a generic server error.
 - `preflight` now includes a required `bridge_goal_surface` gate that checks allowed Goal writes, denied internal writes, and the structured denial policy.
 - `report` and `preflight` now expose the core/harness boundary: stable Rust kernel/product app files, editable tentacle/profile-registry harness units, and stale prototype warnings.
+- The core/harness boundary report now lists the split stable Rust support modules: bundled harness materializer, download manifest, pixel pet, profile registry observer, release gate, and shell command display.
 - `preflight` now returns and prints a readiness summary with required/optional pass counts plus concrete required blockers; release/readiness blockers stay in CLI/report surfaces instead of the first product page.
 - Release-gate check types, record parsing, script commands, and real-machine record status logic now live in a separate `release_gate` Rust module instead of the general CLI backend.
 - README and docs now point first to a product-style five-minute use page: install, launch, first Goal, evidence surfaces, optional model backend, and harness learning path.
