@@ -30,6 +30,26 @@
     ],
     "shell": "octopus update --run"
   },
+  "verify": [
+    {
+      "label": "Check installed binary",
+      "command": [
+        "octopus",
+        "--version"
+      ],
+      "shell": "octopus --version"
+    },
+    {
+      "label": "Check local app startup",
+      "command": [
+        "octopus",
+        "start",
+        "--check",
+        "127.0.0.1:18765"
+      ],
+      "shell": "octopus start --check '127.0.0.1:18765'"
+    }
+  ],
   "start": "octopus start --open",
   "docs": [
     {

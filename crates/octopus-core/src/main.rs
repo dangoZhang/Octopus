@@ -376,6 +376,7 @@ struct DownloadReport {
     install_script_shell: String,
     install: DownloadCommand,
     update: DownloadCommand,
+    verify: Vec<DownloadCommand>,
     start: String,
     docs: Vec<DownloadLink>,
     next: Vec<String>,
@@ -4428,6 +4429,10 @@ fn print_download_report(report: &DownloadReport, language: Language) {
             println!("quick install: {}", report.install_script_shell);
             println!("install: {}", report.install.shell);
             println!("update: {}", report.update.shell);
+            println!("verify:");
+            for command in &report.verify {
+                println!("- {}: {}", command.label, command.shell);
+            }
             println!("start: {}", report.start);
             println!("docs:");
             for link in &report.docs {
@@ -4444,6 +4449,10 @@ fn print_download_report(report: &DownloadReport, language: Language) {
             println!("快速安装: {}", report.install_script_shell);
             println!("安装: {}", report.install.shell);
             println!("更新: {}", report.update.shell);
+            println!("验证:");
+            for command in &report.verify {
+                println!("- {}: {}", command.label, command.shell);
+            }
             println!("启动: {}", report.start);
             println!("文档:");
             for link in &report.docs {
@@ -12307,6 +12316,13 @@ fn download_report() -> DownloadReport {
         "update".to_string(),
         "--run".to_string(),
     ];
+    let verify_binary = vec!["octopus".to_string(), "--version".to_string()];
+    let verify_app = vec![
+        "octopus".to_string(),
+        "start".to_string(),
+        "--check".to_string(),
+        "127.0.0.1:18765".to_string(),
+    ];
     let repository = "https://github.com/dangoZhang/Octopus".to_string();
     let install_script_url = "https://dangozhang.github.io/Octopus/install.sh".to_string();
     DownloadReport {
@@ -12327,6 +12343,18 @@ fn download_report() -> DownloadReport {
             shell: shell_command(&update),
             command: update,
         },
+        verify: vec![
+            DownloadCommand {
+                label: "Check installed binary".to_string(),
+                shell: shell_command(&verify_binary),
+                command: verify_binary,
+            },
+            DownloadCommand {
+                label: "Check local app startup".to_string(),
+                shell: shell_command(&verify_app),
+                command: verify_app,
+            },
+        ],
         start: "octopus start --open".to_string(),
         docs: vec![
             DownloadLink {
@@ -12343,6 +12371,8 @@ fn download_report() -> DownloadReport {
             },
         ],
         next: vec![
+            "octopus --version".to_string(),
+            "octopus start --check 127.0.0.1:18765".to_string(),
             "octopus start --open".to_string(),
             "octopus first-run \"make this repo easier to use\"".to_string(),
         ],
@@ -18002,6 +18032,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         );
         assert_eq!(manifest["install"]["shell"], report.install.shell);
         assert_eq!(manifest["update"]["shell"], report.update.shell);
+        assert_eq!(manifest["verify"][0]["shell"], report.verify[0].shell);
+        assert_eq!(manifest["verify"][1]["shell"], report.verify[1].shell);
         assert_eq!(manifest["start"], report.start);
         assert_eq!(manifest["docs"][1]["url"], report.docs[1].url);
     }
@@ -20585,10 +20617,19 @@ JSON
         assert!(report.install.shell.contains("cargo"));
         assert!(report.install.shell.contains("octopus-core"));
         assert_eq!(report.update.shell, "octopus update --run");
+        assert_eq!(report.verify[0].shell, "octopus --version");
+        assert_eq!(
+            report.verify[1].shell,
+            "octopus start --check '127.0.0.1:18765'"
+        );
         assert!(report
             .docs
             .iter()
             .any(|link| link.url.ends_with("/quickstart.html")));
+        assert!(report.next.contains(&"octopus --version".to_string()));
+        assert!(report
+            .next
+            .contains(&"octopus start --check 127.0.0.1:18765".to_string()));
         assert!(report.next.contains(&"octopus start --open".to_string()));
     }
 
