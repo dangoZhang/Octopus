@@ -11,6 +11,8 @@ Octopus/
 ├── Cargo.toml
 ├── structure.md
 ├── crates/octopus-core/
+│   ├── examples/
+│   │   └── thinking_tentacle.rs  Minimal explicit RulePlanner example, outside product path.
 │   └── src/
 │       ├── lib.rs             Stable kernel contracts, state, routing, providers, Feed traces.
 │       ├── main.rs            CLI dispatch and product/backend aggregation.

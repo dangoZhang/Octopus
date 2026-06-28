@@ -1751,7 +1751,6 @@ where
     C: ChatClient,
 {
     client: C,
-    fallback: RulePlanner,
 }
 
 impl<C> ChatPlanner<C>
@@ -1759,10 +1758,7 @@ where
     C: ChatClient,
 {
     pub fn new(client: C) -> Self {
-        Self {
-            client,
-            fallback: RulePlanner,
-        }
+        Self { client }
     }
 }
 
@@ -1791,12 +1787,23 @@ where
                 ),
             ),
         ];
-        self.client
-            .chat(&messages)
-            .ok()
-            .and_then(|response| serde_json::from_str::<Plan>(&response.content).ok())
-            .filter(|plan| !plan.calls.is_empty())
-            .unwrap_or_else(|| self.fallback.plan(need, tools))
+        match self.client.chat(&messages) {
+            Ok(response) => match serde_json::from_str::<Plan>(&response.content) {
+                Ok(plan) if !plan.calls.is_empty() => plan,
+                Ok(_) => Plan {
+                    calls: Vec::new(),
+                    summary: "llm planning returned no tool calls".to_string(),
+                },
+                Err(error) => Plan {
+                    calls: Vec::new(),
+                    summary: format!("llm planning returned invalid JSON: {error}"),
+                },
+            },
+            Err(error) => Plan {
+                calls: Vec::new(),
+                summary: format!("llm planning failed: {error}"),
+            },
+        }
     }
 }
 
@@ -12213,6 +12220,32 @@ mod tests {
 
         assert_eq!(plan.summary, "planned by chat");
         assert_eq!(plan.calls[0].tool, "verifier");
+    }
+
+    #[test]
+    fn chat_planner_does_not_fallback_to_rule_execution() {
+        struct BadChat;
+
+        impl ChatClient for BadChat {
+            fn chat(&mut self, _messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                Ok(ChatResponse {
+                    content: "not json".to_string(),
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
+        let mut planner = ChatPlanner::new(BadChat);
+        let plan = planner.plan(
+            &Need::new(NeedKind::Verify, "claim"),
+            &[ToolSpec {
+                name: "verifier".to_string(),
+                description: "checks claims".to_string(),
+            }],
+        );
+
+        assert!(plan.calls.is_empty());
+        assert!(plan.summary.contains("invalid JSON"));
     }
 
     #[test]
