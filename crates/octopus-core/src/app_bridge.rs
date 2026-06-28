@@ -409,6 +409,7 @@ pub(crate) fn static_asset(path: &str) -> Option<(&'static str, &'static [u8])> 
             "quickstart.html",
             &include_bytes!("../../../docs/quickstart.html")[..],
         )),
+        "/use.html" => Some(("use.html", &include_bytes!("../../../docs/use.html")[..])),
         "/about.html" => Some((
             "about.html",
             &include_bytes!("../../../docs/about.html")[..],

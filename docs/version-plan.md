@@ -37,6 +37,6 @@ Road to `0.1.0`:
 
 Last cleanup/version correction: `0.0.16` on 2026-06-28. Scope: clean-brain alignment/scout modes, backend-aware provider routing, brain-goal bridge boundary, structured bridge denial feedback, preflight/real-machine product bridge gates, docs cleanup, and version consistency; no tag cut.
 
-Product commits toward `0.0.17`: 7/8.
+Product commits toward `0.0.17`: 8/8.
 
 Next planned cleanup/version commit: `0.0.17`.

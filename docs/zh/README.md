@@ -5,6 +5,7 @@
 中文阅读入口：
 
 - [快速开始](quickstart.md)
+- [5 分钟使用教学](../use.html)
 - [架构说明](architecture.md)
 - [中文 README](../../README.zh-CN.md)
 - [像素章鱼](../pet.html)

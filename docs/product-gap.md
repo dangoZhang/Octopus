@@ -30,6 +30,7 @@ Updated: 2026-06-28
 - `report` and `preflight` now expose the core/harness boundary: stable Rust kernel/product app files, editable tentacle/profile-registry harness units, and stale prototype warnings.
 - `preflight` now returns and prints a readiness summary with required/optional pass counts plus concrete required blockers, and the native HTML app renders those blockers before the full check list.
 - Release-gate check types, record parsing, script commands, and real-machine record status logic now live in a separate `release_gate` Rust module instead of the general CLI backend.
+- README and docs now point first to a product-style five-minute use page: install, launch, first Goal, evidence surfaces, optional model backend, and harness learning path.
 - `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
 - `start` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
 - `start` and `bootstrap` can materialize editable bundled seed tentacles under `.octopus/bundled-tentacles` when source tentacles are unavailable.
@@ -223,6 +224,7 @@ Updated: 2026-06-28
 - Added preflight readiness summary and blocker rendering in CLI/JSON/native HTML so first-run users can see the shortest path to release readiness.
 - Removed the First Run panel's obsolete granular write buttons so `octopus start --open` no longer presents a first-use path that the bridge policy rejects.
 - Added core/harness boundary diagnostics to product report, preflight, CLI output, and native HTML so the stable Rust surface and editable code-as-harness surface stay visible.
+- Added a product tutorial page and linked it from README, docs home, quickstart, Chinese docs entry, and the embedded app static page map.
 - Added `preflight script [path]` plus native HTML access so release-gate commands can be generated, reviewed, and run on a real machine.
 - Added `preflight record [path]` plus native HTML access so real-machine evidence can be generated as a reviewable Markdown record before appending to the gate log.
 - Made the real-machine record gate self-reference-safe for docs-only record commits.

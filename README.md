@@ -2,47 +2,36 @@
 
 Clean brain. Independent tentacles.
 
-[Open the app](https://dangozhang.github.io/Octopus/app.html) · [Docs](https://dangozhang.github.io/Octopus/) · [中文 README](README.zh-CN.md) · [中文文档](docs/zh/quickstart.md) · [Install guide](docs/quickstart.md)
+[Try the app](https://dangozhang.github.io/Octopus/app.html) · [5-minute use guide](https://dangozhang.github.io/Octopus/use.html) · [Docs](https://dangozhang.github.io/Octopus/) · [中文](README.zh-CN.md)
 
-Biological octopuses do not solve control by pushing every signal through one brain.
-Their arms contain local nervous systems.
-Their behavior emerges from intent, local control, and feedback.
-Their hearts beat for blood and environment adaptation.
+Biological octopuses use intent, local arm control, and feedback instead of routing every signal through one central brain.
+Octopus brings that shape to agents: the brain expresses the Goal and cognitive Need; tentacles own implementation through their own prompt, tool metadata, code, permissions, traces, and evolution surface.
 
-Octopus brings that idea to agents.
-The brain only owns the goal and the need.
-Tentacles with Intelligence own the implementation.
-The heartbeat is for self-motivated work and self-evolving harness change.
-
-Octopus Loop:
+Tools become local nervous systems.
+The main model stays clean.
+The harness learns which tentacle can supply the best Feed.
 
 ```text
 Goal -> Brain -> Need -> Tentacle Intelligence -> Action -> Feed -> Brain
 Heartbeat -> Action Data -> Tentacle harness change
 ```
 
-## Install & Launch
+## Quick Install & Use
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
 octopus start --open
 ```
 
-`start --open` prepares local state, seed tentacles, heartbeats, editable profile registry, and the native app surface, then opens `http://127.0.0.1:8765/app.html`. Use `octopus start` on headless machines. If no source checkout is present, it creates editable seed tentacles under `.octopus/bundled-tentacles`.
-
-The profile registry is a developer/harness data surface. It changes starter supply paths, permissions, checks, and evolution policy; the public user input remains Goal.
-
-Update later with `octopus update --run`.
-
-Run a first loop:
+`start --open` prepares local state, editable seed tentacles, the profile registry, three beats, the pixel pet, and the native app, then opens `http://127.0.0.1:8765/app.html`.
 
 ```bash
 octopus first-run "make this repo easier to use"
 ```
 
-`first-run` sets a clean Goal, installs seed tentacles, asks a safe observe Need, records Feed feedback, pulses the hearts, and returns Doctor plus Preflight evidence. Add `--live` when provider env is ready and you want the same loop to include the live provider gate.
+`first-run` sets a clean Goal, installs seed tentacles, asks one safe observe Need, records Feed feedback, pulses the hearts, and returns Doctor plus Preflight evidence.
 
-The public writing surface is the Goal:
+Keep using it by changing Goal:
 
 ```bash
 octopus chat "make this repo easier to use"
@@ -50,13 +39,16 @@ octopus goal refine "prefer small reviewable changes"
 octopus brain --goal --save "tighten the current objective"
 ```
 
-Need, Feed, tool choice, provider routing, repair, and harness evolution are agent-internal. Product and bridge input only changes brain-goal; the developer CLI can inspect or evolve harness surfaces explicitly. Live backends can be Codex login, API keys, local OpenAI-compatible models, or LiteLLM-style gateways through environment config.
+Need, Feed, tool choice, provider routing, repair, and harness evolution stay inside the agent. The product surface changes Goal; the harness handles supply.
 
-## Works Today
+## Works Now
 
 - One public input path: Goal from CLI, app, or external chat.
-- Seed tentacles for SWE work, computer-use adapters, repo maintenance, harness repair, and write-and-run local execution.
-- Tool-side LLM planning, grants, traces, route scores, and reviewable feedback-driven harness evolution.
+- Seed tentacles for SWE work, computer-use adapters, repo maintenance, harness repair, write-and-run execution, JSON Feed, and the pixel pet.
+- Tool-side LLM planning, grants, traces, route scores, and reviewable harness evolution.
 - Native app server, provider/readiness observation, preflight gates, and pixel pet state.
+- LLM backends through Codex login, API-key clouds, local OpenAI-compatible models, or gateway routers.
+
+Read next: [5-minute use guide](docs/use.html), [Quick Install & Use](docs/quickstart.md), [Architecture](docs/architecture.md), [Research map](docs/references.md).
 
 Pre-release line: `0.0.16`. `0.1.0` waits for recorded real-machine testing.

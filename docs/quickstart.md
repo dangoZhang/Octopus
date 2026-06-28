@@ -1,5 +1,7 @@
 # Quick Install & Use
 
+For the shortest product walkthrough, open [Use Octopus in five minutes](use.html).
+
 ## Install
 
 ```bash
