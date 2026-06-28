@@ -102,3 +102,13 @@ The `0.0.24` audit must update this file with:
 - Moved harness units: none; this pass separates the non-evolving product display layer from the CLI dispatcher.
 - Remaining candidates: continue shrinking `main.rs`, review historical docs/log residue, and remove any stale fallback that chooses Feed implementation for the clean brain.
 - Commands: `rg` for pet symbols, `cargo fmt --all --check`, `cargo check -q -p octopus-core`, `cargo test -q -p octopus-core pet_report_maps_state_to_local_target`, `cargo test -q -p octopus-core pet_image_writes_pixel_svg`, `cargo test -q -p octopus-core pet_auto_state_prefers_recent_action_event`.
+
+## Audit Pass 7: Profile Registry Boundary
+
+- Commit scanned: `c1f6d59`.
+- Reviewed files: profile registry report struct, source/path selection, parse diagnostics, doctor/report/preflight call sites, `structure.md`, and this audit log.
+- Removed residue: editable seed profile registry observation no longer lives in the CLI aggregation file.
+- Kept core behavior: `OCTOPUS_PROFILE_REGISTRY`, state-local registry, cwd-local registry, and embedded default registry keep the same load order and diagnostics.
+- Moved harness units: none; this pass separates editable harness registry observation from CLI dispatch.
+- Remaining candidates: one more product cleanup pass, review historical docs/log residue, then perform the cleanup/version commit for `0.0.24`.
+- Commands: `rg` for profile registry symbols, `cargo fmt --all --check`, `cargo check -q -p octopus-core`, `cargo test -q -p octopus-core cli_status_and_doctor_commands_run`, `cargo test -q -p octopus-core start_check_writes_local_app_evidence_for_preflight`, `cargo test -q -p octopus-core first_run_report_writes_scored_feed_evidence`.

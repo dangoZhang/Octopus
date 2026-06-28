@@ -1,4 +1,5 @@
-use super::{default_tentacles_root, repo_root, state_profile_registry_path};
+use super::{default_tentacles_root, repo_root};
+use crate::profile_registry::state_profile_registry_path;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, serde::Serialize)]

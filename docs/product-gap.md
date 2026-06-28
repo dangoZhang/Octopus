@@ -15,6 +15,7 @@ Updated: 2026-06-28
 - Pet auto-color now follows the latest persisted Need/Feed/beat/evolve-score event plus goal status.
 - Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools, repo-maintainer, harness-repair diagnostics, and a write-and-run harness.
 - Seed profile data now lives in `tentacles/profile-registry/default.json`; startup materializes `.octopus/profile-registry/default.json`, and the Rust kernel can load `OCTOPUS_PROFILE_REGISTRY` or the state-local registry instead of hard-coding starter prompt/tool/check/policy data in `lib.rs`. This is a developer/harness flow, not the public product bridge.
+- Profile registry source/path/parse observation now lives in `profile_registry.rs` instead of the CLI aggregation file.
 - Doctor, report, and preflight now expose profile registry source/path/parse status/profile count so editable harness registry failures are visible instead of silently falling back.
 - `json-feed` is a runtime seed for the `octopus-json-v1` contract.
 - The old Python SDK/prototype package has been removed; Python remains a tentacle runtime, not a second product/kernel surface.

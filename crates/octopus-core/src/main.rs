@@ -1,27 +1,26 @@
 use octopus_core::{
     default_permissions, default_tentacle_profiles, embedded_profile_registry_json,
     feed_tentacle_with_llm_factory, inspect_tentacle_manifests, load_tentacle_manifests,
-    load_tentacle_profiles_from_path, plan_tentacle_evolution_apply,
-    propose_tentacle_evolution_with_client, propose_tentacle_evolution_with_state,
-    recommend_tentacle_evolution_apply, scaffold_tentacle, think_tentacle_with_llm_factory,
-    write_harness_beat_evolution_artifacts, write_tentacle_apply_artifacts,
-    write_tentacle_evolution_artifacts, AdaptReport, BrainDeliberationDraft,
-    BrainDeliberationReport, BrainDeliberationSaveReport, BrainExploreDraft, BrainExploreReport,
-    BrainGoalReport, BrainGoalSaveReport, BrainPromptReport, BrainReflectionDraft,
-    BrainReflectionReport, BrainReflectionSaveReport, BrainSynthesisDraft, BrainSynthesisInput,
-    BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant, ChatClient, ChatClientFactory,
-    ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord, CodexCliChatClient,
-    CodexCliConfig, ContextReport, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan,
-    EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed, FeedFeedbackOutcome,
-    FeedTraceRecord, Feedback, Goal, GoalChat, GoalNeedSuggestion, GoalRefinement, Harness,
-    HarnessBeatEvolution, HarnessLearningSummary, HarnessState, HeartBeat, HeartbeatReport,
-    InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem, NeedQueueReport,
-    NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport, OpenAiCompatibleChatClient,
-    OpenAiCompatibleConfig, OpenAiCompatibleTuning, RepairOutcome, RouteReport, SelfIterationPlan,
-    StarterFeedbackInput, StarterFeedbackRecord, StarterFeedbackStatus, Status, StatusReport,
-    TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile, TentacleScaffold,
-    TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate, ToolPermission,
-    CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
+    plan_tentacle_evolution_apply, propose_tentacle_evolution_with_client,
+    propose_tentacle_evolution_with_state, recommend_tentacle_evolution_apply, scaffold_tentacle,
+    think_tentacle_with_llm_factory, write_harness_beat_evolution_artifacts,
+    write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts, AdaptReport,
+    BrainDeliberationDraft, BrainDeliberationReport, BrainDeliberationSaveReport,
+    BrainExploreDraft, BrainExploreReport, BrainGoalReport, BrainGoalSaveReport, BrainPromptReport,
+    BrainReflectionDraft, BrainReflectionReport, BrainReflectionSaveReport, BrainSynthesisDraft,
+    BrainSynthesisInput, BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant,
+    ChatClient, ChatClientFactory, ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord,
+    CodexCliChatClient, CodexCliConfig, ContextReport, EnvironmentReport, EvolutionApplyArtifact,
+    EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed,
+    FeedFeedbackOutcome, FeedTraceRecord, Feedback, Goal, GoalChat, GoalNeedSuggestion,
+    GoalRefinement, Harness, HarnessBeatEvolution, HarnessLearningSummary, HarnessState, HeartBeat,
+    HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem,
+    NeedQueueReport, NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport,
+    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, OpenAiCompatibleTuning, RepairOutcome,
+    RouteReport, SelfIterationPlan, StarterFeedbackInput, StarterFeedbackRecord,
+    StarterFeedbackStatus, Status, StatusReport, TentacleEvolutionProposal, TentacleManifestReport,
+    TentacleProfile, TentacleScaffold, TentacleThinkingPlan, TentacleToolAction,
+    TentacleToolCandidate, ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -37,6 +36,7 @@ mod bundled_harness;
 mod core_boundary;
 mod download;
 mod pet;
+mod profile_registry;
 mod release_gate;
 mod shell_words;
 use app_bridge::run_start as run_app_bridge_start;
@@ -52,6 +52,7 @@ use download::{download_artifacts_preflight_check, download_report, DownloadRepo
 #[cfg(test)]
 use pet::percent_encode_path;
 use pet::{default_pet_image_path, write_pet_image_report, PetImageReport, PetReport};
+use profile_registry::{profile_registry_report, ProfileRegistryReport};
 use release_gate::{
     benchmark_record_evidence, check_benchmark_record, preflight_check, preflight_record_commands,
     preflight_script_commands, preflight_status_check, real_machine_record_status_from_parts,
@@ -98,17 +99,6 @@ struct DoctorLlmReport {
 struct DoctorPetReport {
     path: String,
     exists: bool,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-struct ProfileRegistryReport {
-    source: String,
-    path: String,
-    exists: bool,
-    ok: bool,
-    profile_count: usize,
-    error: Option<String>,
-    next: Vec<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -6631,68 +6621,6 @@ fn write_init_file(path: &Path, content: &str) -> Result<InitFileReport, String>
         path: path.to_string_lossy().to_string(),
         created,
     })
-}
-
-fn profile_registry_report(state_path: &Path) -> ProfileRegistryReport {
-    let env_path = env::var("OCTOPUS_PROFILE_REGISTRY").ok().map(PathBuf::from);
-    let state_path_candidate = state_profile_registry_path(state_path);
-    let cwd_candidate = PathBuf::from(".octopus")
-        .join("profile-registry")
-        .join("default.json");
-    let (source, path, embedded) = if let Some(path) = env_path {
-        ("env".to_string(), path, false)
-    } else if state_path_candidate.exists() {
-        ("state".to_string(), state_path_candidate, false)
-    } else if cwd_candidate.exists() {
-        ("cwd".to_string(), cwd_candidate, false)
-    } else {
-        (
-            "embedded".to_string(),
-            PathBuf::from("embedded:tentacles/profile-registry/default.json"),
-            true,
-        )
-    };
-
-    let exists = embedded || path.exists();
-    let loaded = if embedded {
-        serde_json::from_str::<Vec<TentacleProfile>>(embedded_profile_registry_json())
-            .map_err(|error| error.to_string())
-    } else if exists {
-        load_tentacle_profiles_from_path(&path)
-    } else {
-        Err(format!(
-            "profile registry missing: {}",
-            path.to_string_lossy()
-        ))
-    };
-    let (ok, profile_count, error) = match loaded {
-        Ok(profiles) => (true, profiles.len(), None),
-        Err(error) => (false, 0, Some(error)),
-    };
-    let mut next = Vec::new();
-    if !ok {
-        if source == "env" {
-            next.push("set OCTOPUS_PROFILE_REGISTRY to a valid JSON registry".to_string());
-        }
-        next.push("octopus bootstrap".to_string());
-    }
-    ProfileRegistryReport {
-        source,
-        path: path.to_string_lossy().to_string(),
-        exists,
-        ok,
-        profile_count,
-        error,
-        next,
-    }
-}
-
-fn state_profile_registry_path(state_path: &Path) -> PathBuf {
-    let directory = state_path
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    directory.join("profile-registry").join("default.json")
 }
 
 fn print_init_report(report: &InitReport, language: Language) {

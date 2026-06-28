@@ -21,6 +21,7 @@ Octopus/
 │       ├── core_boundary.rs   Stable Rust vs editable harness boundary report.
 │       ├── download.rs        Download/install manifest and artifact release checks.
 │       ├── pet.rs             Pixel Octopus state, SVG export, and file URL helpers.
+│       ├── profile_registry.rs Editable seed profile registry observation.
 │       ├── release_gate.rs    Preflight records, benchmark evidence, real-machine records, release scripts.
 │       └── shell_words.rs     Shared shell command display quoting.
 ├── tentacles/

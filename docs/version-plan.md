@@ -40,6 +40,6 @@ Road to `0.1.0`:
 
 Last cleanup/version correction: `0.0.23` on 2026-06-28. Scope: download command, Pages download manifest, hosted install script, install verification, post-install verify commands, release-gate artifact checks, real-machine record coverage, and version consistency; no tag cut.
 
-Product commits toward `0.0.24`: 6/8.
+Product commits toward `0.0.24`: 7/8.
 
 Next planned cleanup/version commit: `0.0.24`.
