@@ -552,6 +552,27 @@ struct ProviderCoverageStatus {
 }
 
 #[derive(Debug, serde::Serialize)]
+struct ProviderMatrixReport {
+    path: String,
+    version: String,
+    current_head: Option<String>,
+    targets: Vec<ProviderMatrixTarget>,
+    commands: Vec<String>,
+    next: Vec<String>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct ProviderMatrixTarget {
+    id: String,
+    kind: String,
+    profile: String,
+    prefix: String,
+    env_path: String,
+    purpose: String,
+    commands: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
 struct ProviderLayerStatus {
     layer: String,
     purpose: String,
@@ -2401,6 +2422,22 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     );
                 } else {
                     print_provider_status(&report, language);
+                }
+                return Ok(());
+            }
+            if rest.get(1).map(String::as_str) == Some("matrix") {
+                let path = rest
+                    .get(2)
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from(".octopus/provider-matrix.md"));
+                let report = write_provider_matrix_record(&path)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_provider_matrix(&report, language);
                 }
                 return Ok(());
             }
@@ -4623,6 +4660,186 @@ fn save_provider_env_report_inner(
     })
 }
 
+fn write_provider_matrix_record(output_path: &Path) -> Result<ProviderMatrixReport, String> {
+    if let Some(parent) = output_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    let current_head = git_short_head();
+    let targets = provider_matrix_targets();
+    let commands = targets
+        .iter()
+        .flat_map(|target| target.commands.clone())
+        .collect::<Vec<_>>();
+    let head = current_head.as_deref().unwrap_or("unknown");
+    let mut content = format!(
+        r#"# Provider Matrix Record
+
+Use this as current-head evidence for `0.0.18` provider validation.
+
+## Machine
+
+- Date:
+- Tester:
+- Machine:
+- OS:
+- Shell:
+- Git commit: `{head}`
+- Package version: `{version}`
+
+## Coverage
+
+- Goal chat:
+- Clean brain:
+- Tentacle planning:
+- Harness evolution:
+
+## Targets
+
+"#
+    );
+    for target in &targets {
+        content.push_str(&format!(
+            r#"### {kind}: {id}
+
+- Profile: `{profile}`
+- Prefix: `{prefix}`
+- Env file: `{env_path}`
+- Purpose: {purpose}
+
+```bash
+{commands}
+```
+
+Results:
+
+- Provider check:
+- Clean brain:
+- Tentacle planning:
+- Harness evolution:
+- Notes:
+
+"#,
+            kind = target.kind,
+            id = target.id,
+            profile = target.profile,
+            prefix = target.prefix,
+            env_path = target.env_path,
+            purpose = target.purpose,
+            commands = target.commands.join("\n")
+        ));
+    }
+    content.push_str(
+        r#"## Decision
+
+- Pass or fail:
+- Follow-up:
+"#,
+    );
+    fs::write(output_path, content).map_err(|error| error.to_string())?;
+    Ok(ProviderMatrixReport {
+        path: output_path.to_string_lossy().to_string(),
+        version,
+        current_head,
+        targets,
+        commands,
+        next: vec![
+            format!("review {}", shell_arg(&output_path.to_string_lossy())),
+            "run each target on a real machine with the matching provider available".to_string(),
+            "append summarized results to docs/real-machine-test.md".to_string(),
+            "octopus provider status".to_string(),
+            "octopus preflight --live".to_string(),
+        ],
+    })
+}
+
+fn provider_matrix_targets() -> Vec<ProviderMatrixTarget> {
+    [
+        (
+            "codex-oauth",
+            "Codex OAuth",
+            "codex",
+            "OCTOPUS_MATRIX_CODEX",
+            ".octopus/providers/codex.env",
+            "login-session provider without a raw API key",
+            "OCTOPUS_CODEX_OK",
+        ),
+        (
+            "api-key-cloud",
+            "API-key cloud",
+            "openai",
+            "OCTOPUS_MATRIX_OPENAI",
+            ".octopus/providers/openai.env",
+            "direct OpenAI-compatible cloud endpoint with an API key",
+            "OCTOPUS_OPENAI_OK",
+        ),
+        (
+            "local-openai-compatible",
+            "Local model",
+            "lmstudio",
+            "OCTOPUS_MATRIX_LOCAL",
+            ".octopus/providers/local.env",
+            "local OpenAI-compatible server, usually without an API key",
+            "OCTOPUS_LOCAL_OK",
+        ),
+        (
+            "gateway-router",
+            "Gateway/router",
+            "litellm",
+            "OCTOPUS_MATRIX_GATEWAY",
+            ".octopus/providers/gateway.env",
+            "LiteLLM or another OpenAI-compatible provider gateway",
+            "OCTOPUS_GATEWAY_OK",
+        ),
+    ]
+    .into_iter()
+    .map(|(id, kind, profile, prefix, env_path, purpose, token)| {
+        let env_arg = shell_arg(env_path);
+        let goal = format!(
+            "{} OCTOPUS_BRAIN_LLM=1 OCTOPUS_BRAIN_GOAL_LLM_PREFIX={} octopus brain --goal --live \"tighten the current objective\"",
+            env_assignment(prefix),
+            prefix
+        );
+        let think = format!(
+            "{} OCTOPUS_LLM_MANIFEST=1 OCTOPUS_MANIFEST_LLM_PREFIX={} octopus think swe-agent observe README.md",
+            env_assignment(prefix),
+            prefix
+        );
+        let evolve = format!(
+            "{} OCTOPUS_LLM_EVOLVE=1 OCTOPUS_EVOLVE_LLM_PREFIX={} octopus evolve swe-agent \"improve Feed evidence\"",
+            env_assignment(prefix),
+            prefix
+        );
+        ProviderMatrixTarget {
+            id: id.to_string(),
+            kind: kind.to_string(),
+            profile: profile.to_string(),
+            prefix: prefix.to_string(),
+            env_path: env_path.to_string(),
+            purpose: purpose.to_string(),
+            commands: vec![
+                format!("octopus provider save {profile} {prefix} {env_arg}"),
+                format!("source {env_arg}"),
+                "octopus provider status".to_string(),
+                format!("octopus provider check {prefix} \"Reply only {token}\""),
+                goal,
+                think,
+                evolve,
+            ],
+        }
+    })
+    .collect()
+}
+
+fn env_assignment(prefix: &str) -> String {
+    format!(
+        "{prefix}_BACKEND=\"${{{prefix}_BACKEND:-openai-compatible}}\" {prefix}_MODEL=\"${{{prefix}_MODEL:-model}}\" {prefix}_BASE_URL=\"${{{prefix}_BASE_URL:-http://localhost:1234/v1}}\""
+    )
+}
+
 fn secure_provider_env_file(path: &Path) -> Result<(), String> {
     #[cfg(unix)]
     {
@@ -5148,6 +5365,35 @@ fn print_provider_saved_env(report: &ProviderSavedEnvReport, language: Language)
     }
     for item in &report.next {
         println!("next: {item}");
+    }
+}
+
+fn print_provider_matrix(report: &ProviderMatrixReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Provider matrix record");
+            println!("path: {}", report.path);
+            println!("version: {}", report.version);
+            println!(
+                "head: {}",
+                report.current_head.as_deref().unwrap_or("unknown")
+            );
+            println!("targets: {}", report.targets.len());
+            println!("commands: {}", report.commands.len());
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("Provider 矩阵记录");
+            println!("路径: {}", report.path);
+            println!("版本: {}", report.version);
+            println!(
+                "当前提交: {}",
+                report.current_head.as_deref().unwrap_or("未知")
+            );
+            println!("目标数: {}", report.targets.len());
+            println!("命令数: {}", report.commands.len());
+            println!("下一步: {}", join_or_none(&report.next));
+        }
     }
 }
 
@@ -8027,10 +8273,11 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
             "command_coverage",
             content.contains("first-run")
                 && content.contains("bridge_goal_surface")
+                && content.contains("provider matrix")
                 && content.contains("preflight --live")
                 && content.contains("self-iterate pr"),
             true,
-            "record should include first-run, bridge_goal_surface, live provider, and PR dry-run commands",
+            "record should include first-run, bridge_goal_surface, provider matrix, live provider, and PR dry-run commands",
             "regenerate with octopus preflight record",
         ),
     ];
@@ -13418,7 +13665,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair continue [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair continue [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -13514,7 +13761,7 @@ mod tests {
         provider_env_report, provider_status_report, real_machine_record_status_from_parts,
         repair_continue_report, repair_report, run, run_bridge_command,
         save_provider_env_report_with_key, skill_reports, starter_report, tentacles_root_ready,
-        update_report, usage, write_pet_image_report, Language,
+        update_report, usage, write_pet_image_report, write_provider_matrix_record, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, load_tentacle_profiles_from_path,
@@ -16047,6 +16294,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("context [kind query]"));
         assert!(usage().contains("provider save <profile>"));
         assert!(usage().contains("provider status"));
+        assert!(usage().contains("provider matrix [path]"));
         assert!(usage().contains("update [--run]"));
         assert!(usage().contains("goal [set [--constraint text] objective|refine text]"));
         assert!(usage().contains("first-run [--live] [objective]"));
@@ -16802,6 +17050,32 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     }
 
     #[test]
+    fn provider_matrix_record_writes_four_provider_targets() {
+        let _env = env_guard();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-provider-matrix-{}", std::process::id()));
+        let path = dir.join("provider-matrix.md");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let report = write_provider_matrix_record(&path).unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+
+        assert_eq!(report.targets.len(), 4);
+        assert!(content.contains("# Provider Matrix Record"));
+        assert!(content.contains("Codex OAuth"));
+        assert!(content.contains("API-key cloud"));
+        assert!(content.contains("Local model"));
+        assert!(content.contains("Gateway/router"));
+        assert!(content.contains("octopus provider check OCTOPUS_MATRIX_CODEX"));
+        assert!(content.contains("octopus brain --goal --live"));
+        assert!(content.contains("OCTOPUS_LLM_MANIFEST=1"));
+        assert!(content.contains("OCTOPUS_LLM_EVOLVE=1"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn bridge_limits_user_mutation_to_goal_surface() {
         assert_eq!(
             bridge_command_name(&[
@@ -17453,6 +17727,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("Package version"));
         assert!(record.contains("first-run"));
         assert!(record.contains("bridge_goal_surface"));
+        assert!(record.contains("provider matrix"));
         assert!(record.contains("preflight --live"));
         assert!(record.contains("self-iterate pr"));
         let audit = check_preflight_record(&record_path).unwrap();

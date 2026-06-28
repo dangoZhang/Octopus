@@ -4,6 +4,8 @@ Required before `0.1.0` and every later version tag.
 
 The release gate accepts a current recorded head, or a docs-only record commit whose parent head is recorded here. That keeps the record auditable without requiring a commit to contain its own hash.
 
+For `0.0.18` provider validation, generate `octopus provider matrix` and summarize the completed Codex OAuth, API-key cloud, local model, and gateway results here.
+
 ## Machine
 
 - Date: 2026-06-27 01:16:25 CST

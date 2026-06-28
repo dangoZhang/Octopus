@@ -96,6 +96,12 @@ octopus provider status
 
 `provider status` shows four coverage rows before the detailed slots: Goal chat, clean brain, tentacle planning, and harness evolution. A local model or Codex OAuth path can be ready without an API key; use `provider check` or `preflight --live` for live proof.
 
+Generate a provider matrix record before release testing:
+
+```bash
+octopus provider matrix
+```
+
 Then run the same Goal path live:
 
 ```bash
