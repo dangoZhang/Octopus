@@ -24,7 +24,7 @@ Updated: 2026-06-28
 - Provider setup is runtime plumbing; start overlays `.octopus/llm.env` onto child Octopus commands without making provider writes the main user path.
 - Provider env supports optional model thinking controls: reasoning effort, token budget, temperature, top_p, and provider-specific JSON body keys.
 - Provider coverage readiness does not treat empty API keys as failure when the backend can be Codex OAuth or a local OpenAI-compatible model; `provider check` and `preflight --live` remain the live proof.
-- `provider matrix [path]` writes a reviewable current-head matrix template for Codex OAuth, API-key cloud, local model, and gateway providers across provider check, clean brain, tentacle planning, and harness evolution; `provider matrix check [path]` audits that evidence before it is summarized in the release log.
+- `provider matrix [path]` writes a reviewable current-head matrix template for Codex OAuth, API-key cloud, local model, and gateway providers across provider check, clean brain, tentacle planning, and harness evolution; `provider matrix run [path]` runs explicitly enabled targets and writes results back; `provider matrix check [path]` audits that evidence before it is summarized in the release log.
 - The local app bridge now limits user-writable commands to `chat`, `goal set/refine`, `brain --goal`, and `first-run`; provider status/check and other diagnostics are observation-only.
 - The local app bridge server, static app serving, streaming command runner, command policy, denial response, provider env overlay parser, and `bridge_goal_surface` preflight evidence now live in `app_bridge.rs`, so the product input boundary is separate from the general CLI backend.
 - Blocked local app bridge writes now return `user_writes_brain_goal_only` plus suggested Goal commands, so old/internal controls fail with product guidance instead of a generic server error.
@@ -304,6 +304,7 @@ Updated: 2026-06-28
 - Added provider coverage evidence to `provider status`, Product Report, Preflight, and the native HTML app, so `0.0.18` can validate Goal chat, clean brain, tentacle planning, and harness evolution across OAuth, API-key, local, and gateway providers.
 - Added a provider matrix record generator/checker and included the matrix generator in the preflight record command list, so real-machine provider evidence can be collected and audited in one format.
 - Connected the provider matrix checker to Product Report and Preflight as a required current-head release gate, so missing OAuth/API-key/local/gateway evidence appears as a product gap before version closeout.
+- Added `provider matrix run`, which loads each enabled target env file, runs provider check, live clean-brain Goal, live tentacle planning, and provider-assisted harness evolution, then writes pass/fail/skipped results back into the matrix record.
 
 ## Remaining Gaps
 
@@ -314,7 +315,7 @@ Updated: 2026-06-28
 - Preflight now exposes the release gate, record template, and provider matrix gate, with pure release-gate helpers split into a module; the remaining `preflight_report` aggregator still needs a cleaner product-backend boundary, and current readiness still depends on running the gate with live provider, OAuth PR publishing, scored feedback data, completed provider matrix evidence, and appending a current-head or docs-only parent-recorded result.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
-- Provider profiles now include CLI/HTML env generation, env saving, secure key-backed env saving, start env loading, provider coverage diagnostics, a provider matrix record template, clean-brain slot diagnostics, tentacle-planning diagnostics, evolution-provider routing, request retries, live validation, Codex CLI OAuth, direct API-key, local model, and LiteLLM gateway paths; provider-specific edge cases still need broader real-machine feedback.
+- Provider profiles now include CLI/HTML env generation, env saving, secure key-backed env saving, start env loading, provider coverage diagnostics, a provider matrix record template/runner/checker, clean-brain slot diagnostics, tentacle-planning diagnostics, evolution-provider routing, request retries, live validation, Codex CLI OAuth, direct API-key, local model, and LiteLLM gateway paths; provider-specific edge cases still need broader real-machine feedback.
 - GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
 - The HTML app still contains older panels for provider setup, Need Queue, repair, Feed tests, install/check, and harness evolution, but the bridge now rejects those as direct user writes. Later UX cleanup can hide or convert them into read-only observation.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.

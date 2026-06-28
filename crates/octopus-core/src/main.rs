@@ -570,6 +570,27 @@ struct ProviderMatrixCheckReport {
     next: Vec<String>,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct ProviderMatrixRunReport {
+    path: String,
+    current_head: Option<String>,
+    results: Vec<ProviderMatrixRunTargetReport>,
+    audit: ProviderMatrixCheckReport,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ProviderMatrixRunTargetReport {
+    id: String,
+    enabled: bool,
+    enabled_env: String,
+    env_path: String,
+    provider_check: String,
+    clean_brain: String,
+    tentacle_planning: String,
+    harness_evolution: String,
+}
+
 #[derive(Clone, Debug, serde::Serialize)]
 struct ProviderMatrixTarget {
     id: String,
@@ -578,6 +599,8 @@ struct ProviderMatrixTarget {
     prefix: String,
     env_path: String,
     purpose: String,
+    enabled_env: String,
+    check_token: String,
     commands: Vec<String>,
 }
 
@@ -2436,6 +2459,24 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 return Ok(());
             }
             if rest.get(1).map(String::as_str) == Some("matrix") {
+                if rest.get(2).map(String::as_str) == Some("run") {
+                    let path = rest
+                        .get(3)
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| PathBuf::from(DEFAULT_PROVIDER_MATRIX_PATH));
+                    let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                    let report = run_provider_matrix_record(&loaded, &state, &path)?;
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&report)
+                                .map_err(|error| error.to_string())?
+                        );
+                    } else {
+                        print_provider_matrix_run(&report, language);
+                    }
+                    return Ok(());
+                }
                 if rest.get(2).map(String::as_str) == Some("check") {
                     let path = rest
                         .get(3)
@@ -4734,6 +4775,7 @@ Use this as current-head evidence for `0.0.18` provider validation.
 
 - Profile: `{profile}`
 - Prefix: `{prefix}`
+- Enable: `{enabled_env}=1`
 - Env file: `{env_path}`
 - Purpose: {purpose}
 
@@ -4754,6 +4796,7 @@ Results:
             id = target.id,
             profile = target.profile,
             prefix = target.prefix,
+            enabled_env = target.enabled_env,
             env_path = target.env_path,
             purpose = target.purpose,
             commands = target.commands.join("\n")
@@ -4783,6 +4826,346 @@ Results:
     })
 }
 
+fn run_provider_matrix_record(
+    state: &HarnessState,
+    state_path: &Path,
+    path: &Path,
+) -> Result<ProviderMatrixRunReport, String> {
+    if !path.exists() {
+        write_provider_matrix_record(path)?;
+    }
+    let mut content = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let targets = provider_matrix_targets();
+    let mut results = Vec::new();
+    for target in &targets {
+        let result = run_provider_matrix_target(state, target);
+        content = set_provider_matrix_target_field(
+            content,
+            target,
+            "Provider check",
+            &result.provider_check,
+        )?;
+        content =
+            set_provider_matrix_target_field(content, target, "Clean brain", &result.clean_brain)?;
+        content = set_provider_matrix_target_field(
+            content,
+            target,
+            "Tentacle planning",
+            &result.tentacle_planning,
+        )?;
+        content = set_provider_matrix_target_field(
+            content,
+            target,
+            "Harness evolution",
+            &result.harness_evolution,
+        )?;
+        results.push(result);
+    }
+    content = set_provider_matrix_coverage_field(
+        content,
+        "Goal chat",
+        &provider_matrix_coverage_result(&results, |result| &result.provider_check),
+    );
+    content = set_provider_matrix_coverage_field(
+        content,
+        "Clean brain",
+        &provider_matrix_coverage_result(&results, |result| &result.clean_brain),
+    );
+    content = set_provider_matrix_coverage_field(
+        content,
+        "Tentacle planning",
+        &provider_matrix_coverage_result(&results, |result| &result.tentacle_planning),
+    );
+    content = set_provider_matrix_coverage_field(
+        content,
+        "Harness evolution",
+        &provider_matrix_coverage_result(&results, |result| &result.harness_evolution),
+    );
+    let decision = if provider_matrix_results_pass(&results) {
+        "pass"
+    } else {
+        "fail: one or more provider targets are skipped or failing"
+    };
+    content = set_record_field_value_owned(content, "Pass or fail", decision);
+    fs::write(path, content).map_err(|error| error.to_string())?;
+    let audit = check_provider_matrix_record(path)?;
+    let mut next = audit.next.clone();
+    next.push(format!(
+        "octopus --state {} provider matrix run {}",
+        shell_arg(&state_path.to_string_lossy()),
+        shell_arg(&path.to_string_lossy())
+    ));
+    next.sort();
+    next.dedup();
+    Ok(ProviderMatrixRunReport {
+        path: path.to_string_lossy().to_string(),
+        current_head: git_short_head(),
+        results,
+        audit,
+        next,
+    })
+}
+
+fn run_provider_matrix_target(
+    state: &HarnessState,
+    target: &ProviderMatrixTarget,
+) -> ProviderMatrixRunTargetReport {
+    if !env_flag(&target.enabled_env) {
+        let skipped = provider_matrix_skipped(target);
+        return ProviderMatrixRunTargetReport {
+            id: target.id.clone(),
+            enabled: false,
+            enabled_env: target.enabled_env.clone(),
+            env_path: target.env_path.clone(),
+            provider_check: skipped.clone(),
+            clean_brain: skipped.clone(),
+            tentacle_planning: skipped.clone(),
+            harness_evolution: skipped,
+        };
+    }
+    let guard = ProviderMatrixEnvGuard::apply(Path::new(&target.env_path));
+    if let Err(error) = guard {
+        let failed = provider_matrix_fail(error);
+        return ProviderMatrixRunTargetReport {
+            id: target.id.clone(),
+            enabled: true,
+            enabled_env: target.enabled_env.clone(),
+            env_path: target.env_path.clone(),
+            provider_check: failed.clone(),
+            clean_brain: failed.clone(),
+            tentacle_planning: failed.clone(),
+            harness_evolution: failed,
+        };
+    }
+    let _guard = guard.expect("checked provider matrix env guard");
+    let provider_check = match provider_check_report(
+        &target.prefix,
+        &format!("Reply only {}", target.check_token),
+    ) {
+        Ok(report) => provider_matrix_pass(&report.content),
+        Err(error) => provider_matrix_fail(error),
+    };
+    let clean_brain = match provider_client(&target.prefix).and_then(|(_, _, _, _, mut client)| {
+        state
+            .clone()
+            .clean_brain_goal_with_client(
+                "tighten the current objective".to_string(),
+                6,
+                &mut client,
+            )
+            .map(|report| format!("{} needs", report.needs.len()))
+    }) {
+        Ok(summary) => provider_matrix_pass(&summary),
+        Err(error) => provider_matrix_fail(error),
+    };
+    let tentacle_planning = match provider_client_factory(&target.prefix).and_then(|factory| {
+        think_tentacle_with_llm_factory(
+            default_tentacles_root(),
+            "swe-agent",
+            &Need::new(NeedKind::Observe, "README.md"),
+            Some(factory),
+            &state.grants,
+        )
+        .map(|plan| format!("{} actions", plan.actions.len()))
+    }) {
+        Ok(summary) => provider_matrix_pass(&summary),
+        Err(error) => provider_matrix_fail(error),
+    };
+    let harness_evolution =
+        match provider_client(&target.prefix).and_then(|(_, _, _, _, mut client)| {
+            propose_tentacle_evolution_with_client(
+                default_tentacles_root(),
+                "swe-agent",
+                "improve Feed evidence",
+                state,
+                &mut client,
+            )
+            .map(|proposal| format!("{} candidates", proposal.patch_candidates.len()))
+        }) {
+            Ok(summary) => provider_matrix_pass(&summary),
+            Err(error) => provider_matrix_fail(error),
+        };
+    ProviderMatrixRunTargetReport {
+        id: target.id.clone(),
+        enabled: true,
+        enabled_env: target.enabled_env.clone(),
+        env_path: target.env_path.clone(),
+        provider_check,
+        clean_brain,
+        tentacle_planning,
+        harness_evolution,
+    }
+}
+
+struct ProviderMatrixEnvGuard {
+    saved: Vec<(String, Option<String>)>,
+}
+
+impl ProviderMatrixEnvGuard {
+    fn apply(path: &Path) -> Result<Self, String> {
+        let content = fs::read_to_string(path)
+            .map_err(|error| format!("cannot read {}: {error}", path.to_string_lossy()))?;
+        let overlay = app_bridge::parse_env_overlay(&content);
+        if overlay.is_empty() {
+            return Err(format!(
+                "{} has no OCTOPUS provider exports",
+                path.to_string_lossy()
+            ));
+        }
+        let saved = overlay
+            .iter()
+            .map(|(key, _)| (key.clone(), env::var(key).ok()))
+            .collect::<Vec<_>>();
+        for (key, value) in overlay {
+            env::set_var(key, value);
+        }
+        Ok(Self { saved })
+    }
+}
+
+impl Drop for ProviderMatrixEnvGuard {
+    fn drop(&mut self) {
+        for (key, value) in self.saved.iter().rev() {
+            if let Some(value) = value {
+                env::set_var(key, value);
+            } else {
+                env::remove_var(key);
+            }
+        }
+    }
+}
+
+fn provider_matrix_coverage_result(
+    results: &[ProviderMatrixRunTargetReport],
+    field: impl Fn(&ProviderMatrixRunTargetReport) -> &String,
+) -> String {
+    if results
+        .iter()
+        .all(|result| provider_matrix_result_ready(field(result)))
+    {
+        "pass".to_string()
+    } else {
+        let passed = results
+            .iter()
+            .filter(|result| provider_matrix_result_ready(field(result)))
+            .count();
+        format!("fail: {passed}/{} targets passed", results.len())
+    }
+}
+
+fn provider_matrix_results_pass(results: &[ProviderMatrixRunTargetReport]) -> bool {
+    !results.is_empty()
+        && results.iter().all(|result| {
+            result.enabled
+                && provider_matrix_result_ready(&result.provider_check)
+                && provider_matrix_result_ready(&result.clean_brain)
+                && provider_matrix_result_ready(&result.tentacle_planning)
+                && provider_matrix_result_ready(&result.harness_evolution)
+        })
+}
+
+fn provider_matrix_pass(summary: &str) -> String {
+    let summary = provider_matrix_one_line(summary);
+    if summary.is_empty() {
+        "pass".to_string()
+    } else {
+        format!("pass: {summary}")
+    }
+}
+
+fn provider_matrix_fail(summary: impl AsRef<str>) -> String {
+    let summary = provider_matrix_one_line(summary.as_ref());
+    if summary.is_empty() {
+        "fail".to_string()
+    } else {
+        format!("fail: {summary}")
+    }
+}
+
+fn provider_matrix_skipped(target: &ProviderMatrixTarget) -> String {
+    format!("skipped: set {}=1 to run", target.enabled_env)
+}
+
+fn provider_matrix_one_line(value: &str) -> String {
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(160)
+        .collect()
+}
+
+fn provider_matrix_result_ready(value: &str) -> bool {
+    let value = value.trim().to_ascii_lowercase();
+    value == "pass" || value.starts_with("pass:") || value.starts_with("passed")
+}
+
+fn set_provider_matrix_target_field(
+    content: String,
+    target: &ProviderMatrixTarget,
+    label: &str,
+    value: &str,
+) -> Result<String, String> {
+    let marker = format!("### {}: {}", target.kind, target.id);
+    let Some(start) = content.find(&marker) else {
+        return Err(format!("provider matrix target missing: {}", target.id));
+    };
+    let rest = &content[start..];
+    let next_target = rest
+        .find("\n### ")
+        .filter(|index| *index > 0)
+        .unwrap_or(rest.len());
+    let decision = rest.find("\n## Decision").unwrap_or(rest.len());
+    let end = start + next_target.min(decision);
+    let before = &content[..start];
+    let section = &content[start..end];
+    let after = &content[end..];
+    Ok(format!(
+        "{before}{}{after}",
+        set_record_field_value(section, label, value)
+    ))
+}
+
+fn set_provider_matrix_coverage_field(content: String, label: &str, value: &str) -> String {
+    let Some(end) = content.find("\n## Targets") else {
+        return set_record_field_value_owned(content, label, value);
+    };
+    let before = &content[..end];
+    let after = &content[end..];
+    format!("{}{}", set_record_field_value(before, label, value), after)
+}
+
+fn set_record_field_value_owned(content: String, label: &str, value: &str) -> String {
+    set_record_field_value(&content, label, value)
+}
+
+fn set_record_field_value(content: &str, label: &str, value: &str) -> String {
+    let prefix = format!("- {label}:");
+    let replacement = format!("- {label}: {value}");
+    let mut replaced = false;
+    let lines = content
+        .lines()
+        .map(|line| {
+            if line.trim_start().starts_with(&prefix) {
+                replaced = true;
+                replacement.clone()
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>();
+    if replaced {
+        let mut output = lines.join("\n");
+        if content.ends_with('\n') {
+            output.push('\n');
+        }
+        output
+    } else {
+        format!("{content}\n{replacement}\n")
+    }
+}
+
 fn check_provider_matrix_record(path: &Path) -> Result<ProviderMatrixCheckReport, String> {
     let current_head = git_short_head();
     let content = fs::read_to_string(path).unwrap_or_default();
@@ -4799,10 +5182,13 @@ fn check_provider_matrix_record(path: &Path) -> Result<ProviderMatrixCheckReport
         "Tentacle planning",
         "Harness evolution",
     ];
-    let missing_coverage = coverage_fields
+    let coverage_issues = coverage_fields
         .iter()
-        .filter(|field| record_field_value(&content, field).is_none())
-        .map(|field| (*field).to_string())
+        .filter_map(|field| match record_field_value(&content, field) {
+            Some(value) if provider_matrix_result_ready(&value) => None,
+            Some(value) => Some(format!("{field} not pass ({value})")),
+            None => Some(format!("{field} missing")),
+        })
         .collect::<Vec<_>>();
     let targets = provider_matrix_targets();
     let target_result_fields = [
@@ -4811,16 +5197,19 @@ fn check_provider_matrix_record(path: &Path) -> Result<ProviderMatrixCheckReport
         "Tentacle planning",
         "Harness evolution",
     ];
-    let missing_targets = targets
+    let target_issues = targets
         .iter()
         .filter_map(|target| {
             let section = provider_matrix_target_section(&content, target)?;
-            let missing = target_result_fields
+            let issues = target_result_fields
                 .iter()
-                .filter(|field| record_field_value_in(section, field).is_none())
-                .map(|field| (*field).to_string())
+                .filter_map(|field| match record_field_value_in(section, field) {
+                    Some(value) if provider_matrix_result_ready(&value) => None,
+                    Some(value) => Some(format!("{field} not pass ({value})")),
+                    None => Some(format!("{field} missing")),
+                })
                 .collect::<Vec<_>>();
-            (!missing.is_empty()).then(|| format!("{} missing {}", target.id, missing.join(", ")))
+            (!issues.is_empty()).then(|| format!("{} {}", target.id, issues.join(", ")))
         })
         .chain(targets.iter().filter_map(|target| {
             provider_matrix_target_section(&content, target)
@@ -4866,25 +5255,25 @@ fn check_provider_matrix_record(path: &Path) -> Result<ProviderMatrixCheckReport
         ),
         preflight_check(
             "coverage_fields",
-            missing_coverage.is_empty(),
+            coverage_issues.is_empty(),
             true,
-            if missing_coverage.is_empty() {
-                "coverage fields filled".to_string()
+            if coverage_issues.is_empty() {
+                "coverage fields passed".to_string()
             } else {
-                format!("missing {}", missing_coverage.join(", "))
+                coverage_issues.join("; ")
             },
-            "fill Goal chat, Clean brain, Tentacle planning, and Harness evolution",
+            "run octopus provider matrix run or fill passing coverage results",
         ),
         preflight_check(
             "target_results",
-            missing_targets.is_empty(),
+            target_issues.is_empty(),
             true,
-            if missing_targets.is_empty() {
-                "all provider target results filled".to_string()
+            if target_issues.is_empty() {
+                "all provider target results passed".to_string()
             } else {
-                missing_targets.join("; ")
+                target_issues.join("; ")
             },
-            "fill every provider target result field",
+            "run octopus provider matrix run or fill passing target results",
         ),
         preflight_check(
             "pass_decision",
@@ -5025,8 +5414,11 @@ fn provider_matrix_targets() -> Vec<ProviderMatrixTarget> {
             prefix: prefix.to_string(),
             env_path: env_path.to_string(),
             purpose: purpose.to_string(),
+            enabled_env: token.to_string(),
+            check_token: token.to_string(),
             commands: vec![
                 format!("octopus provider save {profile} {prefix} {env_arg}"),
+                format!("export {token}=1"),
                 format!("source {env_arg}"),
                 "octopus provider status".to_string(),
                 format!("octopus provider check {prefix} \"Reply only {token}\""),
@@ -5627,6 +6019,53 @@ fn print_provider_matrix_check(report: &ProviderMatrixCheckReport, language: Lan
             println!("通过: {}", report.passed);
             for check in &report.checks {
                 println!("- {}: {} ({})", check.id, check.status, check.evidence);
+            }
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn print_provider_matrix_run(report: &ProviderMatrixRunReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Provider matrix run");
+            println!("path: {}", report.path);
+            println!(
+                "head: {}",
+                report.current_head.as_deref().unwrap_or("unknown")
+            );
+            println!("passed: {}", report.audit.passed);
+            for result in &report.results {
+                println!(
+                    "- {}: enabled={} provider={} brain={} tentacle={} evolve={}",
+                    result.id,
+                    result.enabled,
+                    result.provider_check,
+                    result.clean_brain,
+                    result.tentacle_planning,
+                    result.harness_evolution
+                );
+            }
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("Provider 矩阵运行");
+            println!("路径: {}", report.path);
+            println!(
+                "当前提交: {}",
+                report.current_head.as_deref().unwrap_or("未知")
+            );
+            println!("通过: {}", report.audit.passed);
+            for result in &report.results {
+                println!(
+                    "- {}: 启用={} provider={} brain={} tentacle={} evolve={}",
+                    result.id,
+                    result.enabled,
+                    result.provider_check,
+                    result.clean_brain,
+                    result.tentacle_planning,
+                    result.harness_evolution
+                );
             }
             println!("下一步: {}", join_or_none(&report.next));
         }
@@ -13927,7 +14366,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair continue [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix check [path] | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair continue [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -14021,7 +14460,7 @@ mod tests {
         parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
         preflight_report, prepare_bridge_state, product_report, provider_coverage_ready,
         provider_env_report, provider_status_report, real_machine_record_status_from_parts,
-        repair_continue_report, repair_report, run, run_bridge_command,
+        repair_continue_report, repair_report, run, run_bridge_command, run_provider_matrix_record,
         save_provider_env_report_with_key, skill_reports, starter_report, tentacles_root_ready,
         update_report, usage, write_pet_image_report, write_provider_matrix_record, Language,
     };
@@ -17330,6 +17769,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(content.contains("API-key cloud"));
         assert!(content.contains("Local model"));
         assert!(content.contains("Gateway/router"));
+        assert!(content.contains("Enable: `OCTOPUS_CODEX_OK=1`"));
+        assert!(content.contains("export OCTOPUS_CODEX_OK=1"));
         assert!(content.contains("octopus provider check OCTOPUS_MATRIX_CODEX"));
         assert!(content.contains("octopus brain --goal --live"));
         assert!(content.contains("OCTOPUS_LLM_MANIFEST=1"));
@@ -17352,6 +17793,40 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         fs::write(&path, filled).unwrap();
         let audit = check_provider_matrix_record(&path).unwrap();
         assert!(audit.passed);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn provider_matrix_run_writes_skipped_targets_without_live_env() {
+        let _env = env_guard();
+        for key in [
+            "OCTOPUS_CODEX_OK",
+            "OCTOPUS_OPENAI_OK",
+            "OCTOPUS_LOCAL_OK",
+            "OCTOPUS_GATEWAY_OK",
+        ] {
+            std::env::remove_var(key);
+        }
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-provider-matrix-run-{}",
+            std::process::id()
+        ));
+        let path = dir.join("provider-matrix.md");
+        let state_path = dir.join("state.json");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let report =
+            run_provider_matrix_record(&HarnessState::default(), &state_path, &path).unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+
+        assert_eq!(report.results.len(), 4);
+        assert!(!report.audit.passed);
+        assert!(content.contains("- Provider check: skipped: set OCTOPUS_CODEX_OK=1 to run"));
+        assert!(content.contains("- Clean brain: skipped: set OCTOPUS_CODEX_OK=1 to run"));
+        assert!(content.contains("- Goal chat: fail: 0/4 targets passed"));
+        assert!(content.contains("- Pass or fail: fail: one or more provider targets"));
 
         let _ = fs::remove_dir_all(dir);
     }

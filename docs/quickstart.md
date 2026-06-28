@@ -100,8 +100,11 @@ Generate a provider matrix record before release testing:
 
 ```bash
 octopus provider matrix
+OCTOPUS_LOCAL_OK=1 octopus provider matrix run
 octopus provider matrix check
 ```
+
+`matrix run` only calls provider targets that you explicitly enable, such as `OCTOPUS_LOCAL_OK=1`; skipped or failed targets keep the release gate closed.
 
 Then run the same Goal path live:
 

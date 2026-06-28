@@ -267,8 +267,9 @@ export OPENAI_API_KEY=...
 octopus provider check</code></pre>
           <p><code>octopus provider status</code> shows a coverage matrix for Goal chat, clean brain, tentacle planning, and harness evolution before the detailed model slots. Codex OAuth and local models can be ready without an API key; <code>provider check</code> and <code>preflight --live</code> provide live proof.</p>
           <pre><code>octopus provider matrix
+OCTOPUS_LOCAL_OK=1 octopus provider matrix run
 octopus provider matrix check</code></pre>
-          <p>The matrix writes and audits a reviewable record for Codex OAuth, API-key cloud, local model, and gateway providers.</p>
+          <p>The matrix writes, runs explicitly enabled targets, and audits a reviewable record for Codex OAuth, API-key cloud, local model, and gateway providers.</p>
         </div>
       </section>
 

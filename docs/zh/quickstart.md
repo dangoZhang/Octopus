@@ -101,8 +101,11 @@ octopus brain --council --models OCTOPUS_LLM --save "ask clean brains"
 
 ```bash
 octopus provider matrix
+OCTOPUS_LOCAL_OK=1 octopus provider matrix run
 octopus provider matrix check
 ```
+
+`matrix run` 只调用显式启用的目标，例如 `OCTOPUS_LOCAL_OK=1`；跳过或失败的目标会继续挡住发布门。
 
 ## Harness 演化
 
