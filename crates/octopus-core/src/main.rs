@@ -8982,6 +8982,7 @@ fn preflight_report(
             "README, docs homepage, app, and pixel pet files",
             "octopus start",
         ),
+        download_artifacts_preflight_check(),
         preflight_check(
             "provider_layers",
             provider_layers_ready,
@@ -12338,6 +12339,51 @@ fn download_report() -> DownloadReport {
     }
 }
 
+fn download_artifacts_preflight_check() -> PreflightCheck {
+    let report = download_report();
+    let report_value = serde_json::to_value(&report).ok();
+    let manifest_value =
+        serde_json::from_str::<serde_json::Value>(include_str!("../../../docs/download.json")).ok();
+    let manifest_matches = manifest_value.as_ref() == report_value.as_ref();
+    let static_manifest_matches = app_bridge::static_page("/download.json")
+        .ok()
+        .and_then(|(content_type, body)| {
+            let value = serde_json::from_slice::<serde_json::Value>(&body).ok();
+            Some(content_type == "application/json" && value.as_ref() == report_value.as_ref())
+        })
+        .unwrap_or(false);
+    let install_script = include_str!("../../../docs/install.sh");
+    let install_script_matches = install_script.starts_with("#!/usr/bin/env sh")
+        && install_script.contains("cargo install")
+        && install_script.contains("octopus start --open")
+        && install_script.contains(&report.repository)
+        && install_script.contains(&report.cargo_package)
+        && install_script.contains(&report.binary);
+    let static_install_matches = app_bridge::static_page("/install.sh")
+        .ok()
+        .map(|(content_type, body)| {
+            content_type == "text/x-shellscript" && body.as_slice() == install_script.as_bytes()
+        })
+        .unwrap_or(false);
+
+    preflight_check(
+        "download_artifacts",
+        manifest_matches
+            && static_manifest_matches
+            && install_script_matches
+            && static_install_matches,
+        true,
+        format!(
+            "manifest={}, static_manifest={}, install_script={}, static_install={}",
+            manifest_matches,
+            static_manifest_matches,
+            install_script_matches,
+            static_install_matches
+        ),
+        "octopus download; docs/download.json; docs/install.sh",
+    )
+}
+
 fn shell_command(command: &[String]) -> String {
     command
         .iter()
@@ -15064,17 +15110,17 @@ mod tests {
         app_open_command, append_preflight_record, bridge_command_allowed, bridge_command_name,
         bridge_static, bridge_static_asset, check_benchmark_record, check_preflight_record,
         check_provider_matrix_record, check_report, default_first_run_objective,
-        default_tentacles_root_for, download_report, first_run_report, git_short_head,
-        http_content_length, install_report, is_broken_pipe_panic, localize_summary,
-        materialize_bundled_tentacles_root, parse_bridge_env_overlay, parse_first_run_args,
-        parse_start_check_addr, parse_start_options, percent_encode_path, pet_report,
-        pet_report_for_state, preflight_report, prepare_bridge_state, product_report,
-        provider_coverage_ready, provider_env_report, provider_status_report,
-        real_machine_record_status_from_parts, repair_continue_report, repair_report, run,
-        run_bridge_command, run_provider_matrix_record, save_provider_env_report_with_key,
-        shell_arg, skill_reports, start_check_requested, starter_report, tentacles_root_ready,
-        update_report, usage, write_benchmark_record, write_pet_image_report,
-        write_provider_matrix_record, Language,
+        default_tentacles_root_for, download_artifacts_preflight_check, download_report,
+        first_run_report, git_short_head, http_content_length, install_report,
+        is_broken_pipe_panic, localize_summary, materialize_bundled_tentacles_root,
+        parse_bridge_env_overlay, parse_first_run_args, parse_start_check_addr,
+        parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
+        preflight_report, prepare_bridge_state, product_report, provider_coverage_ready,
+        provider_env_report, provider_status_report, real_machine_record_status_from_parts,
+        repair_continue_report, repair_report, run, run_bridge_command, run_provider_matrix_record,
+        save_provider_env_report_with_key, shell_arg, skill_reports, start_check_requested,
+        starter_report, tentacles_root_ready, update_report, usage, write_benchmark_record,
+        write_pet_image_report, write_provider_matrix_record, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, load_tentacle_profiles_from_path,
@@ -17942,6 +17988,17 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(manifest["update"]["shell"], report.update.shell);
         assert_eq!(manifest["start"], report.start);
         assert_eq!(manifest["docs"][1]["url"], report.docs[1].url);
+    }
+
+    #[test]
+    fn download_artifacts_preflight_check_passes_for_current_docs() {
+        let check = download_artifacts_preflight_check();
+
+        assert_eq!(check.id, "download_artifacts");
+        assert_eq!(check.status, "pass");
+        assert!(check.required);
+        assert!(check.evidence.contains("manifest=true"));
+        assert!(check.evidence.contains("static_install=true"));
     }
 
     #[test]
