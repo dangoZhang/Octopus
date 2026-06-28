@@ -18480,6 +18480,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .replace(
                 "- Output summary:",
                 "- Output summary: passed with compact Feed",
+            )
+            .replace(
+                "- Artifact path:",
+                "- Artifact path: artifacts/recorded-case.log",
             );
         fs::write(&path, filled).unwrap();
         let audit = check_benchmark_record(&path, head).unwrap();

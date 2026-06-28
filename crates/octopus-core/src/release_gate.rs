@@ -396,7 +396,7 @@ pub(crate) fn check_benchmark_record(
             ));
             continue;
         };
-        let missing = ["Case id", "Command", "Output summary"]
+        let missing = ["Case id", "Command", "Output summary", "Artifact path"]
             .iter()
             .filter(|label| record_field_value(section, label).is_none())
             .map(|label| (*label).to_string())
