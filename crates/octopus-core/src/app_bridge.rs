@@ -27,7 +27,9 @@ pub(crate) struct LocalAppRunReport {
     pub(crate) current_head: Option<String>,
     pub(crate) app_url: String,
     pub(crate) ready: bool,
+    pub(crate) seed_tentacles: Vec<String>,
     pub(crate) installed_tentacles: Vec<String>,
+    pub(crate) skipped_tentacles: Vec<String>,
     pub(crate) pages: Vec<LocalAppPageReport>,
     pub(crate) web_demo: PreflightCheck,
     pub(crate) api_policy: PreflightCheck,
@@ -142,15 +144,26 @@ pub(crate) fn local_app_run_status_check(
     let version_ready = report.version == env!("CARGO_PKG_VERSION");
     let pages_ready = report.pages.iter().all(|page| page.ok);
     let web_demo_ready = report.web_demo.status == "pass";
+    let tentacles_ready =
+        !report.installed_tentacles.is_empty() || !report.seed_tentacles.is_empty();
     preflight_check(
         "local_app_run",
-        report.ready && head_ready && version_ready && pages_ready && web_demo_ready,
+        report.ready
+            && tentacles_ready
+            && report.skipped_tentacles.is_empty()
+            && head_ready
+            && version_ready
+            && pages_ready
+            && web_demo_ready,
         true,
         format!(
-            "ready={}, head={}, version={}, pages={}/{}, web_demo={}, policy={}",
+            "ready={}, head={}, version={}, seeds={}, installed={}, skipped={}, pages={}/{}, web_demo={}, policy={}",
             report.ready,
             report.current_head.as_deref().unwrap_or("unknown"),
             report.version,
+            report.seed_tentacles.len(),
+            report.installed_tentacles.len(),
+            report.skipped_tentacles.len(),
             report.pages.iter().filter(|page| page.ok).count(),
             report.pages.len(),
             report.web_demo.status,
@@ -170,8 +183,11 @@ fn local_app_run_report(
     let web_demo = web_demo_preflight_check();
     let api_policy = goal_surface_preflight_check(&state_path);
     let pages_ready = pages.iter().all(|page| page.ok);
+    let tentacles_ready =
+        !startup.installed_tentacles.is_empty() || !startup.seed_tentacles.is_empty();
     let ready = Path::new(&startup.state_path).exists()
-        && !startup.installed_tentacles.is_empty()
+        && tentacles_ready
+        && startup.skipped_tentacles.is_empty()
         && pages_ready
         && web_demo.status == "pass"
         && api_policy.status == "pass";
@@ -196,7 +212,9 @@ fn local_app_run_report(
         current_head,
         app_url: format!("http://{addr}/app.html"),
         ready,
+        seed_tentacles: startup.seed_tentacles,
         installed_tentacles: startup.installed_tentacles,
+        skipped_tentacles: startup.skipped_tentacles,
         pages,
         web_demo,
         api_policy,

@@ -61,6 +61,7 @@ Updated: 2026-06-28
 - CI now follows the product launch path and no longer checks the removed demo command.
 - `start --open` keeps the same whole-project startup path and attempts to open the native app after the local app server binds.
 - `start --check` runs the same startup preparation without keeping the server open, verifies embedded app/pet/use pages plus the brain-goal bridge policy, writes `.octopus/local-app-run.json`, and feeds the required `local_app_run` preflight gate.
+- `start --check` now treats idempotent installed seed manifests as an app-ready Feed surface, so installed binaries do not fail `local_app_run` just because seed tentacles were already present.
 - The native HTML app defaults its local API URL to Octopus when opened from docs pages, and auto-renders a read-only startup snapshot when served by `octopus start`.
 - The native HTML app has been reset to one polished page with pet, Goal, current Need, current Feed, and Output as an activity stream. Navigation links, state/API/constraint details, and internal mode controls are removed; the only visible write action is Send.
 - The native HTML app no longer exposes Doctor, Provider, Install, Repair, Evolve, Check, Preflight, or First Run as first-path panels; those remain CLI/internal observation or release-gate surfaces.

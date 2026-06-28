@@ -9224,7 +9224,9 @@ fn print_local_app_run_report(report: &app_bridge::LocalAppRunReport, language: 
                 "head: {}",
                 report.current_head.as_deref().unwrap_or("unknown")
             );
+            println!("seeds: {}", join_or_none(&report.seed_tentacles));
             println!("installed: {}", join_or_none(&report.installed_tentacles));
+            println!("skipped: {}", join_or_none(&report.skipped_tentacles));
             println!("pages:");
             for page in &report.pages {
                 println!(
@@ -9253,7 +9255,9 @@ fn print_local_app_run_report(report: &app_bridge::LocalAppRunReport, language: 
                 "当前提交: {}",
                 report.current_head.as_deref().unwrap_or("未知")
             );
+            println!("种子触手: {}", join_or_none(&report.seed_tentacles));
             println!("已安装触手: {}", join_or_none(&report.installed_tentacles));
+            println!("跳过触手: {}", join_or_none(&report.skipped_tentacles));
             println!("页面:");
             for page in &report.pages {
                 println!(
@@ -17338,6 +17342,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let record_path = dir.join(".octopus/local-app-run.json");
         let record = fs::read_to_string(&record_path).unwrap();
         assert!(record.contains("\"ready\": true"));
+        assert!(record.contains("\"seed_tentacles\""));
         assert!(record.contains("\"/app.html\""));
         assert!(record.contains("\"/pet.html\""));
         assert!(record.contains("\"/tutorial.html\""));
