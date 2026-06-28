@@ -10,6 +10,6 @@ if test -f Cargo.toml; then
   cargo test
 fi
 
-if test -d tests || test -f pyproject.toml; then
-  PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="${PYTHONPATH:-src}" python3 -m unittest discover -s tests -q
+if test -f pyproject.toml && test -d tests; then
+  PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
 fi

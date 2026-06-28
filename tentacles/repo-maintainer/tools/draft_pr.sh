@@ -55,7 +55,7 @@ Branch: $branch
 ## Checks
 - [ ] cargo test
 - [ ] cargo clippy --all-targets -- -D warnings
-- [ ] PYTHONPATH=src python -m unittest discover -s tests -q
+- [ ] tentacle runtime checks from changed manifests
 
 ## Guardrails
 - never push to main directly

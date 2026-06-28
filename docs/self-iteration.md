@@ -65,7 +65,7 @@ The draft lands under `.octopus/evolution/<tentacle>/` with `PROPOSAL.md`, `PATC
 
 - never push to `main` directly
 - prefer small PRs
-- run Rust and Python tests before proposing merge
+- run Rust tests and tentacle runtime checks before proposing merge
 - store route outcomes in harness state
 - keep the kernel small enough to audit
 

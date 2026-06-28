@@ -11,10 +11,10 @@ Release checklist:
 
 - README stays product-page first, with the clean-brain value and install path visible.
 - `docs/product-gap.md` records current shape, filled gaps, and next fill.
-- CI stays green for Rust, Python, manifests, tentacle runtime checks, pet page, and install path.
+- CI stays green for Rust, manifests, tentacle runtime checks, pet page, and install path.
 - `octopus preflight --live` is the release-readiness summary before `0.1.0` tags.
 - Pages deploys `index.html`, `app.html`, `pet.html`, quickstart, architecture, references, and self-iteration docs.
-- Version changes land together in `crates/octopus-core/Cargo.toml`, `Cargo.lock`, and `pyproject.toml`.
+- Version changes land together in `crates/octopus-core/Cargo.toml` and `Cargo.lock`.
 - `0.1.0` is reserved for the first release-ready build after recorded real-machine testing.
 - Every tag from `0.1.0` onward requires real-machine testing before the tag is pushed.
 
@@ -27,6 +27,6 @@ Real-machine test gate for `0.1.0` and later tags:
 
 Last cleanup/version correction: `0.0.16` on 2026-06-28. Scope: clean-brain alignment/scout modes, backend-aware provider routing, brain-goal bridge boundary, structured bridge denial feedback, preflight/real-machine product bridge gates, docs cleanup, and version consistency; no tag cut.
 
-Product commits toward `0.0.17`: 0/8.
+Product commits toward `0.0.17`: 1/8.
 
 Next planned cleanup/version commit: `0.0.17`.

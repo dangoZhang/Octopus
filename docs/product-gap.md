@@ -13,7 +13,9 @@ Updated: 2026-06-28
 - Pixel pet exposes heartbeat, memory, harness, blocked, and success states through deterministic state mapping, and CLI can export the same pixel body as SVG.
 - Pet auto-color now follows the latest persisted Need/Feed/beat/evolve-score event plus goal status.
 - Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools, repo-maintainer, harness-repair diagnostics, and a write-and-run harness.
+- Seed profile data now lives in `tentacles/profile-registry/default.json`; the Rust kernel loads it instead of hard-coding starter prompt/tool/check/policy data in `lib.rs`.
 - `json-feed` is a runtime seed for the `octopus-json-v1` contract.
+- The old Python SDK/prototype package has been removed; Python remains a tentacle runtime, not a second product/kernel surface.
 - Memory is a heart/beat; visual is the color-changing pet layer.
 - LLM adapters support backend-aware providers for chat goal refinement, clean-brain Goal/Intent/Brief/Align/Clarify/Agenda/Scout/Deliberate/Council/Synthesize/Explore/Rewrite/Queue/Memory jobs, manifest tool planning, and harness evolution candidate generation.
 - `providers` and provider env support Codex CLI OAuth, API-key clouds, Z.AI/BigModel, local servers, LiteLLM gateway, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.
@@ -23,6 +25,7 @@ Updated: 2026-06-28
 - The local app bridge now limits user-writable commands to `chat`, `goal set/refine`, `brain --goal`, and `first-run`; provider status/check and other diagnostics are observation-only.
 - Blocked local app bridge writes now return `user_writes_brain_goal_only` plus suggested Goal commands, so old/internal controls fail with product guidance instead of a generic server error.
 - `preflight` now includes a required `bridge_goal_surface` gate that checks allowed Goal writes, denied internal writes, and the structured denial policy.
+- Release-gate check types, record parsing, script commands, and real-machine record status logic now live in a separate `release_gate` Rust module instead of the general CLI backend.
 - `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
 - `start` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
 - `start` and `bootstrap` can materialize editable bundled seed tentacles under `.octopus/bundled-tentacles` when source tentacles are unavailable.
@@ -280,6 +283,9 @@ Updated: 2026-06-28
 - Added the product bridge boundary to the `0.1.0` preflight evidence.
 - Added product-bridge evidence to the real-machine record template and audit.
 - Rolled the cleanup/version cadence to `0.0.16` after clean-brain alignment/scout modes, backend-aware provider routing, brain-goal bridge boundary, structured bridge denial feedback, product-bridge gates, docs cleanup, and version consistency.
+- Removed the unused Python SDK/prototype package and Python CI lane so the product has one kernel/package surface.
+- Moved seed profile prompt/tool/check/policy data from `lib.rs` into `tentacles/profile-registry/default.json`.
+- Split release-gate check/record helper logic into `crates/octopus-core/src/release_gate.rs` as the first preflight modularization step.
 
 ## Remaining Gaps
 
@@ -287,7 +293,7 @@ Updated: 2026-06-28
 - LLM evolution can generate candidates and provider-assisted patch drafts from manifest surfaces, scored outcomes, recent Feed traces, and check history; local candidates now also target traced or failing runtime files, `evolve score` writes the next recommendation/apply artifacts from updated feedback, and harness beat can start from Feed trace or check feedback while app and CLI patch writes stay review/grant-bound.
 - Harness-repair diagnosis can now queue its next Need, immediately continue that Need as Feed, remember reviewed session outcomes, feed merged outcome memory and target code context into repair sessions, write reviewable action plans, continue those plans through heartbeat repair, accept repair scoring from CLI or the native app, mirror session-backed scores into the outcome journal, and feed failed or partial repair outcomes into harness beat evolution; closing the loop still needs real provider-backed repair runs scored from real projects.
 - Product reporting is available in CLI and app; report quality still needs feedback from real project states.
-- Preflight now exposes the release gate and record template; current readiness still depends on running that gate with live provider, OAuth PR publishing, scored feedback data, and appending a current-head or docs-only parent-recorded result.
+- Preflight now exposes the release gate and record template, with pure release-gate helpers split into a module; the remaining `preflight_report` aggregator still needs a cleaner product-backend boundary, and current readiness still depends on running the gate with live provider, OAuth PR publishing, scored feedback data, and appending a current-head or docs-only parent-recorded result.
 - Multi-action execution is available for LLM-backed tentacles; richer follow-up planning still needs real provider feedback.
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, secure key-backed env saving, start env loading, clean-brain slot diagnostics, tentacle-planning diagnostics, evolution-provider routing, request retries, live validation, Codex CLI OAuth, direct API-key, local model, and LiteLLM gateway paths; provider-specific edge cases still need broader real-machine feedback.

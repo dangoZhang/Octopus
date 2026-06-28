@@ -24,11 +24,9 @@ Octopus keeps the non-evolvable base small.
 
 Rust is the kernel language because this layer must be fast, typed, portable, and boring. It is the part we do not want an adaptive harness to rewrite casually.
 
-## SDK
+## Provider Base
 
-`src/octopus` is the Python SDK/prototype layer. It is useful for quick integrations, SDK tests, and LLM-tool experiments.
-
-`OpenAiCompatibleChatClient`, `CodexCliChatClient`, and `OpenAICompatibleLLM` form the provider base. Octopus can use OpenAI-compatible clouds, Codex CLI OAuth, Z.AI/BigModel, local servers, LiteLLM gateways, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints. Provider env can carry `{PREFIX}_REASONING_EFFORT`, `{PREFIX}_MAX_TOKENS`, `{PREFIX}_TEMPERATURE`, `{PREFIX}_TOP_P`, `{PREFIX}_RETRIES`, `{PREFIX}_RETRY_MS`, and `{PREFIX}_EXTRA_BODY`, so model controls stay outside Need text and clean-brain context. The request layer forces non-streaming chat completions, parses provider error JSON, adapts text/content-array/reasoning-only responses, retries transient failures, and supports local `curl` or Codex CLI runtime adapters. Provider setup commands remain runtime/developer plumbing; the product bridge exposes provider readiness as observation and does not let provider writes become the main user path.
+`OpenAiCompatibleChatClient` and `CodexCliChatClient` live in the Rust kernel. Octopus can use OpenAI-compatible clouds, Codex CLI OAuth, Z.AI/BigModel, local servers, LiteLLM gateways, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints. Provider env can carry `{PREFIX}_REASONING_EFFORT`, `{PREFIX}_MAX_TOKENS`, `{PREFIX}_TEMPERATURE`, `{PREFIX}_TOP_P`, `{PREFIX}_RETRIES`, `{PREFIX}_RETRY_MS`, and `{PREFIX}_EXTRA_BODY`, so model controls stay outside Need text and clean-brain context. The request layer forces non-streaming chat completions, parses provider error JSON, adapts text/content-array/reasoning-only responses, retries transient failures, and supports local `curl` or Codex CLI runtime adapters. Provider setup commands remain runtime/developer plumbing; the product bridge exposes provider readiness as observation and does not let provider writes become the main user path.
 
 Context boundary: clean-brain LLM context is `Goal + Mem + Need + Feed`; tentacle LLM context is `Need + Tool + Action + Tool + Action -> Feed`; harness evolution sees manifest surfaces, outcomes, checks, and constraints so it can modify prompt, metadata, runtime code, or policy without moving tool burden into the clean brain.
 
@@ -48,9 +46,13 @@ Every executed Feed is also written to a compact harness trace journal and retur
 
 `start [--open] [addr]` prepares local state, starts the native HTML app, overlays `.octopus/llm.env`, and exposes `/api/run` plus `/api/stream` through a narrow bridge. The bridge allows Goal writes through `chat`, `goal set/refine`, `brain --goal`, and `first-run [--live] [objective]`. Doctor, report, preflight, provider status/check, starter recommendations, traces, and pet state are observable. Need execution, Feed scoring, repair, evolve, OAuth grants, installs, checks, provider env writes, preflight record writes, and pet image writes stay internal or developer-only. Blocked bridge calls return `user_writes_brain_goal_only` with suggested Goal commands instead of a generic server error, and `preflight` treats that boundary as release evidence.
 
+`release_gate.rs` owns preflight check records, real-machine record parsing, generated script commands, and docs-only record status logic. `main.rs` still aggregates doctor, provider, bridge, and product evidence into the final `preflight_report`.
+
 `update [--run]` reports the GitHub reinstall command by default and only executes it with `--run`. The local app API allows the dry-run report and blocks `--run`.
 
 `skills [root]` lists profile and manifest skills as user-facing capability bundles. It is a catalog view; execution still starts from Need and routes through harness data.
+
+Seed profiles live in `tentacles/profile-registry/default.json`. The Rust kernel loads that registry as data, so starter prompts, tool metadata, checks, permissions, and evolution policy are no longer hard-coded in `lib.rs`.
 
 `install <tentacle>` installs a profile or manifest, then reports the tentacle's needs, runtimes, required grants, evolution checks, recent check history, and next commands from its own metadata. It is an internal/developer operation, not the public brain-goal path.
 

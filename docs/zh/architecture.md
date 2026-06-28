@@ -18,11 +18,10 @@ Tentacle: Need + Tool + Action + Tool + Action -> Feed
 crates/octopus-core/
   src/lib.rs      Rust kernel：合同、状态、路由、Feed、heartbeat、tentacle 执行
   src/main.rs     CLI、本地 app server、provider、preflight、repair、release gate
-
-src/octopus/
-  *.py            Python SDK/原型层：Need、Feed、Harness、Memory、LLM planner
+  src/release_gate.rs  preflight check、真实机器记录解析、release gate 脚本命令
 
 tentacles/
+  profile-registry/default.json  seed profile 注册表：prompt、tool meta、check、权限、演化策略
   */manifest.json  触手声明：brain prompt、tool meta、runtime、权限、演化面
   */tools/*        可编辑运行时工具
 
@@ -65,4 +64,5 @@ cowork/
 - 需要 live provider gate 通过。
 - 需要 GitHub OAuth grant 和 PR dry-run/publish 路径证据。
 - 需要发布前 `preflight --live` 全部 required check 通过。
-- Python 测试依赖需要整理：`pytest` 在当前机器缺失，但 `PYTHONPATH=src python3 -m unittest discover -s tests` 可通过。
+- 旧 Python SDK 已移除；Python 继续作为 tentacle runtime 存在，例如 `json-feed` 和 repair tools。
+- Seed profiles 已从 Rust kernel 源码移到 `tentacles/profile-registry/default.json`。

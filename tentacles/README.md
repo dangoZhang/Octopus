@@ -4,6 +4,8 @@ Each tentacle is code-as-harness: LLM brain prompt, tool metadata, code implemen
 
 A tentacle is a runtime-neutral execution unit. Prompt, meta, code, and policy can evolve together while the clean brain keeps emitting only cognitive Needs.
 
+`profile-registry/default.json` is the seed profile registry. It keeps starter prompts, tool metadata, checks, permissions, and evolution policy outside the Rust kernel source. The kernel loads this registry as data; tentacles own the Feed path.
+
 Every manifest declares four evolution surfaces:
 
 - `brain_prompt`: tool-side LLM prompt and feedback contract.

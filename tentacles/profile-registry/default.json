@@ -1,0 +1,583 @@
+[
+  {
+    "id": "research",
+    "name": "Research Tentacle",
+    "description": "Verifies, compares, retrieves, and returns compact evidence.",
+    "brain": {
+      "kind": "llm",
+      "description": "Evidence planner",
+      "model": null,
+      "prompt": "Turn a Need into source checks, comparison steps, and compact evidence."
+    },
+    "skills": [
+      {
+        "id": "verify",
+        "name": "Verify",
+        "description": "Check claims against available sources.",
+        "needs": ["verify", "compare", "observe"],
+        "tools": ["search", "browser", "citation"]
+      }
+    ],
+    "tools": [
+      {
+        "id": "search",
+        "description": "Find candidate sources.",
+        "implementation": { "kind": "adapter", "entrypoint": "search" }
+      },
+      {
+        "id": "browser",
+        "description": "Inspect source pages.",
+        "implementation": { "kind": "adapter", "entrypoint": "browser" }
+      },
+      {
+        "id": "citation",
+        "description": "Return compact citations.",
+        "implementation": { "kind": "adapter", "entrypoint": "citation" }
+      }
+    ],
+    "evolution": {
+      "editable": ["manifest.json", "brain.prompt", "tools/*"],
+      "checks": ["cargo test"],
+      "constraints": ["Return evidence, not hidden chain of thought."]
+    },
+    "llm_ready": true
+  },
+  {
+    "id": "code",
+    "name": "Code Tentacle",
+    "description": "Inspects repositories, edits code, runs tests, and summarizes patches.",
+    "brain": {
+      "kind": "llm",
+      "description": "Code planner",
+      "model": null,
+      "prompt": "Map a Need onto repository reads, edits, verification, and a concise patch summary."
+    },
+    "skills": [
+      {
+        "id": "harness-work",
+        "name": "Harness Work",
+        "description": "Execute implementation work without loading the main brain with tools.",
+        "needs": ["execute", "reproduce", "verify"],
+        "tools": ["git", "shell", "test-runner"]
+      }
+    ],
+    "tools": [
+      {
+        "id": "git",
+        "description": "Inspect versioned state.",
+        "implementation": { "kind": "adapter", "entrypoint": "git" }
+      },
+      {
+        "id": "shell",
+        "description": "Run local commands.",
+        "implementation": { "kind": "adapter", "entrypoint": "shell" }
+      },
+      {
+        "id": "test-runner",
+        "description": "Verify changes.",
+        "implementation": { "kind": "adapter", "entrypoint": "test-runner" }
+      }
+    ],
+    "evolution": {
+      "editable": ["manifest.json", "brain.prompt", "tools/*"],
+      "checks": ["cargo test"],
+      "constraints": ["Keep edits scoped to the requested harness work."]
+    },
+    "llm_ready": true
+  },
+  {
+    "id": "memory",
+    "name": "Memory Heart",
+    "description": "Memory beat for remember, recall, forget, and compaction.",
+    "brain": {
+      "kind": "rule",
+      "description": "Memory policy",
+      "model": null,
+      "prompt": "Store, recall, forget, and compact context outside the main brain."
+    },
+    "skills": [
+      {
+        "id": "memory",
+        "name": "Memory",
+        "description": "Manage long-running context outside the brain.",
+        "needs": ["remember", "recall", "forget"],
+        "tools": ["memory-store"]
+      }
+    ],
+    "tools": [
+      {
+        "id": "memory-store",
+        "description": "Persist and retrieve compact memories.",
+        "implementation": { "kind": "native", "entrypoint": "HarnessState.memory" }
+      }
+    ],
+    "evolution": {
+      "editable": ["manifest.json", "brain.prompt", "tools/*"],
+      "checks": ["cargo test"],
+      "constraints": ["Do not store secrets or noisy transcripts."]
+    },
+    "llm_ready": false
+  },
+  {
+    "id": "visual",
+    "name": "Color Pet Layer",
+    "description": "Shows heartbeat, memory, harness, blocked, and success state as a color-changing pixel pet layer.",
+    "brain": {
+      "kind": "rule",
+      "description": "Visual state translator",
+      "model": null,
+      "prompt": "Convert Feedback and harness status into user-visible pet state without changing the kernel contract."
+    },
+    "skills": [
+      {
+        "id": "color-change",
+        "name": "Color Change",
+        "description": "Render visual feedback without changing the core agent loop.",
+        "needs": ["observe"],
+        "tools": ["status-pet"]
+      }
+    ],
+    "tools": [
+      {
+        "id": "status-pet",
+        "description": "Render color-changing Octopus status.",
+        "implementation": { "kind": "static-html", "entrypoint": "docs/pet.html" }
+      }
+    ],
+    "evolution": {
+      "editable": ["manifest.json", "brain.prompt", "tools/*"],
+      "checks": ["grep -q pixel-pet docs/pet.html"],
+      "constraints": ["Keep visual state outside Need, Feed, and Feedback."]
+    },
+    "llm_ready": false
+  },
+  {
+    "id": "repo-maintainer",
+    "name": "Repo Maintainer Tentacle",
+    "description": "Self-iteration profile for branches, CI, and pull requests.",
+    "brain": {
+      "kind": "llm",
+      "description": "Self-iteration planner",
+      "model": null,
+      "prompt": "Inspect repo health, propose small changes, and prepare PR-ready feedback after OAuth grant."
+    },
+    "skills": [
+      {
+        "id": "self-iteration",
+        "name": "Self Iteration",
+        "description": "Inspect project health and prepare small pull requests after OAuth grant.",
+        "needs": ["observe", "verify", "execute"],
+        "tools": [
+          "tentacles/repo-maintainer/tools/inspect_repo.sh",
+          "tentacles/repo-maintainer/tools/github_status.sh",
+          "tentacles/repo-maintainer/tools/patch_queue.sh",
+          "tentacles/repo-maintainer/tools/draft_pr.sh",
+          "tentacles/repo-maintainer/tools/publish_pr.sh"
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "id": "inspect_repo",
+        "description": "Inspect local repo health.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/inspect_repo.sh" }
+      },
+      {
+        "id": "github_status",
+        "description": "Read GitHub issues and workflow runs when gh is available.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/github_status.sh" }
+      },
+      {
+        "id": "patch_queue",
+        "description": "Generate candidate patch queue from GitHub and goal signals.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/patch_queue.sh" }
+      },
+      {
+        "id": "draft_pr",
+        "description": "Write branch plan and pull request draft data.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/draft_pr.sh" }
+      },
+      {
+        "id": "publish_pr",
+        "description": "Publish a draft pull request through gh after an explicit OAuth grant.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/publish_pr.sh" }
+      }
+    ],
+    "evolution": {
+      "editable": ["manifest.json", "brain.prompt", "tools/*"],
+      "checks": [
+        "tentacles/repo-maintainer/tools/inspect_repo.sh .",
+        "tentacles/repo-maintainer/tools/github_status.sh dangoZhang/Octopus",
+        "tentacles/repo-maintainer/tools/patch_queue.sh $(mktemp -d) dangoZhang/Octopus improve-usability",
+        "tentacles/repo-maintainer/tools/draft_pr.sh $(mktemp -d) dangoZhang/Octopus improve-usability",
+        "OCTOPUS_PR_DRY_RUN=1 tentacles/repo-maintainer/tools/publish_pr.sh $(mktemp -d) dangoZhang/Octopus octopus/improve-usability 'Improve usability' README.md"
+      ],
+      "constraints": ["Wait for explicit OAuth/user grant before publishing branch or PR work."]
+    },
+    "llm_ready": true
+  },
+  {
+    "id": "harness-repair-agent",
+    "name": "Harness Repair Tentacle",
+    "description": "Heartbeat and environment self-repair planning through editable code-as-harness.",
+    "brain": {
+      "kind": "llm",
+      "description": "Harness repair planner",
+      "model": null,
+      "prompt": "Read heartbeat, evolution, state, and adapter signals, then return the next compact repair Feed."
+    },
+    "skills": [
+      {
+        "id": "harness-self-repair",
+        "name": "Harness Self Repair",
+        "description": "Diagnose heartbeat/evolution signals and plan the next grant-bound harness repair.",
+        "needs": ["observe", "verify", "execute"],
+        "tools": [
+          "tentacles/harness-repair-agent/tools/diagnose_harness.sh",
+          "tentacles/harness-repair-agent/tools/heartbeat_repair.sh",
+          "tentacles/harness-repair-agent/tools/repair_session.sh",
+          "tentacles/harness-repair-agent/tools/repair_outcome.sh",
+          "tentacles/harness-repair-agent/tools/adapter_probe.sh"
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "id": "diagnose_harness",
+        "description": "Read Octopus state, Feed traces, checks, evolution artifacts, and docs readiness.",
+        "implementation": {
+          "kind": "shell",
+          "entrypoint": "tentacles/harness-repair-agent/tools/diagnose_harness.sh",
+          "contract": "octopus-json-v1"
+        }
+      },
+      {
+        "id": "heartbeat_repair",
+        "description": "Read the latest repair action plan or heartbeat artifacts into a review, grant, apply, and score Feed.",
+        "implementation": {
+          "kind": "shell",
+          "entrypoint": "tentacles/harness-repair-agent/tools/heartbeat_repair.sh",
+          "contract": "octopus-json-v1"
+        }
+      },
+      {
+        "id": "repair_session",
+        "description": "Write a reviewable local self-repair session, REVIEW.md bundle, and optional provider repair draft.",
+        "implementation": {
+          "kind": "shell",
+          "entrypoint": "tentacles/harness-repair-agent/tools/repair_session.sh",
+          "contract": "octopus-json-v1"
+        }
+      },
+      {
+        "id": "repair_outcome",
+        "description": "Record reviewed harness repair session outcomes for later repair planning.",
+        "implementation": {
+          "kind": "shell",
+          "entrypoint": "tentacles/harness-repair-agent/tools/repair_outcome.sh",
+          "contract": "octopus-json-v1"
+        }
+      },
+      {
+        "id": "adapter_probe",
+        "description": "Probe provider, MCP, GitHub, desktop, bridge, and command readiness.",
+        "implementation": {
+          "kind": "shell",
+          "entrypoint": "tentacles/harness-repair-agent/tools/adapter_probe.sh",
+          "contract": "octopus-json-v1"
+        }
+      }
+    ],
+    "evolution": {
+      "editable": ["manifest.json", "brain.prompt", "tools/*"],
+      "checks": [
+        "tentacles/harness-repair-agent/tools/diagnose_harness.sh . | python3 -m json.tool > /dev/null",
+        "tentacles/harness-repair-agent/tools/heartbeat_repair.sh . | python3 -m json.tool > /dev/null",
+        "tentacles/harness-repair-agent/tools/repair_session.sh $(mktemp -d) | python3 -m json.tool > /dev/null",
+        "tmp=$(mktemp -d); tentacles/harness-repair-agent/tools/repair_session.sh \"$tmp\" > /dev/null; tentacles/harness-repair-agent/tools/repair_outcome.sh \"$tmp\" satisfied reviewed | python3 -m json.tool > /dev/null",
+        "tentacles/harness-repair-agent/tools/adapter_probe.sh . | python3 -m json.tool > /dev/null"
+      ],
+      "constraints": [
+        "Return repair plans as Feed; do not patch the kernel directly.",
+        "Keep provider repair drafts optional and reviewable.",
+        "Record reviewed repair outcomes before using them as future repair evidence.",
+        "Write REVIEW.md as the user-facing repair review bundle for each session.",
+        "Read latest REPAIR_PLAN before older evolution artifacts.",
+        "Prefer reviewable .octopus/evolution artifacts and explicit harness:write grants."
+      ]
+    },
+    "llm_ready": true
+  },
+  {
+    "id": "json-feed",
+    "name": "JSON Feed Runtime Seed",
+    "description": "Python octopus-json-v1 seed runtime for structured non-shell feedback.",
+    "brain": {
+      "kind": "llm",
+      "description": "JSON feed planner",
+      "model": null,
+      "prompt": "Map a Need onto a compact Python JSON feed and return structured evidence."
+    },
+    "skills": [
+      {
+        "id": "json-feed",
+        "name": "JSON Feed",
+        "description": "Feed observe, verify, compare, and reproduce Needs through a non-shell JSON runtime.",
+        "needs": ["observe", "verify", "compare", "reproduce"],
+        "tools": ["tentacles/json-feed/tools/feed.py"]
+      }
+    ],
+    "tools": [
+      {
+        "id": "feed",
+        "description": "Consume octopus-json-v1 and return structured feedback.",
+        "implementation": {
+          "kind": "python",
+          "entrypoint": "tentacles/json-feed/tools/feed.py",
+          "contract": "octopus-json-v1"
+        }
+      }
+    ],
+    "evolution": {
+      "editable": ["manifest.json", "brain.prompt", "tools/*"],
+      "checks": ["python3 -m py_compile tentacles/json-feed/tools/feed.py"],
+      "constraints": ["Keep octopus-json-v1 input and compact feedback output stable."]
+    },
+    "llm_ready": true
+  },
+  {
+    "id": "swe-agent",
+    "name": "SWE Agent Tentacle",
+    "description": "Code-as-harness repo tools for inspect, patch, and test workflows.",
+    "brain": {
+      "kind": "llm",
+      "description": "SWE harness planner",
+      "model": null,
+      "prompt": "Choose repo tools from metadata, execute implementation code, and return patch/test evidence."
+    },
+    "skills": [
+      {
+        "id": "swe-workflow",
+        "name": "SWE Workflow",
+        "description": "Read/edit files, inspect a repository, prepare patches, and run tests through editable tool adapters.",
+        "needs": ["observe", "execute", "verify"],
+        "tools": [
+          "tentacles/swe-agent/tools/read.sh",
+          "tentacles/swe-agent/tools/edit.sh",
+          "tentacles/swe-agent/tools/inspect_repo.sh",
+          "tentacles/swe-agent/tools/write_patch.sh",
+          "tentacles/swe-agent/tools/run_tests.sh"
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "id": "read",
+        "description": "Read a safe, line-numbered slice of a workspace file.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/swe-agent/tools/read.sh" }
+      },
+      {
+        "id": "edit",
+        "description": "Apply one scoped text replacement.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/swe-agent/tools/edit.sh" }
+      },
+      {
+        "id": "inspect_repo",
+        "description": "Summarize repo state and project type.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/swe-agent/tools/inspect_repo.sh" }
+      },
+      {
+        "id": "write_patch",
+        "description": "Write and optionally apply a patch.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/swe-agent/tools/write_patch.sh" }
+      },
+      {
+        "id": "run_tests",
+        "description": "Run detected project tests.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/swe-agent/tools/run_tests.sh" }
+      }
+    ],
+    "evolution": {
+      "editable": ["manifest.json", "brain.prompt", "tools/*"],
+      "checks": ["tentacles/swe-agent/tools/read.sh README.md 1 2", "cargo test"],
+      "constraints": ["Keep path safety checks unless a stronger sandbox replaces them."]
+    },
+    "llm_ready": true
+  },
+  {
+    "id": "computer-use-agent",
+    "name": "Computer Use Tentacle",
+    "description": "Code-as-harness local UI tools for screenshots and desktop workflows.",
+    "brain": {
+      "kind": "llm",
+      "description": "Computer-use planner",
+      "model": null,
+      "prompt": "Translate observation or execution Needs into MCP, local UI, shell, or URL actions."
+    },
+    "skills": [
+      {
+        "id": "computer-use",
+        "name": "Computer Use",
+        "description": "Use MCP, bash, URLs, screenshots, and desktop environment probes.",
+        "needs": ["observe", "execute"],
+        "tools": [
+          "tentacles/computer-use-agent/tools/mcp.sh",
+          "tentacles/computer-use-agent/tools/bash.sh",
+          "tentacles/computer-use-agent/tools/screenshot.sh",
+          "tentacles/computer-use-agent/tools/open_url.sh",
+          "tentacles/computer-use-agent/tools/browser_status.sh",
+          "tentacles/computer-use-agent/tools/window_status.sh",
+          "tentacles/computer-use-agent/tools/clipboard_read.sh",
+          "tentacles/computer-use-agent/tools/clipboard_write.sh",
+          "tentacles/computer-use-agent/tools/describe_screen.sh"
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "id": "mcp",
+        "description": "Call an MCP tool through a configured JSON-RPC client adapter.",
+        "implementation": { "kind": "mcp", "entrypoint": "tentacles/computer-use-agent/tools/mcp.sh" },
+        "permission": {
+          "provider": "octopus",
+          "scope": "tool:computer-use-agent",
+          "permissions": ["tool:mcp"],
+          "reason": "external tool bridge"
+        }
+      },
+      {
+        "id": "bash",
+        "description": "Write and run a local shell script.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/bash.sh" },
+        "permission": {
+          "provider": "octopus",
+          "scope": "tool:computer-use-agent",
+          "permissions": ["tool:execute"],
+          "reason": "local command execution"
+        }
+      },
+      {
+        "id": "screenshot",
+        "description": "Capture the current screen.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/screenshot.sh" },
+        "permission": {
+          "provider": "octopus",
+          "scope": "tool:computer-use-agent",
+          "permissions": ["tool:observe"],
+          "reason": "screen capture"
+        }
+      },
+      {
+        "id": "open_url",
+        "description": "Open a URL in the local desktop.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/open_url.sh" },
+        "permission": {
+          "provider": "octopus",
+          "scope": "tool:computer-use-agent",
+          "permissions": ["tool:ui"],
+          "reason": "user-visible desktop action"
+        }
+      },
+      {
+        "id": "browser_status",
+        "description": "Inspect local browser availability and current tab metadata.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/browser_status.sh" },
+        "permission": {
+          "provider": "octopus",
+          "scope": "tool:computer-use-agent",
+          "permissions": ["tool:observe"],
+          "reason": "browser tab metadata"
+        }
+      },
+      {
+        "id": "window_status",
+        "description": "Inspect front application, active window title, display session, and desktop process hints.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/window_status.sh" },
+        "permission": {
+          "provider": "octopus",
+          "scope": "tool:computer-use-agent",
+          "permissions": ["tool:observe"],
+          "reason": "front window metadata"
+        }
+      },
+      {
+        "id": "clipboard_read",
+        "description": "Read current clipboard text.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/clipboard_read.sh" },
+        "permission": {
+          "provider": "octopus",
+          "scope": "tool:computer-use-agent",
+          "permissions": ["tool:observe"],
+          "reason": "clipboard text observation"
+        }
+      },
+      {
+        "id": "clipboard_write",
+        "description": "Write provided text into the local clipboard.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/clipboard_write.sh" },
+        "permission": {
+          "provider": "octopus",
+          "scope": "tool:computer-use-agent",
+          "permissions": ["tool:ui"],
+          "reason": "clipboard modification"
+        }
+      },
+      {
+        "id": "describe_screen",
+        "description": "Return lightweight desktop context.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/describe_screen.sh" }
+      }
+    ],
+    "evolution": {
+      "editable": ["manifest.json", "brain.prompt", "tools/*"],
+      "checks": [
+        "tentacles/computer-use-agent/tools/window_status.sh | python3 -m json.tool > /dev/null",
+        "tentacles/computer-use-agent/tools/describe_screen.sh",
+        "tentacles/computer-use-agent/tools/browser_status.sh | python3 -m json.tool > /dev/null",
+        "OCTOPUS_CLIPBOARD_DRY_RUN=1 tentacles/computer-use-agent/tools/clipboard_read.sh | python3 -m json.tool > /dev/null",
+        "printf octopus | OCTOPUS_CLIPBOARD_DRY_RUN=1 tentacles/computer-use-agent/tools/clipboard_write.sh | python3 -m json.tool > /dev/null"
+      ],
+      "constraints": ["Ask for user-visible actions only when the product flow grants it."]
+    },
+    "llm_ready": true
+  },
+  {
+    "id": "bash-only",
+    "name": "Write-and-Run Tentacle",
+    "description": "Agent tool-combo seed that stores generated actions as auditable scripts.",
+    "brain": {
+      "kind": "llm",
+      "description": "Shell-only planner",
+      "model": null,
+      "prompt": "Represent each action as a transparent script before execution."
+    },
+    "skills": [
+      {
+        "id": "write-and-run",
+        "name": "Write And Run",
+        "description": "Represent execution as editable scripts under .octopus/harness.",
+        "needs": ["execute", "reproduce", "verify"],
+        "tools": ["tentacles/bash-only/tools/write_and_run.sh"]
+      }
+    ],
+    "tools": [
+      {
+        "id": "write_and_run",
+        "description": "Write stdin to an auditable script and execute it.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/bash-only/tools/write_and_run.sh" },
+        "permission": {
+          "provider": "octopus",
+          "scope": "tool:bash-only",
+          "permissions": ["tool:execute"],
+          "reason": "generated script execution"
+        }
+      }
+    ],
+    "evolution": {
+      "editable": ["manifest.json", "brain.prompt", "tools/*"],
+      "checks": ["printf 'echo ok\\n' | tentacles/bash-only/tools/write_and_run.sh $(mktemp -d)"],
+      "constraints": ["Prefer generated scripts that are readable and replayable."]
+    },
+    "llm_ready": true
+  }
+]

@@ -12,7 +12,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo run -q -p octopus-core -- --version | grep -q "octopus 0.0.13"
+      - run: cargo run -q -p octopus-core -- --version | grep -q "octopus 0.0.16"
       - run: cargo run -q -p octopus-core --example thinking_tentacle
       - run: cargo run -q -p octopus-core -- providers | grep -q "openai"
       - run: |
@@ -441,12 +441,3 @@ jobs:
           PY
         env:
           GH_TOKEN: ${{ github.token }}
-
-  python:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: PYTHONPATH=src python -m unittest discover -s tests -q
