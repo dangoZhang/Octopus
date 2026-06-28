@@ -41,7 +41,7 @@ Updated: 2026-06-28
 - `start --open` keeps the same whole-project startup path and attempts to open the native app after the local app server binds.
 - `start --check` runs the same startup preparation without keeping the server open, verifies embedded app/pet/use pages plus the brain-goal bridge policy, writes `.octopus/local-app-run.json`, and feeds the required `local_app_run` preflight gate.
 - The native HTML app defaults its local API URL to Octopus when opened from docs pages, and auto-renders a read-only startup snapshot when served by `octopus start`.
-- The native HTML app has been reset to one page with pet, Goal, current Need, current Feed, and raw Output. Internal Need/Feed/repair/evolve/install/check/provider/preflight controls no longer occupy the first path.
+- The native HTML app has been reset to one page with pet, Goal, current Need, current Feed, and raw Output. State/API/constraint settings are folded away, and internal Need/Feed/repair/evolve/install/check/provider/preflight controls no longer occupy the first path.
 - The native HTML app can render the dry-run update report and copy the explicit reinstall command while the local app API blocks `update --run`.
 - The native HTML app can render a structured Doctor panel with state, tentacles, manifests, environment, LLM, pet, warnings, and next actions.
 - The native HTML app Doctor panel shows readiness state and keeps product-facing mutation on Goal or First Run; bootstrap, provider, checks, repair, record, and beat commands are internal/developer paths.
@@ -232,6 +232,7 @@ Updated: 2026-06-28
 - Routed `status.next_action` through harness-learning evidence when scored repair/evolution feedback is available and the Goal path is already set.
 - Added `start --check` local app run evidence and a required `local_app_run` preflight gate, so `0.0.20` can prove the whole-project app surface on the current head before release records are appended.
 - Reset `docs/app.html` into a one-page pet/Goal/Need/Feed/Output product app so user input stays on Goal and internal agent controls leave the primary UI.
+- Folded local state/API/constraint configuration under Local settings so the app's default visible surface stays pet, Goal, current Need, current Feed, and Output.
 - Rolled the cleanup/version cadence to `0.0.19` after repair-score reuse, target-aware repair outcomes, immediate evolution follow-up artifacts, harness-learning product visibility, and the `0.0.24` core-audit gate.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.
 - Added clean-brain scout mapping with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can explore assumptions, unknowns, options, and risks before the next Need without tool context.
