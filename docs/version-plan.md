@@ -15,6 +15,7 @@ Release checklist:
 - `octopus preflight --live` is the release-readiness summary before `0.1.0` tags.
 - Pages deploys `index.html`, `app.html`, `pet.html`, quickstart, architecture, references, and self-iteration docs.
 - Version changes land together in `crates/octopus-core/Cargo.toml` and `Cargo.lock`.
+- `0.0.24` must complete `docs/core-audit.md`: full source audit, redundant development residue removal, misaligned fallback removal, and core/harness boundary cleanup.
 - `0.1.0` is reserved for the first release-ready build after recorded real-machine testing.
 - Every tag from `0.1.0` onward requires real-machine testing before the tag is pushed.
 
@@ -33,10 +34,12 @@ Road to `0.1.0`:
 - `0.0.20`: real-machine local app run, release blockers, and current-head evidence.
 - `0.0.21`: smallest SWE/Claw/Wild benchmark evidence and stability fixes.
 - `0.0.22`: product README, docs, and OpenClaw-style usage tutorial pages.
-- `0.0.23`: slim release artifacts, install/update/download path, and final `0.1.0` candidate cleanup.
+- `0.0.23`: slim release artifacts and install/update/download path.
+- `0.0.24`: full core audit before `0.1.0`; remove redundant code, development residue, and fallback logic that conflicts with the clean-brain and code-as-harness boundary.
+- `0.1.0`: first release candidate only after the `0.0.24` audit and recorded real-machine test evidence pass.
 
 Last cleanup/version correction: `0.0.18` on 2026-06-28. Scope: live LLM provider coverage, provider matrix generation/run/check, OAuth/API-key/local/gateway validation evidence, preflight record integration, and version consistency; no tag cut.
 
-Product commits toward `0.0.19`: 4/8.
+Product commits toward `0.0.19`: 5/8.
 
 Next planned cleanup/version commit: `0.0.19`.

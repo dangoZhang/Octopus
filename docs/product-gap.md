@@ -103,6 +103,7 @@ Updated: 2026-06-28
 - Real-machine records now include a Product bridge result and a `bridge_goal_surface` command so the brain-goal input boundary is signed off on real machines.
 - `preflight record append [path] [log]` appends a passed real-machine record to `docs/real-machine-test.md` idempotently, and the native app exposes the same default-path action.
 - Real-machine record audit accepts the current `Start/app` result field while keeping legacy `Bridge/app` records valid.
+- `0.0.24` is now reserved for a full core audit gate that removes redundant development residue, misaligned fallbacks, and code that belongs in editable harness units before `0.1.0`.
 - The SWE test harness clears outer Octopus state variables before running project tests, so `check swe-agent` validates the target repo without leaking the caller's temporary state.
 - The real-machine record gate accepts a current recorded head, or a docs-only record commit whose parent head is recorded.
 - Context policy is explicit: clean brain sees `Goal + Mem + Need + Feed`; tentacles see `Need + Tool + Action + Tool + Action -> Feed`.
@@ -222,6 +223,7 @@ Updated: 2026-06-28
 - Added immediate repair-score follow-up artifacts so scored repair feedback can write the next evolution proposal and apply plan in the same pass.
 - Added target-aware repair outcomes so harness beat can evolve the repaired tentacle instead of only the repair-agent source.
 - Consolidated repair-score target/candidate reuse so journals and evolution mirrors prefer the structured repair outcome fields.
+- Added `docs/core-audit.md` as the required `0.0.24` source-wide cleanup gate before `0.1.0`.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.
 - Added clean-brain scout mapping with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can explore assumptions, unknowns, options, and risks before the next Need without tool context.
 - Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and local app API.
