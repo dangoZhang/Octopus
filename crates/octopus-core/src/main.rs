@@ -17441,10 +17441,19 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(app_text.contains("browserTentaclePlan"));
         assert!(app_text.contains("Endpoint or /v1 base URL"));
         assert!(app_text.contains("chatCompletionsEndpoint"));
+        assert!(app_text.contains("Ready. Latest Feed is visible."));
         assert!(
             app_text.contains(r#"<button class="primary" type="button" id="send">Send</button>"#)
         );
         assert!(!app_text.contains("report.next_action"));
+        assert!(!app_text.contains("release gate"));
+        assert!(!app_text.contains("preflight"));
+        assert!(!app_text.contains("Provider"));
+        assert!(!app_text.contains("Doctor"));
+        assert!(!app_text.contains("Install"));
+        assert!(!app_text.contains("Repair"));
+        assert!(!app_text.contains("Evolve"));
+        assert!(!app_text.contains("Need Queue"));
         assert!(!app_text.contains(r#"id="refresh""#));
         assert!(!app_text.contains(r#"id="start""#));
         assert!(!app_text.contains(r#"id="update""#));

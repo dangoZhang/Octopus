@@ -40,6 +40,6 @@ Road to `0.1.0`:
 
 Last release correction: `0.1.0` on 2026-06-28. Scope: recorded GitHub-installed binary gate, provider matrix, benchmark artifact evidence, GitHub PR dry-run, live preflight, and version consistency.
 
-Product commits after `0.1.0`: 0/8.
+Product commits after `0.1.0`: 1/8.
 
 Next planned cleanup/version commit: `0.1.1`.

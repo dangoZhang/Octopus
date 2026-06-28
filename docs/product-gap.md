@@ -66,6 +66,7 @@ Updated: 2026-06-28
 - The native HTML app defaults its local API URL to Octopus when opened from docs pages, and auto-renders a read-only startup snapshot when served by `octopus start`.
 - The native HTML app has been reset to one polished page with pet, Goal, current Need, current Feed, and Output as an activity stream. Navigation links, state/API/constraint details, and internal mode controls are removed; the only visible write action is Send.
 - The native HTML app no longer exposes Doctor, Provider, Install, Repair, Evolve, Check, Preflight, or First Run as first-path panels; those remain CLI/internal observation or release-gate surfaces.
+- After `0.1.0`, the app Output no longer summarizes release/preflight state or internal tentacle/route counts as first-path status; it stays focused on Goal, Need, Feed, pet, and Output.
 - The single Send action keeps granular Need/Feed/harness steps behind the bridge while still updating the current Need, Feed, pet, and activity Output; refresh no longer overwrites the just-returned Feed summary with a next-command string.
 - `first-run [objective]` runs the same safe local loop from CLI and returns one JSON record with Bootstrap, Goal, Starter, Feed, Feedback, Beat, Product, Preflight, and Doctor evidence.
 - `first-run --live [objective]` keeps the same loop but turns on the live provider preflight gate only when explicitly requested.
@@ -272,6 +273,7 @@ Updated: 2026-06-28
 - Recorded `0.0.24` installed-binary real-machine evidence from GitHub rev `604e44a`: install, first-run, chat, goal refine, brain goal save, pet, start-check, preflight local app gate, app/pet HTTP, and `/api/run` passed; live/provider matrix, benchmark, GitHub PR/OAuth, and final real-machine record remain before `0.1.0`.
 - Recorded `0.0.25` gate evidence on `17fb4ae`: provider matrix passed for Codex OAuth, API-key cloud shape, local OpenAI-compatible shape, and gateway/router shape across provider check, clean-brain Goal, tentacle planning, and harness evolution; benchmark evidence passed five minimal SWE/Claw/Wild artifacts; GitHub OAuth plus PR dry-run passed; live preflight reached `17/17`.
 - Released the `0.1.0` version line on `56a1276`: GitHub install returned `octopus 0.1.0`, clean temp product path passed, app/pet/API server passed, provider matrix and benchmark checks passed on the release head, and installed-binary live preflight had only the expected pre-append real-machine-record blocker.
+- Started the `0.1.1` product cleanup cycle by removing release/preflight/internal-count summaries from the app first path and extending the embedded app regression guard.
 - Rolled the cleanup/version cadence to `0.0.20` after local app first-path reset, real bridge Send verification, `start --check` evidence, root structure mapping, first-path regression coverage, and version consistency.
 - Rolled the cleanup/version cadence to `0.0.19` after repair-score reuse, target-aware repair outcomes, immediate evolution follow-up artifacts, harness-learning product visibility, and the `0.0.24` core-audit gate.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.
@@ -378,7 +380,7 @@ Updated: 2026-06-28
 - Computer-use now has browser/window diagnostics, clipboard adapters, configurable MCP calls, and explicit tool grants; richer native control still needs real-machine feedback.
 - Provider profiles now include CLI/HTML env generation, env saving, secure key-backed env saving, start env loading, provider coverage diagnostics, a provider matrix record template/runner/checker, clean-brain slot diagnostics, tentacle-planning diagnostics, evolution-provider routing, request retries, live validation, Codex CLI OAuth, direct API-key, local model, and LiteLLM gateway paths; provider-specific edge cases still need broader real-machine feedback.
 - GitHub `cargo install` now works with current Cargo syntax; non-Rust packaging still needs finish.
-- The HTML app still contains older panels for provider setup, Need Queue, repair, Feed tests, install/check, and harness evolution, but the bridge now rejects those as direct user writes. Later UX cleanup can hide or convert them into read-only observation.
+- The HTML app first path is now narrowed to Goal, Need, Feed, pet, Output, and browser demo artifacts; deeper provider, repair, install/check, preflight, and harness evolution surfaces remain CLI/docs/internal evidence.
 - Tags from `0.1.0` onward require a recorded real-machine test gate before pushing the tag.
 
 ## Next Fill
@@ -395,4 +397,4 @@ Updated: 2026-06-28
 - Exercise provider-assisted patch drafts with a real LLM provider and score the result through the review/grant loop.
 - Turn window/browser diagnostics into richer native control adapters.
 - Add provider-specific fixes from real-machine feedback.
-- After the `0.1.0` tag, start the `0.1.1` cycle by hiding or converting older app panels that are no longer first-path controls, then collect real feedback from installed users.
+- Continue the `0.1.1` cycle by collecting installed-user feedback and improving the browser Try App conversion path.

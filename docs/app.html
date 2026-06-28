@@ -909,14 +909,8 @@
       }
 
       function statusText(report) {
-        const traces = Number(report.feed_trace_count || 0);
-        const routes = Number(report.route_count || 0);
-        const tentacles = Array.isArray(report.tentacles) ? report.tentacles.length : 0;
-        const parts = [];
-        if (tentacles) parts.push(`${tentacles} tentacles`);
-        if (traces) parts.push(`${traces} Feed trace${traces === 1 ? "" : "s"}`);
-        if (routes) parts.push(`${routes} route${routes === 1 ? "" : "s"}`);
-        return parts.length ? `Ready: ${parts.join(" · ")}.` : "Ready. Give Octopus a goal.";
+        const hasFeed = Number(report.feed_trace_count || 0) > 0;
+        return hasFeed ? "Ready. Latest Feed is visible." : "Ready. Give Octopus a goal.";
       }
 
       async function refresh(options = {}) {
@@ -986,9 +980,6 @@
         if (report.objective) return report.objective;
         if (report.goal && report.goal.objective) return report.goal.objective;
         if (report.feedback && report.feedback.summary) return report.feedback.summary;
-        if (report.preflight && report.preflight.release_ready != null) {
-          return report.preflight.release_ready ? "release gate is ready" : "release gate has blockers";
-        }
         return "Done.";
       }
 
