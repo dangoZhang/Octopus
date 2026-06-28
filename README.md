@@ -2,7 +2,7 @@
 
 Clean brain. Independent tentacles.
 
-[Try the app](https://dangozhang.github.io/Octopus/app.html) · [5-minute use guide](https://dangozhang.github.io/Octopus/use.html) · [Docs](https://dangozhang.github.io/Octopus/) · [中文](README.zh-CN.md)
+[Try the app](https://dangozhang.github.io/Octopus/app.html) · [Tutorial](https://dangozhang.github.io/Octopus/tutorial.html) · [Docs](https://dangozhang.github.io/Octopus/) · [中文](README.zh-CN.md)
 
 Try the app runs in the browser: enter an API key, watch the clean brain emit a Need, then let a browser tentacle create Hello World or draw an animated Octopus as Feed.
 
@@ -54,6 +54,6 @@ Need, Feed, tool choice, provider routing, repair, and harness evolution stay in
 - LLM backends through Codex login, API-key clouds, local OpenAI-compatible models, or gateway routers.
 - Repo-maintainer can probe local Codex CLI OAuth/API-key readiness and write Codex-backed maintenance reports for granted repos.
 
-Read next: [5-minute use guide](docs/use.html), [Quick Install & Use](docs/quickstart.md), [Architecture](docs/architecture.md), [Research map](docs/references.md).
+Read next: [Tutorial](docs/tutorial.html), [5-minute use guide](docs/use.html), [Quick Install & Use](docs/quickstart.md), [Architecture](docs/architecture.md), [Research map](docs/references.md).
 
 Pre-release line: `0.0.21`. `0.1.0` waits for recorded real-machine testing.

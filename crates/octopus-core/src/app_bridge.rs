@@ -250,6 +250,7 @@ fn local_app_pages() -> Vec<LocalAppPageReport> {
         ("/app.html", "Octopus App"),
         ("/pet.html", "pixel-pet"),
         ("/index.html", "Octopus"),
+        ("/tutorial.html", "Octopus Tutorial"),
         ("/use.html", "Use Octopus"),
     ]
     .into_iter()
@@ -651,6 +652,10 @@ pub(crate) fn static_asset(path: &str) -> Option<(&'static str, &'static [u8])> 
         "/quickstart.html" => Some((
             "quickstart.html",
             &include_bytes!("../../../docs/quickstart.html")[..],
+        )),
+        "/tutorial.html" => Some((
+            "tutorial.html",
+            &include_bytes!("../../../docs/tutorial.html")[..],
         )),
         "/use.html" => Some(("use.html", &include_bytes!("../../../docs/use.html")[..])),
         "/about.html" => Some((

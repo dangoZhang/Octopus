@@ -1,6 +1,6 @@
 # Quick Install & Use
 
-For the shortest product walkthrough, open [Use Octopus in five minutes](use.html).
+For the shortest product walkthrough, open [Octopus Tutorial](tutorial.html), then keep [Use Octopus in five minutes](use.html) nearby for CLI details.
 
 ## Install
 

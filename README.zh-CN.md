@@ -2,7 +2,7 @@
 
 默认入口仍是 [README.md](README.md)。这份是中文阅读版。
 
-[网页试用](https://dangozhang.github.io/Octopus/app.html) · [5 分钟使用教学](docs/use.html) · [中文快速开始](docs/zh/quickstart.md) · [本地 App](docs/app.html)
+[网页试用](https://dangozhang.github.io/Octopus/app.html) · [产品教学](docs/tutorial.html) · [中文快速开始](docs/zh/quickstart.md) · [本地 App](docs/app.html)
 
 网页试用可以直接输入 API key：先看干净大脑生成 Need，再看浏览器触手执行 Feed，完成 Hello World 或绘制动态章鱼。
 
@@ -64,6 +64,7 @@ octopus first-run "make this repo easier to use"
 ## 中文文档
 
 - [中文快速开始](docs/zh/quickstart.md)
+- [产品教学](docs/tutorial.html)
 - [5 分钟使用教学](docs/use.html)
 - [中文架构说明](docs/zh/architecture.md)
 - [英文架构](docs/architecture.md)
