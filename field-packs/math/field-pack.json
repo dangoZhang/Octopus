@@ -1,0 +1,29 @@
+{
+  "id": "math",
+  "version": "0.2.0-dev",
+  "description": "Proof, calculation, symbolic reasoning, and numeric verification tasks.",
+  "task_schema": {
+    "inputs": ["problem", "known facts", "required rigor"],
+    "outputs": ["answer", "derivation", "verification"],
+    "constraints": ["show enough steps to verify", "separate exact and approximate results"]
+  },
+  "capability_hints": ["reason", "calculate", "symbolic_check", "numeric_check"],
+  "permission_boundary": {
+    "safe": ["local calculation", "local proof sketch", "scratch code"],
+    "requires_grant": ["network lookup for formulas"],
+    "blocked_by_default": ["unverified final-only answers"]
+  },
+  "verifier": {
+    "method": "independent recomputation or proof consistency check",
+    "pass_signal": "answer matches recomputation and assumptions are stated",
+    "error_categories": ["algebra_error", "missing_assumption", "numeric_error", "verification_error"]
+  },
+  "trajectory_labels": ["problem_type", "method", "calculation", "check", "feed"],
+  "mini_tasks": [
+    {
+      "id": "math-mini-1",
+      "goal": "Compute the derivative of x^3 + 2x and verify by finite difference at x = 2.",
+      "expected_feed": "Derivative 3x^2 + 2 with a numeric check near 14."
+    }
+  ]
+}

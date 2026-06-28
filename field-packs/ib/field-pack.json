@@ -1,0 +1,29 @@
+{
+  "id": "ib",
+  "version": "0.2.0-dev",
+  "description": "Investment-banking style spreadsheet, memo, market-data, and compliance-bounded analysis tasks.",
+  "task_schema": {
+    "inputs": ["company or asset", "data sources", "analysis request", "compliance constraints"],
+    "outputs": ["table", "memo", "assumptions", "source notes"],
+    "constraints": ["separate data from opinion", "record assumptions", "avoid investment advice framing"]
+  },
+  "capability_hints": ["spreadsheet", "market_data", "memo", "source_check", "calculation"],
+  "permission_boundary": {
+    "safe": ["public data analysis", "local spreadsheet work", "draft memo"],
+    "requires_grant": ["paid market data", "client files", "external sharing"],
+    "blocked_by_default": ["trading instructions", "material non-public information", "personal financial advice"]
+  },
+  "verifier": {
+    "method": "formula, source, and compliance checklist",
+    "pass_signal": "numbers tie, sources are stated, and restricted claims are avoided",
+    "error_categories": ["formula_error", "source_gap", "compliance_risk", "unsupported_assumption"]
+  },
+  "trajectory_labels": ["data", "assumptions", "calculations", "memo", "checks", "feed"],
+  "mini_tasks": [
+    {
+      "id": "ib-mini-1",
+      "goal": "Create a tiny revenue growth table from provided numbers and draft a neutral memo sentence.",
+      "expected_feed": "Checked table math, assumptions, and a non-advisory memo line."
+    }
+  ]
+}

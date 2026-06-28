@@ -96,10 +96,14 @@ Need 稳定，实现可替换。相同 Need 可以路由到不同触手组合。
 - 失败能产出 harness 改进候选。
 - 至少部分领域能复跑后变好。
 
-## Files To Add Later
+## Files Added First
 
 ```text
 field-packs/
+  README.md
+  index.json
+  field-pack.schema.json
+  _template/
   math/
   search/
   code/
@@ -112,5 +116,7 @@ field-packs/
 .octopus/trajectories/
 .octopus/field-scores/
 ```
+
+`field-packs/` now contains the first reusable pack template plus eight field skeletons. The next infrastructure step is loading these packs from Rust, recording selected pack IDs in trajectories, and letting verifiers write structured pass/fail results.
 
 稳定 Rust kernel 只保留 Field Pack 读取、轨迹记录、路由信号、Need/Feed 传输和 heartbeat。领域实现继续留在可进化 harness 中。

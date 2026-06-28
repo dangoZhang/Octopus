@@ -1,0 +1,29 @@
+{
+  "id": "swe",
+  "version": "0.2.0-dev",
+  "description": "Issue-level software engineering tasks across files, tests, and regression evidence.",
+  "task_schema": {
+    "inputs": ["issue", "repo", "reproduction steps"],
+    "outputs": ["root cause", "patch", "regression test", "feed"],
+    "constraints": ["reproduce before fixing when possible", "include regression evidence"]
+  },
+  "capability_hints": ["inspect_repo", "reproduce", "patch", "test", "explain"],
+  "permission_boundary": {
+    "safe": ["read repo", "run tests", "write patch"],
+    "requires_grant": ["network dependency install", "branch creation"],
+    "blocked_by_default": ["force push", "unreviewed release"]
+  },
+  "verifier": {
+    "method": "reproduction and regression test check",
+    "pass_signal": "failing behavior is addressed and test evidence is recorded",
+    "error_categories": ["no_repro", "bad_root_cause", "regression_missing", "test_failure"]
+  },
+  "trajectory_labels": ["issue", "repro", "root_cause", "patch", "tests", "feed"],
+  "mini_tasks": [
+    {
+      "id": "swe-mini-1",
+      "goal": "Fix a deliberately failing tiny test fixture and report the regression evidence.",
+      "expected_feed": "Root cause, patch summary, and test output."
+    }
+  ]
+}

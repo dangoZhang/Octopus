@@ -1,0 +1,29 @@
+{
+  "id": "code",
+  "version": "0.2.0-dev",
+  "description": "Local code reading, small edits, tests, and patch summaries.",
+  "task_schema": {
+    "inputs": ["repo path", "goal", "constraints"],
+    "outputs": ["patch", "test result", "feed summary"],
+    "constraints": ["small reviewable change", "do not touch unrelated files"]
+  },
+  "capability_hints": ["inspect_repo", "read", "edit", "run_tests", "summarize_patch"],
+  "permission_boundary": {
+    "safe": ["read repo", "write patch", "run local tests"],
+    "requires_grant": ["write tracked files", "install dependencies"],
+    "blocked_by_default": ["destructive git operations", "secret exfiltration"]
+  },
+  "verifier": {
+    "method": "diff review plus relevant tests",
+    "pass_signal": "patch is scoped and tests pass or failure is explained",
+    "error_categories": ["bad_patch", "test_failure", "scope_creep", "missing_test"]
+  },
+  "trajectory_labels": ["files_read", "patch", "tests", "failures", "feed"],
+  "mini_tasks": [
+    {
+      "id": "code-mini-1",
+      "goal": "Update one documentation sentence and verify the diff only touches that file.",
+      "expected_feed": "A scoped diff summary and git diff verification."
+    }
+  ]
+}

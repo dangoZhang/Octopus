@@ -1,0 +1,29 @@
+{
+  "id": "search",
+  "version": "0.2.0-dev",
+  "description": "Retrieval, deduplication, source quality, and citation tasks.",
+  "task_schema": {
+    "inputs": ["query", "time range", "source constraints"],
+    "outputs": ["ranked sources", "deduplicated facts", "citations"],
+    "constraints": ["prefer primary sources", "record dates", "separate fact from inference"]
+  },
+  "capability_hints": ["search", "browse", "dedupe", "cite", "compare"],
+  "permission_boundary": {
+    "safe": ["public web search", "source reading", "citation extraction"],
+    "requires_grant": ["logged-in sources", "paid databases"],
+    "blocked_by_default": ["credential sharing", "private data scraping"]
+  },
+  "verifier": {
+    "method": "source coverage and citation audit",
+    "pass_signal": "claims have relevant sources and dates",
+    "error_categories": ["stale_source", "bad_citation", "duplicate_source", "unsupported_claim"]
+  },
+  "trajectory_labels": ["query", "sources", "dedupe", "claims", "citations", "feed"],
+  "mini_tasks": [
+    {
+      "id": "search-mini-1",
+      "goal": "Find two primary sources for the Octopus project release page and summarize what each proves.",
+      "expected_feed": "Two links with dates, claim coverage, and unsupported gaps."
+    }
+  ]
+}

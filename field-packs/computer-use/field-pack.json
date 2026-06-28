@@ -1,0 +1,29 @@
+{
+  "id": "computer-use",
+  "version": "0.2.0-dev",
+  "description": "Browser, desktop, clipboard, file, and UI-operation tasks.",
+  "task_schema": {
+    "inputs": ["user goal", "visible app state", "allowed actions"],
+    "outputs": ["observations", "actions taken", "verified result"],
+    "constraints": ["observe before acting", "keep actions reversible when possible"]
+  },
+  "capability_hints": ["screenshot", "browser_status", "clipboard", "open_url", "verify_screen"],
+  "permission_boundary": {
+    "safe": ["observe screen", "read browser state", "open local pages"],
+    "requires_grant": ["click/type in apps", "clipboard write", "external website login"],
+    "blocked_by_default": ["payments", "private messages", "destructive system settings"]
+  },
+  "verifier": {
+    "method": "screen or DOM state check",
+    "pass_signal": "visible state matches requested outcome",
+    "error_categories": ["bad_observation", "wrong_target", "action_failed", "verification_missing"]
+  },
+  "trajectory_labels": ["screen", "target", "action", "observation", "verification", "feed"],
+  "mini_tasks": [
+    {
+      "id": "computer-use-mini-1",
+      "goal": "Open the local Octopus demo page and verify the title is visible.",
+      "expected_feed": "Observed URL, visible title, and verification status."
+    }
+  ]
+}

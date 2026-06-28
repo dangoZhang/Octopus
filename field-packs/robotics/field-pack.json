@@ -1,0 +1,29 @@
+{
+  "id": "robotics",
+  "version": "0.2.0-dev",
+  "description": "Simulator-first perception, action planning, execution feedback, and safety-gated robotics tasks.",
+  "task_schema": {
+    "inputs": ["environment state", "robot capability", "task goal", "safety boundary"],
+    "outputs": ["plan", "simulation result", "feedback"],
+    "constraints": ["simulate before physical action", "stop on uncertainty"]
+  },
+  "capability_hints": ["perception", "planning", "simulation", "control", "safety_check"],
+  "permission_boundary": {
+    "safe": ["simulation", "plan generation", "log analysis"],
+    "requires_grant": ["hardware connection", "actuator command"],
+    "blocked_by_default": ["physical movement without simulator pass", "unsafe environment assumptions"]
+  },
+  "verifier": {
+    "method": "simulator result and safety checklist",
+    "pass_signal": "simulated plan reaches goal without safety violation",
+    "error_categories": ["bad_state", "unsafe_plan", "simulation_fail", "control_error"]
+  },
+  "trajectory_labels": ["state", "plan", "simulation", "safety", "feedback", "repair"],
+  "mini_tasks": [
+    {
+      "id": "robotics-mini-1",
+      "goal": "Plan a simulator-only move from A to B around one obstacle.",
+      "expected_feed": "Path plan, simulated clearance check, and safety status."
+    }
+  ]
+}

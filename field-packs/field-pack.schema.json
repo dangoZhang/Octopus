@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Octopus Field Pack",
+  "type": "object",
+  "required": [
+    "id",
+    "version",
+    "description",
+    "task_schema",
+    "capability_hints",
+    "permission_boundary",
+    "verifier",
+    "trajectory_labels",
+    "mini_tasks"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "version": { "type": "string" },
+    "description": { "type": "string" },
+    "task_schema": {
+      "type": "object",
+      "required": ["inputs", "outputs"],
+      "properties": {
+        "inputs": { "type": "array", "items": { "type": "string" } },
+        "outputs": { "type": "array", "items": { "type": "string" } },
+        "constraints": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "capability_hints": { "type": "array", "items": { "type": "string" } },
+    "permission_boundary": {
+      "type": "object",
+      "required": ["safe", "requires_grant", "blocked_by_default"],
+      "properties": {
+        "safe": { "type": "array", "items": { "type": "string" } },
+        "requires_grant": { "type": "array", "items": { "type": "string" } },
+        "blocked_by_default": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "verifier": {
+      "type": "object",
+      "required": ["method", "pass_signal", "error_categories"],
+      "properties": {
+        "method": { "type": "string" },
+        "pass_signal": { "type": "string" },
+        "error_categories": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "trajectory_labels": { "type": "array", "items": { "type": "string" } },
+    "mini_tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "goal", "expected_feed"],
+        "properties": {
+          "id": { "type": "string" },
+          "goal": { "type": "string" },
+          "expected_feed": { "type": "string" }
+        }
+      }
+    }
+  }
+}

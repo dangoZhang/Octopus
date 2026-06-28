@@ -38,6 +38,19 @@ Octopus/
 │   ├── swe-agent/             Repo read/edit/patch/test tools.
 │   ├── visual/                Pixel pet manifest.
 │   └── tentacle.schema.json   Manifest schema.
+├── field-packs/
+│   ├── README.md              `v0.2.0` field adaptation template guide.
+│   ├── index.json             Field pack registry.
+│   ├── field-pack.schema.json Field pack schema.
+│   ├── _template/             Copyable starter pack.
+│   ├── math/
+│   ├── search/
+│   ├── code/
+│   ├── swe/
+│   ├── research/
+│   ├── computer-use/
+│   ├── ib/
+│   └── robotics/
 ├── docs/
 │   ├── index.html             GitHub Pages landing page.
 │   ├── demo.html              Static product demo page with real app screenshots.
@@ -71,7 +84,7 @@ Octopus/
 | Pet and visual state | Pixel Octopus state, SVG/export helpers, app pet surface | `pet.rs`, `docs/pet.html`, `tentacles/visual/manifest.json` | 551 |
 | Product docs/site | README, landing/demo/tutorial/use/recipes/about/docs pages | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 7,330 |
 | Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, repair surfaces | `tentacles/**` | 4,414 |
-| Future field adaptation | `v0.2.0` template for task fields, trajectories, verifiers, evolution loop | `docs/field-adaptation.md` | 116 |
+| Field adaptation packs | `v0.2.0` task-field templates, permission boundaries, verifier contracts, mini tasks | `field-packs/**`, `docs/field-adaptation.md` | 495 |
 
 ## Core, Distinctive, Editable
 
@@ -119,18 +132,20 @@ These are intended to be changed by Octopus or by harness iteration:
 - Tentacle manifests, prompts, tool metadata, runtime scripts, repair policies.
 - Seed profile registry.
 - Harness repair sessions and adapter probes.
-- Future field packs for math, search, code, SWE, research, computer-use, IB work, and robotics.
+- Field packs for math, search, code, SWE, research, computer-use, IB work, and robotics.
 
 Where they live now:
 
 - `tentacles/`
+- `field-packs/`
 - `.octopus/` at runtime
 - `docs/field-adaptation.md` for the `v0.2.0` plan
 
-Planned location:
+Current field pack layout:
 
 ```text
 field-packs/
+  _template/
   math/
   search/
   code/
@@ -150,6 +165,7 @@ field-packs/
 | `crates/octopus-core/src` | 10 | 37,374 |
 | `crates/octopus-core/examples` | 1 | 27 |
 | `tentacles` | 38 | 4,414 |
+| `field-packs` | 12 | 379 |
 | `docs` | 29 | 7,330 |
 | `cowork` | 3 | 168 |
 | `local/docs` | 12 | 507 |

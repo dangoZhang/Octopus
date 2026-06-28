@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0-dev",
+  "schema": "./field-pack.schema.json",
+  "packs": [
+    "math",
+    "search",
+    "code",
+    "swe",
+    "research",
+    "computer-use",
+    "ib",
+    "robotics"
+  ]
+}

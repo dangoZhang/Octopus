@@ -1,0 +1,29 @@
+{
+  "id": "template",
+  "version": "0.2.0-dev",
+  "description": "Describe one task field without binding it to a fixed tool flow.",
+  "task_schema": {
+    "inputs": ["goal", "context", "constraints"],
+    "outputs": ["feed", "artifact", "verifier_result"],
+    "constraints": ["keep Need stable", "let tentacle choose implementation"]
+  },
+  "capability_hints": ["observe", "execute", "verify"],
+  "permission_boundary": {
+    "safe": ["read local context", "write local scratch artifacts"],
+    "requires_grant": ["network access", "repo writes"],
+    "blocked_by_default": ["credentials", "payments", "physical actions"]
+  },
+  "verifier": {
+    "method": "field-specific check",
+    "pass_signal": "expected artifact and compact Feed are present",
+    "error_categories": ["bad_need", "bad_route", "tool_error", "verification_error", "permission_error"]
+  },
+  "trajectory_labels": ["goal", "need", "tentacle", "actions", "observations", "feed", "verifier", "repair"],
+  "mini_tasks": [
+    {
+      "id": "template-mini-1",
+      "goal": "Run one small task in this field.",
+      "expected_feed": "A checked Feed summary with verifier result."
+    }
+  ]
+}

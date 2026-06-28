@@ -1,0 +1,29 @@
+{
+  "id": "research",
+  "version": "0.2.0-dev",
+  "description": "Paper, report, and claim-grounding tasks with source-aware synthesis.",
+  "task_schema": {
+    "inputs": ["claim", "domain", "source policy"],
+    "outputs": ["grounded synthesis", "citations", "uncertainties"],
+    "constraints": ["cite claims", "mark inference", "preserve source dates"]
+  },
+  "capability_hints": ["search", "read_pdf", "extract_claims", "synthesize", "cite"],
+  "permission_boundary": {
+    "safe": ["public papers", "local PDFs", "citation extraction"],
+    "requires_grant": ["publisher login", "paid databases"],
+    "blocked_by_default": ["fabricated references", "uncited claims"]
+  },
+  "verifier": {
+    "method": "claim-to-source coverage check",
+    "pass_signal": "main claims are backed by cited sources and limitations are explicit",
+    "error_categories": ["unsupported_claim", "bad_source", "citation_gap", "overclaim"]
+  },
+  "trajectory_labels": ["claim", "sources", "evidence", "synthesis", "limits", "feed"],
+  "mini_tasks": [
+    {
+      "id": "research-mini-1",
+      "goal": "Ground one sentence about octopus distributed control using provided sources.",
+      "expected_feed": "A short synthesis with source coverage and uncertainty."
+    }
+  ]
+}
