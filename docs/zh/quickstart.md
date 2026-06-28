@@ -129,7 +129,7 @@ octopus repair .
 
 改动会先落到 `.octopus/` 下的可审查计划、patch、repair bundle 和评分记录。
 
-## 0.1.0 发布门槛
+## 发布门槛
 
 ```bash
 tmp=$(mktemp -d)
@@ -143,4 +143,4 @@ octopus --state "$tmp/state.json" preflight record check "$tmp/real-machine-reco
 octopus --state "$tmp/state.json" preflight record append "$tmp/real-machine-record.md" docs/real-machine-test.md
 ```
 
-`0.1.0` 需要本地闭环、live provider、benchmark 证据、GitHub OAuth/PR 路径和真实机器记录都通过。
+`0.1.0` 已通过这条门槛。之后的 tag 也需要本地闭环、live provider、benchmark 证据、GitHub OAuth/PR 路径和真实机器记录都通过。

@@ -19,4 +19,4 @@
 2. 再看 [使用场景](recipes.html)，选一个真实任务复制。
 3. 然后读 [快速开始](quickstart.md)，跑通 `octopus start --open` 和 `octopus first-run`。
 4. 继续读 [架构说明](architecture.md)，理解 clean brain、Need、Feed、tentacle、heartbeat。
-5. 最后看 [product gap](../product-gap.md) 和 [real-machine gate](../real-machine-test.md)，判断离 `0.1.0` 还差什么。
+5. 最后看 [product gap](../product-gap.md) 和 [real-machine gate](../real-machine-test.md)，判断当前 release gate 和下一步缺口。

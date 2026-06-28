@@ -64,4 +64,4 @@ Octopus/
 3. Octopus turns the Goal into Need, routes Feed through tentacles, records feedback, and pulses the three hearts.
 4. The app shows pet state, current Need, current Feed, Output, and a browser-only API-key demo when no local bridge is present.
 5. `benchmark record/check` collects the smallest SWE/Claw/Wild pass evidence.
-6. `preflight`, provider matrix, real-machine records, and benchmark records remain release evidence before `0.1.0`.
+6. `preflight`, provider matrix, real-machine records, and benchmark records are required release evidence for `0.1.0` and later tags.

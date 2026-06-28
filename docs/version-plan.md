@@ -1,6 +1,6 @@
 # Version Plan
 
-Current version: `0.0.24`.
+Current version: `0.1.0`.
 
 Cadence from this plan forward:
 
@@ -12,7 +12,7 @@ Release checklist:
 - README stays product-page first, with the clean-brain value and install path visible.
 - `docs/product-gap.md` records current shape, filled gaps, and next fill.
 - CI stays green for Rust, manifests, tentacle runtime checks, pet page, and install path.
-- `octopus preflight --live` is the release-readiness summary before `0.1.0` tags.
+- `octopus preflight --live` is the release-readiness summary before every `0.1.0+` tag.
 - Pages deploys `index.html`, `app.html`, `pet.html`, quickstart, architecture, references, and self-iteration docs.
 - Version changes land together in `crates/octopus-core/Cargo.toml` and `Cargo.lock`.
 - `0.0.24` must complete `docs/core-audit.md`: full source audit, redundant development residue removal, misaligned fallback removal, and core/harness boundary cleanup.
@@ -38,8 +38,8 @@ Road to `0.1.0`:
 - `0.0.24`: full core audit before `0.1.0`; remove redundant code, development residue, and fallback logic that conflicts with the clean-brain and code-as-harness boundary.
 - `0.1.0`: first release candidate only after the `0.0.24` audit and recorded real-machine test evidence pass.
 
-Last cleanup/version correction: `0.0.24` on 2026-06-28. Scope: full core audit, hidden planner fallback removal, explicit seed tool contracts, CLI split for bundled harness/download/pet/profile-registry support, shared shell display quoting, and boundary report alignment; no tag cut.
+Last release correction: `0.1.0` on 2026-06-28. Scope: recorded GitHub-installed binary gate, provider matrix, benchmark artifact evidence, GitHub PR dry-run, live preflight, and version consistency.
 
-Product commits toward `0.0.25`: 4/8.
+Product commits after `0.1.0`: 0/8.
 
-Next planned cleanup/version commit: `0.0.25`.
+Next planned cleanup/version commit: `0.1.1`.

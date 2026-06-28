@@ -70,12 +70,10 @@ cowork/
 
 工具合同现在显式写在 manifest：`octopus-json-v1`、`stdio-argv-v1`、`adapter-v1`、`static-html-v1` 或 `native-harness-v1`，避免核心用省略字段猜执行方式。
 
-## 0.1.0 缺口
+## 发布门槛
 
-- 需要对当前 head 追加真实机器记录。
-- 需要 live provider gate 通过。
-- 需要 GitHub OAuth grant 和 PR dry-run/publish 路径证据。
-- 需要发布前 `preflight --live` 全部 required check 通过。
+- `0.1.0` 已记录真实机器 gate、live provider gate、GitHub OAuth/PR dry-run、provider matrix 和 benchmark evidence。
+- 后续 tag 仍需要在发布前让 `preflight --live` 全部 required check 通过，并追加真实机器记录。
 - 旧 Python SDK 已移除；Python 继续作为 tentacle runtime 存在，例如 `json-feed` 和 repair tools。
 - Seed profiles 已从 Rust kernel 源码移到 `tentacles/profile-registry/default.json`；启动会写出 `.octopus/profile-registry/default.json`，也可用 `OCTOPUS_PROFILE_REGISTRY` 指向其他 registry。Registry 属于 developer/harness 数据面；app 用户写入口只保留 Goal。
 - Doctor、Product Report 和 Preflight 会显示 registry 来源、路径、解析状态和 profile 数量。
