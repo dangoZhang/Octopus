@@ -68,6 +68,8 @@ cowork/
 - `json-feed`：`octopus-json-v1` Python runtime seed。
 - `visual`：pixel pet 状态层。
 
+工具合同现在显式写在 manifest：`octopus-json-v1`、`stdio-argv-v1`、`adapter-v1`、`static-html-v1` 或 `native-harness-v1`，避免核心用省略字段猜执行方式。
+
 ## 0.1.0 缺口
 
 - 需要对当前 head 追加真实机器记录。

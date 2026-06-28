@@ -29,7 +29,7 @@
         "permissions": ["tool:mcp"],
         "reason": "external tool bridge"
       },
-      "implementation": { "kind": "mcp", "entrypoint": "tools/mcp.sh" }
+      "implementation": { "kind": "mcp", "entrypoint": "tools/mcp.sh", "contract": "stdio-argv-v1" }
     },
     {
       "id": "bash",
@@ -42,7 +42,7 @@
         "permissions": ["tool:execute"],
         "reason": "local command execution"
       },
-      "implementation": { "kind": "shell", "entrypoint": "tools/bash.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/bash.sh", "contract": "stdio-argv-v1" }
     },
     {
       "id": "screenshot",
@@ -55,7 +55,7 @@
         "permissions": ["tool:observe"],
         "reason": "screen capture"
       },
-      "implementation": { "kind": "shell", "entrypoint": "tools/screenshot.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/screenshot.sh", "contract": "stdio-argv-v1" }
     },
     {
       "id": "open_url",
@@ -68,7 +68,7 @@
         "permissions": ["tool:ui"],
         "reason": "user-visible desktop action"
       },
-      "implementation": { "kind": "shell", "entrypoint": "tools/open_url.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/open_url.sh", "contract": "stdio-argv-v1" }
     },
     {
       "id": "browser_status",
@@ -81,7 +81,7 @@
         "permissions": ["tool:observe"],
         "reason": "browser tab metadata"
       },
-      "implementation": { "kind": "shell", "entrypoint": "tools/browser_status.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/browser_status.sh", "contract": "stdio-argv-v1" }
     },
     {
       "id": "window_status",
@@ -94,7 +94,7 @@
         "permissions": ["tool:observe"],
         "reason": "front window metadata"
       },
-      "implementation": { "kind": "shell", "entrypoint": "tools/window_status.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/window_status.sh", "contract": "stdio-argv-v1" }
     },
     {
       "id": "clipboard_read",
@@ -107,7 +107,7 @@
         "permissions": ["tool:observe"],
         "reason": "clipboard text observation"
       },
-      "implementation": { "kind": "shell", "entrypoint": "tools/clipboard_read.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/clipboard_read.sh", "contract": "stdio-argv-v1" }
     },
     {
       "id": "clipboard_write",
@@ -120,14 +120,14 @@
         "permissions": ["tool:ui"],
         "reason": "clipboard modification"
       },
-      "implementation": { "kind": "shell", "entrypoint": "tools/clipboard_write.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/clipboard_write.sh", "contract": "stdio-argv-v1" }
     },
     {
       "id": "describe_screen",
       "description": "Return lightweight desktop context.",
       "input": "none",
       "output": "OS and process hints",
-      "implementation": { "kind": "shell", "entrypoint": "tools/describe_screen.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/describe_screen.sh", "contract": "stdio-argv-v1" }
     }
   ],
   "evolution": {

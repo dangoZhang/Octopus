@@ -10,6 +10,10 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const OCTOPUS_JSON_CONTRACT: &str = "octopus-json-v1";
+pub const OCTOPUS_STDIO_ARGV_CONTRACT: &str = "stdio-argv-v1";
+pub const OCTOPUS_STATIC_HTML_CONTRACT: &str = "static-html-v1";
+pub const OCTOPUS_ADAPTER_CONTRACT: &str = "adapter-v1";
+pub const OCTOPUS_NATIVE_HARNESS_CONTRACT: &str = "native-harness-v1";
 const OCTOPUS_TOOL_CALL_SCHEMA: &str = "octopus-tool-call-v1";
 const FEED_TRACE_QUERY_BYTES: usize = 160;
 const FEED_TRACE_SUMMARY_BYTES: usize = 240;
@@ -5419,6 +5423,22 @@ fn installed_tentacle_tools(tentacle: &InstalledTentacle) -> Vec<InstalledToolRe
         .collect()
 }
 
+fn tool_contract_label(tool: &InstalledToolRef) -> &str {
+    tool.contract.as_deref().unwrap_or("unspecified")
+}
+
+fn tool_result_contract(tool: &InstalledToolRef, uses_json_contract: bool) -> Option<String> {
+    if uses_json_contract {
+        Some(
+            tool.contract
+                .clone()
+                .unwrap_or_else(|| OCTOPUS_JSON_CONTRACT.to_string()),
+        )
+    } else {
+        tool.contract.clone()
+    }
+}
+
 fn tool_permission_text(permission: &ToolPermission) -> String {
     let permissions = if permission.permissions.is_empty() {
         "none".to_string()
@@ -5762,7 +5782,7 @@ impl ManifestTentacle {
                     tool.id,
                     tool.description,
                     tool.kind,
-                    tool.contract.as_deref().unwrap_or("legacy"),
+                    tool_contract_label(tool),
                     tool_permission_label(tool.permission.as_ref()),
                     tool.input,
                     tool.output
@@ -5902,6 +5922,11 @@ impl ManifestTentacle {
             result
                 .metadata
                 .insert("runtime".to_string(), tool.kind.clone());
+            if let Some(contract) = tool.contract.as_ref() {
+                result
+                    .metadata
+                    .insert("contract".to_string(), contract.clone());
+            }
             self.record_tool_permission_metadata(tool, active_grant.as_deref(), &mut result);
             return result;
         }
@@ -6008,13 +6033,8 @@ impl ManifestTentacle {
                 .metadata
                 .insert("action_query".to_string(), action_need.query);
         }
-        if uses_json_contract {
-            result.metadata.insert(
-                "contract".to_string(),
-                tool.contract
-                    .clone()
-                    .unwrap_or_else(|| OCTOPUS_JSON_CONTRACT.to_string()),
-            );
+        if let Some(contract) = tool_result_contract(tool, uses_json_contract) {
+            result.metadata.insert("contract".to_string(), contract);
         }
         self.record_tool_permission_metadata(tool, active_grant.as_deref(), &mut result);
         result.metadata.insert(
@@ -12557,13 +12577,35 @@ mod tests {
         assert!(profiles
             .iter()
             .all(|profile| !profile.evolution.checks.is_empty()));
+        assert!(profiles.iter().all(|profile| {
+            profile
+                .tools
+                .iter()
+                .all(|tool| tool.implementation.contract.is_some())
+        }));
         assert!(profiles
             .iter()
             .find(|profile| profile.id == "visual")
             .unwrap()
             .tools
             .iter()
-            .any(|tool| tool.implementation.entrypoint == "docs/pet.html"));
+            .any(|tool| tool.implementation.entrypoint == "docs/pet.html"
+                && tool.implementation.contract.as_deref() == Some(OCTOPUS_STATIC_HTML_CONTRACT)));
+        assert!(profiles
+            .iter()
+            .find(|profile| profile.id == "research")
+            .unwrap()
+            .tools
+            .iter()
+            .any(|tool| tool.implementation.contract.as_deref() == Some(OCTOPUS_ADAPTER_CONTRACT)));
+        assert!(profiles
+            .iter()
+            .find(|profile| profile.skills.iter().any(|skill| skill.id == "memory"))
+            .unwrap()
+            .tools
+            .iter()
+            .any(|tool| tool.implementation.contract.as_deref()
+                == Some(OCTOPUS_NATIVE_HARNESS_CONTRACT)));
         assert!(profiles
             .iter()
             .find(|profile| profile.id == "repo-maintainer")
@@ -12580,6 +12622,26 @@ mod tests {
             .iter()
             .any(|tool| tool.implementation.kind == "python"
                 && tool.implementation.contract.as_deref() == Some(OCTOPUS_JSON_CONTRACT)));
+    }
+
+    #[test]
+    fn seed_manifests_declare_explicit_tool_contracts() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let manifests = load_tentacle_manifests(&root).unwrap();
+
+        assert!(!manifests.is_empty());
+        for loaded in manifests {
+            for tool in &loaded.manifest.tools {
+                assert!(
+                    tool.implementation.contract.is_some(),
+                    "{}:{} missing contract",
+                    loaded.manifest.id,
+                    tool.id
+                );
+            }
+        }
     }
 
     #[test]
@@ -13821,6 +13883,11 @@ print(json.dumps({
             .iter()
             .any(|tool| tool.id == "inspect_repo"
                 && tool.description.contains("Summarize repo state")));
+        assert!(installed
+            .tool_meta
+            .iter()
+            .any(|tool| tool.id == "inspect_repo"
+                && tool.contract.as_deref() == Some(OCTOPUS_STDIO_ARGV_CONTRACT)));
         assert!(installed
             .evolution_surfaces
             .contains(&"runtime_code".to_string()));

@@ -23,7 +23,7 @@
       "description": "Render the color-changing Octopus pixel pet.",
       "input": "status name through query string or UI selection",
       "output": "interactive static HTML",
-      "implementation": { "kind": "static-html", "entrypoint": "docs/pet.html" }
+      "implementation": { "kind": "static-html", "entrypoint": "docs/pet.html", "contract": "static-html-v1" }
     }
   ],
   "evolution": {

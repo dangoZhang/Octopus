@@ -51,7 +51,7 @@ Memory lives in `HarnessState` as a heart/beat. It is exposed in catalogs for in
 
 Shell is only one seed runtime. A tentacle can evolve prompt, metadata, runtime code, or policy into Python, TypeScript, Rust, MCP, HTTP, native tools, or mixed runtimes while the kernel contract stays stable. Unknown runtimes scaffold as manifest-only and become installable after the tentacle adds its executable adapter.
 
-Use `contract: octopus-json-v1` when a tool wants the full Need/tool/tentacle JSON envelope on stdin. Omit it for legacy executable entrypoints.
+Use `contract: octopus-json-v1` when a tool wants the full Need/tool/tentacle JSON envelope on stdin. Use `stdio-argv-v1` for argv/stdin adapters, `adapter-v1` for abstract adapters, `static-html-v1` for pet/page artifacts, and `native-harness-v1` for built-in harness surfaces.
 
 Use `permission` when a tool needs an explicit grant before execution. Example: `octopus oauth octopus tool:bash-only tool:execute`.
 

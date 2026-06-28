@@ -22,17 +22,17 @@
       {
         "id": "search",
         "description": "Find candidate sources.",
-        "implementation": { "kind": "adapter", "entrypoint": "search" }
+        "implementation": { "kind": "adapter", "entrypoint": "search", "contract": "adapter-v1" }
       },
       {
         "id": "browser",
         "description": "Inspect source pages.",
-        "implementation": { "kind": "adapter", "entrypoint": "browser" }
+        "implementation": { "kind": "adapter", "entrypoint": "browser", "contract": "adapter-v1" }
       },
       {
         "id": "citation",
         "description": "Return compact citations.",
-        "implementation": { "kind": "adapter", "entrypoint": "citation" }
+        "implementation": { "kind": "adapter", "entrypoint": "citation", "contract": "adapter-v1" }
       }
     ],
     "evolution": {
@@ -65,17 +65,17 @@
       {
         "id": "git",
         "description": "Inspect versioned state.",
-        "implementation": { "kind": "adapter", "entrypoint": "git" }
+        "implementation": { "kind": "adapter", "entrypoint": "git", "contract": "adapter-v1" }
       },
       {
         "id": "shell",
         "description": "Run local commands.",
-        "implementation": { "kind": "adapter", "entrypoint": "shell" }
+        "implementation": { "kind": "adapter", "entrypoint": "shell", "contract": "adapter-v1" }
       },
       {
         "id": "test-runner",
         "description": "Verify changes.",
-        "implementation": { "kind": "adapter", "entrypoint": "test-runner" }
+        "implementation": { "kind": "adapter", "entrypoint": "test-runner", "contract": "adapter-v1" }
       }
     ],
     "evolution": {
@@ -108,7 +108,7 @@
       {
         "id": "memory-store",
         "description": "Persist and retrieve compact memories.",
-        "implementation": { "kind": "native", "entrypoint": "HarnessState.memory" }
+        "implementation": { "kind": "native", "entrypoint": "HarnessState.memory", "contract": "native-harness-v1" }
       }
     ],
     "evolution": {
@@ -141,7 +141,7 @@
       {
         "id": "status-pet",
         "description": "Render color-changing Octopus status.",
-        "implementation": { "kind": "static-html", "entrypoint": "docs/pet.html" }
+        "implementation": { "kind": "static-html", "entrypoint": "docs/pet.html", "contract": "static-html-v1" }
       }
     ],
     "evolution": {
@@ -182,37 +182,37 @@
       {
         "id": "inspect_repo",
         "description": "Inspect local repo health.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/inspect_repo.sh" }
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/inspect_repo.sh", "contract": "stdio-argv-v1" }
       },
       {
         "id": "github_status",
         "description": "Read GitHub issues and workflow runs when gh is available.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/github_status.sh" }
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/github_status.sh", "contract": "stdio-argv-v1" }
       },
       {
         "id": "codex_status",
         "description": "Check local Codex CLI OAuth/API-key readiness without exposing secrets.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/codex_status.sh" }
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/codex_status.sh", "contract": "stdio-argv-v1" }
       },
       {
         "id": "patch_queue",
         "description": "Generate candidate patch queue from GitHub and goal signals.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/patch_queue.sh" }
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/patch_queue.sh", "contract": "stdio-argv-v1" }
       },
       {
         "id": "draft_pr",
         "description": "Write branch plan and pull request draft data.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/draft_pr.sh" }
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/draft_pr.sh", "contract": "stdio-argv-v1" }
       },
       {
         "id": "codex_maintain",
         "description": "Use the local Codex CLI login/API-key context to prepare a repository maintenance report.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/codex_maintain.sh" }
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/codex_maintain.sh", "contract": "stdio-argv-v1" }
       },
       {
         "id": "publish_pr",
         "description": "Publish a draft pull request through gh after an explicit OAuth grant.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/publish_pr.sh" }
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/publish_pr.sh", "contract": "stdio-argv-v1" }
       }
     ],
     "evolution": {
@@ -391,27 +391,27 @@
       {
         "id": "read",
         "description": "Read a safe, line-numbered slice of a workspace file.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/swe-agent/tools/read.sh" }
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/swe-agent/tools/read.sh", "contract": "stdio-argv-v1" }
       },
       {
         "id": "edit",
         "description": "Apply one scoped text replacement.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/swe-agent/tools/edit.sh" }
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/swe-agent/tools/edit.sh", "contract": "stdio-argv-v1" }
       },
       {
         "id": "inspect_repo",
         "description": "Summarize repo state and project type.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/swe-agent/tools/inspect_repo.sh" }
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/swe-agent/tools/inspect_repo.sh", "contract": "stdio-argv-v1" }
       },
       {
         "id": "write_patch",
         "description": "Write and optionally apply a patch.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/swe-agent/tools/write_patch.sh" }
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/swe-agent/tools/write_patch.sh", "contract": "stdio-argv-v1" }
       },
       {
         "id": "run_tests",
         "description": "Run detected project tests.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/swe-agent/tools/run_tests.sh" }
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/swe-agent/tools/run_tests.sh", "contract": "stdio-argv-v1" }
       }
     ],
     "evolution": {
@@ -454,7 +454,7 @@
       {
         "id": "mcp",
         "description": "Call an MCP tool through a configured JSON-RPC client adapter.",
-        "implementation": { "kind": "mcp", "entrypoint": "tentacles/computer-use-agent/tools/mcp.sh" },
+        "implementation": { "kind": "mcp", "entrypoint": "tentacles/computer-use-agent/tools/mcp.sh", "contract": "stdio-argv-v1" },
         "permission": {
           "provider": "octopus",
           "scope": "tool:computer-use-agent",
@@ -465,7 +465,7 @@
       {
         "id": "bash",
         "description": "Write and run a local shell script.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/bash.sh" },
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/bash.sh", "contract": "stdio-argv-v1" },
         "permission": {
           "provider": "octopus",
           "scope": "tool:computer-use-agent",
@@ -476,7 +476,7 @@
       {
         "id": "screenshot",
         "description": "Capture the current screen.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/screenshot.sh" },
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/screenshot.sh", "contract": "stdio-argv-v1" },
         "permission": {
           "provider": "octopus",
           "scope": "tool:computer-use-agent",
@@ -487,7 +487,7 @@
       {
         "id": "open_url",
         "description": "Open a URL in the local desktop.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/open_url.sh" },
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/open_url.sh", "contract": "stdio-argv-v1" },
         "permission": {
           "provider": "octopus",
           "scope": "tool:computer-use-agent",
@@ -498,7 +498,7 @@
       {
         "id": "browser_status",
         "description": "Inspect local browser availability and current tab metadata.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/browser_status.sh" },
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/browser_status.sh", "contract": "stdio-argv-v1" },
         "permission": {
           "provider": "octopus",
           "scope": "tool:computer-use-agent",
@@ -509,7 +509,7 @@
       {
         "id": "window_status",
         "description": "Inspect front application, active window title, display session, and desktop process hints.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/window_status.sh" },
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/window_status.sh", "contract": "stdio-argv-v1" },
         "permission": {
           "provider": "octopus",
           "scope": "tool:computer-use-agent",
@@ -520,7 +520,7 @@
       {
         "id": "clipboard_read",
         "description": "Read current clipboard text.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/clipboard_read.sh" },
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/clipboard_read.sh", "contract": "stdio-argv-v1" },
         "permission": {
           "provider": "octopus",
           "scope": "tool:computer-use-agent",
@@ -531,7 +531,7 @@
       {
         "id": "clipboard_write",
         "description": "Write provided text into the local clipboard.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/clipboard_write.sh" },
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/clipboard_write.sh", "contract": "stdio-argv-v1" },
         "permission": {
           "provider": "octopus",
           "scope": "tool:computer-use-agent",
@@ -542,7 +542,7 @@
       {
         "id": "describe_screen",
         "description": "Return lightweight desktop context.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/describe_screen.sh" }
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/computer-use-agent/tools/describe_screen.sh", "contract": "stdio-argv-v1" }
       }
     ],
     "evolution": {
@@ -581,7 +581,7 @@
       {
         "id": "write_and_run",
         "description": "Write stdin to an auditable script and execute it.",
-        "implementation": { "kind": "shell", "entrypoint": "tentacles/bash-only/tools/write_and_run.sh" },
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/bash-only/tools/write_and_run.sh", "contract": "stdio-argv-v1" },
         "permission": {
           "provider": "octopus",
           "scope": "tool:bash-only",

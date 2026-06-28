@@ -29,7 +29,7 @@
         "permissions": ["tool:execute"],
         "reason": "generated script execution"
       },
-      "implementation": { "kind": "shell", "entrypoint": "tools/write_and_run.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/write_and_run.sh", "contract": "stdio-argv-v1" }
     }
   ],
   "evolution": {

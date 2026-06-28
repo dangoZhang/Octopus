@@ -23,35 +23,35 @@
       "description": "Inspect local repo health and relevant manifests.",
       "input": "workspace root",
       "output": "git status, current branch, detected manifests",
-      "implementation": { "kind": "shell", "entrypoint": "tools/inspect_repo.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/inspect_repo.sh", "contract": "stdio-argv-v1" }
     },
     {
       "id": "github_status",
       "description": "Read GitHub issues and workflow runs when gh is available.",
       "input": "owner/repo plus optional limit",
       "output": "JSON status with issues and runs",
-      "implementation": { "kind": "shell", "entrypoint": "tools/github_status.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/github_status.sh", "contract": "stdio-argv-v1" }
     },
     {
       "id": "codex_status",
       "description": "Check local Codex CLI OAuth/API-key readiness without exposing secrets.",
       "input": "workspace root and optional owner/repo",
       "output": "JSON status for Codex CLI, auth cache presence, gh auth, and optional live check",
-      "implementation": { "kind": "shell", "entrypoint": "tools/codex_status.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/codex_status.sh", "contract": "stdio-argv-v1" }
     },
     {
       "id": "patch_queue",
       "description": "Generate candidate patch queue from issues, CI, or the current goal.",
       "input": "workspace root, repository, objective",
       "output": "patch queue path and candidate count",
-      "implementation": { "kind": "shell", "entrypoint": "tools/patch_queue.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/patch_queue.sh", "contract": "stdio-argv-v1" }
     },
     {
       "id": "draft_pr",
       "description": "Write branch plan and pull request draft data under .octopus/self-iteration.",
       "input": "workspace root, repository, objective",
       "output": "branch plan path and PR draft path",
-      "implementation": { "kind": "shell", "entrypoint": "tools/draft_pr.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/draft_pr.sh", "contract": "stdio-argv-v1" }
     },
     {
       "id": "codex_maintain",
@@ -64,14 +64,14 @@
         "permissions": ["codex:execute"],
         "reason": "Runs the local Codex CLI with the user's existing login or access-token context; Octopus does not store the secret."
       },
-      "implementation": { "kind": "shell", "entrypoint": "tools/codex_maintain.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/codex_maintain.sh", "contract": "stdio-argv-v1" }
     },
     {
       "id": "publish_pr",
       "description": "Publish a draft pull request through gh after an explicit Octopus OAuth grant.",
       "input": "workspace root, repository, branch, title, PR body file",
       "output": "publish report path, branch, and PR URL when created",
-      "implementation": { "kind": "shell", "entrypoint": "tools/publish_pr.sh" }
+      "implementation": { "kind": "shell", "entrypoint": "tools/publish_pr.sh", "contract": "stdio-argv-v1" }
     }
   ],
   "evolution": {

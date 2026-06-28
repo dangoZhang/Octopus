@@ -78,7 +78,7 @@ Doctor, Product Report, and Preflight expose the active registry source, path, p
 
 Tentacles can be segmented internally without exposing every local step to the main brain. A SWE tentacle can observe, hypothesize, patch, test, and explain inside its local harness, then return one compact Feed. Like segmented arm cords with local sucker maps, local modules may exchange feedback while the clean brain still receives only Goal, Mem, Need, and Feed.
 
-`contract: octopus-json-v1` lets any runtime receive the same Need/tool/tentacle JSON envelope through stdin and return compact text or structured JSON feedback. Legacy executable entrypoints still work. Tools can declare `permission`; missing grants return `needs_authorization` before the entrypoint starts.
+`contract: octopus-json-v1` lets any runtime receive the same Need/tool/tentacle JSON envelope through stdin and return compact text or structured JSON feedback. `stdio-argv-v1`, `adapter-v1`, `static-html-v1`, and `native-harness-v1` make non-JSON tool contracts explicit. Tools can declare `permission`; missing grants return `needs_authorization` before the entrypoint starts.
 
 `scaffold <tentacle> [runtime]` creates a user-owned manifest and schema. Python, Node, shell, and HTTP get starter adapters; any other runtime gets a manifest-only `tools/feed` contract so the tentacle can add its own executable, MCP bridge, native binary, or remote adapter.
 
