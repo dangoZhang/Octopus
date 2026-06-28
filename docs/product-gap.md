@@ -221,6 +221,7 @@ Updated: 2026-06-28
 - Added repair-score reuse so trace-backed harness repair outcomes can feed `evolution_outcomes` and improve later `evolve recommend` decisions.
 - Added immediate repair-score follow-up artifacts so scored repair feedback can write the next evolution proposal and apply plan in the same pass.
 - Added target-aware repair outcomes so harness beat can evolve the repaired tentacle instead of only the repair-agent source.
+- Consolidated repair-score target/candidate reuse so journals and evolution mirrors prefer the structured repair outcome fields.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.
 - Added clean-brain scout mapping with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can explore assumptions, unknowns, options, and risks before the next Need without tool context.
 - Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and local app API.

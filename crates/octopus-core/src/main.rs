@@ -3717,9 +3717,13 @@ fn mirror_repair_score_to_evolution_outcome(
     trace: Option<&FeedTraceRecord>,
     outcome: &RepairOutcome,
 ) -> Option<EvolutionOutcome> {
-    let trace = trace?;
-    let target = trace.metadata.get("target_tentacle")?.trim();
-    let candidate = trace.metadata.get("candidate")?.trim();
+    let target = repair_score_outcome_or_trace_value(
+        outcome.target_tentacle.as_deref(),
+        trace,
+        "target_tentacle",
+    )?;
+    let candidate =
+        repair_score_outcome_or_trace_value(outcome.candidate.as_deref(), trace, "candidate")?;
     if !repair_score_evolution_value_ready(target) || !repair_score_evolution_value_ready(candidate)
     {
         return None;
@@ -3731,6 +3735,17 @@ fn mirror_repair_score_to_evolution_outcome(
         outcome.status.clone(),
         summary,
     ))
+}
+
+fn repair_score_outcome_or_trace_value<'a>(
+    outcome_value: Option<&'a str>,
+    trace: Option<&'a FeedTraceRecord>,
+    key: &str,
+) -> Option<&'a str> {
+    outcome_value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| trace?.metadata.get(key).map(String::as_str).map(str::trim))
 }
 
 fn repair_score_evolution_value_ready(value: &str) -> bool {
@@ -3772,15 +3787,15 @@ fn write_repair_score_journal(
     let outcomes_file = repair_root.join("outcomes.jsonl");
     let outcome_path = session_dir.join("OUTCOME.md");
     let status = cli_status_key(&outcome.status);
-    let target = trace
-        .metadata
-        .get("target_tentacle")
-        .cloned()
+    let target = outcome
+        .target_tentacle
+        .clone()
+        .or_else(|| trace.metadata.get("target_tentacle").cloned())
         .unwrap_or_else(|| outcome.tentacle_id.clone());
-    let candidate = trace
-        .metadata
-        .get("candidate")
-        .cloned()
+    let candidate = outcome
+        .candidate
+        .clone()
+        .or_else(|| trace.metadata.get("candidate").cloned())
         .unwrap_or_else(|| "none".to_string());
     let draft_status = trace
         .metadata
@@ -20078,6 +20093,8 @@ JSON
         assert!(outcomes_file.exists());
         let outcomes = fs::read_to_string(&outcomes_file).unwrap();
         assert!(outcomes.contains("\"outcome_status\":\"satisfied\""));
+        assert!(outcomes.contains("\"target_tentacle\":\"swe-agent\""));
+        assert!(outcomes.contains("\"candidate\":\"03-runtime-code\""));
         assert!(outcomes.contains("repair improved harness"));
         let outcome_markdown = workspace
             .join(".octopus/harness-repair")
