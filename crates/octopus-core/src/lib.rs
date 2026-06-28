@@ -4751,6 +4751,27 @@ impl HarnessState {
         status: Status,
         summary: impl Into<String>,
     ) -> EvolutionOutcome {
+        self.record_evolution_outcome_inner(tentacle_id, candidate_id, status, summary, true)
+    }
+
+    pub fn record_repair_linked_evolution_outcome(
+        &mut self,
+        tentacle_id: impl Into<String>,
+        candidate_id: impl Into<String>,
+        status: Status,
+        summary: impl Into<String>,
+    ) -> EvolutionOutcome {
+        self.record_evolution_outcome_inner(tentacle_id, candidate_id, status, summary, false)
+    }
+
+    fn record_evolution_outcome_inner(
+        &mut self,
+        tentacle_id: impl Into<String>,
+        candidate_id: impl Into<String>,
+        status: Status,
+        summary: impl Into<String>,
+        record_pet_event: bool,
+    ) -> EvolutionOutcome {
         let tentacle_id = tentacle_id.into();
         let candidate_id = candidate_id.into();
         let summary = summary.into();
@@ -4777,12 +4798,14 @@ impl HarnessState {
             )]),
         };
         self.routes.learn(&feed);
-        self.record_pet_event(
-            "harness",
-            "evolve score",
-            outcome.summary.clone(),
-            outcome.status.clone(),
-        );
+        if record_pet_event {
+            self.record_pet_event(
+                "harness",
+                "evolve score",
+                outcome.summary.clone(),
+                outcome.status.clone(),
+            );
+        }
         self.evolution_outcomes.push(outcome.clone());
         outcome
     }

@@ -711,6 +711,8 @@ struct RepairScoreReport {
     outcome: RepairOutcome,
     journal: Option<RepairOutcomeJournalReport>,
     recent: Vec<RepairOutcome>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    evolution: Option<EvolutionOutcome>,
     next: Vec<String>,
 }
 
@@ -992,17 +994,30 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     .find(|trace| trace.index == trace_index)
                     .cloned();
                 let outcome = loaded.record_repair_outcome(Some(trace_index), status, summary)?;
+                let evolution =
+                    mirror_repair_score_to_evolution_outcome(&mut loaded, trace.as_ref(), &outcome);
                 let cwd = env::current_dir().map_err(|error| error.to_string())?;
                 let journal = write_repair_score_journal(&cwd, trace.as_ref(), &outcome)?;
+                let mut next = vec![
+                    "octopus repair .".to_string(),
+                    "octopus report".to_string(),
+                    "octopus beat 200".to_string(),
+                ];
+                if let Some(evolution) = &evolution {
+                    next.insert(
+                        0,
+                        format!(
+                            "octopus evolve recommend {}",
+                            shell_arg(&evolution.tentacle_id)
+                        ),
+                    );
+                }
                 let report = RepairScoreReport {
                     outcome,
                     journal,
                     recent: loaded.recent_repair_outcomes(5),
-                    next: vec![
-                        "octopus repair .".to_string(),
-                        "octopus report".to_string(),
-                        "octopus beat 200".to_string(),
-                    ],
+                    evolution,
+                    next,
                 };
                 loaded.save(&state).map_err(|error| error.to_string())?;
                 if json {
@@ -3605,6 +3620,12 @@ fn print_repair_score_report(report: &RepairScoreReport, language: Language) {
                 println!("outcome: {}", journal.outcome_path);
                 println!("journal: {}", journal.outcomes_file);
             }
+            if let Some(evolution) = &report.evolution {
+                println!(
+                    "evolution_outcome: #{} {}/{}",
+                    evolution.index, evolution.tentacle_id, evolution.candidate_id
+                );
+            }
             println!("recent_repair_outcomes: {}", report.recent.len());
             println!("next: {}", join_or_none(&report.next));
         }
@@ -3620,10 +3641,48 @@ fn print_repair_score_report(report: &RepairScoreReport, language: Language) {
                 println!("结果文件: {}", journal.outcome_path);
                 println!("结果日志: {}", journal.outcomes_file);
             }
+            if let Some(evolution) = &report.evolution {
+                println!(
+                    "Evolution 结果: #{} {}/{}",
+                    evolution.index, evolution.tentacle_id, evolution.candidate_id
+                );
+            }
             println!("近期 repair 结果: {}", report.recent.len());
             println!("下一步: {}", join_or_none(&report.next));
         }
     }
+}
+
+fn mirror_repair_score_to_evolution_outcome(
+    state: &mut HarnessState,
+    trace: Option<&FeedTraceRecord>,
+    outcome: &RepairOutcome,
+) -> Option<EvolutionOutcome> {
+    let trace = trace?;
+    let target = trace.metadata.get("target_tentacle")?.trim();
+    let candidate = trace.metadata.get("candidate")?.trim();
+    if !repair_score_evolution_value_ready(target) || !repair_score_evolution_value_ready(candidate)
+    {
+        return None;
+    }
+    let summary = format!("repair outcome #{}: {}", outcome.index, outcome.summary);
+    Some(state.record_repair_linked_evolution_outcome(
+        target.to_string(),
+        candidate.to_string(),
+        outcome.status.clone(),
+        summary,
+    ))
+}
+
+fn repair_score_evolution_value_ready(value: &str) -> bool {
+    let value = value.trim();
+    if value.is_empty() {
+        return false;
+    }
+    !matches!(
+        value.to_ascii_lowercase().as_str(),
+        "none" | "unknown" | "recommended"
+    )
 }
 
 fn write_repair_score_journal(
@@ -19905,6 +19964,14 @@ JSON
             workspace.to_string_lossy().to_string(),
         ])
         .unwrap();
+        let mut seeded = HarnessState::load(&path).unwrap();
+        seeded.feed_traces[0]
+            .metadata
+            .insert("target_tentacle".to_string(), "swe-agent".to_string());
+        seeded.feed_traces[0]
+            .metadata
+            .insert("candidate".to_string(), "03-runtime-code".to_string());
+        seeded.save(&path).unwrap();
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -19920,6 +19987,15 @@ JSON
         let restored = HarnessState::load(&path).unwrap();
         assert_eq!(restored.repair_outcomes.len(), 1);
         assert_eq!(restored.repair_outcomes[0].trace_index, Some(1));
+        assert_eq!(restored.evolution_outcomes.len(), 1);
+        assert_eq!(restored.evolution_outcomes[0].tentacle_id, "swe-agent");
+        assert_eq!(
+            restored.evolution_outcomes[0].candidate_id,
+            "03-runtime-code"
+        );
+        assert!(restored.evolution_outcomes[0]
+            .summary
+            .contains("repair outcome #1"));
         assert_eq!(
             restored.last_pet_event.as_ref().unwrap().source,
             "repair score"

@@ -8,7 +8,7 @@ Updated: 2026-06-28
 - Tentacles own LLM prompt, tool metadata, runtime code, and evolution policy.
 - Product story now frames tentacles as local nervous systems: Need stays stable, implementation is replaceable, and RouteBook learns the best supply path from feedback.
 - Harness stores memory, route scores, OAuth grants, installed tentacles, goal state, Feed traces, and check history.
-- Harness also stores scored repair outcomes so repair sessions can become route-learning and heartbeat evidence.
+- Harness also stores scored repair outcomes so repair sessions can become route-learning, heartbeat, and harness-evolution evidence.
 - Three beats exist: heartbeat, memory compaction, and harness route/evolution recommendation.
 - Pixel pet exposes heartbeat, memory, harness, blocked, and success states through deterministic state mapping, and CLI can export the same pixel body as SVG.
 - Pet auto-color now follows the latest persisted Need/Feed/beat/evolve-score event plus goal status.
@@ -90,7 +90,7 @@ Updated: 2026-06-28
 - `repair [query]` runs the harness-repair tentacle, records the Feed trace, exposes the latest repair plan when present, and queues the tentacle's structured next Need for review.
 - `repair continue [query]` runs repair, takes the queued clean Need, routes it back through the harness, and returns the continued Feed plus trace-scoring commands.
 - Repair Feed scoring exists for harness feedback; direct user scoring from the app is no longer the main product path.
-- Repair scoring mirrors session-backed outcomes into `.octopus/harness-repair/<session>/OUTCOME.md` and `outcomes.jsonl`.
+- Repair scoring mirrors session-backed outcomes into `.octopus/harness-repair/<session>/OUTCOME.md` and `outcomes.jsonl`; when the trace carries a target tentacle and candidate, the same score is also reused as an evolution outcome without overwriting the repair pet event.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
 - The HTML install guide can expand each check to inspect stdout, stderr, exit code, and recent harness check history.
 - `check <tentacle> [index]` records compact harness history and the HTML install guide can rerun one check at a time.
@@ -218,6 +218,7 @@ Updated: 2026-06-28
 - Added `brain --council` plus native HTML Brain Council so multiple configured clean-brain models can draft separately and feed synthesis without exposing tools to the brain.
 - Added clean-brain intent mapping with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can choose cognitive intent before Feed without tool context.
 - Added clean-brain brief compaction with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so a strong model can receive a compact Goal/Mem/Need/Feed brief without tool context.
+- Added repair-score reuse so trace-backed harness repair outcomes can feed `evolution_outcomes` and improve later `evolve recommend` decisions.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.
 - Added clean-brain scout mapping with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can explore assumptions, unknowns, options, and risks before the next Need without tool context.
 - Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and local app API.
