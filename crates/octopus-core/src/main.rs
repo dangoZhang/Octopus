@@ -713,6 +713,14 @@ struct RepairScoreReport {
     recent: Vec<RepairOutcome>,
     #[serde(skip_serializing_if = "Option::is_none")]
     evolution: Option<EvolutionOutcome>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recommendation: Option<EvolutionRecommendation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    apply_artifact: Option<EvolutionApplyArtifact>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    evolution_artifact: Option<EvolutionArtifact>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recommendation_error: Option<String>,
     next: Vec<String>,
 }
 
@@ -1003,20 +1011,43 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     "octopus report".to_string(),
                     "octopus beat 200".to_string(),
                 ];
+                let mut recommendation = None;
+                let mut apply_artifact = None;
+                let mut evolution_artifact = None;
+                let mut recommendation_error = None;
                 if let Some(evolution) = &evolution {
-                    next.insert(
-                        0,
-                        format!(
-                            "octopus evolve recommend {}",
-                            shell_arg(&evolution.tentacle_id)
-                        ),
+                    let followup = evolution_score_report(
+                        &evolution.tentacle_id,
+                        &evolution.summary,
+                        &loaded,
+                        &cwd,
+                        evolution.clone(),
                     );
+                    if followup.recommendation.is_some() {
+                        next = followup.next.clone();
+                    } else {
+                        next.insert(
+                            0,
+                            format!(
+                                "octopus evolve recommend {}",
+                                shell_arg(&evolution.tentacle_id)
+                            ),
+                        );
+                    }
+                    recommendation = followup.recommendation;
+                    apply_artifact = followup.apply_artifact;
+                    evolution_artifact = followup.evolution_artifact;
+                    recommendation_error = followup.recommendation_error;
                 }
                 let report = RepairScoreReport {
                     outcome,
                     journal,
                     recent: loaded.recent_repair_outcomes(5),
                     evolution,
+                    recommendation,
+                    apply_artifact,
+                    evolution_artifact,
+                    recommendation_error,
                     next,
                 };
                 loaded.save(&state).map_err(|error| error.to_string())?;
@@ -3626,6 +3657,20 @@ fn print_repair_score_report(report: &RepairScoreReport, language: Language) {
                     evolution.index, evolution.tentacle_id, evolution.candidate_id
                 );
             }
+            if let Some(recommendation) = &report.recommendation {
+                println!("next recommended: {}", recommendation.candidate_id);
+                println!("next score: {:.2}", recommendation.recommendation_score);
+                println!("next reason: {}", recommendation.reason);
+            }
+            if let Some(artifact) = &report.apply_artifact {
+                println!("next plan: {}", artifact.plan_path);
+                if let Some(path) = &artifact.patch_path {
+                    println!("next patch: {path}");
+                }
+            }
+            if let Some(error) = &report.recommendation_error {
+                println!("recommendation error: {error}");
+            }
             println!("recent_repair_outcomes: {}", report.recent.len());
             println!("next: {}", join_or_none(&report.next));
         }
@@ -3646,6 +3691,20 @@ fn print_repair_score_report(report: &RepairScoreReport, language: Language) {
                     "Evolution 结果: #{} {}/{}",
                     evolution.index, evolution.tentacle_id, evolution.candidate_id
                 );
+            }
+            if let Some(recommendation) = &report.recommendation {
+                println!("下一推荐: {}", recommendation.candidate_id);
+                println!("下一分数: {:.2}", recommendation.recommendation_score);
+                println!("下一原因: {}", recommendation.reason);
+            }
+            if let Some(artifact) = &report.apply_artifact {
+                println!("下一计划: {}", artifact.plan_path);
+                if let Some(path) = &artifact.patch_path {
+                    println!("下一补丁: {path}");
+                }
+            }
+            if let Some(error) = &report.recommendation_error {
+                println!("推荐错误: {error}");
             }
             println!("近期 repair 结果: {}", report.recent.len());
             println!("下一步: {}", join_or_none(&report.next));
@@ -19996,6 +20055,12 @@ JSON
         assert!(restored.evolution_outcomes[0]
             .summary
             .contains("repair outcome #1"));
+        let evolution_plan =
+            workspace.join(".octopus/evolution/swe-agent/apply/03-runtime-code.md");
+        let evolution_json =
+            workspace.join(".octopus/evolution/swe-agent/apply/03-runtime-code.json");
+        assert!(evolution_plan.exists());
+        assert!(evolution_json.exists());
         assert_eq!(
             restored.last_pet_event.as_ref().unwrap().source,
             "repair score"
