@@ -50,7 +50,7 @@ cowork/
 - `feedback`：人工评分 Feed trace，更新 route learning 和 pet 状态。
 - `repair`：让 harness-repair-agent 诊断状态、trace、check、adapter，并写可审查 repair bundle。
 - `evolve` / `beat`：从失败 trace、check history、repair outcome 生成 harness 演化建议。
-- `provider`：生成、保存、检查 Codex/OpenAI-compatible/local/LiteLLM 配置，同一套 env 可供 clean brain、触手规划和 harness evolution 使用。
+- `provider`：生成、保存、检查 Codex/OpenAI-compatible/local/LiteLLM 配置，同一套 env 可供 clean brain、触手规划和 harness evolution 使用；`provider status` 会先显示 Goal chat、clean brain、tentacle planning、harness evolution 四类覆盖，避免把 Codex OAuth 或本地模型误判成缺少 API key。
 - `start`：启动本地 HTML app，通过受限本地 API 运行 Octopus 子命令。
 - `preflight`：检查 `0.1.0` 发布门槛，并显示必需/可选通过数和必需阻塞项。
 

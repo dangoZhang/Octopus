@@ -2197,6 +2197,7 @@
         const root = $("providerReport");
         root.className = "stack";
         root.textContent = "";
+        root.appendChild(reportList("Coverage", report.coverage || [], providerCoverageItem));
         root.appendChild(reportList("Layers", report.layers || [], providerLayerItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
@@ -3312,6 +3313,26 @@
         note.className = "check-meta";
         note.textContent = layer.message || layer.check_command || "";
         item.append(badge, command, meta, note);
+        return item;
+      }
+
+      function providerCoverageItem(coverage) {
+        const item = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = coverage.ready ? "badge ok" : "badge failed";
+        badge.textContent = coverage.ready ? "ready" : "blocked";
+        const title = document.createElement("span");
+        title.className = "check-command";
+        title.textContent = `${coverage.id}: ${coverage.purpose}`;
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        meta.textContent = `layers ${(coverage.required_layers || []).join(", ") || "none"} · prefixes ${(coverage.prefixes || []).join(", ") || "none"}`;
+        const proof = document.createElement("span");
+        proof.className = "check-meta";
+        proof.textContent = coverage.ready
+          ? `proof ${(coverage.live_proof || []).join(" · ") || "none"}`
+          : `blockers ${(coverage.blockers || []).join(" · ") || "none"}`;
+        item.append(badge, title, meta, proof);
         return item;
       }
 

@@ -95,6 +95,8 @@ octopus brain --focus compare --save "which path should the brain compare?"
 octopus brain --council --models OCTOPUS_LLM --save "ask clean brains"
 ```
 
+`octopus provider status` 会先显示四类覆盖：Goal chat、clean brain、tentacle planning、harness evolution。Codex OAuth 和本地模型可以没有 API key；真实可用性用 `octopus provider check` 或 `octopus preflight --live` 证明。
+
 ## Harness 演化
 
 ```bash

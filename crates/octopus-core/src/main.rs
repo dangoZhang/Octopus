@@ -535,8 +535,20 @@ struct ProviderCheckReport {
 
 #[derive(Debug, serde::Serialize)]
 struct ProviderStatusReport {
+    coverage: Vec<ProviderCoverageStatus>,
     layers: Vec<ProviderLayerStatus>,
     next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ProviderCoverageStatus {
+    id: String,
+    purpose: String,
+    ready: bool,
+    required_layers: Vec<String>,
+    prefixes: Vec<String>,
+    live_proof: Vec<String>,
+    blockers: Vec<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -4855,10 +4867,16 @@ fn provider_status_report() -> ProviderStatusReport {
             "export OCTOPUS_LLM_EVOLVE=1",
         ),
     ];
+    let coverage = provider_coverage_report(&layers);
     let mut next = vec!["octopus providers".to_string()];
-    if layers.iter().any(|layer| !layer.configured) {
+    if coverage.iter().any(|item| !item.ready) {
         next.push("octopus provider save openai".to_string());
         next.push("source .octopus/llm.env".to_string());
+    }
+    for item in &coverage {
+        if item.ready {
+            next.extend(item.live_proof.clone());
+        }
     }
     for layer in &layers {
         if layer.configured && layer.curl_available {
@@ -4869,7 +4887,117 @@ fn provider_status_report() -> ProviderStatusReport {
     }
     next.sort();
     next.dedup();
-    ProviderStatusReport { layers, next }
+    ProviderStatusReport {
+        coverage,
+        layers,
+        next,
+    }
+}
+
+fn provider_coverage_report(layers: &[ProviderLayerStatus]) -> Vec<ProviderCoverageStatus> {
+    vec![
+        provider_coverage_status(
+            "goal_chat",
+            "Goal refinement from user chat",
+            &["chat_goal"],
+            layers,
+            &["octopus chat \"tighten the goal\""],
+        ),
+        provider_coverage_status(
+            "clean_brain",
+            "Goal/Mem/Need/Feed clean-brain calls",
+            &["clean_brain", "clean_brain_goal"],
+            layers,
+            &["octopus brain --goal --live \"tighten the current objective\""],
+        ),
+        provider_coverage_status(
+            "tentacle_planning",
+            "Tool-side LLM planning before Feed",
+            &["tentacle_planning"],
+            layers,
+            &["octopus think swe-agent observe README.md"],
+        ),
+        provider_coverage_status(
+            "harness_evolution",
+            "LLM-assisted prompt/meta/code/policy evolution",
+            &["harness_evolution"],
+            layers,
+            &["octopus evolve swe-agent \"improve Feed evidence\""],
+        ),
+    ]
+}
+
+fn provider_coverage_status(
+    id: &str,
+    purpose: &str,
+    required_layers: &[&str],
+    layers: &[ProviderLayerStatus],
+    live_proof: &[&str],
+) -> ProviderCoverageStatus {
+    let matched = required_layers
+        .iter()
+        .filter_map(|required| layers.iter().find(|layer| layer.layer == *required))
+        .collect::<Vec<_>>();
+    let missing = required_layers
+        .iter()
+        .filter(|required| !layers.iter().any(|layer| layer.layer == **required))
+        .map(|value| (*value).to_string())
+        .collect::<Vec<_>>();
+    let mut blockers = Vec::new();
+    for layer in &matched {
+        if !provider_layer_ready(layer) {
+            blockers.push(format!(
+                "{}: enabled={} configured={} runtime={} prefix={} message={}",
+                layer.layer,
+                layer.enabled,
+                layer.configured,
+                if layer.curl_available {
+                    "available"
+                } else {
+                    "missing"
+                },
+                layer.prefix,
+                layer.message
+            ));
+        }
+    }
+    for layer in &missing {
+        blockers.push(format!("{layer}: missing from provider status"));
+    }
+    let mut prefixes = matched
+        .iter()
+        .map(|layer| layer.prefix.clone())
+        .collect::<Vec<_>>();
+    prefixes.sort();
+    prefixes.dedup();
+    let mut proof = matched
+        .iter()
+        .filter(|layer| provider_layer_ready(layer))
+        .map(|layer| layer.check_command.clone())
+        .chain(live_proof.iter().map(|item| (*item).to_string()))
+        .collect::<Vec<_>>();
+    proof.sort();
+    proof.dedup();
+    ProviderCoverageStatus {
+        id: id.to_string(),
+        purpose: purpose.to_string(),
+        ready: blockers.is_empty(),
+        required_layers: required_layers
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
+        prefixes,
+        live_proof: proof,
+        blockers,
+    }
+}
+
+fn provider_layer_ready(layer: &ProviderLayerStatus) -> bool {
+    layer.enabled && layer.configured && layer.curl_available
+}
+
+fn provider_coverage_ready(report: &ProviderStatusReport) -> bool {
+    report.coverage.iter().all(|item| item.ready)
 }
 
 fn provider_layer_status(
@@ -5066,6 +5194,30 @@ fn print_provider_status(report: &ProviderStatusReport, language: Language) {
     match language {
         Language::En => println!("Provider status"),
         Language::Zh => println!("Provider 状态"),
+    }
+    for coverage in &report.coverage {
+        match language {
+            Language::En => {
+                println!(
+                    "coverage {}: ready={} prefixes={} proof={} blockers={}",
+                    coverage.id,
+                    coverage.ready,
+                    join_or_none(&coverage.prefixes),
+                    join_or_none(&coverage.live_proof),
+                    join_or_none(&coverage.blockers)
+                );
+            }
+            Language::Zh => {
+                println!(
+                    "覆盖 {}: 就绪={} 前缀={} 验证={} 阻塞={}",
+                    coverage.id,
+                    coverage.ready,
+                    join_or_none(&coverage.prefixes),
+                    join_or_none(&coverage.live_proof),
+                    join_or_none(&coverage.blockers)
+                );
+            }
+        }
     }
     for layer in &report.layers {
         let model = layer.model.as_deref().unwrap_or("none");
@@ -6903,10 +7055,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         })
     });
     let provider_configured = provider.layers.iter().any(|layer| layer.configured);
-    let provider_ready = provider
-        .layers
-        .iter()
-        .all(|layer| layer.enabled && layer.configured && layer.curl_available);
+    let provider_ready = provider_coverage_ready(&provider);
     let github_ready = state.active_grant("github", "dangoZhang/Octopus").is_some();
 
     let mut capabilities = vec![
@@ -7196,12 +7345,14 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
                 "setup_needed"
             },
             provider
-                .layers
+                .coverage
                 .iter()
-                .map(|layer| {
+                .map(|coverage| {
                     format!(
-                        "{} enabled={} configured={}",
-                        layer.layer, layer.enabled, layer.configured
+                        "{} ready={} prefixes={}",
+                        coverage.id,
+                        coverage.ready,
+                        join_or_none(&coverage.prefixes)
                     )
                 })
                 .collect::<Vec<_>>()
@@ -7258,7 +7409,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         };
         gaps.push(product_gap(
             "provider_feedback",
-            "LLM-backed chat, tentacle planning, or evolution is not fully live",
+            "LLM-backed Goal chat, clean brain, tentacle planning, or evolution coverage is incomplete",
             next,
         ));
     }
@@ -7394,9 +7545,7 @@ fn preflight_report(
         })
         .map(|id| (*id).to_string())
         .collect::<Vec<_>>();
-    let provider_layers_ready = provider.layers.iter().all(|layer| {
-        layer.enabled && layer.configured && layer.api_key_present && layer.curl_available
-    });
+    let provider_layers_ready = provider_coverage_ready(&provider);
     let github_grant = state.active_grant("github", "dangoZhang/Octopus").is_some();
     let gh_ready = command_ready("gh");
     let docs_ready = repo_root().join("README.md").exists()
@@ -7513,16 +7662,15 @@ fn preflight_report(
             provider_layers_ready,
             true,
             provider
-                .layers
+                .coverage
                 .iter()
-                .map(|layer| {
+                .map(|coverage| {
                     format!(
-                        "{} enabled={} configured={} key={} curl={}",
-                        layer.layer,
-                        layer.enabled,
-                        layer.configured,
-                        layer.api_key_present,
-                        layer.curl_available
+                        "{} ready={} prefixes={} blockers={}",
+                        coverage.id,
+                        coverage.ready,
+                        join_or_none(&coverage.prefixes),
+                        join_or_none(&coverage.blockers)
                     )
                 })
                 .collect::<Vec<_>>()
@@ -13362,11 +13510,11 @@ mod tests {
         http_content_length, install_report, is_broken_pipe_panic, localize_summary,
         materialize_bundled_tentacles_root, parse_bridge_env_overlay, parse_first_run_args,
         parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
-        preflight_report, prepare_bridge_state, product_report, provider_env_report,
-        provider_status_report, real_machine_record_status_from_parts, repair_continue_report,
-        repair_report, run, run_bridge_command, save_provider_env_report_with_key, skill_reports,
-        starter_report, tentacles_root_ready, update_report, usage, write_pet_image_report,
-        Language,
+        preflight_report, prepare_bridge_state, product_report, provider_coverage_ready,
+        provider_env_report, provider_status_report, real_machine_record_status_from_parts,
+        repair_continue_report, repair_report, run, run_bridge_command,
+        save_provider_env_report_with_key, skill_reports, starter_report, tentacles_root_ready,
+        update_report, usage, write_pet_image_report, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, load_tentacle_profiles_from_path,
@@ -16399,12 +16547,21 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .iter()
             .find(|layer| layer.layer == "harness_evolution")
             .unwrap();
+        let coverage = report
+            .coverage
+            .iter()
+            .find(|item| item.id == "tentacle_planning")
+            .unwrap();
 
         assert!(tentacle.enabled);
         assert!(evolution.enabled);
         assert!(tentacle.configured);
         assert!(evolution.configured);
         assert!(tentacle.message.contains("Codex CLI"));
+        assert!(coverage.ready);
+        assert!(coverage
+            .prefixes
+            .contains(&"OCTOPUS_CODEX_STATUS".to_string()));
 
         restore_env("OCTOPUS_LLM_MANIFEST", old_manifest);
         restore_env("OCTOPUS_LLM_EVOLVE", old_evolve);
@@ -16498,10 +16655,28 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let report = provider_status_report();
 
         assert_eq!(report.layers.len(), 18);
+        assert_eq!(report.coverage.len(), 4);
+        assert!(provider_coverage_ready(&report));
         assert!(report
             .layers
             .iter()
             .all(|layer| layer.enabled && layer.configured));
+        assert!(report
+            .coverage
+            .iter()
+            .any(|coverage| coverage.id == "goal_chat" && coverage.ready));
+        assert!(report
+            .coverage
+            .iter()
+            .any(|coverage| coverage.id == "clean_brain" && coverage.ready));
+        assert!(report
+            .coverage
+            .iter()
+            .any(|coverage| coverage.id == "tentacle_planning" && coverage.ready));
+        assert!(report
+            .coverage
+            .iter()
+            .any(|coverage| coverage.id == "harness_evolution" && coverage.ready));
         assert!(report.layers.iter().any(|layer| {
             layer.layer == "tentacle_planning"
                 && layer.prefix == "OCTOPUS_STATUS_TEST"
