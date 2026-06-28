@@ -17882,6 +17882,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("\"/pet.html\""));
         assert!(record.contains("\"/tutorial.html\""));
         assert!(record.contains("\"/recipes.html\""));
+        assert!(record.contains("\"/download.json\""));
         assert!(record.contains("\"web_demo\""));
         assert!(record.contains("\"web_try_app\""));
         assert!(record.contains("browser-tentacle Feed demo present"));
@@ -17902,9 +17903,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let (_, index) = bridge_static("/").unwrap();
         let (_, tutorial) = bridge_static("/tutorial.html").unwrap();
         let (_, recipes) = bridge_static("/recipes.html").unwrap();
+        let (download_type, download) = bridge_static("/download.json").unwrap();
         let (_, pet_embedded) = bridge_static_asset("/pet.html").unwrap();
 
         assert_eq!(content_type, "text/html");
+        assert_eq!(download_type, "application/json");
         let app_text = String::from_utf8_lossy(&app);
         assert!(app_text.contains("Octopus App"));
         assert!(app_text.contains("127.0.0.1:8765"));
@@ -17912,8 +17915,24 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(String::from_utf8_lossy(&index).contains("Octopus App"));
         assert!(String::from_utf8_lossy(&tutorial).contains("Octopus Tutorial"));
         assert!(String::from_utf8_lossy(&recipes).contains("Octopus Recipes"));
+        assert!(String::from_utf8_lossy(&download).contains("\"cargo_package\""));
         assert!(String::from_utf8_lossy(pet_embedded).contains("pixel-pet"));
         assert!(bridge_static("/missing.html").is_err());
+    }
+
+    #[test]
+    fn static_download_manifest_matches_cli_report() {
+        let report = download_report();
+        let manifest =
+            serde_json::from_str::<serde_json::Value>(include_str!("../../../docs/download.json"))
+                .unwrap();
+
+        assert_eq!(manifest["current_version"], report.current_version);
+        assert_eq!(manifest["repository"], report.repository);
+        assert_eq!(manifest["install"]["shell"], report.install.shell);
+        assert_eq!(manifest["update"]["shell"], report.update.shell);
+        assert_eq!(manifest["start"], report.start);
+        assert_eq!(manifest["docs"][1]["url"], report.docs[1].url);
     }
 
     #[test]

@@ -252,6 +252,7 @@ fn local_app_pages() -> Vec<LocalAppPageReport> {
         ("/index.html", "Octopus"),
         ("/tutorial.html", "Octopus Tutorial"),
         ("/recipes.html", "Octopus Recipes"),
+        ("/download.json", "cargo_package"),
         ("/use.html", "Use Octopus"),
     ]
     .into_iter()
@@ -639,7 +640,15 @@ pub(crate) fn static_page(path: &str) -> Result<(&'static str, Vec<u8>), String>
     };
     let path = repo_root().join("docs").join(file);
     let body = fs::read(path).unwrap_or_else(|_| embedded.to_vec());
-    Ok(("text/html", body))
+    Ok((static_content_type(file), body))
+}
+
+fn static_content_type(file: &str) -> &'static str {
+    if file.ends_with(".json") {
+        "application/json"
+    } else {
+        "text/html"
+    }
 }
 
 pub(crate) fn static_asset(path: &str) -> Option<(&'static str, &'static [u8])> {
@@ -661,6 +670,10 @@ pub(crate) fn static_asset(path: &str) -> Option<(&'static str, &'static [u8])> 
         "/recipes.html" => Some((
             "recipes.html",
             &include_bytes!("../../../docs/recipes.html")[..],
+        )),
+        "/download.json" => Some((
+            "download.json",
+            &include_bytes!("../../../docs/download.json")[..],
         )),
         "/use.html" => Some(("use.html", &include_bytes!("../../../docs/use.html")[..])),
         "/about.html" => Some((

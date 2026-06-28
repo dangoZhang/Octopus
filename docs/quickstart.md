@@ -2,6 +2,8 @@
 
 For the shortest product walkthrough, open [Octopus Tutorial](tutorial.html), then keep [Recipes](recipes.html) and [Use Octopus in five minutes](use.html) nearby for CLI details.
 
+Machine-readable install/update links are in [download.json](download.json) and from `octopus download`.
+
 ## Install
 
 ```bash

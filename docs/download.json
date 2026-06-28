@@ -1,0 +1,50 @@
+{
+  "current_version": "0.0.22",
+  "repository": "https://github.com/dangoZhang/Octopus",
+  "source_archive_url": "https://github.com/dangoZhang/Octopus/archive/refs/heads/main.zip",
+  "cargo_package": "octopus-core",
+  "binary": "octopus",
+  "install": {
+    "label": "Install from GitHub with Cargo",
+    "command": [
+      "cargo",
+      "install",
+      "--git",
+      "https://github.com/dangoZhang/Octopus",
+      "octopus-core",
+      "--locked",
+      "--bin",
+      "octopus",
+      "--force"
+    ],
+    "shell": "cargo install --git 'https://github.com/dangoZhang/Octopus' octopus-core --locked --bin octopus --force"
+  },
+  "update": {
+    "label": "Update existing install",
+    "command": [
+      "octopus",
+      "update",
+      "--run"
+    ],
+    "shell": "octopus update --run"
+  },
+  "start": "octopus start --open",
+  "docs": [
+    {
+      "label": "Try app",
+      "url": "https://dangozhang.github.io/Octopus/app.html"
+    },
+    {
+      "label": "Quick Install & Use",
+      "url": "https://dangozhang.github.io/Octopus/quickstart.html"
+    },
+    {
+      "label": "Recipes",
+      "url": "https://dangozhang.github.io/Octopus/recipes.html"
+    }
+  ],
+  "next": [
+    "octopus start --open",
+    "octopus first-run \"make this repo easier to use\""
+  ]
+}

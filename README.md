@@ -2,7 +2,7 @@
 
 Clean brain. Independent tentacles.
 
-[Try the app](https://dangozhang.github.io/Octopus/app.html) · [Tutorial](https://dangozhang.github.io/Octopus/tutorial.html) · [Recipes](https://dangozhang.github.io/Octopus/recipes.html) · [Docs](https://dangozhang.github.io/Octopus/) · [中文](README.zh-CN.md)
+[Try the app](https://dangozhang.github.io/Octopus/app.html) · [Download manifest](https://dangozhang.github.io/Octopus/download.json) · [Tutorial](https://dangozhang.github.io/Octopus/tutorial.html) · [Recipes](https://dangozhang.github.io/Octopus/recipes.html) · [Docs](https://dangozhang.github.io/Octopus/) · [中文](README.zh-CN.md)
 
 Try the app runs in the browser: enter an API key, watch the clean brain emit a Need, then let a browser tentacle create Hello World or draw an animated Octopus as Feed.
 
