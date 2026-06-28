@@ -12365,6 +12365,7 @@ fn download_artifacts_preflight_check() -> PreflightCheck {
     let install_script = include_str!("../../../docs/install.sh");
     let install_script_matches = install_script.starts_with("#!/usr/bin/env sh")
         && install_script.contains("cargo install")
+        && install_script.contains("--version")
         && install_script.contains("octopus start --open")
         && install_script.contains(&report.repository)
         && install_script.contains(&report.cargo_package)
@@ -17980,6 +17981,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(String::from_utf8_lossy(&recipes).contains("Octopus Recipes"));
         assert!(String::from_utf8_lossy(&download).contains("\"cargo_package\""));
         assert!(String::from_utf8_lossy(&install_script).contains("cargo install"));
+        assert!(String::from_utf8_lossy(&install_script).contains("--version"));
         assert!(String::from_utf8_lossy(pet_embedded).contains("pixel-pet"));
         assert!(bridge_static("/missing.html").is_err());
     }

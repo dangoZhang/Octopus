@@ -44,7 +44,7 @@ Updated: 2026-06-28
 - `docs/quickstart.html` now matches the product Quick Install & Use path instead of exposing a long internal manual flow, and its mobile layout no longer clips commands.
 - `octopus download` now prints a machine-readable install/update/source/docs manifest plus the one-line Pages install command, and `update` points to it before running a reinstall.
 - `docs/download.json` now publishes the same install/update/source/docs manifest for GitHub Pages and the local app server with JSON content type.
-- `docs/install.sh` now provides a one-line Pages/local install script, and the download manifest points to it.
+- `docs/install.sh` now provides a one-line Pages/local install script, verifies the installed binary with `octopus --version` when it can find it, and the download manifest points to it.
 - `preflight` now gates the download artifacts so `octopus download`, `docs/download.json`, `docs/install.sh`, and local static serving stay aligned before release.
 - `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
 - `start` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
