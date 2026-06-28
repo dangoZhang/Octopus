@@ -43,7 +43,7 @@ Updated: 2026-06-28
 - The native HTML app defaults its local API URL to Octopus when opened from docs pages, and auto-renders a read-only startup snapshot when served by `octopus start`.
 - The native HTML app has been reset to one polished page with pet, Goal, current Need, current Feed, and Output as an activity stream. Navigation links, state/API/constraint details, and internal mode controls are removed; the only visible write action is Send.
 - The native HTML app no longer exposes Doctor, Provider, Install, Repair, Evolve, Check, Preflight, or First Run as first-path panels; those remain CLI/internal observation or release-gate surfaces.
-- The single Send action keeps granular Need/Feed/harness steps behind the bridge while still updating the current Need, Feed, pet, and activity Output.
+- The single Send action keeps granular Need/Feed/harness steps behind the bridge while still updating the current Need, Feed, pet, and activity Output; refresh no longer overwrites the just-returned Feed summary with a next-command string.
 - `first-run [objective]` runs the same safe local loop from CLI and returns one JSON record with Bootstrap, Goal, Starter, Feed, Feedback, Beat, Product, Preflight, and Doctor evidence.
 - `first-run --live [objective]` keeps the same loop but turns on the live provider preflight gate only when explicitly requested.
 - `update` reports the current GitHub reinstall command by default, and `update --run` performs the cargo reinstall explicitly.
@@ -231,6 +231,8 @@ Updated: 2026-06-28
 - Folded local state/API/constraint configuration under Local settings so the app's default visible surface stays pet, Goal, current Need, current Feed, and Output.
 - Rebuilt the one-page app again as a product surface: removed command-console styling, removed visible local settings, collapsed internal Start/Update/Think modes into one Send action, and turned Output into a compact activity stream.
 - Removed app navigation links and old report/preflight panel language from the current product surface, then added root `structure.md` as the committed architecture and capability map for release review.
+- Made connected app Output product-facing: status shows compact readiness counts, Send keeps the returned Need/Feed summary visible, and internal next commands stay out of the first page.
+- Verified the real local bridge path with `octopus start`, browser Goal input, and Send; connected Output now prefers `Latest Feed` over readiness commands.
 - Rolled the cleanup/version cadence to `0.0.19` after repair-score reuse, target-aware repair outcomes, immediate evolution follow-up artifacts, harness-learning product visibility, and the `0.0.24` core-audit gate.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.
 - Added clean-brain scout mapping with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can explore assumptions, unknowns, options, and risks before the next Need without tool context.

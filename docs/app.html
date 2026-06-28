@@ -334,7 +334,7 @@
       <section class="mast">
         <div>
           <h1>Octopus</h1>
-          <div class="status" id="statusLine">127.0.0.1:8765 · waiting</div>
+          <div class="status" id="statusLine">Local Octopus · waiting</div>
         </div>
       </section>
 
@@ -531,7 +531,36 @@
         }
       }
 
-      async function refresh() {
+      function latestFeedText(report) {
+        const feed = report.feed && report.feed.feeds && report.feed.feeds[0];
+        if (feed) {
+          const need = feed.need || {};
+          const kind = need.kind || "Need";
+          const query = need.query ? ` ${need.query}` : "";
+          return `${kind}${query} -> ${feed.status || "Feed"}: ${feed.summary || "Feed returned."}`;
+        }
+        const trace = report.latest_feed_trace;
+        if (trace) {
+          const via = [trace.tentacle, trace.tool].filter(Boolean).join(" / ");
+          const suffix = via ? ` via ${via}` : "";
+          return `${trace.need_kind || "Need"} -> ${trace.status || "Feed"}${suffix}: ${trace.summary || trace.need_query || "Feed trace recorded."}`;
+        }
+        return "";
+      }
+
+      function statusText(report) {
+        const traces = Number(report.feed_trace_count || 0);
+        const routes = Number(report.route_count || 0);
+        const tentacles = Array.isArray(report.tentacles) ? report.tentacles.length : 0;
+        const parts = [];
+        if (tentacles) parts.push(`${tentacles} tentacles`);
+        if (traces) parts.push(`${traces} Feed trace${traces === 1 ? "" : "s"}`);
+        if (routes) parts.push(`${routes} route${routes === 1 ? "" : "s"}`);
+        return parts.length ? `Ready: ${parts.join(" · ")}.` : "Ready. Give Octopus a goal.";
+      }
+
+      async function refresh(options = {}) {
+        const replace = options.replaceOutput !== false;
         setBusy(true);
         setStatus("checking...");
         setOutputStatus("checking");
@@ -539,16 +568,19 @@
           const report = await runJson([...baseArgs(), "status"]);
           lastStatus = report;
           applyStatus(report);
-          replaceOutput("Connected", report.next_action || "Octopus state is ready.", "pass");
-          setStatus("127.0.0.1:8765 · connected");
+          if (replace) {
+            const feedText = latestFeedText(report);
+            replaceOutput(feedText ? "Latest Feed" : "Connected", feedText || statusText(report), "pass");
+          }
+          setStatus("Local Octopus · connected");
           setOutputStatus("ready");
         } catch (error) {
           drawPet("waiting");
           setBlock("petText", "Waiting", "Give it a goal. Need and Feed stay visible.");
           setBlock("needCard", "Current Need", "No local state.");
           setBlock("feedCard", "Current Feed", "No local state.");
-          replaceOutput("Not connected", "Run octopus start --open.", "warn");
-          setStatus("127.0.0.1:8765 · not connected");
+          if (replace) replaceOutput("Not connected", "Run octopus start --open.", "warn");
+          setStatus("Local Octopus · not connected");
           setOutputStatus("offline");
         } finally {
           setBusy(false);
@@ -565,7 +597,7 @@
           output(label, summarize(report), "pass");
           setStatus(`${label} complete`);
           setOutputStatus("ready");
-          await refresh();
+          await refresh({ replaceOutput: false });
         } catch (error) {
           output(label, String(error), "fail");
           setStatus(`${label} failed`);
@@ -576,6 +608,8 @@
       }
 
       function summarize(report) {
+        const feedText = latestFeedText(report);
+        if (feedText) return feedText;
         if (report.summary) return report.summary;
         if (report.objective) return report.objective;
         if (report.goal && report.goal.objective) return report.goal.objective;
@@ -601,6 +635,8 @@
         return act("Sent", args, (report) => {
           if (report.feed && report.feed.feeds && report.feed.feeds[0]) {
             const feed = report.feed.feeds[0];
+            const need = feed.need || {};
+            setBlock("needCard", need.kind || "Need", need.query || "Need supplied.");
             setBlock("feedCard", feed.status || "Feed", feed.summary || "Feed returned.");
           }
         });
