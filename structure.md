@@ -50,4 +50,5 @@ Octopus/
 2. Enter one Goal in the local app.
 3. Octopus turns the Goal into Need, routes Feed through tentacles, records feedback, and pulses the three hearts.
 4. The app shows pet state, current Need, current Feed, and Output.
-5. `preflight`, provider matrix, real-machine records, and benchmark records remain release evidence before `0.1.0`.
+5. `benchmark record/check` collects the smallest SWE/Claw/Wild pass evidence.
+6. `preflight`, provider matrix, real-machine records, and benchmark records remain release evidence before `0.1.0`.

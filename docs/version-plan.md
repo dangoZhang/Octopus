@@ -40,6 +40,6 @@ Road to `0.1.0`:
 
 Last cleanup/version correction: `0.0.20` on 2026-06-28. Scope: local app first path reset, real bridge Send verification, `start --check` app evidence, root structure map, first-path regression test, and version consistency; no tag cut.
 
-Product commits toward `0.0.21`: 0/8.
+Product commits toward `0.0.21`: 1/8.
 
 Next planned cleanup/version commit: `0.0.21`.
