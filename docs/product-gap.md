@@ -24,7 +24,7 @@ Updated: 2026-06-28
 - Provider setup is runtime plumbing; start overlays `.octopus/llm.env` onto child Octopus commands without making provider writes the main user path.
 - Provider env supports optional model thinking controls: reasoning effort, token budget, temperature, top_p, and provider-specific JSON body keys.
 - Provider coverage readiness does not treat empty API keys as failure when the backend can be Codex OAuth or a local OpenAI-compatible model; `provider check` and `preflight --live` remain the live proof.
-- `provider matrix [path]` writes a reviewable current-head matrix template for Codex OAuth, API-key cloud, local model, and gateway providers across provider check, clean brain, tentacle planning, and harness evolution; `provider matrix run [path]` runs explicitly enabled targets and writes results back; `provider matrix check [path]` audits that evidence before it is summarized in the release log.
+- `provider matrix [path]` writes a reviewable current-head matrix template and prepares missing `.octopus/providers/*.env` files for Codex OAuth, API-key cloud, local model, and gateway providers across provider check, clean brain, tentacle planning, and harness evolution; `provider matrix run [path]` runs explicitly enabled targets and writes results back; `provider matrix check [path]` audits that evidence before it is summarized in the release log.
 - The local app bridge now limits user-writable commands to `chat`, `goal set/refine`, `brain --goal`, and `first-run`; provider status/check and other diagnostics are observation-only.
 - The local app bridge server, static app serving, streaming command runner, command policy, denial response, provider env overlay parser, and `bridge_goal_surface` preflight evidence now live in `app_bridge.rs`, so the product input boundary is separate from the general CLI backend.
 - Blocked local app bridge writes now return `user_writes_brain_goal_only` plus suggested Goal commands, so old/internal controls fail with product guidance instead of a generic server error.
@@ -307,6 +307,7 @@ Updated: 2026-06-28
 - Added `provider matrix run`, which loads each enabled target env file, runs provider check, live clean-brain Goal, live tentacle planning, and provider-assisted harness evolution, then writes pass/fail/skipped results back into the matrix record.
 - Added provider matrix run/check to the real-machine preflight record command chain, so generated records now collect and audit matrix evidence instead of only creating a blank template.
 - Updated Product Report and Preflight next actions to point at matrix run/check, keeping provider evidence collection out of the old manual-fill path.
+- Made `provider matrix` prepare missing target env files without overwriting existing provider env, so real-machine validation can move from template to run with fewer setup steps.
 
 ## Remaining Gaps
 

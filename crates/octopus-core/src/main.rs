@@ -557,8 +557,16 @@ struct ProviderMatrixReport {
     version: String,
     current_head: Option<String>,
     targets: Vec<ProviderMatrixTarget>,
+    env_files: Vec<ProviderMatrixEnvFileReport>,
     commands: Vec<String>,
     next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ProviderMatrixEnvFileReport {
+    target: String,
+    path: String,
+    status: String,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -4729,22 +4737,24 @@ fn save_provider_env_report_inner(
 }
 
 fn write_provider_matrix_record(output_path: &Path) -> Result<ProviderMatrixReport, String> {
-    if let Some(parent) = output_path
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
     let version = env!("CARGO_PKG_VERSION").to_string();
     let current_head = git_short_head();
     let targets = provider_matrix_targets();
+    let env_files = ensure_provider_matrix_env_files(&targets)?;
     let commands = targets
         .iter()
         .flat_map(|target| target.commands.clone())
         .collect::<Vec<_>>();
-    let head = current_head.as_deref().unwrap_or("unknown");
-    let mut content = format!(
-        r#"# Provider Matrix Record
+    if !output_path.exists() {
+        if let Some(parent) = output_path
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+        {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        let head = current_head.as_deref().unwrap_or("unknown");
+        let mut content = format!(
+            r#"# Provider Matrix Record
 
 Use this as current-head evidence for `0.0.18` provider validation.
 
@@ -4768,10 +4778,10 @@ Use this as current-head evidence for `0.0.18` provider validation.
 ## Targets
 
 "#
-    );
-    for target in &targets {
-        content.push_str(&format!(
-            r#"### {kind}: {id}
+        );
+        for target in &targets {
+            content.push_str(&format!(
+                r#"### {kind}: {id}
 
 - Profile: `{profile}`
 - Prefix: `{prefix}`
@@ -4792,38 +4802,62 @@ Results:
 - Notes:
 
 "#,
-            kind = target.kind,
-            id = target.id,
-            profile = target.profile,
-            prefix = target.prefix,
-            enabled_env = target.enabled_env,
-            env_path = target.env_path,
-            purpose = target.purpose,
-            commands = target.commands.join("\n")
-        ));
-    }
-    content.push_str(
-        r#"## Decision
+                kind = target.kind,
+                id = target.id,
+                profile = target.profile,
+                prefix = target.prefix,
+                enabled_env = target.enabled_env,
+                env_path = target.env_path,
+                purpose = target.purpose,
+                commands = target.commands.join("\n")
+            ));
+        }
+        content.push_str(
+            r#"## Decision
 
 - Pass or fail:
 - Follow-up:
 "#,
-    );
-    fs::write(output_path, content).map_err(|error| error.to_string())?;
+        );
+        fs::write(output_path, content).map_err(|error| error.to_string())?;
+    }
     Ok(ProviderMatrixReport {
         path: output_path.to_string_lossy().to_string(),
         version,
         current_head,
         targets,
+        env_files,
         commands,
         next: vec![
             format!("review {}", shell_arg(&output_path.to_string_lossy())),
+            "edit .octopus/providers/*.env for any target that needs a real key, model, base URL, or Codex command".to_string(),
             "run each target on a real machine with the matching provider available".to_string(),
             "append summarized results to docs/real-machine-test.md".to_string(),
             "octopus provider status".to_string(),
             "octopus preflight --live".to_string(),
         ],
     })
+}
+
+fn ensure_provider_matrix_env_files(
+    targets: &[ProviderMatrixTarget],
+) -> Result<Vec<ProviderMatrixEnvFileReport>, String> {
+    let mut reports = Vec::new();
+    for target in targets {
+        let path = Path::new(&target.env_path);
+        let status = if path.exists() {
+            "exists".to_string()
+        } else {
+            save_provider_env_report(&target.profile, &target.prefix, path)?;
+            "created".to_string()
+        };
+        reports.push(ProviderMatrixEnvFileReport {
+            target: target.id.clone(),
+            path: target.env_path.clone(),
+            status,
+        });
+    }
+    Ok(reports)
 }
 
 fn run_provider_matrix_record(
@@ -5976,6 +6010,15 @@ fn print_provider_matrix(report: &ProviderMatrixReport, language: Language) {
                 report.current_head.as_deref().unwrap_or("unknown")
             );
             println!("targets: {}", report.targets.len());
+            println!(
+                "env_files: {}",
+                report
+                    .env_files
+                    .iter()
+                    .map(|item| format!("{}={}", item.target, item.status))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
             println!("commands: {}", report.commands.len());
             println!("next: {}", join_or_none(&report.next));
         }
@@ -5988,6 +6031,15 @@ fn print_provider_matrix(report: &ProviderMatrixReport, language: Language) {
                 report.current_head.as_deref().unwrap_or("未知")
             );
             println!("目标数: {}", report.targets.len());
+            println!(
+                "env文件: {}",
+                report
+                    .env_files
+                    .iter()
+                    .map(|item| format!("{}={}", item.target, item.status))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
             println!("命令数: {}", report.commands.len());
             println!("下一步: {}", join_or_none(&report.next));
         }
@@ -17757,16 +17809,47 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     #[test]
     fn provider_matrix_record_writes_four_provider_targets() {
         let _env = env_guard();
+        let _cwd = CwdGuard::new();
         let dir =
             std::env::temp_dir().join(format!("octopus-provider-matrix-{}", std::process::id()));
         let path = dir.join("provider-matrix.md");
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .status()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "octopus@example.invalid"])
+            .status()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Octopus Test"])
+            .status()
+            .unwrap();
+        fs::write("README.md", "octopus\n").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "README.md"])
+            .status()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "init"])
+            .status()
+            .unwrap();
 
         let report = write_provider_matrix_record(&path).unwrap();
         let content = fs::read_to_string(&path).unwrap();
 
         assert_eq!(report.targets.len(), 4);
+        assert_eq!(report.env_files.len(), 4);
+        assert!(report.env_files.iter().all(|item| item.status == "created"));
+        assert!(dir.join(".octopus/providers/codex.env").exists());
+        assert!(dir.join(".octopus/providers/openai.env").exists());
+        assert!(dir.join(".octopus/providers/local.env").exists());
+        assert!(dir.join(".octopus/providers/gateway.env").exists());
+        let second = write_provider_matrix_record(&path).unwrap();
+        assert!(second.env_files.iter().all(|item| item.status == "exists"));
         assert!(content.contains("# Provider Matrix Record"));
         assert!(content.contains("Codex OAuth"));
         assert!(content.contains("API-key cloud"));
@@ -17794,6 +17877,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .replace("- Provider check:", "- Provider check: pass")
             .replace("- Pass or fail:", "- Pass or fail: pass");
         fs::write(&path, filled).unwrap();
+        let audit = check_provider_matrix_record(&path).unwrap();
+        assert!(audit.passed);
+        let third = write_provider_matrix_record(&path).unwrap();
+        assert!(third.env_files.iter().all(|item| item.status == "exists"));
         let audit = check_provider_matrix_record(&path).unwrap();
         assert!(audit.passed);
 

@@ -97,7 +97,7 @@ octopus brain --council --models OCTOPUS_LLM --save "ask clean brains"
 
 `octopus provider status` 会先显示四类覆盖：Goal chat、clean brain、tentacle planning、harness evolution。Codex OAuth 和本地模型可以没有 API key；真实可用性用 `octopus provider check` 或 `octopus preflight --live` 证明。
 
-发布测试前生成 provider 矩阵记录：
+发布测试前生成 provider 矩阵记录。它也会准备缺失的 `.octopus/providers/*.env` 文件：
 
 ```bash
 octopus provider matrix
