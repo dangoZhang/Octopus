@@ -50,7 +50,7 @@ cowork/
 - `evolve` / `beat`：从失败 trace、check history、repair outcome 生成 harness 演化建议。
 - `provider`：生成、保存、检查 Codex/OpenAI-compatible/local/LiteLLM 配置，同一套 env 可供 clean brain、触手规划和 harness evolution 使用。
 - `start`：启动本地 HTML app，通过受限本地 API 运行 Octopus 子命令。
-- `preflight`：检查 `0.1.0` 发布门槛。
+- `preflight`：检查 `0.1.0` 发布门槛，并显示必需/可选通过数和必需阻塞项。
 
 ## Seed tentacles
 

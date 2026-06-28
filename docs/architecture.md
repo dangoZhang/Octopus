@@ -50,6 +50,8 @@ Every executed Feed is also written to a compact harness trace journal and retur
 
 `release_gate.rs` owns preflight check records, real-machine record parsing, generated script commands, and docs-only record status logic. `main.rs` still aggregates doctor, provider, bridge, and product evidence into the final `preflight_report`.
 
+`preflight` returns a readiness summary with required and optional pass counts plus required blockers. The CLI and native HTML app show those blockers before the full check list so a local run can tell the user exactly what must happen before a release-ready build.
+
 `update [--run]` reports the GitHub reinstall command by default and only executes it with `--run`. The local app API allows the dry-run report and blocks `--run`.
 
 `skills [root]` lists profile and manifest skills as user-facing capability bundles. It is a catalog view; execution still starts from Need and routes through harness data.

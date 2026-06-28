@@ -478,18 +478,11 @@
             <div class="toolbar">
               <button class="primary" type="button" id="firstRunCli">Run CLI Loop</button>
               <button type="button" id="firstRunLive">Run Live Loop</button>
-              <button type="button" id="firstRunAll">Run Steps</button>
+              <button type="button" id="firstRunAll">Run Local Loop</button>
               <button type="button" id="firstRunDoctor">Doctor</button>
-              <button type="button" id="firstRunBootstrap">Bootstrap</button>
               <button type="button" id="firstRunGoal">Goal</button>
               <button type="button" id="firstRunStarter">Starter</button>
-              <button type="button" id="firstRunFeed">Feed</button>
-              <button type="button" id="firstRunFeedback">Feedback</button>
               <button type="button" id="firstRunPreflight">Preflight</button>
-              <button type="button" id="firstRunRecord">Record</button>
-              <button type="button" id="firstRunRecordCheck">Check Record</button>
-              <button type="button" id="firstRunRecordAppend">Append Record</button>
-              <button type="button" id="firstRunBeat">Beat</button>
             </div>
           </section>
           <pre><code id="commands"></code></pre>
@@ -910,19 +903,6 @@
         });
       }
 
-      async function runFirstRunBootstrap() {
-        const state = $("state").value.trim() || ".octopus/state.json";
-        return runFirstRunTask("Bootstrap", async () => {
-          const report = await runBridgeJson(["--state", state, "--json", "bootstrap"]);
-          if (report.report) {
-            currentProductReport = report.report;
-            renderProductReport(report.report);
-          }
-          $("output").textContent = JSON.stringify(report, null, 2);
-          return report;
-        });
-      }
-
       async function runFirstRunGoal() {
         const state = $("state").value.trim() || ".octopus/state.json";
         const goal = $("goal").value.trim() || "build a clean-brain agent";
@@ -947,33 +927,6 @@
         });
       }
 
-      function firstRunEvidenceTarget() {
-        const target = $("target").value.trim();
-        return target && target !== "." ? target : "README.md";
-      }
-
-      async function runFirstRunFeed() {
-        const state = $("state").value.trim() || ".octopus/state.json";
-        const target = firstRunEvidenceTarget();
-        return runFirstRunTask("Feed", async () => {
-          const report = await runBridgeJson(["--state", state, "--json", "need", "observe", target]);
-          currentFeedReport = report;
-          renderFeedReport(report);
-          $("output").textContent = JSON.stringify(report, null, 2);
-          return report;
-        });
-      }
-
-      async function runFirstRunFeedback() {
-        const state = $("state").value.trim() || ".octopus/state.json";
-        return runFirstRunTask("Feedback", async () => {
-          const report = await runBridgeJson(["--state", state, "--json", "feedback", "latest", "satisfied", "first run evidence"]);
-          $("output").textContent = JSON.stringify(report, null, 2);
-          await runRouteReport(false, "observe", firstRunEvidenceTarget());
-          return report;
-        });
-      }
-
       async function runFirstRunPreflight() {
         const state = $("state").value.trim() || ".octopus/state.json";
         return runFirstRunTask("Preflight", async () => {
@@ -985,65 +938,8 @@
         });
       }
 
-      async function runFirstRunRecord() {
-        const state = $("state").value.trim() || ".octopus/state.json";
-        return runFirstRunTask("Record", async () => {
-          const report = await runBridgeJson(["--state", state, "--json", "preflight", "record"]);
-          currentPreflightReport = report;
-          renderPreflightRecordReport(report);
-          $("output").textContent = JSON.stringify(report, null, 2);
-          return report;
-        });
-      }
-
-      async function runFirstRunRecordCheck() {
-        const state = $("state").value.trim() || ".octopus/state.json";
-        return runFirstRunTask("Check Record", async () => {
-          const report = await runBridgeJson(["--state", state, "--json", "preflight", "record", "check"]);
-          currentPreflightReport = report;
-          renderPreflightRecordCheckReport(report);
-          $("output").textContent = JSON.stringify(report, null, 2);
-          return report;
-        });
-      }
-
-      async function runFirstRunRecordAppend() {
-        const state = $("state").value.trim() || ".octopus/state.json";
-        return runFirstRunTask("Append Record", async () => {
-          const report = await runBridgeJson(["--state", state, "--json", "preflight", "record", "append"]);
-          currentPreflightReport = report;
-          renderPreflightRecordAppendReport(report);
-          $("output").textContent = JSON.stringify(report, null, 2);
-          return report;
-        });
-      }
-
-      async function runFirstRunBeat() {
-        const state = $("state").value.trim() || ".octopus/state.json";
-        return runFirstRunTask("Beat", async () => {
-          const report = await runBridgeJson(["--state", state, "--json", "beat", "200"]);
-          currentBeatReport = report;
-          renderBeatReport(report);
-          $("output").textContent = JSON.stringify(report, null, 2);
-          return report;
-        });
-      }
-
       async function runFirstRunPath() {
-        try {
-          await runFirstRunDoctor();
-          await runFirstRunBootstrap();
-          await runFirstRunGoal();
-          await runFirstRunStarter();
-          await runFirstRunFeed();
-          await runFirstRunFeedback();
-          await runFirstRunPreflight();
-          await runFirstRunBeat();
-          await runFirstRunDoctor();
-          setFirstRunStatus("First Run", "complete");
-        } catch (_) {
-          // The current step has already rendered the actionable error.
-        }
+        return runFirstRunCli(false);
       }
 
       async function runInstallReport() {
@@ -2383,6 +2279,8 @@
         root.className = "stack";
         root.textContent = "";
         root.appendChild(preflightSummary(report));
+        const blockers = (report.summary && report.summary.blockers) || [];
+        if (blockers.length) root.appendChild(reportList("Blockers", blockers, preflightBlockerItem));
         root.appendChild(reportList("Checks", report.checks || [], preflightItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
       }
@@ -3259,9 +3157,12 @@
       function preflightSummary(report) {
         const grid = document.createElement("div");
         grid.className = "report-grid";
+        const summary = report.summary || {};
         [
           ["Target", report.target || "0.1.0"],
           ["Ready", report.release_ready ? "yes" : "no"],
+          ["Required", `${summary.required_passed ?? "?"}/${summary.required_total ?? "?"}`],
+          ["Optional", `${summary.optional_passed ?? "?"}/${summary.optional_total ?? "?"}`],
           ["Live", report.live ? "yes" : "no"],
           ["Head", report.current_head || "unknown"],
           ["State", report.state_path || "state"],
@@ -3276,6 +3177,21 @@
           grid.appendChild(metric);
         });
         return grid;
+      }
+
+      function preflightBlockerItem(blocker) {
+        const item = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = "badge failed";
+        badge.textContent = blocker.status || "blocked";
+        const command = document.createElement("span");
+        command.className = "check-command";
+        command.textContent = blocker.id || "blocker";
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        meta.textContent = `${blocker.evidence || ""} · ${blocker.next || ""}`;
+        item.append(badge, command, meta);
+        return item;
       }
 
       function preflightItem(check) {
@@ -4306,16 +4222,9 @@
       $("firstRunLive").addEventListener("click", runFirstRunLive);
       $("firstRunAll").addEventListener("click", runFirstRunPath);
       $("firstRunDoctor").addEventListener("click", runFirstRunDoctor);
-      $("firstRunBootstrap").addEventListener("click", runFirstRunBootstrap);
       $("firstRunGoal").addEventListener("click", runFirstRunGoal);
       $("firstRunStarter").addEventListener("click", runFirstRunStarter);
-      $("firstRunFeed").addEventListener("click", runFirstRunFeed);
-      $("firstRunFeedback").addEventListener("click", runFirstRunFeedback);
       $("firstRunPreflight").addEventListener("click", runFirstRunPreflight);
-      $("firstRunRecord").addEventListener("click", runFirstRunRecord);
-      $("firstRunRecordCheck").addEventListener("click", runFirstRunRecordCheck);
-      $("firstRunRecordAppend").addEventListener("click", runFirstRunRecordAppend);
-      $("firstRunBeat").addEventListener("click", runFirstRunBeat);
       $("installGuide").addEventListener("click", runInstallReport);
       $("runChecks").addEventListener("click", runChecks);
       $("runFeed").addEventListener("click", runFeedTest);

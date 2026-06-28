@@ -27,6 +27,7 @@ Updated: 2026-06-28
 - The local app bridge server, static app serving, streaming command runner, command policy, denial response, provider env overlay parser, and `bridge_goal_surface` preflight evidence now live in `app_bridge.rs`, so the product input boundary is separate from the general CLI backend.
 - Blocked local app bridge writes now return `user_writes_brain_goal_only` plus suggested Goal commands, so old/internal controls fail with product guidance instead of a generic server error.
 - `preflight` now includes a required `bridge_goal_surface` gate that checks allowed Goal writes, denied internal writes, and the structured denial policy.
+- `preflight` now returns and prints a readiness summary with required/optional pass counts plus concrete required blockers, and the native HTML app renders those blockers before the full check list.
 - Release-gate check types, record parsing, script commands, and real-machine record status logic now live in a separate `release_gate` Rust module instead of the general CLI backend.
 - `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
 - `start` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
@@ -39,6 +40,7 @@ Updated: 2026-06-28
 - The native HTML app can render a structured Doctor panel with state, tentacles, manifests, environment, LLM, pet, warnings, and next actions.
 - The native HTML app Doctor panel shows readiness state and keeps product-facing mutation on Goal or First Run; bootstrap, provider, checks, repair, record, and beat commands are internal/developer paths.
 - The native HTML app now has a First Run path that runs the whole-project local loop while keeping granular Need/Feed/harness steps behind the bridge.
+- The First Run panel now exposes only the bridge-allowed local loop, live loop, Goal, Doctor, Starter, and Preflight paths; old granular Bootstrap/Feed/Feedback/Beat/Record write buttons are removed from that first-use path.
 - `first-run [objective]` runs the same safe local loop from CLI and returns one JSON record with Bootstrap, Goal, Starter, Feed, Feedback, Beat, Product, Preflight, and Doctor evidence.
 - `first-run --live [objective]` keeps the same loop but turns on the live provider preflight gate only when explicitly requested.
 - `update` reports the current GitHub reinstall command by default, and `update --run` performs the cargo reinstall explicitly.
@@ -217,6 +219,8 @@ Updated: 2026-06-28
 - Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and local app API.
 - Polished README and docs homepages into product-page copy with the value story first and runnable install commands kept visible.
 - Added `preflight [--live]` so release readiness can check state, seed tentacles, manifests, context boundary, docs/pet, LLM layers, live provider, feedback data, GitHub PR path, current-head real-machine record, desktop adapters, and harness repair.
+- Added preflight readiness summary and blocker rendering in CLI/JSON/native HTML so first-run users can see the shortest path to release readiness.
+- Removed the First Run panel's obsolete granular write buttons so `octopus start --open` no longer presents a first-use path that the bridge policy rejects.
 - Added `preflight script [path]` plus native HTML access so release-gate commands can be generated, reviewed, and run on a real machine.
 - Added `preflight record [path]` plus native HTML access so real-machine evidence can be generated as a reviewable Markdown record before appending to the gate log.
 - Made the real-machine record gate self-reference-safe for docs-only record commits.

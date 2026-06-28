@@ -680,10 +680,28 @@ struct PreflightReport {
     state_path: String,
     live: bool,
     release_ready: bool,
+    summary: PreflightSummary,
     current_head: Option<String>,
     checks: Vec<PreflightCheck>,
     live_provider: Option<ProviderCheckReport>,
     next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct PreflightSummary {
+    required_passed: usize,
+    required_total: usize,
+    optional_passed: usize,
+    optional_total: usize,
+    blockers: Vec<PreflightBlocker>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct PreflightBlocker {
+    id: String,
+    status: String,
+    evidence: String,
+    next: String,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -7546,6 +7564,7 @@ fn preflight_report(
         .iter()
         .filter(|check| check.required)
         .all(|check| check.status == "pass");
+    let summary = preflight_summary(&checks);
     let mut next = checks
         .iter()
         .filter(|check| check.status != "pass")
@@ -7563,11 +7582,42 @@ fn preflight_report(
         state_path: state_path.to_string_lossy().to_string(),
         live,
         release_ready,
+        summary,
         current_head,
         checks,
         live_provider,
         next,
     })
+}
+
+fn preflight_summary(checks: &[PreflightCheck]) -> PreflightSummary {
+    let required_total = checks.iter().filter(|check| check.required).count();
+    let required_passed = checks
+        .iter()
+        .filter(|check| check.required && check.status == "pass")
+        .count();
+    let optional_total = checks.iter().filter(|check| !check.required).count();
+    let optional_passed = checks
+        .iter()
+        .filter(|check| !check.required && check.status == "pass")
+        .count();
+    let blockers = checks
+        .iter()
+        .filter(|check| check.required && check.status != "pass")
+        .map(|check| PreflightBlocker {
+            id: check.id.clone(),
+            status: check.status.clone(),
+            evidence: check.evidence.clone(),
+            next: check.next.clone(),
+        })
+        .collect();
+    PreflightSummary {
+        required_passed,
+        required_total,
+        optional_passed,
+        optional_total,
+        blockers,
+    }
 }
 
 fn write_preflight_script(
@@ -8005,6 +8055,22 @@ fn print_preflight_report(report: &PreflightReport, language: Language) {
             println!("live: {}", report.live);
             println!("release_ready: {}", report.release_ready);
             println!(
+                "summary: required {}/{}, optional {}/{}",
+                report.summary.required_passed,
+                report.summary.required_total,
+                report.summary.optional_passed,
+                report.summary.optional_total
+            );
+            if !report.summary.blockers.is_empty() {
+                println!("blockers:");
+                for blocker in &report.summary.blockers {
+                    println!(
+                        "- {} [{}]: {}; next={}",
+                        blocker.id, blocker.status, blocker.evidence, blocker.next
+                    );
+                }
+            }
+            println!(
                 "head: {}",
                 report.current_head.as_deref().unwrap_or("unknown")
             );
@@ -8027,6 +8093,22 @@ fn print_preflight_report(report: &PreflightReport, language: Language) {
             println!("状态文件: {}", report.state_path);
             println!("Live检查: {}", report.live);
             println!("可发布: {}", report.release_ready);
+            println!(
+                "摘要: 必需 {}/{}, 可选 {}/{}",
+                report.summary.required_passed,
+                report.summary.required_total,
+                report.summary.optional_passed,
+                report.summary.optional_total
+            );
+            if !report.summary.blockers.is_empty() {
+                println!("阻塞项:");
+                for blocker in &report.summary.blockers {
+                    println!(
+                        "- {} [{}]: {}; 下一步={}",
+                        blocker.id, blocker.status, blocker.evidence, blocker.next
+                    );
+                }
+            }
             println!(
                 "当前提交: {}",
                 report.current_head.as_deref().unwrap_or("未知")
@@ -17058,6 +17140,13 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .any(|item| item.id == "provider_feedback"));
         let preflight = preflight_report(&loaded, Path::new(&state), false).unwrap();
         assert!(!preflight.release_ready);
+        assert!(preflight.summary.required_total >= 10);
+        assert!(preflight.summary.required_passed < preflight.summary.required_total);
+        assert!(preflight
+            .summary
+            .blockers
+            .iter()
+            .any(|item| item.id == "live_provider"));
         assert!(preflight
             .checks
             .iter()
