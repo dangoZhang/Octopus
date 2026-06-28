@@ -8,7 +8,7 @@ Updated: 2026-06-28
 - Tentacles own LLM prompt, tool metadata, runtime code, and evolution policy.
 - Product story now frames tentacles as local nervous systems: Need stays stable, implementation is replaceable, and RouteBook learns the best supply path from feedback.
 - Harness stores memory, route scores, OAuth grants, installed tentacles, goal state, Feed traces, and check history.
-- Harness also stores scored repair outcomes so repair sessions can become route-learning, heartbeat, and harness-evolution evidence.
+- Harness also stores scored repair outcomes with target tentacle/candidate hints so repair sessions can become route-learning, heartbeat, and harness-evolution evidence.
 - Three beats exist: heartbeat, memory compaction, and harness route/evolution recommendation.
 - Pixel pet exposes heartbeat, memory, harness, blocked, and success states through deterministic state mapping, and CLI can export the same pixel body as SVG.
 - Pet auto-color now follows the latest persisted Need/Feed/beat/evolve-score event plus goal status.
@@ -220,6 +220,7 @@ Updated: 2026-06-28
 - Added clean-brain brief compaction with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so a strong model can receive a compact Goal/Mem/Need/Feed brief without tool context.
 - Added repair-score reuse so trace-backed harness repair outcomes can feed `evolution_outcomes` and improve later `evolve recommend` decisions.
 - Added immediate repair-score follow-up artifacts so scored repair feedback can write the next evolution proposal and apply plan in the same pass.
+- Added target-aware repair outcomes so harness beat can evolve the repaired tentacle instead of only the repair-agent source.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.
 - Added clean-brain scout mapping with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can explore assumptions, unknowns, options, and risks before the next Need without tool context.
 - Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and local app API.

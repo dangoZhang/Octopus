@@ -20046,6 +20046,14 @@ JSON
         let restored = HarnessState::load(&path).unwrap();
         assert_eq!(restored.repair_outcomes.len(), 1);
         assert_eq!(restored.repair_outcomes[0].trace_index, Some(1));
+        assert_eq!(
+            restored.repair_outcomes[0].target_tentacle.as_deref(),
+            Some("swe-agent")
+        );
+        assert_eq!(
+            restored.repair_outcomes[0].candidate.as_deref(),
+            Some("03-runtime-code")
+        );
         assert_eq!(restored.evolution_outcomes.len(), 1);
         assert_eq!(restored.evolution_outcomes[0].tentacle_id, "swe-agent");
         assert_eq!(

@@ -330,6 +330,10 @@ pub struct RepairOutcome {
     pub trace_index: Option<u64>,
     pub tentacle_id: String,
     pub tool: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_tentacle: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate: Option<String>,
     pub status: Status,
     pub score: f32,
     pub summary: String,
@@ -4598,11 +4602,19 @@ impl HarnessState {
             .and_then(|trace| trace.tentacle.clone())
             .unwrap_or_else(|| "harness-repair-agent".to_string());
         let tool = trace.as_ref().and_then(|trace| trace.tool.clone());
+        let target_tentacle = trace.as_ref().and_then(|trace| {
+            repair_outcome_metadata_value(trace.metadata.get("target_tentacle"), false)
+        });
+        let candidate = trace
+            .as_ref()
+            .and_then(|trace| repair_outcome_metadata_value(trace.metadata.get("candidate"), true));
         let outcome = RepairOutcome {
             index: self.next_repair_outcome_index,
             trace_index,
             tentacle_id: tentacle_id.clone(),
             tool: tool.clone(),
+            target_tentacle: target_tentacle.clone(),
+            candidate: candidate.clone(),
             status: status.clone(),
             score: evolution_status_score(&status),
             summary: summary.clone(),
@@ -4621,6 +4633,12 @@ impl HarnessState {
         }
         if let Some(tool) = tool {
             metadata.insert("source_tool".to_string(), tool);
+        }
+        if let Some(target_tentacle) = target_tentacle {
+            metadata.insert("target_tentacle".to_string(), target_tentacle);
+        }
+        if let Some(candidate) = candidate {
+            metadata.insert("candidate".to_string(), candidate);
         }
         let feed = Feed {
             need,
@@ -7107,6 +7125,40 @@ pub fn recommend_tentacle_evolution_apply(
     proposal: &TentacleEvolutionProposal,
     state: &HarnessState,
 ) -> Result<EvolutionRecommendation, String> {
+    recommend_tentacle_evolution_apply_with_preference(proposal, state, None)
+}
+
+fn recommend_tentacle_evolution_apply_with_preference(
+    proposal: &TentacleEvolutionProposal,
+    state: &HarnessState,
+    preferred_candidate: Option<&str>,
+) -> Result<EvolutionRecommendation, String> {
+    if let Some(preferred_candidate) =
+        preferred_candidate.and_then(|value| clean_optional(Some(value)))
+    {
+        if let Some(candidate) = proposal
+            .patch_candidates
+            .iter()
+            .find(|candidate| candidate_matches(candidate, preferred_candidate))
+        {
+            let apply = plan_tentacle_evolution_apply(proposal, state, &candidate.id)?;
+            return Ok(EvolutionRecommendation {
+                tentacle_id: proposal.tentacle_id.clone(),
+                objective: proposal.objective.clone(),
+                candidate_id: candidate.id.clone(),
+                candidate_title: candidate.title.clone(),
+                surface_id: candidate.surface_id.clone(),
+                outcome_count: 1,
+                feed_trace_count: 0,
+                check_history_count: 0,
+                recommendation_score: 1.0,
+                reason: format!(
+                    "selected from repair outcome candidate hint {preferred_candidate}"
+                ),
+                apply,
+            });
+        }
+    }
     let Some(scored) = proposal
         .patch_candidates
         .iter()
@@ -7235,6 +7287,7 @@ pub fn write_harness_beat_evolution_artifacts(
             record.index,
             record.index,
             short_text(&one_line(&check_history_evolution_detail(record)), 160),
+            None,
         )
         .map(Some);
     }
@@ -7261,6 +7314,7 @@ pub fn write_harness_beat_evolution_artifacts(
             trace.index,
             0,
             short_text(&one_line(&trace.summary), 160),
+            None,
         )
         .map(Some);
     }
@@ -7270,13 +7324,11 @@ pub fn write_harness_beat_evolution_artifacts(
         .rev()
         .filter(|outcome| evolution_actionable_repair_outcome_status(&outcome.status))
     {
+        let tentacle_id = repair_outcome_evolution_tentacle(outcome);
         let objective = repair_outcome_evolution_objective(outcome);
-        let Ok(proposal) = propose_tentacle_evolution_with_state(
-            tentacles_root,
-            &outcome.tentacle_id,
-            &objective,
-            state,
-        ) else {
+        let Ok(proposal) =
+            propose_tentacle_evolution_with_state(tentacles_root, tentacle_id, &objective, state)
+        else {
             continue;
         };
         return harness_beat_evolution_from_proposal(
@@ -7287,6 +7339,7 @@ pub fn write_harness_beat_evolution_artifacts(
             outcome.index,
             0,
             short_text(&one_line(&outcome.summary), 160),
+            outcome.candidate.as_deref(),
         )
         .map(Some);
     }
@@ -7301,9 +7354,11 @@ fn harness_beat_evolution_from_proposal(
     source_index: u64,
     source_check_index: u64,
     source_summary: String,
+    preferred_candidate: Option<&str>,
 ) -> Result<HarnessBeatEvolution, String> {
     let proposal_artifact = write_tentacle_evolution_artifacts(workspace_root, &proposal)?;
-    let recommendation = recommend_tentacle_evolution_apply(&proposal, state)?;
+    let recommendation =
+        recommend_tentacle_evolution_apply_with_preference(&proposal, state, preferred_candidate)?;
     let apply_artifact = write_tentacle_apply_artifacts(workspace_root, &recommendation.apply)?;
     let apply_plan_preview = fs::read_to_string(&apply_artifact.plan_path)
         .map(|content| short_text(&content, 2000))
@@ -7397,6 +7452,18 @@ fn evolution_actionable_repair_outcome_status(status: &Status) -> bool {
     matches!(status, Status::Failed | Status::Partial)
 }
 
+fn repair_outcome_metadata_value(value: Option<&String>, candidate: bool) -> Option<String> {
+    let value = value?.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let lower = value.to_ascii_lowercase();
+    if matches!(lower.as_str(), "unknown" | "none") || (candidate && lower == "recommended") {
+        return None;
+    }
+    Some(value.to_string())
+}
+
 fn check_history_evolution_detail(record: &CheckHistoryRecord) -> String {
     if !record.stderr.trim().is_empty() {
         record.stderr.clone()
@@ -7429,13 +7496,23 @@ fn feed_trace_evolution_objective(trace: &FeedTraceRecord) -> String {
     )
 }
 
+fn repair_outcome_evolution_tentacle(outcome: &RepairOutcome) -> &str {
+    outcome
+        .target_tentacle
+        .as_deref()
+        .unwrap_or(&outcome.tentacle_id)
+}
+
 fn repair_outcome_evolution_objective(outcome: &RepairOutcome) -> String {
     let tool = outcome.tool.as_deref().unwrap_or("unknown tool");
+    let target = repair_outcome_evolution_tentacle(outcome);
+    let candidate = outcome.candidate.as_deref().unwrap_or("unknown candidate");
     format!(
-        "repair outcome #{} for {} via {} ({:?}): {}",
+        "repair outcome #{} for {} via {} candidate {} ({:?}): {}",
         outcome.index,
-        outcome.tentacle_id,
+        target,
         tool,
+        candidate,
         outcome.status,
         short_text(&one_line(&outcome.summary), 160)
     )
@@ -10591,6 +10668,8 @@ mod tests {
             metadata: BTreeMap::from([
                 ("tentacle".to_string(), "harness-repair-agent".to_string()),
                 ("tool".to_string(), "repair_session".to_string()),
+                ("target_tentacle".to_string(), "swe-agent".to_string()),
+                ("candidate".to_string(), "03-runtime-code".to_string()),
             ]),
         });
         let route_before = state
@@ -10608,6 +10687,8 @@ mod tests {
         assert_eq!(outcome.index, 1);
         assert_eq!(outcome.trace_index, Some(trace.index));
         assert_eq!(outcome.tool.as_deref(), Some("repair_session"));
+        assert_eq!(outcome.target_tentacle.as_deref(), Some("swe-agent"));
+        assert_eq!(outcome.candidate.as_deref(), Some("03-runtime-code"));
         assert!(
             state
                 .routes
@@ -12909,9 +12990,11 @@ mod tests {
             evidence: vec![Evidence::new("read", "repair session had evidence")],
             summary: "repair session created".to_string(),
             metadata: BTreeMap::from([
-                ("tentacle".to_string(), "swe-agent".to_string()),
-                ("tool".to_string(), "read".to_string()),
+                ("tentacle".to_string(), "harness-repair-agent".to_string()),
+                ("tool".to_string(), "repair_session".to_string()),
                 ("plan_source".to_string(), "llm".to_string()),
+                ("target_tentacle".to_string(), "swe-agent".to_string()),
+                ("candidate".to_string(), "03-runtime-code".to_string()),
             ]),
         });
         let outcome = state
