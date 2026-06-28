@@ -18150,6 +18150,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
                 "- Artifact path: artifacts/recorded-case.log",
             );
         fs::write(&path, filled).unwrap();
+        fs::create_dir_all(dir.join("artifacts")).unwrap();
+        fs::write(dir.join("artifacts/recorded-case.log"), "passed\n").unwrap();
         let audit = check_benchmark_record(&path, head).unwrap();
         assert!(audit.passed);
 

@@ -408,17 +408,24 @@ pub(crate) fn check_benchmark_record(
             .filter(|label| record_field_value(section, label).is_none())
             .map(|label| (*label).to_string())
             .collect::<Vec<_>>();
+        let artifact_path = record_field_value(section, "Artifact path");
+        let artifact_exists = artifact_path
+            .as_deref()
+            .is_some_and(|artifact| benchmark_artifact_exists(path, artifact));
         let pass_decision_value = record_field_value(section, "Pass or fail");
         let pass_decision = pass_decision_value
             .as_deref()
             .is_some_and(record_pass_decision_ready);
-        let ok = missing.is_empty() && pass_decision;
+        let ok = missing.is_empty() && pass_decision && artifact_exists;
         let evidence = if ok {
             format!("{} pass evidence recorded", case.title)
         } else {
             let mut blockers = missing;
             if !pass_decision {
                 blockers.push("Pass or fail".to_string());
+            }
+            if artifact_path.is_some() && !artifact_exists {
+                blockers.push("Artifact file".to_string());
             }
             format!("missing {}", blockers.join(", "))
         };
@@ -471,6 +478,23 @@ pub(crate) fn benchmark_record_evidence(report: &BenchmarkRecordCheckReport) -> 
             failed.join("; ")
         )
     }
+}
+
+fn benchmark_artifact_exists(record_path: &Path, artifact: &str) -> bool {
+    let artifact = artifact.trim();
+    if artifact.is_empty() {
+        return false;
+    }
+    let artifact_path = Path::new(artifact);
+    if artifact_path.exists() {
+        return true;
+    }
+    if artifact_path.is_absolute() {
+        return false;
+    }
+    record_path
+        .parent()
+        .is_some_and(|parent| parent.join(artifact_path).exists())
 }
 
 fn benchmark_case_section<'a>(content: &'a str, case: &BenchmarkCase) -> Option<&'a str> {
