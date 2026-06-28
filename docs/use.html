@@ -164,11 +164,32 @@
       }
 
       @media (max-width: 760px) {
+        nav {
+          align-items: flex-start;
+          flex-wrap: wrap;
+          padding: 12px 0;
+        }
+
+        .links {
+          width: 100%;
+          flex-wrap: wrap;
+          gap: 10px;
+          overflow-x: visible;
+          padding-bottom: 4px;
+          font-size: 13px;
+        }
+
+        .links a {
+          white-space: nowrap;
+        }
+
         h1 {
-          font-size: 48px;
+          max-width: 320px;
+          font-size: 40px;
         }
 
         .lead {
+          max-width: 340px;
           font-size: 17px;
         }
 
@@ -179,7 +200,27 @@
 
         .links {
           gap: 10px;
-          font-size: 13px;
+        }
+
+        .step,
+        .step * {
+          max-width: 100%;
+          min-width: 0;
+        }
+
+        .step {
+          overflow: hidden;
+        }
+
+        .step h3,
+        .step p,
+        .step pre {
+          max-width: 300px;
+        }
+
+        pre code {
+          white-space: pre-wrap;
+          word-break: break-word;
         }
       }
     </style>
