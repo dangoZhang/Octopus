@@ -19,6 +19,7 @@ Octopus/
 │       ├── app_bridge.rs      Local app server, bridge policy, static app fallback, streaming.
 │       ├── bundled_harness.rs Embedded installed-binary seed harness materializer.
 │       ├── core_boundary.rs   Stable Rust vs editable harness boundary report.
+│       ├── download.rs        Download/install manifest and artifact release checks.
 │       └── release_gate.rs    Preflight records, benchmark evidence, real-machine records, release scripts.
 ├── tentacles/
 │   ├── profile-registry/      Editable seed profile data.

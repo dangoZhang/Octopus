@@ -72,3 +72,13 @@ The `0.0.24` audit must update this file with:
 - Moved harness units: the bundle fallback materializer moved to `bundled_harness.rs`; editable source-of-truth manifests, tools, and profile data remain under `tentacles/`.
 - Remaining candidates: continue shrinking `main.rs`, review historical docs/log residue, and remove any stale fallback that chooses Feed implementation for the clean brain.
 - Commands: `rg` for bundled seed symbols, `cargo fmt --all --check`, `cargo check -q -p octopus-core`, `cargo test -q -p octopus-core bundled_tentacles_materialize_as_editable_startup_surface`, `cargo test -q -p octopus-core bundled_tentacles_materialize_from_current_directory`, `cargo test -q -p octopus-core cli_bootstrap_installs_seed_tentacles`.
+
+## Audit Pass 4: Download Manifest Boundary
+
+- Commit scanned: `0c21dae`.
+- Reviewed files: download/install report structs, `download_report`, `download_artifacts_preflight_check`, `update` install command sharing, download manifest tests, `structure.md`, and this audit log.
+- Removed residue: download/install manifest generation and artifact release checks no longer live in the CLI aggregation file.
+- Kept core behavior: `octopus download`, `octopus update`, `docs/download.json`, `docs/install.sh`, local static serving, and the required `download_artifacts` preflight gate share the same command and manifest contract.
+- Moved harness units: none; this pass separates product release plumbing from the CLI dispatcher.
+- Remaining candidates: continue shrinking `main.rs`, review historical docs/log residue, and remove any stale fallback that chooses Feed implementation for the clean brain.
+- Commands: `rg` for download symbols, `cargo fmt --all --check`, `cargo check -q -p octopus-core`, `cargo test -q -p octopus-core static_download_manifest_matches_cli_report`, `cargo test -q -p octopus-core download_artifacts_preflight_check_passes_for_current_docs`, `cargo test -q -p octopus-core download_report_exposes_install_update_and_pages_paths`.
