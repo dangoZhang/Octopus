@@ -30,6 +30,8 @@ octopus start --open
 
 `start --open` prepares local state, seed tentacles, heartbeats, editable profile registry, and the native app surface, then opens `http://127.0.0.1:8765/app.html`. Use `octopus start` on headless machines. If no source checkout is present, it creates editable seed tentacles under `.octopus/bundled-tentacles`.
 
+The profile registry is a developer/harness data surface. It changes starter supply paths, permissions, checks, and evolution policy; the public user input remains Goal.
+
 Update later with `octopus update --run`.
 
 Run a first loop:
@@ -48,7 +50,7 @@ octopus goal refine "prefer small reviewable changes"
 octopus brain --goal --save "tighten the current objective"
 ```
 
-Need, Feed, tool choice, provider routing, repair, and harness evolution are agent-internal. The app and CLI may show them as observable state, but user input only changes brain-goal. Live backends can be Codex login, API keys, local OpenAI-compatible models, or LiteLLM-style gateways through environment config.
+Need, Feed, tool choice, provider routing, repair, and harness evolution are agent-internal. Product and bridge input only changes brain-goal; the developer CLI can inspect or evolve harness surfaces explicitly. Live backends can be Codex login, API keys, local OpenAI-compatible models, or LiteLLM-style gateways through environment config.
 
 ## Works Today
 

@@ -30,6 +30,8 @@ octopus start --open
 
 `start --open` 会准备本地状态、种子触手、可编辑 profile registry、心跳和 HTML app，然后打开 `http://127.0.0.1:8765/app.html`。
 
+Profile registry 是 developer/harness 数据面，会改变触手供给路径、权限、检查和演化策略；公开用户输入仍然只写 Goal。
+
 更新：
 
 ```bash

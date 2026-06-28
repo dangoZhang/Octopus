@@ -9,7 +9,9 @@ octopus start --open
 
 `start --open` opens `http://127.0.0.1:8765/app.html`. Use `octopus start` on headless machines.
 
-`start` is the whole-project entry: it prepares `.octopus/` state, installs editable seed tentacles, pulses the three hearts, serves the native app and pixel pet, loads `.octopus/llm.env`, and falls back to bundled app/tentacle files when no source checkout is present.
+`start` is the whole-project entry: it prepares `.octopus/` state, installs editable seed tentacles, materializes the editable profile registry, pulses the three hearts, serves the native app and pixel pet, loads `.octopus/llm.env`, and falls back to bundled app/tentacle files when no source checkout is present.
+
+Product users change Goal. The profile registry is a developer/harness surface for changing tentacle supply paths, permissions, checks, and evolution policy.
 
 Update later:
 

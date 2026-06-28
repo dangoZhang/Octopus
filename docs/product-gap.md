@@ -13,7 +13,8 @@ Updated: 2026-06-28
 - Pixel pet exposes heartbeat, memory, harness, blocked, and success states through deterministic state mapping, and CLI can export the same pixel body as SVG.
 - Pet auto-color now follows the latest persisted Need/Feed/beat/evolve-score event plus goal status.
 - Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools, repo-maintainer, harness-repair diagnostics, and a write-and-run harness.
-- Seed profile data now lives in `tentacles/profile-registry/default.json`; startup materializes `.octopus/profile-registry/default.json`, and the Rust kernel can load `OCTOPUS_PROFILE_REGISTRY` or the state-local registry instead of hard-coding starter prompt/tool/check/policy data in `lib.rs`.
+- Seed profile data now lives in `tentacles/profile-registry/default.json`; startup materializes `.octopus/profile-registry/default.json`, and the Rust kernel can load `OCTOPUS_PROFILE_REGISTRY` or the state-local registry instead of hard-coding starter prompt/tool/check/policy data in `lib.rs`. This is a developer/harness flow, not the public product bridge.
+- Doctor, report, and preflight now expose profile registry source/path/parse status/profile count so editable harness registry failures are visible instead of silently falling back.
 - `json-feed` is a runtime seed for the `octopus-json-v1` contract.
 - The old Python SDK/prototype package has been removed; Python remains a tentacle runtime, not a second product/kernel surface.
 - Memory is a heart/beat; visual is the color-changing pet layer.
@@ -286,7 +287,8 @@ Updated: 2026-06-28
 - Removed the unused Python SDK/prototype package and Python CI lane so the product has one kernel/package surface.
 - Moved seed profile prompt/tool/check/policy data from `lib.rs` into `tentacles/profile-registry/default.json`.
 - Split release-gate check/record helper logic into `crates/octopus-core/src/release_gate.rs` as the first preflight modularization step.
-- Added a state-local editable profile registry copy plus `OCTOPUS_PROFILE_REGISTRY` override so profile harness data can evolve outside the immutable kernel.
+- Added a state-local editable profile registry copy plus `OCTOPUS_PROFILE_REGISTRY` override so profile harness data can evolve outside the immutable kernel through developer/harness flows.
+- Added profile-registry diagnostics to Doctor, Product Report, and Preflight so bad or missing editable registry data becomes release-gate evidence.
 
 ## Remaining Gaps
 

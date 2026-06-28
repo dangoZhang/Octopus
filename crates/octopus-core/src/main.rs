@@ -1,26 +1,27 @@
 use octopus_core::{
     default_permissions, default_tentacle_profiles, embedded_profile_registry_json,
     feed_tentacle_with_llm_factory, inspect_tentacle_manifests, load_tentacle_manifests,
-    plan_tentacle_evolution_apply, propose_tentacle_evolution_with_client,
-    propose_tentacle_evolution_with_state, recommend_tentacle_evolution_apply, scaffold_tentacle,
-    think_tentacle_with_llm_factory, write_harness_beat_evolution_artifacts,
-    write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts, AdaptReport,
-    BrainDeliberationDraft, BrainDeliberationReport, BrainDeliberationSaveReport,
-    BrainExploreDraft, BrainExploreReport, BrainGoalReport, BrainGoalSaveReport, BrainPromptReport,
-    BrainReflectionDraft, BrainReflectionReport, BrainReflectionSaveReport, BrainSynthesisDraft,
-    BrainSynthesisInput, BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant,
-    ChatClient, ChatClientFactory, ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord,
-    CodexCliChatClient, CodexCliConfig, ContextReport, EnvironmentReport, EvolutionApplyArtifact,
-    EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed,
-    FeedFeedbackOutcome, FeedTraceRecord, Feedback, Goal, GoalChat, GoalNeedSuggestion,
-    GoalRefinement, Harness, HarnessBeatEvolution, HarnessState, HeartBeat, HeartbeatReport,
-    InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem, NeedQueueReport,
-    NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport, OpenAiCompatibleChatClient,
-    OpenAiCompatibleConfig, OpenAiCompatibleTuning, RepairOutcome, RouteReport, SelfIterationPlan,
-    StarterFeedbackInput, StarterFeedbackRecord, StarterFeedbackStatus, Status, StatusReport,
-    TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile, TentacleScaffold,
-    TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate, ToolPermission,
-    CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
+    load_tentacle_profiles_from_path, plan_tentacle_evolution_apply,
+    propose_tentacle_evolution_with_client, propose_tentacle_evolution_with_state,
+    recommend_tentacle_evolution_apply, scaffold_tentacle, think_tentacle_with_llm_factory,
+    write_harness_beat_evolution_artifacts, write_tentacle_apply_artifacts,
+    write_tentacle_evolution_artifacts, AdaptReport, BrainDeliberationDraft,
+    BrainDeliberationReport, BrainDeliberationSaveReport, BrainExploreDraft, BrainExploreReport,
+    BrainGoalReport, BrainGoalSaveReport, BrainPromptReport, BrainReflectionDraft,
+    BrainReflectionReport, BrainReflectionSaveReport, BrainSynthesisDraft, BrainSynthesisInput,
+    BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant, ChatClient, ChatClientFactory,
+    ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord, CodexCliChatClient,
+    CodexCliConfig, ContextReport, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan,
+    EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed, FeedFeedbackOutcome,
+    FeedTraceRecord, Feedback, Goal, GoalChat, GoalNeedSuggestion, GoalRefinement, Harness,
+    HarnessBeatEvolution, HarnessState, HeartBeat, HeartbeatReport, InstalledTentacle,
+    LoadedTentacleManifest, Need, NeedKind, NeedQueueItem, NeedQueueReport, NeedQueueSaveReport,
+    NeedQueueStatus, NeedQueueTakeReport, OpenAiCompatibleChatClient, OpenAiCompatibleConfig,
+    OpenAiCompatibleTuning, RepairOutcome, RouteReport, SelfIterationPlan, StarterFeedbackInput,
+    StarterFeedbackRecord, StarterFeedbackStatus, Status, StatusReport, TentacleEvolutionProposal,
+    TentacleManifestReport, TentacleProfile, TentacleScaffold, TentacleThinkingPlan,
+    TentacleToolAction, TentacleToolCandidate, ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY,
+    TENTACLE_CONTEXT_POLICY,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -49,6 +50,7 @@ struct DoctorReport {
     environment: EnvironmentReport,
     manifest_count: usize,
     broken_manifests: Vec<String>,
+    profile_registry: ProfileRegistryReport,
     llm: DoctorLlmReport,
     pet: DoctorPetReport,
     self_iteration_mode: String,
@@ -78,6 +80,17 @@ struct DoctorLlmReport {
 struct DoctorPetReport {
     path: String,
     exists: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct ProfileRegistryReport {
+    source: String,
+    path: String,
+    exists: bool,
+    ok: bool,
+    profile_count: usize,
+    error: Option<String>,
+    next: Vec<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -6062,6 +6075,68 @@ fn write_init_file(path: &Path, content: &str) -> Result<InitFileReport, String>
     })
 }
 
+fn profile_registry_report(state_path: &Path) -> ProfileRegistryReport {
+    let env_path = env::var("OCTOPUS_PROFILE_REGISTRY").ok().map(PathBuf::from);
+    let state_path_candidate = state_profile_registry_path(state_path);
+    let cwd_candidate = PathBuf::from(".octopus")
+        .join("profile-registry")
+        .join("default.json");
+    let (source, path, embedded) = if let Some(path) = env_path {
+        ("env".to_string(), path, false)
+    } else if state_path_candidate.exists() {
+        ("state".to_string(), state_path_candidate, false)
+    } else if cwd_candidate.exists() {
+        ("cwd".to_string(), cwd_candidate, false)
+    } else {
+        (
+            "embedded".to_string(),
+            PathBuf::from("embedded:tentacles/profile-registry/default.json"),
+            true,
+        )
+    };
+
+    let exists = embedded || path.exists();
+    let loaded = if embedded {
+        serde_json::from_str::<Vec<TentacleProfile>>(embedded_profile_registry_json())
+            .map_err(|error| error.to_string())
+    } else if exists {
+        load_tentacle_profiles_from_path(&path)
+    } else {
+        Err(format!(
+            "profile registry missing: {}",
+            path.to_string_lossy()
+        ))
+    };
+    let (ok, profile_count, error) = match loaded {
+        Ok(profiles) => (true, profiles.len(), None),
+        Err(error) => (false, 0, Some(error)),
+    };
+    let mut next = Vec::new();
+    if !ok {
+        if source == "env" {
+            next.push("set OCTOPUS_PROFILE_REGISTRY to a valid JSON registry".to_string());
+        }
+        next.push("octopus bootstrap".to_string());
+    }
+    ProfileRegistryReport {
+        source,
+        path: path.to_string_lossy().to_string(),
+        exists,
+        ok,
+        profile_count,
+        error,
+        next,
+    }
+}
+
+fn state_profile_registry_path(state_path: &Path) -> PathBuf {
+    let directory = state_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    directory.join("profile-registry").join("default.json")
+}
+
 fn print_init_report(report: &InitReport, language: Language) {
     match language {
         Language::En => {
@@ -7468,6 +7543,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
     let manifests =
         inspect_tentacle_manifests(default_tentacles_root()).map_err(|error| error.to_string())?;
     let provider = provider_status_report();
+    let profile_registry = profile_registry_report(state_path);
     let pet_exists = repo_root().join("docs/pet.html").exists();
     let app_exists = repo_root().join("docs/app.html").exists();
     let docs_exists = repo_root().join("docs/index.html").exists();
@@ -7656,6 +7732,19 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             Some("octopus manifests"),
         ),
         product_capability(
+            "profile_registry",
+            if profile_registry.ok {
+                "ready"
+            } else {
+                "invalid"
+            },
+            format!(
+                "source={}, path={}, profiles={}",
+                profile_registry.source, profile_registry.path, profile_registry.profile_count
+            ),
+            Some("octopus bootstrap"),
+        ),
+        product_capability(
             "three_hearts",
             if status.hearts.len() >= 3 {
                 "ready"
@@ -7840,6 +7929,16 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             "octopus check swe-agent",
         ));
     }
+    if !profile_registry.ok {
+        gaps.push(product_gap(
+            "profile_registry_invalid",
+            profile_registry
+                .error
+                .clone()
+                .unwrap_or_else(|| "profile registry is not readable".to_string()),
+            "octopus bootstrap",
+        ));
+    }
     if state.evolution_outcomes.is_empty() {
         gaps.push(product_gap(
             "evolution_scores_empty",
@@ -8004,6 +8103,19 @@ fn preflight_report(
                 doctor.broken_manifests.join("; ")
             },
             "octopus manifests",
+        ),
+        preflight_check(
+            "profile_registry",
+            doctor.profile_registry.ok,
+            true,
+            format!(
+                "source={}, path={}, profiles={}, error={}",
+                doctor.profile_registry.source,
+                doctor.profile_registry.path,
+                doctor.profile_registry.profile_count,
+                doctor.profile_registry.error.as_deref().unwrap_or("none")
+            ),
+            "octopus bootstrap",
         ),
         preflight_check(
             "clean_brain_boundary",
@@ -9822,6 +9934,7 @@ fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorRepo
         .collect::<Vec<_>>();
     let status = state.status_report_with_state(Some(&state_path));
     let llm = doctor_llm_report();
+    let profile_registry = profile_registry_report(&state_path);
     let pet_path = repo_root().join("docs/pet.html");
     let pet = DoctorPetReport {
         path: pet_path.to_string_lossy().to_string(),
@@ -9841,6 +9954,12 @@ fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorRepo
     if !pet.exists {
         warnings.push("pet page missing".to_string());
     }
+    if !profile_registry.ok {
+        warnings.push(format!(
+            "profile registry invalid: {}",
+            profile_registry.error.as_deref().unwrap_or("unknown error")
+        ));
+    }
     warnings.sort();
     warnings.dedup();
 
@@ -9854,6 +9973,7 @@ fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorRepo
     }
     next.push("octopus start --open".to_string());
     next.push("octopus update".to_string());
+    next.extend(profile_registry.next.iter().cloned());
     next.push(format!("open {}", pet.path));
     next.sort();
     next.dedup();
@@ -9865,6 +9985,7 @@ fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorRepo
         environment,
         manifest_count: manifests.len(),
         broken_manifests,
+        profile_registry,
         llm,
         pet,
         self_iteration_mode: self_iteration.mode,
@@ -9941,6 +10062,13 @@ fn print_doctor_report(report: &DoctorReport, language: Language) {
             );
             println!("llm: {}", doctor_llm_line(&report.llm));
             println!(
+                "profile_registry: source={} path={} ok={} profiles={}",
+                report.profile_registry.source,
+                report.profile_registry.path,
+                report.profile_registry.ok,
+                report.profile_registry.profile_count
+            );
+            println!(
                 "pet: {} ({})",
                 report.pet.path,
                 if report.pet.exists {
@@ -9977,6 +10105,13 @@ fn print_doctor_report(report: &DoctorReport, language: Language) {
                 join_or_none(&report.broken_manifests)
             );
             println!("LLM: {}", doctor_llm_line(&report.llm));
+            println!(
+                "profile registry: 来源={} 路径={} 正常={} profiles={}",
+                report.profile_registry.source,
+                report.profile_registry.path,
+                report.profile_registry.ok,
+                report.profile_registry.profile_count
+            );
             println!(
                 "桌宠: {} ({})",
                 report.pet.path,

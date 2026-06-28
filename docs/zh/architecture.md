@@ -67,4 +67,5 @@ cowork/
 - 需要 GitHub OAuth grant 和 PR dry-run/publish 路径证据。
 - 需要发布前 `preflight --live` 全部 required check 通过。
 - 旧 Python SDK 已移除；Python 继续作为 tentacle runtime 存在，例如 `json-feed` 和 repair tools。
-- Seed profiles 已从 Rust kernel 源码移到 `tentacles/profile-registry/default.json`；启动会写出 `.octopus/profile-registry/default.json`，也可用 `OCTOPUS_PROFILE_REGISTRY` 指向其他 registry。
+- Seed profiles 已从 Rust kernel 源码移到 `tentacles/profile-registry/default.json`；启动会写出 `.octopus/profile-registry/default.json`，也可用 `OCTOPUS_PROFILE_REGISTRY` 指向其他 registry。Registry 是 developer/harness 数据面，不是 app 用户写入口。
+- Doctor、Product Report 和 Preflight 会显示 registry 来源、路径、解析状态和 profile 数量。

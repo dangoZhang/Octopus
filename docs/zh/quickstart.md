@@ -45,7 +45,7 @@ octopus first-run "make this repo easier to use"
 - 触发 heartbeat。
 - 返回 Doctor 和 Preflight 证据。
 
-手动版：
+开发者/内部演示手动版。产品用户路径保留 `first-run` 和 Goal 修改：
 
 ```bash
 octopus bootstrap

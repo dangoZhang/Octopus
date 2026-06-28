@@ -193,7 +193,7 @@ jobs:
       - run: grep -q -- "--llm-prefix" crates/octopus-core/src/main.rs
       - run: grep -q -- "--models" crates/octopus-core/src/main.rs
       - run: grep -q "The public writing surface is the Goal" README.md
-      - run: grep -q "user input only changes brain-goal" README.md
+      - run: grep -q "Product and bridge input only changes brain-goal" README.md
       - run: grep -q "Install & Launch" README.md
       - run: grep -q "Deliberate Session" docs/app.html
       - run: grep -q "Clarify Session" docs/app.html
