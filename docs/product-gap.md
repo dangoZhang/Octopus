@@ -237,6 +237,7 @@ Updated: 2026-06-28
 - Added a first-path app regression test so embedded `app.html` must keep Send as the only visible write action, keep Need/Feed/Latest Feed visible, and keep navigation/internal command labels out.
 - Added `benchmark record/check` plus a required `benchmark_evidence` preflight gate so `0.1.0` cannot claim benchmark readiness without filled SWE/Claw/Wild pass evidence.
 - Moved benchmark evidence templates and audits into `release_gate.rs`, keeping `main.rs` on CLI dispatch while release readiness logic stays together.
+- Added `preflight.summary.next_steps` so CLI/JSON surfaces expose a deduplicated required-blocker action list for the `0.1.0` release path.
 - Rolled the cleanup/version cadence to `0.0.20` after local app first-path reset, real bridge Send verification, `start --check` evidence, root structure mapping, first-path regression coverage, and version consistency.
 - Rolled the cleanup/version cadence to `0.0.19` after repair-score reuse, target-aware repair outcomes, immediate evolution follow-up artifacts, harness-learning product visibility, and the `0.0.24` core-audit gate.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.

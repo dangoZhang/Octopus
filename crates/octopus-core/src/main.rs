@@ -789,6 +789,7 @@ struct PreflightSummary {
     optional_passed: usize,
     optional_total: usize,
     blockers: Vec<PreflightBlocker>,
+    next_steps: Vec<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -9061,6 +9062,12 @@ fn preflight_summary(checks: &[PreflightCheck]) -> PreflightSummary {
             evidence: check.evidence.clone(),
             next: check.next.clone(),
         })
+        .collect::<Vec<_>>();
+    let next_steps = blockers
+        .iter()
+        .map(|blocker| blocker.next.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
         .collect();
     PreflightSummary {
         required_passed,
@@ -9068,6 +9075,7 @@ fn preflight_summary(checks: &[PreflightCheck]) -> PreflightSummary {
         optional_passed,
         optional_total,
         blockers,
+        next_steps,
     }
 }
 
@@ -9643,6 +9651,12 @@ fn print_preflight_report(report: &PreflightReport, language: Language) {
                     );
                 }
             }
+            if !report.summary.next_steps.is_empty() {
+                println!("release next steps:");
+                for step in &report.summary.next_steps {
+                    println!("- {step}");
+                }
+            }
             println!(
                 "head: {}",
                 report.current_head.as_deref().unwrap_or("unknown")
@@ -9680,6 +9694,12 @@ fn print_preflight_report(report: &PreflightReport, language: Language) {
                         "- {} [{}]: {}; 下一步={}",
                         blocker.id, blocker.status, blocker.evidence, blocker.next
                     );
+                }
+            }
+            if !report.summary.next_steps.is_empty() {
+                println!("发布下一步:");
+                for step in &report.summary.next_steps {
+                    println!("- {step}");
                 }
             }
             println!(
@@ -19089,6 +19109,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .blockers
             .iter()
             .any(|item| item.id == "live_provider"));
+        assert!(preflight
+            .summary
+            .next_steps
+            .iter()
+            .any(|item| item.contains("octopus benchmark record")));
         assert!(preflight
             .checks
             .iter()
