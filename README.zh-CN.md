@@ -1,84 +1,110 @@
 # Octopus 🐙 中文 README
 
-默认入口仍是 [README.md](README.md)。这份是中文阅读版。
+让主模型专注目标，让本地触手处理工具过程。
 
-[网页试用](https://dangozhang.github.io/Octopus/app.html) · [中文产品教学](docs/zh/tutorial.html) · [使用场景](docs/zh/recipes.html) · [中文快速开始](docs/zh/quickstart.md) · [本地 App](docs/app.html)
+[安装](#快速安装和启动) · [产品 Demo](https://dangozhang.github.io/Octopus/demo.html) · [网页教程](https://dangozhang.github.io/Octopus/docs.html) · [试用 App](https://dangozhang.github.io/Octopus/app.html?demo=hello) · [English](README.md)
 
-网页试用可以直接输入 API key：先看干净大脑生成 Need，再看浏览器触手执行 Feed，完成 Hello World 或绘制动态章鱼。
+章鱼把控制分散在身体里。中枢给出方向，腕足在离环境最近的地方完成大量感知和调整。
 
-## Intro
+Octopus 把这个结构放进 agent。主模型保留较小的目标上下文；触手靠近工具，处理嘈杂步骤，再把一段可用结果带回来。
 
-Clean brain. Independent tentacles.
-
-生物章鱼不会把所有控制信号都压进一个大脑。
-它们的腕足有局部神经系统。
-行为来自意图、局部控制和反馈。
-心跳服务于供血和环境适应。
-
-Octopus 把这个想法带到 agent。
-大脑只拥有目标和需求。
-带智能的触手拥有实现。
-心跳驱动自发动作，也驱动 harness 自我演化。
+这就是产品核心：更干净的大脑，更聪明的工具，以及一个可以进化但不污染主上下文的 harness。
 
 ```text
-Goal -> Brain -> Need -> Tentacle Intelligence -> Action -> Feed -> Brain
-Heartbeat -> Action Data -> Tentacle harness change
+Goal -> Brain -> Need -> Tentacle -> Tool work -> Feed -> Brain
+Heartbeat -> run data -> memory and harness updates
 ```
 
-## 安装
+## 为什么是 Octopus
+
+**工具成为局部神经系统。**
+
+很多 agent 把工具当被动调用。Octopus 把每条工具流程当成本地工作单元：它可以观察环境，选择下一步，检查结果，再返回紧凑 Feed。
+
+**需求和实现分开。**
+
+大脑只说它需要什么。shell 语法、浏览器步骤、repo 命令、provider 配置都留给触手。
+
+这种分离是 runtime 里的一级设计：Goal、Need、Feed、触手执行是不同表面，不只是一段 prompt 约定。
+
+**触手可改，大脑保持干净。**
+
+种子触手放在 `tentacles/`。prompt、manifest、tools、repair policy 可以被检查和修改，而核心 Goal -> Need -> Feed 链路保持稳定。
+
+**章鱼会变色。**
+
+像素章鱼不是装饰。它是等待、运行、记忆、harness、阻塞、成功这些状态的最小可视面。
+
+## 快速安装和启动
 
 ```bash
 curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
-```
-
-或者：
-
-```bash
-cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
-octopus download
 octopus --version
-octopus start --check 127.0.0.1:18765
 octopus start --open
 ```
 
-`start --open` 会准备本地状态、种子触手、可编辑 profile registry、心跳和 HTML app，然后打开 `http://127.0.0.1:8765/app.html`。
-
-Profile registry 是 developer/harness 数据面，会改变触手供给路径、权限、检查和演化策略；公开用户输入仍然只写 Goal。
-
-更新：
-
-```bash
-octopus update
-octopus update --run
-```
-
-## 第一次闭环
+跑第一次本地闭环：
 
 ```bash
 octopus first-run "make this repo easier to use"
+octopus chat "prefer one small evidence-backed improvement"
+octopus pet
 ```
 
-它会设置干净 Goal，安装 seed tentacles，跑一次安全 observe Feed，记录反馈，触发 heartbeat，并返回 Doctor 与 Preflight 证据。
+你应该看到本地 app：`http://127.0.0.1:8765/app.html`，一个 `.octopus/state.json` 文件，一段 Feed summary，以及像素章鱼状态。
 
-## 现在能做什么
+直接从 GitHub 安装：
 
-- 干净大脑：`Goal + Mem + Need + Feed`。
-- 触手执行：`Need + Tool + Action + Tool + Action -> Feed`。
-- Seed tentacles：SWE、computer-use、repo-maintainer、harness-repair、bash-only、json-feed、visual。
-- Provider：Codex CLI OAuth、OpenAI-compatible API、本地模型、LiteLLM 等。
-- 本地 app：用户只改 Goal；provider、preflight、pet、trace、repair 和 harness 状态作为观察面。
-- 网页 app：API key demo 会展示 Need 到 Browser Tentacle Feed，并生成 Hello World 或动态章鱼。
-- Harness evolution：基于 Feed trace、check history、repair outcome 生成可审查的改动计划。
+```bash
+cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
+octopus start --check
+octopus start --open
+```
 
-## 中文文档
+## 模型接入
 
-- [中文快速开始](docs/zh/quickstart.md)
-- [中文产品教学](docs/zh/tutorial.html)
-- [中文使用场景](docs/zh/recipes.html)
-- [英文产品教学](docs/tutorial.html)
+Codex 登录：
+
+```bash
+octopus provider save codex
+source .octopus/llm.env
+octopus provider check
+octopus first-run --live "make this repo easier to use"
+```
+
+API key：
+
+```bash
+octopus provider save openai
+source .octopus/llm.env
+export OPENAI_API_KEY=...
+octopus provider check
+```
+
+本地 OpenAI 兼容模型、网关或路由服务也走同一套 provider 配置。
+
+## 当前形态
+
+Octopus 已经是一个本地产品：app、pet、docs、recipes、installer page、provider checks、seed tentacles 和 release evidence 都在同一条启动路径里。
+
+发布证据记录在 [docs/real-machine-test.md](docs/real-machine-test.md)。v0.1.0 已记录 installed binary、本地 app、provider matrix、最小 SWE/Claw/Wild benchmark 证据。
+
+GitHub Pages app 用来零安装体验想法。它直接请求你填写的 endpoint；项目不代理 API key。
+
+## 文档
+
+- [产品 Demo](docs/demo.html)
+- [网页教程](docs/docs.html)
 - [5 分钟使用教学](docs/use.html)
-- [中文架构说明](docs/zh/architecture.md)
-- [英文架构](docs/architecture.md)
+- [Recipes](docs/recipes.html)
+- [架构](docs/architecture.md)
+- [v0.2.0 领域触手进化计划](docs/field-adaptation.md)
 - [产品 gap log](docs/product-gap.md)
 
-当前版本线是 `0.1.0`。之后每个 tag 都需要完整真实机器记录、live provider gate、GitHub OAuth/PR 路径和发布前 preflight 全部通过。
+## v0.2.0
+
+v0.2.0 聚焦领域适配。Octopus 需要理解不同任务领域的行为，再用轨迹、错误和修复结果改进合适的触手。
+
+## License
+
+MIT.

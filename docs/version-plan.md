@@ -38,8 +38,8 @@ Road to `0.1.0`:
 - `0.0.24`: full core audit before `0.1.0`; remove redundant code, development residue, and fallback logic that conflicts with the clean-brain and code-as-harness boundary.
 - `0.1.0`: first release candidate only after the `0.0.24` audit and recorded real-machine test evidence pass.
 
-Last release correction: `0.1.0` on 2026-06-28. Scope: recorded GitHub-installed binary gate, provider matrix, benchmark artifact evidence, GitHub PR dry-run, live preflight, and version consistency.
+Last release correction: `0.1.0` on 2026-06-28. Scope: recorded GitHub-installed binary gate, provider matrix, benchmark artifact evidence, GitHub PR dry-run, live preflight, static product demo screenshots, app/docs local startup, and version consistency.
 
-Product commits after `0.1.0`: 2/8.
+`0.1.0` is the clean local-product release line.
 
-Next planned cleanup/version commit: `0.1.1`.
+Next milestone: `0.2.0` field adaptation harness. The focus is reusable task templates, trajectory-backed tentacle evolution, verifier infrastructure, and domain packs for math, search, code, SWE, research, computer-use, IB work, and robotics.

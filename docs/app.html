@@ -25,6 +25,10 @@
         box-sizing: border-box;
       }
 
+      [hidden] {
+        display: none !important;
+      }
+
       body {
         margin: 0;
         min-height: 100vh;
@@ -584,6 +588,11 @@
         return new URLSearchParams(location.search).get(name) || "";
       }
 
+      function captureDemoTask() {
+        const capture = queryValue("capture").toLowerCase();
+        return ["hello", "octopus"].includes(capture) ? capture : "";
+      }
+
       function hydrateInputs() {
         const demo = queryValue("demo").toLowerCase();
         const queryGoal = queryValue("goal");
@@ -1065,6 +1074,34 @@
         refresh();
       }
 
+      function runCaptureDemo(task) {
+        const goal =
+          task === "octopus"
+            ? "Draw an animated Octopus and show how Need becomes Feed."
+            : "Write Hello World and show how Need becomes Feed.";
+        const need =
+          task === "octopus"
+            ? "Create a visible Octopus artifact, then verify the result in the browser surface."
+            : "Create a runnable Hello World artifact, then verify the visible output.";
+        const action = task === "octopus" ? "draw_octopus_animation" : "write_hello_world";
+        const title = task === "octopus" ? "Animated Octopus" : "Hello World";
+        const summary =
+          task === "octopus"
+            ? "Browser tentacle drew the animated Octopus and returned checked Feed."
+            : "Browser tentacle rendered Hello World and returned checked Feed.";
+        $("goal").value = goal;
+        $("webDemo").hidden = true;
+        drawPet("success");
+        setBlock("petText", "Success", "The browser tentacle executed Feed in this app surface.");
+        setBlock("needCard", "execute Need", need);
+        setBlock("feedCard", "Browser Tentacle Feed", `${summary} Steps: observe Need -> choose ${action} -> render artifact -> verify output`);
+        replaceOutput("Brain Need", `execute: ${need}`, "pass");
+        output("Tentacle Feed", `${action}: ${summary}`, "pass");
+        executeBrowserAction({ action, artifact_title: title, feed_summary: summary, steps: [] });
+        setStatus("Octopus App · demo complete");
+        setOutputStatus("ready");
+      }
+
       function bind() {
         hydrateInputs();
         drawPet("waiting");
@@ -1081,7 +1118,9 @@
       }
 
       bind();
-      runStartupSnapshot();
+      const capturedTask = captureDemoTask();
+      if (capturedTask) runCaptureDemo(capturedTask);
+      else runStartupSnapshot();
     </script>
   </body>
 </html>

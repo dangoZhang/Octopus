@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Octopus</title>
-    <meta name="description" content="Independent-thinking tools with a clean agent brain and evolvable harness." />
+    <meta name="description" content="A local agent runtime that keeps tool steps out of the main model context." />
     <style>
       :root {
         color-scheme: light;
@@ -78,6 +78,11 @@
         font-weight: 700;
       }
 
+      .primary {
+        background: var(--ink);
+        color: var(--paper);
+      }
+
       .hero {
         min-height: 82vh;
         display: grid;
@@ -100,6 +105,13 @@
         color: var(--muted);
         font-size: 20px;
         line-height: 1.55;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 28px;
       }
 
       .flow {
@@ -271,17 +283,9 @@
       <nav class="shell" aria-label="Primary navigation">
         <div class="brand">Octopus</div>
         <div class="nav-links">
-          <a href="#core">Core</a>
-          <a href="./about.html">About</a>
-          <a href="./tutorial.html">Tutorial</a>
-          <a href="./recipes.html">Recipes</a>
-          <a href="./use.html">Use</a>
-          <a href="./references.html">Research</a>
-          <a href="./self-iteration.html">Iterate</a>
-          <a href="./app.html">App</a>
-          <a href="./pet.html">Pet</a>
-          <a href="./zh/">中文</a>
+          <a href="./demo.html">Demo</a>
           <a href="#quickstart">Install & use</a>
+          <a href="./docs.html">Docs</a>
           <a class="button" href="https://github.com/dangoZhang/Octopus">GitHub</a>
         </div>
       </nav>
@@ -291,24 +295,42 @@
       <section class="hero shell">
         <div>
           <h1>Octopus</h1>
-          <p class="lead">Independent tentacles with a clean agent brain. The model asks for what it needs; local nervous systems learn how to supply it.</p>
-          <div class="flow" aria-label="Octopus thinking flow">
-            <div class="node need"><strong>Clean brain</strong><span>verify, reproduce, compare, remember, forget, execute</span></div>
-            <div class="arrow">-&gt;</div>
-            <div class="node feed"><strong>Thinking tools</strong><span>planner, permissioned metadata, executable code</span></div>
-            <div class="arrow">-&gt;</div>
-            <div class="node feedback"><strong>Evidence back</strong><span>compact results, route signals, next supply</span></div>
+          <p class="lead">Keep the main agent focused on the goal. Let local tentacles handle files, browsers, commands, checks, and messy tool work.</p>
+          <div class="hero-actions">
+            <a class="button primary" href="./demo.html">Watch product demo</a>
+            <a class="button" href="./app.html?demo=hello">Try Hello World</a>
+            <a class="button" href="./app.html?demo=octopus">Draw Octopus</a>
+            <a class="button" href="./docs.html">Read docs tutorial</a>
           </div>
+          <div class="flow" aria-label="Octopus thinking flow">
+            <div class="node need"><strong>Goal</strong><span>The main model keeps the objective and asks for the next useful result.</span></div>
+            <div class="arrow">-&gt;</div>
+            <div class="node feed"><strong>Worker</strong><span>A tentacle reads files, runs tools, checks output, or talks to the browser.</span></div>
+            <div class="arrow">-&gt;</div>
+            <div class="node feedback"><strong>Feed</strong><span>The brain gets a short result it can use for the next step.</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="demo">
+        <div class="shell">
+          <h2>Octopus App Demo</h2>
+          <div class="grid">
+            <article class="card"><h3>One binary</h3><p>Install, start the app, and run the first Goal from the same CLI.</p></article>
+            <article class="card"><h3>One local surface</h3><p>The app, pet, docs, recipes, and installer route ship together.</p></article>
+            <article class="card"><h3>One visible loop</h3><p>A Goal becomes a Feed summary and a pixel Octopus state.</p></article>
+          </div>
+          <p class="copy"><a href="./demo.html">Open the product demo</a></p>
         </div>
       </section>
 
       <section id="core">
         <div class="shell">
-          <h2>A Smaller Brain That Moves Faster</h2>
+          <h2>What Makes It Different</h2>
           <div class="grid">
-            <article class="card"><h3>Stable kernel</h3><p>The Rust base keeps the loop small, stores memory state, and learns which route works.</p></article>
-            <article class="card"><h3>Local nervous systems</h3><p>Inspired by cephalopod arms, each tentacle owns its prompt, permissions, tool metadata, runtime code, and editable surface.</p></article>
-            <article class="card"><h3>Agent tool suites</h3><p>SWE, computer-use diagnostics, repo maintenance, harness repair, and write-and-run ship as editable seeds that can be inspected and improved.</p></article>
+            <article class="card"><h3>Clean brain</h3><p>The main model stays on the goal and the next useful result.</p></article>
+            <article class="card"><h3>Thinking tentacles</h3><p>Tool work happens close to files, browsers, commands, and checks.</p></article>
+            <article class="card"><h3>Editable harness</h3><p>The tool side can change while the core loop stays stable.</p></article>
           </div>
         </div>
       </section>
@@ -317,8 +339,8 @@
         <div class="shell">
           <h2>The Octopus Shows State</h2>
           <div class="grid">
-            <article class="card"><h3>Alive</h3><p>A pixel Octopus changes color when the kernel and chat loop are running.</p></article>
-            <article class="card"><h3>Remembering</h3><p>Recall, compaction, and forgetting can become visible without adding text to the brain.</p></article>
+            <article class="card"><h3>Alive</h3><p>A pixel Octopus changes color when the local loop is running.</p></article>
+            <article class="card"><h3>Remembering</h3><p>Memory events are shown in the pet UI.</p></article>
             <article class="card"><h3>Learning</h3><p>Routes and tool runs can surface as color state while the main loop stays clean.</p></article>
           </div>
           <p class="copy"><a href="./pet.html">Open the pixel pet</a></p>
@@ -328,8 +350,8 @@
       <section id="quickstart">
         <div class="shell">
           <h2>Quick Install & Use</h2>
-          <pre><code>cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
-octopus update
+          <pre><code>curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
+octopus --version
 octopus start --open</code></pre>
           <p class="copy"><code>start --open</code> prepares state, seed tentacles, heartbeats, and opens the native app. Use <code>octopus start</code> on headless machines.</p>
           <pre><code>octopus doctor
@@ -338,13 +360,13 @@ octopus first-run --live "make this repo easier to use"
 octopus routes observe .
 octopus beat 200
 octopus pet</code></pre>
-          <p class="copy"><a href="./tutorial.html">Product tutorial</a>. <a href="./recipes.html">Recipes</a>. <a href="./use.html">5-minute use guide</a>. <a href="./quickstart.html">Full install guide</a>. <a href="./app.html">Try the browser app</a>: API key in, clean-brain Need visible, browser-tentacle Feed renders Hello World or an animated Octopus. The kernel stays small while tentacles, SDKs, and harness code evolve around it.</p>
+          <p class="copy"><a href="./demo.html">Product demo</a>. <a href="./docs.html">Docs tutorial</a>. <a href="./use.html">5-minute use guide</a>. <a href="./quickstart.html">Full install guide</a>. <a href="./app.html?demo=hello">Try App</a>.</p>
         </div>
       </section>
     </main>
 
     <footer>
-      <div class="shell">MIT licensed. Rust kernel, Python runtime tentacles, evolvable harness.</div>
+      <div class="shell">MIT licensed. More docs: <a href="./about.html">About</a> · <a href="./recipes.html">Recipes</a> · <a href="./references.html">Research</a> · <a href="./pet.html">Pet</a> · <a href="./zh/">中文</a></div>
     </footer>
   </body>
 </html>

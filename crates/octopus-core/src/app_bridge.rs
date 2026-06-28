@@ -268,6 +268,8 @@ fn local_app_pages() -> Vec<LocalAppPageReport> {
         ("/app.html", "Octopus App"),
         ("/pet.html", "pixel-pet"),
         ("/index.html", "Octopus"),
+        ("/demo.html", "Octopus Demo"),
+        ("/docs.html", "Octopus Docs"),
         ("/tutorial.html", "Octopus Tutorial"),
         ("/recipes.html", "Octopus Recipes"),
         ("/download.json", "cargo_package"),
@@ -665,6 +667,8 @@ pub(crate) fn static_page(path: &str) -> Result<(&'static str, Vec<u8>), String>
 fn static_content_type(file: &str) -> &'static str {
     if file.ends_with(".json") {
         "application/json"
+    } else if file.ends_with(".png") {
+        "image/png"
     } else if file.ends_with(".sh") {
         "text/x-shellscript"
     } else {
@@ -680,6 +684,16 @@ pub(crate) fn static_asset(path: &str) -> Option<(&'static str, &'static [u8])> 
             &include_bytes!("../../../docs/index.html")[..],
         )),
         "/pet.html" => Some(("pet.html", &include_bytes!("../../../docs/pet.html")[..])),
+        "/demo.html" => Some(("demo.html", &include_bytes!("../../../docs/demo.html")[..])),
+        "/assets/demo/octopus-app-hello.png" => Some((
+            "assets/demo/octopus-app-hello.png",
+            &include_bytes!("../../../docs/assets/demo/octopus-app-hello.png")[..],
+        )),
+        "/assets/demo/octopus-app-octopus.png" => Some((
+            "assets/demo/octopus-app-octopus.png",
+            &include_bytes!("../../../docs/assets/demo/octopus-app-octopus.png")[..],
+        )),
+        "/docs.html" => Some(("docs.html", &include_bytes!("../../../docs/docs.html")[..])),
         "/quickstart.html" => Some((
             "quickstart.html",
             &include_bytes!("../../../docs/quickstart.html")[..],

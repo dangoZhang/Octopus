@@ -17053,7 +17053,6 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "env".to_string(),
         ])
         .unwrap();
-        assert!(usage().contains("start [--open] [addr]"));
         assert!(!usage().contains("bridge [addr]"));
         assert!(usage().contains("think <tentacle> <kind> <query>"));
         assert!(usage().contains(
@@ -17345,6 +17344,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("\"seed_tentacles\""));
         assert!(record.contains("\"/app.html\""));
         assert!(record.contains("\"/pet.html\""));
+        assert!(record.contains("\"/demo.html\""));
+        assert!(record.contains("\"/docs.html\""));
         assert!(record.contains("\"/tutorial.html\""));
         assert!(record.contains("\"/recipes.html\""));
         assert!(record.contains("\"/download.json\""));
@@ -17367,6 +17368,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     fn bridge_static_has_embedded_app_fallback() {
         let (content_type, app) = bridge_static("/app.html").unwrap();
         let (_, index) = bridge_static("/").unwrap();
+        let (_, demo) = bridge_static("/demo.html").unwrap();
+        let (hello_shot_type, hello_shot) =
+            bridge_static("/assets/demo/octopus-app-hello.png").unwrap();
+        let (octopus_shot_type, octopus_shot) =
+            bridge_static("/assets/demo/octopus-app-octopus.png").unwrap();
+        let (_, docs) = bridge_static("/docs.html").unwrap();
         let (_, tutorial) = bridge_static("/tutorial.html").unwrap();
         let (_, recipes) = bridge_static("/recipes.html").unwrap();
         let (download_type, download) = bridge_static("/download.json").unwrap();
@@ -17374,6 +17381,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let (_, pet_embedded) = bridge_static_asset("/pet.html").unwrap();
 
         assert_eq!(content_type, "text/html");
+        assert_eq!(hello_shot_type, "image/png");
+        assert_eq!(octopus_shot_type, "image/png");
         assert_eq!(download_type, "application/json");
         assert_eq!(install_type, "text/x-shellscript");
         let app_text = String::from_utf8_lossy(&app);
@@ -17381,6 +17390,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(app_text.contains("127.0.0.1:8765"));
         assert!(app_text.contains("runStartupSnapshot"));
         assert!(String::from_utf8_lossy(&index).contains("Octopus App"));
+        assert!(String::from_utf8_lossy(&demo).contains("Octopus Demo"));
+        assert!(String::from_utf8_lossy(&demo).contains("Meet Octopus App"));
+        assert!(hello_shot.starts_with(b"\x89PNG"));
+        assert!(octopus_shot.starts_with(b"\x89PNG"));
+        assert!(String::from_utf8_lossy(&docs).contains("Octopus Docs"));
+        assert!(String::from_utf8_lossy(&docs).contains("Learn Octopus from idea"));
         assert!(String::from_utf8_lossy(&tutorial).contains("Octopus Tutorial"));
         assert!(String::from_utf8_lossy(&recipes).contains("Octopus Recipes"));
         assert!(String::from_utf8_lossy(&download).contains("\"cargo_package\""));

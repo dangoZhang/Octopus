@@ -1,68 +1,111 @@
 # Octopus 🐙
 
-Clean brain. Independent tentacles.
+Keep the main agent focused on the goal. Let local tentacles handle the tool work.
 
-[Try the app](https://dangozhang.github.io/Octopus/app.html) · [Download manifest](https://dangozhang.github.io/Octopus/download.json) · [Tutorial](https://dangozhang.github.io/Octopus/tutorial.html) · [Recipes](https://dangozhang.github.io/Octopus/recipes.html) · [Docs](https://dangozhang.github.io/Octopus/) · [中文](README.zh-CN.md)
+[Install](#quick-install--use) · [Product Demo](https://dangozhang.github.io/Octopus/demo.html) · [Docs](https://dangozhang.github.io/Octopus/docs.html) · [Try App](https://dangozhang.github.io/Octopus/app.html?demo=hello) · [中文](README.zh-CN.md)
 
-Try the app runs in the browser: enter an API key, watch the clean brain emit a Need, then let a browser tentacle create Hello World or draw an animated Octopus as Feed.
+Biological octopuses distribute control through the body. The central brain sets direction; the arms do much of the sensing and adjustment close to the world.
 
-Biological octopuses use intent, local arm control, and feedback instead of routing every signal through one central brain.
-Octopus brings that shape to agents: the brain expresses the Goal and cognitive Need; tentacles own implementation through their own prompt, tool metadata, code, permissions, traces, and evolution surface.
+Octopus brings that shape to agents. The main model keeps the goal context small. Tentacles stay near the tools, handle the noisy steps, and return a short result the brain can use.
 
-Tools become local nervous systems.
-The main model stays clean.
-The harness learns which tentacle can supply the best Feed.
+That is the product idea: a cleaner brain, smarter tools, and a harness that can improve without turning the main context into a tool log.
 
 ```text
-Goal -> Brain -> Need -> Tentacle Intelligence -> Action -> Feed -> Brain
-Heartbeat -> Action Data -> Tentacle harness change
+Goal -> Brain -> Need -> Tentacle -> Tool work -> Feed -> Brain
+Heartbeat -> run data -> memory and harness updates
 ```
+
+## Why Octopus
+
+**Tools become local nervous systems.**
+
+Most agents treat tools as passive calls. Octopus treats each tool workflow as a small local worker: it can inspect the environment, choose the next step, check the result, and return compact Feed.
+
+**Need stays separate from implementation.**
+
+The brain asks for what it needs from the world. It does not need to carry shell syntax, browser choreography, repo commands, or provider plumbing.
+
+This separation is first-class in the runtime: Goal, Need, Feed, and tentacle execution are different surfaces, not one prompt convention.
+
+**Harness changes without dirtying the brain.**
+
+Seed tentacles live under `tentacles/`. Their prompts, manifests, tools, and repair policy can be inspected and changed while the core Goal -> Need -> Feed loop stays stable.
+
+**The Octopus shows state.**
+
+The pixel pet is not decoration. It is the smallest visible surface for waiting, running, memory, harness, blocked, and success states.
 
 ## Quick Install & Use
 
 ```bash
 curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
-```
-
-or:
-
-```bash
-cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
-octopus download
 octopus --version
-octopus start --check 127.0.0.1:18765
 octopus start --open
 ```
 
-`start --open` prepares local state, editable seed tentacles, the profile registry, three beats, the pixel pet, and the native app, then opens `http://127.0.0.1:8765/app.html`.
+Then run one local loop:
 
 ```bash
 octopus first-run "make this repo easier to use"
+octopus chat "prefer one small evidence-backed improvement"
+octopus pet
 ```
 
-`first-run` sets a clean Goal, installs seed tentacles, asks one safe observe Need, records Feed feedback, pulses the hearts, and returns Doctor plus Preflight evidence.
+You should see the local app at `http://127.0.0.1:8765/app.html`, a `.octopus/state.json` file, one Feed summary, and a pixel Octopus state.
 
-Keep using it by changing Goal:
+Direct GitHub install:
 
 ```bash
-octopus chat "make this repo easier to use"
-octopus goal refine "prefer small reviewable changes"
-octopus brain --goal --save "tighten the current objective"
+cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
+octopus start --check
+octopus start --open
 ```
 
-Need, Feed, tool choice, provider routing, repair, and harness evolution stay inside the agent. The product surface changes Goal; the harness handles supply.
+## Models
 
-## Works Now
+Codex login:
 
-- One public input path: Goal from CLI, app, or external chat.
-- Seed tentacles for SWE work, computer-use adapters, repo maintenance, harness repair, write-and-run execution, JSON Feed, and the pixel pet.
-- Tool-side LLM planning, grants, traces, route scores, and reviewable harness evolution.
-- Native app server, provider/readiness observation, preflight gates, and pixel pet state.
-- GitHub Pages app demo with API-key Need generation, browser-tentacle Feed, Hello World, and animated Octopus output.
-- `start --check` writes local app run evidence for release preflight.
-- LLM backends through Codex login, API-key clouds, local OpenAI-compatible models, or gateway routers.
-- Repo-maintainer can probe local Codex CLI OAuth/API-key readiness and write Codex-backed maintenance reports for granted repos.
+```bash
+octopus provider save codex
+source .octopus/llm.env
+octopus provider check
+octopus first-run --live "make this repo easier to use"
+```
 
-Read next: [Tutorial](docs/tutorial.html), [Recipes](docs/recipes.html), [5-minute use guide](docs/use.html), [Quick Install & Use](docs/quickstart.md), [Architecture](docs/architecture.md), [Research map](docs/references.md).
+API-key provider:
 
-First release line: `0.1.0`. Tags from here require recorded real-machine testing before release.
+```bash
+octopus provider save openai
+source .octopus/llm.env
+export OPENAI_API_KEY=...
+octopus provider check
+```
+
+Local OpenAI-compatible servers and gateway routers use the same provider shape.
+
+## Current Shape
+
+Octopus already starts as one local product: app, pet, docs, recipes, installer page, provider checks, seed tentacles, and release evidence.
+
+The release evidence is recorded in [docs/real-machine-test.md](docs/real-machine-test.md). The v0.1.0 line includes installed-binary checks, local app checks, provider matrix evidence, and minimal SWE/Claw/Wild benchmark records.
+
+The GitHub Pages app is a zero-install taste of the idea. It sends requests directly to the endpoint you enter; the project does not proxy API keys.
+
+## Docs
+
+- [Product Demo](docs/demo.html)
+- [Docs Tutorial](docs/docs.html)
+- [5-minute Use Guide](docs/use.html)
+- [Recipes](docs/recipes.html)
+- [Architecture](docs/architecture.md)
+- [Research Map](docs/references.md)
+- [v0.2.0 Field Adaptation Harness](docs/field-adaptation.md)
+- [Current Gap Log](docs/product-gap.md)
+
+## Road to v0.2.0
+
+v0.2.0 focuses on field adaptation. Octopus should learn how different task fields behave, then improve the right tentacle from trajectories, errors, and repairs.
+
+## License
+
+MIT.
