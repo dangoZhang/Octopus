@@ -35,6 +35,7 @@ Updated: 2026-06-28
 - Release-gate check types, record parsing, script commands, and real-machine record status logic now live in a separate `release_gate` Rust module instead of the general CLI backend.
 - README and docs now point first to a product-style five-minute use page: install, launch, first Goal, evidence surfaces, optional model backend, and harness learning path.
 - `docs/tutorial.html` now gives a product tutorial from browser API-key demo to whole-project local startup, showing Need first and browser/local tentacle Feed second.
+- `docs/zh/tutorial.html` mirrors the product tutorial in Chinese so the Chinese docs path starts from the same browser-to-local Need/Feed walkthrough.
 - `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
 - `start` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
 - `start` and `bootstrap` can materialize editable bundled seed tentacles under `.octopus/bundled-tentacles` when source tentacles are unavailable.

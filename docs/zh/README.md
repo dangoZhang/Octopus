@@ -5,6 +5,7 @@
 中文阅读入口：
 
 - [快速开始](quickstart.md)
+- [产品教学](tutorial.html)
 - [5 分钟使用教学](../use.html)
 - [架构说明](architecture.md)
 - [中文 README](../../README.zh-CN.md)
@@ -13,6 +14,7 @@
 
 推荐阅读顺序：
 
-1. 先读 [快速开始](quickstart.md)，跑通 `octopus start --open` 和 `octopus first-run`。
-2. 再读 [架构说明](architecture.md)，理解 clean brain、Need、Feed、tentacle、heartbeat。
-3. 最后看 [product gap](../product-gap.md) 和 [real-machine gate](../real-machine-test.md)，判断离 `0.1.0` 还差什么。
+1. 先读 [产品教学](tutorial.html)，看清网页试用和本地启动路径。
+2. 再读 [快速开始](quickstart.md)，跑通 `octopus start --open` 和 `octopus first-run`。
+3. 然后读 [架构说明](architecture.md)，理解 clean brain、Need、Feed、tentacle、heartbeat。
+4. 最后看 [product gap](../product-gap.md) 和 [real-machine gate](../real-machine-test.md)，判断离 `0.1.0` 还差什么。

@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Octopus 产品教学</title>
+    <meta name="description" content="从浏览器试用到本地启动 Octopus。" />
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #111318;
+        --muted: #5b6474;
+        --line: #d8dde6;
+        --paper: #ffffff;
+        --soft: #f5f7fa;
+        --teal: #0f766e;
+        --coral: #cf4d32;
+        --gold: #a16207;
+        --blue: #2563eb;
+        --plum: #6d3f8f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .shell {
+        width: min(1080px, calc(100% - 32px));
+        margin: 0 auto;
+      }
+
+      header {
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.94);
+        position: sticky;
+        top: 0;
+        z-index: 2;
+      }
+
+      nav {
+        min-height: 64px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .brand {
+        font-weight: 800;
+      }
+
+      .links {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .button {
+        border: 1px solid var(--ink);
+        border-radius: 8px;
+        padding: 9px 12px;
+        text-decoration: none;
+        color: var(--ink);
+        font-weight: 700;
+      }
+
+      .primary {
+        background: var(--ink);
+        color: #ffffff;
+      }
+
+      .hero {
+        min-height: 76vh;
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+        gap: 44px;
+        align-items: center;
+        padding: 70px 0 36px;
+      }
+
+      h1 {
+        margin: 0;
+        max-width: 760px;
+        font-size: 74px;
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      .lead {
+        margin: 22px 0 0;
+        max-width: 690px;
+        color: var(--muted);
+        font-size: 20px;
+        line-height: 1.65;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 28px;
+      }
+
+      .stage {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        min-height: 360px;
+        display: grid;
+        place-items: center;
+        background: var(--soft);
+        padding: 24px;
+      }
+
+      .pixel-octo {
+        width: 232px;
+        height: 232px;
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        grid-template-rows: repeat(8, 1fr);
+        gap: 6px;
+      }
+
+      .pixel {
+        border-radius: 5px;
+        background: transparent;
+      }
+
+      .b {
+        background: var(--teal);
+      }
+
+      .c {
+        background: var(--coral);
+      }
+
+      .g {
+        background: var(--gold);
+      }
+
+      .p {
+        background: var(--plum);
+      }
+
+      .eye {
+        background: var(--ink);
+      }
+
+      section {
+        padding: 52px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      h2 {
+        margin: 0 0 16px;
+        font-size: 30px;
+        letter-spacing: 0;
+      }
+
+      h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+
+      p,
+      li {
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+        background: var(--paper);
+      }
+
+      .card:nth-child(1) {
+        border-top: 5px solid var(--teal);
+      }
+
+      .card:nth-child(2) {
+        border-top: 5px solid var(--coral);
+      }
+
+      .card:nth-child(3) {
+        border-top: 5px solid var(--gold);
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+        align-items: stretch;
+      }
+
+      .node,
+      .arrow {
+        min-height: 88px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        display: grid;
+        align-content: center;
+      }
+
+      .node strong {
+        display: block;
+        font-size: 20px;
+      }
+
+      .node span {
+        color: var(--muted);
+        font-size: 14px;
+        margin-top: 5px;
+      }
+
+      .arrow {
+        border-style: dashed;
+        place-items: center;
+        color: var(--blue);
+        font-size: 24px;
+        font-weight: 800;
+      }
+
+      pre {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--soft);
+        padding: 16px;
+        line-height: 1.5;
+      }
+
+      code {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-size: 14px;
+      }
+
+      footer {
+        padding: 32px 0;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+      }
+
+      @media (max-width: 840px) {
+        nav {
+          align-items: flex-start;
+          flex-wrap: wrap;
+          padding: 12px 0;
+        }
+
+        .links {
+          width: 100%;
+          overflow-x: auto;
+          padding-bottom: 4px;
+        }
+
+        .hero,
+        .steps,
+        .flow {
+          grid-template-columns: 1fr;
+        }
+
+        h1 {
+          max-width: 330px;
+          font-size: 40px;
+        }
+
+        .lead {
+          max-width: 340px;
+          font-size: 17px;
+        }
+
+        .arrow {
+          min-height: 44px;
+        }
+
+        .links {
+          gap: 10px;
+          font-size: 13px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <nav class="shell" aria-label="主导航">
+        <div class="brand">Octopus 章鱼</div>
+        <div class="links">
+          <a href="./">首页</a>
+          <a href="../app.html">网页试用</a>
+          <a href="./quickstart.md">安装</a>
+          <a href="../tutorial.html">English</a>
+          <a class="button" href="https://github.com/dangoZhang/Octopus">GitHub</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero shell">
+        <div>
+          <h1>先看需求，再看触手怎么做。</h1>
+          <p class="lead">Octopus 让主脑只表达认知需求。触手带着自己的提示词、工具描述、运行代码和权限去执行，再把压缩后的 Feed 交回大脑。</p>
+          <div class="hero-actions">
+            <a class="button primary" href="../app.html">打开网页试用</a>
+            <a class="button" href="#local">本地启动</a>
+          </div>
+        </div>
+        <div class="stage" aria-label="像素章鱼状态">
+          <div class="pixel-octo" aria-hidden="true">
+            <span class="pixel"></span><span class="pixel b"></span><span class="pixel b"></span><span class="pixel c"></span><span class="pixel c"></span><span class="pixel b"></span><span class="pixel b"></span><span class="pixel"></span>
+            <span class="pixel b"></span><span class="pixel c"></span><span class="pixel c"></span><span class="pixel g"></span><span class="pixel g"></span><span class="pixel c"></span><span class="pixel c"></span><span class="pixel b"></span>
+            <span class="pixel b"></span><span class="pixel c"></span><span class="pixel eye"></span><span class="pixel g"></span><span class="pixel g"></span><span class="pixel eye"></span><span class="pixel c"></span><span class="pixel b"></span>
+            <span class="pixel"></span><span class="pixel c"></span><span class="pixel c"></span><span class="pixel p"></span><span class="pixel p"></span><span class="pixel c"></span><span class="pixel c"></span><span class="pixel"></span>
+            <span class="pixel b"></span><span class="pixel"></span><span class="pixel c"></span><span class="pixel p"></span><span class="pixel p"></span><span class="pixel c"></span><span class="pixel"></span><span class="pixel b"></span>
+            <span class="pixel b"></span><span class="pixel c"></span><span class="pixel"></span><span class="pixel c"></span><span class="pixel c"></span><span class="pixel"></span><span class="pixel c"></span><span class="pixel b"></span>
+            <span class="pixel c"></span><span class="pixel"></span><span class="pixel b"></span><span class="pixel"></span><span class="pixel"></span><span class="pixel b"></span><span class="pixel"></span><span class="pixel c"></span>
+            <span class="pixel"></span><span class="pixel c"></span><span class="pixel"></span><span class="pixel b"></span><span class="pixel b"></span><span class="pixel"></span><span class="pixel c"></span><span class="pixel"></span>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="shell">
+          <h2>网页试用</h2>
+          <div class="steps">
+            <article class="card">
+              <h3>1. 填入模型 key</h3>
+              <p>打开 App，填 API key，选择 OpenAI-compatible endpoint，或直接填一个 <code>/v1</code> base URL。</p>
+            </article>
+            <article class="card">
+              <h3>2. 发起一个目标</h3>
+              <p>点击 Hello World 或 Draw Octopus。页面会先展示主脑生成的 Need，再进入执行。</p>
+            </article>
+            <article class="card">
+              <h3>3. 查看 Feed</h3>
+              <p>浏览器触手读取 Need，规划动作，写出结果，再把简短 Feed 返回页面。整个流程不依赖本地 bridge。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="shell">
+          <h2>产品闭环</h2>
+          <div class="flow" aria-label="Octopus 产品闭环">
+            <div class="node"><strong>Goal</strong><span>用户只调整目标。</span></div>
+            <div class="arrow">-&gt;</div>
+            <div class="node"><strong>Need</strong><span>主脑提出认知需求。</span></div>
+            <div class="arrow">-&gt;</div>
+            <div class="node"><strong>Feed</strong><span>触手交回证据。</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="local">
+        <div class="shell">
+          <h2>本地启动</h2>
+          <pre><code>cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
+octopus start --open</code></pre>
+          <p>启动器会准备状态、可编辑 seed tentacles、profile registry、三颗心脏、像素桌宠，以及本地 App：<code>http://127.0.0.1:8765/app.html</code>。</p>
+          <pre><code>octopus first-run "make this repo easier to use"
+octopus chat "make setup clearer"
+octopus preflight</code></pre>
+          <p>App 页面只让用户改 Goal。Need、路由、provider、repair、harness evolution 都留在 agent 内部，并通过当前 Need、当前 Feed、章鱼颜色和 Output 展示。</p>
+        </div>
+      </section>
+
+      <section>
+        <div class="shell">
+          <h2>你应该看到什么</h2>
+          <div class="steps">
+            <article class="card">
+              <h3>大脑干净</h3>
+              <p>主模型上下文只围绕 Goal、记忆、Need、Feed 展开，不背工具语法和执行细节。</p>
+            </article>
+            <article class="card">
+              <h3>触手会想</h3>
+              <p>每条触手都有 prompt、metadata、code、permission、trace 和可演化边界。</p>
+            </article>
+            <article class="card">
+              <h3>证据可见</h3>
+              <p><code>doctor</code>、<code>report</code>、<code>start --check</code>、<code>preflight</code> 可以证明本地产品是否真的可跑。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="shell"><a href="../app.html">网页试用</a> · <a href="./quickstart.md">快速开始</a> · <a href="./architecture.md">架构说明</a></div>
+    </footer>
+  </body>
+</html>
