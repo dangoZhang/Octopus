@@ -233,7 +233,7 @@ Updated: 2026-06-28
 - Added `start --check` local app run evidence and a required `local_app_run` preflight gate, so `0.0.20` can prove the whole-project app surface on the current head before release records are appended.
 - Reset `docs/app.html` into a one-page pet/Goal/Need/Feed/Output product app so user input stays on Goal and internal agent controls leave the primary UI.
 - Folded local state/API/constraint configuration under Local settings so the app's default visible surface stays pet, Goal, current Need, current Feed, and Output.
-- Rebuilt the one-page app again as a product surface: removed command-console styling, renamed internal buttons to Start/Update/Think, and turned Output into a compact activity stream.
+- Rebuilt the one-page app again as a product surface: removed command-console styling, removed visible local settings, renamed internal buttons to Start/Update/Think, and turned Output into a compact activity stream.
 - Rolled the cleanup/version cadence to `0.0.19` after repair-score reuse, target-aware repair outcomes, immediate evolution follow-up artifacts, harness-learning product visibility, and the `0.0.24` core-audit gate.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.
 - Added clean-brain scout mapping with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can explore assumptions, unknowns, options, and risks before the next Need without tool context.
