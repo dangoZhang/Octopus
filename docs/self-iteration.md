@@ -34,14 +34,31 @@ OCTOPUS_PR_DRY_RUN=1 octopus --state "$tmp/state.json" self-iterate pr dangoZhan
 
 The first plan is `report-only`. After the grant, the repo-maintainer plan becomes `pr-ready`. The PR command uses the grant boundary; remove `OCTOPUS_PR_DRY_RUN=1` only when the local branch and `gh` auth are ready.
 
+Codex CLI login is a local runtime credential. Octopus does not store the token
+or auth cache. Grant only the ability to execute Codex-backed maintenance work:
+
+```bash
+codex login
+octopus --state "$tmp/state.json" oauth codex local codex:execute
+tentacles/repo-maintainer/tools/codex_status.sh . dangoZhang/Awesome-LLM
+OCTOPUS_CODEX_RUN=1 tentacles/repo-maintainer/tools/codex_maintain.sh ../Awesome-LLM dangoZhang/Awesome-LLM "maintain Awesome-LLM freshness and wiki placement"
+```
+
+The Codex report lands under `.octopus/self-iteration/` in the target
+workspace. Use `OCTOPUS_CODEX_WRITE=1` only when you want Codex to prepare local
+workspace changes; branch and PR publishing still go through the existing
+`self-iterate pr` / `publish_pr` path.
+
 The repo-maintainer tentacle can also write local artifacts:
 
 ```bash
 tentacles/repo-maintainer/tools/inspect_repo.sh .
 tentacles/repo-maintainer/tools/github_status.sh dangoZhang/Octopus
+tentacles/repo-maintainer/tools/codex_status.sh . dangoZhang/Octopus
 tmp=$(mktemp -d)
 tentacles/repo-maintainer/tools/patch_queue.sh "$tmp" dangoZhang/Octopus "improve usability"
 tentacles/repo-maintainer/tools/draft_pr.sh "$tmp" dangoZhang/Octopus "improve usability"
+OCTOPUS_CODEX_RUN=0 tentacles/repo-maintainer/tools/codex_maintain.sh "$tmp" dangoZhang/Octopus "improve usability"
 OCTOPUS_PR_DRY_RUN=1 tentacles/repo-maintainer/tools/publish_pr.sh "$tmp" dangoZhang/Octopus octopus/improve-usability "Improve usability" "$tmp/.octopus/self-iteration/PR_DRAFT.md"
 ```
 

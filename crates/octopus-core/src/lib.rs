@@ -5520,6 +5520,12 @@ impl ManifestTentacle {
             NeedKind::Observe if self.route_id == "harness-repair-agent" => {
                 ["diagnose_harness", "adapter_probe", "heartbeat_repair"].as_slice()
             }
+            NeedKind::Observe
+                if self.route_id == "repo-maintainer"
+                    && is_codex_maintenance_query(&need.query) =>
+            {
+                ["codex_status", "inspect_repo", "github_status"].as_slice()
+            }
             NeedKind::Observe => [
                 "inspect_repo",
                 "window_status",
@@ -5545,6 +5551,12 @@ impl ManifestTentacle {
                     ["heartbeat_repair", "diagnose_harness", "adapter_probe"].as_slice()
                 }
             }
+            NeedKind::Verify
+                if self.route_id == "repo-maintainer"
+                    && is_codex_maintenance_query(&need.query) =>
+            {
+                ["codex_status", "github_status", "inspect_repo"].as_slice()
+            }
             NeedKind::Verify | NeedKind::Reproduce => [
                 "run_tests",
                 "github_status",
@@ -5563,6 +5575,12 @@ impl ManifestTentacle {
             }
             NeedKind::Execute if self.route_id == "harness-repair-agent" => {
                 ["repair_session", "heartbeat_repair", "adapter_probe"].as_slice()
+            }
+            NeedKind::Execute
+                if self.route_id == "repo-maintainer"
+                    && is_codex_maintenance_query(&need.query) =>
+            {
+                ["codex_maintain", "draft_pr", "patch_queue", "publish_pr"].as_slice()
             }
             NeedKind::Execute => ["write_and_run", "bash", "mcp", "open_url"].as_slice(),
             _ => [].as_slice(),
@@ -8861,6 +8879,7 @@ pub fn default_permissions(provider: &str) -> Vec<String> {
             "pull_request:write".to_string(),
         ],
         "octopus" => vec!["harness:read".to_string(), "harness:write".to_string()],
+        "codex" => vec!["codex:execute".to_string()],
         _ => vec!["read".to_string()],
     }
 }
@@ -10161,6 +10180,23 @@ fn is_browser_observe(query: &str) -> bool {
     let query = query.to_lowercase();
     [
         "browser", "tab", "url", "chrome", "safari", "firefox", "edge", "brave",
+    ]
+    .iter()
+    .any(|word| query.contains(word))
+}
+
+fn is_codex_maintenance_query(query: &str) -> bool {
+    let query = query.to_lowercase();
+    [
+        "codex",
+        "oauth",
+        "awesome-llm",
+        "repo-maintainer",
+        "maintain",
+        "maintenance",
+        "wiki",
+        "维护",
+        "接入",
     ]
     .iter()
     .any(|word| query.contains(word))

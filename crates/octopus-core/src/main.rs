@@ -195,6 +195,14 @@ const BUNDLED_TENTACLE_FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../../tentacles/repo-maintainer/tools/github_status.sh"),
     ),
     (
+        "repo-maintainer/tools/codex_status.sh",
+        include_bytes!("../../../tentacles/repo-maintainer/tools/codex_status.sh"),
+    ),
+    (
+        "repo-maintainer/tools/codex_maintain.sh",
+        include_bytes!("../../../tentacles/repo-maintainer/tools/codex_maintain.sh"),
+    ),
+    (
         "repo-maintainer/tools/inspect_repo.sh",
         include_bytes!("../../../tentacles/repo-maintainer/tools/inspect_repo.sh"),
     ),

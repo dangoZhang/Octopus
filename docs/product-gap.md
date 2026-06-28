@@ -309,6 +309,7 @@ Updated: 2026-06-28
 - Updated Product Report and Preflight next actions to point at matrix run/check, keeping provider evidence collection out of the old manual-fill path.
 - Made `provider matrix` prepare missing target env files without overwriting existing provider env, so real-machine validation can move from template to run with fewer setup steps.
 - Rolled the cleanup/version cadence to `0.0.18` after live provider coverage, provider matrix generation/run/check, OAuth/API-key/local/gateway evidence paths, preflight record integration, and version consistency.
+- Added repo-maintainer Codex status and maintenance-report tools, so a granted repo can use the user's local Codex CLI login/API-key context without storing secrets in Octopus state.
 
 ## Remaining Gaps
 
@@ -327,6 +328,7 @@ Updated: 2026-06-28
 ## Next Fill
 
 - Exercise repo-maintainer PR publishing on a real machine with `gh` auth and record feedback.
+- Exercise repo-maintainer Codex maintenance on real repos, then score whether the report led to a useful small patch.
 - Exercise live clean-brain exploration and multi-action tentacle planning with Codex OAuth, API-key providers, LiteLLM-routed providers, and local open-source models; record provider-specific failures.
 - Exercise Feed feedback outcomes from real tasks against the new route report and tune route choices from that evidence.
 - Exercise starter ranking feedback with real first-run choices and tune score weights from observed accepts, ignores, and failures.

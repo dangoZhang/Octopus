@@ -33,6 +33,13 @@
       "implementation": { "kind": "shell", "entrypoint": "tools/github_status.sh" }
     },
     {
+      "id": "codex_status",
+      "description": "Check local Codex CLI OAuth/API-key readiness without exposing secrets.",
+      "input": "workspace root and optional owner/repo",
+      "output": "JSON status for Codex CLI, auth cache presence, gh auth, and optional live check",
+      "implementation": { "kind": "shell", "entrypoint": "tools/codex_status.sh" }
+    },
+    {
       "id": "patch_queue",
       "description": "Generate candidate patch queue from issues, CI, or the current goal.",
       "input": "workspace root, repository, objective",
@@ -45,6 +52,19 @@
       "input": "workspace root, repository, objective",
       "output": "branch plan path and PR draft path",
       "implementation": { "kind": "shell", "entrypoint": "tools/draft_pr.sh" }
+    },
+    {
+      "id": "codex_maintain",
+      "description": "Use the local Codex CLI login/API-key context to prepare a repository maintenance report.",
+      "input": "workspace root, repository, objective",
+      "output": "Codex maintenance prompt, report, logs, and JSON metadata under .octopus/self-iteration",
+      "permission": {
+        "provider": "codex",
+        "scope": "local",
+        "permissions": ["codex:execute"],
+        "reason": "Runs the local Codex CLI with the user's existing login or access-token context; Octopus does not store the secret."
+      },
+      "implementation": { "kind": "shell", "entrypoint": "tools/codex_maintain.sh" }
     },
     {
       "id": "publish_pr",
@@ -81,13 +101,16 @@
     "checks": [
       "tools/inspect_repo.sh .",
       "tools/github_status.sh dangoZhang/Octopus",
+      "tools/codex_status.sh . dangoZhang/Octopus",
       "tools/patch_queue.sh $(mktemp -d) dangoZhang/Octopus improve-usability",
       "tools/draft_pr.sh $(mktemp -d) dangoZhang/Octopus improve-usability",
+      "OCTOPUS_CODEX_RUN=0 tools/codex_maintain.sh $(mktemp -d) dangoZhang/Octopus improve-usability",
       "OCTOPUS_PR_DRY_RUN=1 tools/publish_pr.sh $(mktemp -d) dangoZhang/Octopus octopus/improve-usability 'Improve usability' README.md"
     ],
     "constraints": [
       "Never push to main directly.",
-      "Publish PRs only after an explicit grant and user-run command."
+      "Publish PRs only after an explicit grant and user-run command.",
+      "Do not print or persist Codex access tokens or auth cache contents."
     ]
   }
 }

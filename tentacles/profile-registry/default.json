@@ -170,8 +170,10 @@
         "tools": [
           "tentacles/repo-maintainer/tools/inspect_repo.sh",
           "tentacles/repo-maintainer/tools/github_status.sh",
+          "tentacles/repo-maintainer/tools/codex_status.sh",
           "tentacles/repo-maintainer/tools/patch_queue.sh",
           "tentacles/repo-maintainer/tools/draft_pr.sh",
+          "tentacles/repo-maintainer/tools/codex_maintain.sh",
           "tentacles/repo-maintainer/tools/publish_pr.sh"
         ]
       }
@@ -188,6 +190,11 @@
         "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/github_status.sh" }
       },
       {
+        "id": "codex_status",
+        "description": "Check local Codex CLI OAuth/API-key readiness without exposing secrets.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/codex_status.sh" }
+      },
+      {
         "id": "patch_queue",
         "description": "Generate candidate patch queue from GitHub and goal signals.",
         "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/patch_queue.sh" }
@@ -196,6 +203,11 @@
         "id": "draft_pr",
         "description": "Write branch plan and pull request draft data.",
         "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/draft_pr.sh" }
+      },
+      {
+        "id": "codex_maintain",
+        "description": "Use the local Codex CLI login/API-key context to prepare a repository maintenance report.",
+        "implementation": { "kind": "shell", "entrypoint": "tentacles/repo-maintainer/tools/codex_maintain.sh" }
       },
       {
         "id": "publish_pr",
@@ -208,11 +220,16 @@
       "checks": [
         "tentacles/repo-maintainer/tools/inspect_repo.sh .",
         "tentacles/repo-maintainer/tools/github_status.sh dangoZhang/Octopus",
+        "tentacles/repo-maintainer/tools/codex_status.sh . dangoZhang/Octopus",
         "tentacles/repo-maintainer/tools/patch_queue.sh $(mktemp -d) dangoZhang/Octopus improve-usability",
         "tentacles/repo-maintainer/tools/draft_pr.sh $(mktemp -d) dangoZhang/Octopus improve-usability",
+        "OCTOPUS_CODEX_RUN=0 tentacles/repo-maintainer/tools/codex_maintain.sh $(mktemp -d) dangoZhang/Octopus improve-usability",
         "OCTOPUS_PR_DRY_RUN=1 tentacles/repo-maintainer/tools/publish_pr.sh $(mktemp -d) dangoZhang/Octopus octopus/improve-usability 'Improve usability' README.md"
       ],
-      "constraints": ["Wait for explicit OAuth/user grant before publishing branch or PR work."]
+      "constraints": [
+        "Wait for explicit OAuth/user grant before publishing branch or PR work.",
+        "Do not print or persist Codex access tokens or auth cache contents."
+      ]
     },
     "llm_ready": true
   },

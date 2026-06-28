@@ -48,6 +48,7 @@ Need, Feed, tool choice, provider routing, repair, and harness evolution stay in
 - Tool-side LLM planning, grants, traces, route scores, and reviewable harness evolution.
 - Native app server, provider/readiness observation, preflight gates, and pixel pet state.
 - LLM backends through Codex login, API-key clouds, local OpenAI-compatible models, or gateway routers.
+- Repo-maintainer can probe local Codex CLI OAuth/API-key readiness and write Codex-backed maintenance reports for granted repos.
 
 Read next: [5-minute use guide](docs/use.html), [Quick Install & Use](docs/quickstart.md), [Architecture](docs/architecture.md), [Research map](docs/references.md).
 
