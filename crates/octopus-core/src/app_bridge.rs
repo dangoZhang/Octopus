@@ -29,6 +29,7 @@ pub(crate) struct LocalAppRunReport {
     pub(crate) ready: bool,
     pub(crate) installed_tentacles: Vec<String>,
     pub(crate) pages: Vec<LocalAppPageReport>,
+    pub(crate) web_demo: PreflightCheck,
     pub(crate) api_policy: PreflightCheck,
     pub(crate) next: Vec<String>,
 }
@@ -140,17 +141,19 @@ pub(crate) fn local_app_run_status_check(
     };
     let version_ready = report.version == env!("CARGO_PKG_VERSION");
     let pages_ready = report.pages.iter().all(|page| page.ok);
+    let web_demo_ready = report.web_demo.status == "pass";
     preflight_check(
         "local_app_run",
-        report.ready && head_ready && version_ready && pages_ready,
+        report.ready && head_ready && version_ready && pages_ready && web_demo_ready,
         true,
         format!(
-            "ready={}, head={}, version={}, pages={}/{}, policy={}",
+            "ready={}, head={}, version={}, pages={}/{}, web_demo={}, policy={}",
             report.ready,
             report.current_head.as_deref().unwrap_or("unknown"),
             report.version,
             report.pages.iter().filter(|page| page.ok).count(),
             report.pages.len(),
+            report.web_demo.status,
             report.api_policy.status
         ),
         next,
@@ -164,11 +167,13 @@ fn local_app_run_report(
 ) -> Result<LocalAppRunReport, String> {
     let startup = prepare_state(state_path.clone())?;
     let pages = local_app_pages();
+    let web_demo = web_demo_preflight_check();
     let api_policy = goal_surface_preflight_check(&state_path);
     let pages_ready = pages.iter().all(|page| page.ok);
     let ready = Path::new(&startup.state_path).exists()
         && !startup.installed_tentacles.is_empty()
         && pages_ready
+        && web_demo.status == "pass"
         && api_policy.status == "pass";
     let mut next = vec![
         format!(
@@ -193,9 +198,51 @@ fn local_app_run_report(
         ready,
         installed_tentacles: startup.installed_tentacles,
         pages,
+        web_demo,
         api_policy,
         next,
     })
+}
+
+fn web_demo_preflight_check() -> PreflightCheck {
+    let (_, body) = match static_page("/app.html") {
+        Ok(page) => page,
+        Err(error) => {
+            return preflight_check(
+                "web_try_app",
+                false,
+                true,
+                format!("app page unavailable: {error}"),
+                "restore docs/app.html",
+            );
+        }
+    };
+    let content = String::from_utf8_lossy(&body);
+    let markers = [
+        r#"id="apiKey""#,
+        "Hello World",
+        "Draw Octopus",
+        "clean brain only returns a Need",
+        "browserTentaclePlan",
+        "chatCompletionsEndpoint",
+        "renderOctopusAnimation",
+    ];
+    let missing = markers
+        .iter()
+        .filter(|marker| !content.contains(**marker))
+        .copied()
+        .collect::<Vec<_>>();
+    preflight_check(
+        "web_try_app",
+        missing.is_empty(),
+        true,
+        if missing.is_empty() {
+            "api-key Need demo and browser-tentacle Feed demo present".to_string()
+        } else {
+            format!("missing {}", missing.join(", "))
+        },
+        "restore browser Try App demo in docs/app.html",
+    )
 }
 
 fn local_app_pages() -> Vec<LocalAppPageReport> {

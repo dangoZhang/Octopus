@@ -9600,6 +9600,10 @@ fn print_local_app_run_report(report: &app_bridge::LocalAppRunReport, language: 
                 "api_policy: {} ({})",
                 report.api_policy.status, report.api_policy.evidence
             );
+            println!(
+                "web_demo: {} ({})",
+                report.web_demo.status, report.web_demo.evidence
+            );
             println!("next: {}", join_or_none(&report.next));
         }
         Language::Zh => {
@@ -9624,6 +9628,10 @@ fn print_local_app_run_report(report: &app_bridge::LocalAppRunReport, language: 
             println!(
                 "API策略: {} ({})",
                 report.api_policy.status, report.api_policy.evidence
+            );
+            println!(
+                "网页试用: {} ({})",
+                report.web_demo.status, report.web_demo.evidence
             );
             println!("下一步: {}", join_or_none(&report.next));
         }
@@ -17741,6 +17749,9 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("\"ready\": true"));
         assert!(record.contains("\"/app.html\""));
         assert!(record.contains("\"/pet.html\""));
+        assert!(record.contains("\"web_demo\""));
+        assert!(record.contains("\"web_try_app\""));
+        assert!(record.contains("browser-tentacle Feed demo present"));
         let loaded = HarnessState::load(&state).unwrap();
         let preflight = preflight_report(&loaded, Path::new(&state), false).unwrap();
         assert!(preflight
