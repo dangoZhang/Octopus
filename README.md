@@ -56,4 +56,4 @@ Need, Feed, tool choice, provider routing, repair, and harness evolution stay in
 
 Read next: [Tutorial](docs/tutorial.html), [Recipes](docs/recipes.html), [5-minute use guide](docs/use.html), [Quick Install & Use](docs/quickstart.md), [Architecture](docs/architecture.md), [Research map](docs/references.md).
 
-Pre-release line: `0.0.21`. `0.1.0` waits for recorded real-machine testing.
+Pre-release line: `0.0.22`. `0.1.0` waits for recorded real-machine testing.
