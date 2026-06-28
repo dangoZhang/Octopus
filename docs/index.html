@@ -209,9 +209,23 @@
       }
 
       @media (max-width: 760px) {
+        nav {
+          align-items: flex-start;
+          flex-wrap: wrap;
+          padding: 12px 0;
+        }
+
         .nav-links {
+          width: 100%;
+          flex-wrap: wrap;
           gap: 10px;
+          overflow-x: visible;
+          padding-bottom: 4px;
           font-size: 13px;
+        }
+
+        .nav-links a {
+          white-space: nowrap;
         }
 
         .hero {
@@ -220,11 +234,25 @@
         }
 
         .lead {
+          max-width: 340px;
           font-size: 17px;
         }
 
         h1 {
+          max-width: 340px;
           font-size: 54px;
+        }
+
+        .node,
+        .arrow,
+        .card {
+          min-width: 0;
+        }
+
+        .node span,
+        .card p,
+        .copy {
+          overflow-wrap: anywhere;
         }
 
         .flow,
@@ -249,9 +277,9 @@
           <a href="./recipes.html">Recipes</a>
           <a href="./use.html">Use</a>
           <a href="./references.html">Research</a>
-          <a href="./self-iteration.html">Self-iteration</a>
+          <a href="./self-iteration.html">Iterate</a>
           <a href="./app.html">App</a>
-          <a href="./pet.html">Pixel pet</a>
+          <a href="./pet.html">Pet</a>
           <a href="./zh/">中文</a>
           <a href="#quickstart">Install & use</a>
           <a class="button" href="https://github.com/dangoZhang/Octopus">GitHub</a>

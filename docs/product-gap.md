@@ -39,6 +39,7 @@ Updated: 2026-06-28
 - `docs/about.html` now frames the product insight as a short public story with direct Try App/Tutorial actions, current runnable paths, and release evidence.
 - `docs/recipes.html` now gives copyable Goal-first product recipes for browser demo, local repo startup, live model setup, and release evidence while keeping internal harness controls observational.
 - `docs/zh/recipes.html` mirrors the Goal-first recipes in Chinese and keeps the Chinese docs path product-complete.
+- `docs/index.html` mobile navigation and hero copy now wrap cleanly after the tutorial/recipe links were added.
 - `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
 - `start` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
 - `start` and `bootstrap` can materialize editable bundled seed tentacles under `.octopus/bundled-tentacles` when source tentacles are unavailable.
