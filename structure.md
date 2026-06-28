@@ -1,0 +1,53 @@
+# Structure
+
+Updated: 2026-06-28
+
+## Tree
+
+```text
+Octopus/
+├── README.md
+├── README.zh-CN.md
+├── Cargo.toml
+├── structure.md
+├── crates/octopus-core/
+│   └── src/
+│       ├── lib.rs             Stable kernel contracts, state, routing, providers, Feed traces.
+│       ├── main.rs            CLI dispatch and product/backend aggregation.
+│       ├── app_bridge.rs      Local app server, bridge policy, static app fallback, streaming.
+│       ├── core_boundary.rs   Stable Rust vs editable harness boundary report.
+│       └── release_gate.rs    Preflight records, real-machine record parsing, release scripts.
+├── tentacles/
+│   ├── profile-registry/      Editable seed profile data.
+│   ├── swe-agent/             Repo read/edit/patch/test tool-combo tentacle.
+│   ├── computer-use-agent/    Desktop/browser/MCP/shell/clipboard tentacle.
+│   ├── repo-maintainer/       Repo health and PR/publish tentacle.
+│   ├── harness-repair-agent/  Harness diagnosis and repair tentacle.
+│   ├── bash-only/             Transparent write-and-run harness.
+│   ├── json-feed/             `octopus-json-v1` runtime seed.
+│   └── visual/                Pixel pet state layer.
+└── docs/
+    ├── app.html               One-page local product app.
+    ├── pet.html               Pixel Octopus.
+    ├── architecture.md
+    ├── product-gap.md
+    ├── version-plan.md
+    ├── real-machine-test.md
+    └── zh/
+```
+
+## Boundary
+
+- Clean brain context: `Goal + Mem + Need + Feed`.
+- Tentacle context: `Need + Tool + Action + Tool + Action -> Feed`.
+- Stable Rust owns the kernel, product bridge, release gates, and local app shell.
+- Editable code-as-harness owns Feed supply: tentacle prompts, tool metadata, runtime code, checks, permissions, and evolution policy.
+- The product app lets the user change only Goal; Need/Feed execution, repair, scoring, provider setup, install/check, and evolution stay inside the agent loop or developer harness.
+
+## Current Product Path
+
+1. Install or run `octopus start --open`.
+2. Enter one Goal in the local app.
+3. Octopus turns the Goal into Need, routes Feed through tentacles, records feedback, and pulses the three hearts.
+4. The app shows pet state, current Need, current Feed, and Output.
+5. `preflight`, provider matrix, real-machine records, and benchmark records remain release evidence before `0.1.0`.

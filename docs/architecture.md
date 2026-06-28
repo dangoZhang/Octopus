@@ -52,7 +52,7 @@ Every executed Feed is also written to a compact harness trace journal and retur
 
 `release_gate.rs` owns preflight check records, real-machine record parsing, generated script commands, and docs-only record status logic. `main.rs` still aggregates doctor, provider, bridge, and product evidence into the final `preflight_report`.
 
-`preflight` returns a readiness summary with required and optional pass counts plus required blockers. The CLI and native HTML app show those blockers before the full check list so a local run can tell the user exactly what must happen before a release-ready build.
+`preflight` returns a readiness summary with required and optional pass counts plus required blockers. CLI/report surfaces show those blockers before the full check list so a local run can tell the user exactly what must happen before a release-ready build.
 
 `core_boundary.rs` reports the current split between stable Rust and editable code-as-harness. Stable Rust covers the kernel, CLI dispatch, product app bridge, and release gate. Editable harness covers `tentacles/`, the seed profile registry, and the state-local profile registry. `report` and `preflight` expose this split so Rust remains the stable base while Feed supply stays easy to evolve.
 

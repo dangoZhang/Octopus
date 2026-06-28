@@ -83,51 +83,13 @@
         color: #99a1ad;
       }
 
-      header {
-        border-bottom: 1px solid rgba(217, 222, 231, 0.9);
-        background: rgba(255, 255, 255, 0.82);
-        backdrop-filter: blur(16px);
-      }
-
-      nav,
       main {
         width: min(1180px, calc(100% - 32px));
         margin: 0 auto;
       }
 
-      nav {
-        min-height: 64px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-      }
-
-      .brand {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-weight: 800;
-      }
-
-      .brand-mark {
-        width: 30px;
-        height: 30px;
-        display: grid;
-        place-items: center;
-        border-radius: 9px;
-        background: #e8f4f2;
-      }
-
-      .links {
-        display: flex;
-        gap: 16px;
-        color: var(--muted);
-        font-size: 14px;
-      }
-
       main {
-        padding: 24px 0 36px;
+        padding: 28px 0 36px;
       }
 
       .mast {
@@ -344,13 +306,8 @@
       }
 
       @media (max-width: 720px) {
-        nav,
         main {
           width: min(100% - 24px, 1180px);
-        }
-
-        .links {
-          display: none;
         }
 
         .mast {
@@ -373,17 +330,6 @@
     </style>
   </head>
   <body>
-    <header>
-      <nav>
-        <div class="brand"><span class="brand-mark">🐙</span><span>Octopus App</span></div>
-        <div class="links">
-          <a href="./use.html">Use</a>
-          <a href="./pet.html">Pet</a>
-          <a href="https://github.com/dangoZhang/Octopus">GitHub</a>
-        </div>
-      </nav>
-    </header>
-
     <main>
       <section class="mast">
         <div>

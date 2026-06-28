@@ -30,7 +30,7 @@ Updated: 2026-06-28
 - Blocked local app bridge writes now return `user_writes_brain_goal_only` plus suggested Goal commands, so old/internal controls fail with product guidance instead of a generic server error.
 - `preflight` now includes a required `bridge_goal_surface` gate that checks allowed Goal writes, denied internal writes, and the structured denial policy.
 - `report` and `preflight` now expose the core/harness boundary: stable Rust kernel/product app files, editable tentacle/profile-registry harness units, and stale prototype warnings.
-- `preflight` now returns and prints a readiness summary with required/optional pass counts plus concrete required blockers, and the native HTML app renders those blockers before the full check list.
+- `preflight` now returns and prints a readiness summary with required/optional pass counts plus concrete required blockers; release/readiness blockers stay in CLI/report surfaces instead of the first product page.
 - Release-gate check types, record parsing, script commands, and real-machine record status logic now live in a separate `release_gate` Rust module instead of the general CLI backend.
 - README and docs now point first to a product-style five-minute use page: install, launch, first Goal, evidence surfaces, optional model backend, and harness learning path.
 - `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
@@ -41,7 +41,7 @@ Updated: 2026-06-28
 - `start --open` keeps the same whole-project startup path and attempts to open the native app after the local app server binds.
 - `start --check` runs the same startup preparation without keeping the server open, verifies embedded app/pet/use pages plus the brain-goal bridge policy, writes `.octopus/local-app-run.json`, and feeds the required `local_app_run` preflight gate.
 - The native HTML app defaults its local API URL to Octopus when opened from docs pages, and auto-renders a read-only startup snapshot when served by `octopus start`.
-- The native HTML app has been reset to one polished page with pet, Goal, current Need, current Feed, and Output as an activity stream. State/API/constraint details are internal, and the only visible write action is Send.
+- The native HTML app has been reset to one polished page with pet, Goal, current Need, current Feed, and Output as an activity stream. Navigation links, state/API/constraint details, and internal mode controls are removed; the only visible write action is Send.
 - The native HTML app no longer exposes Doctor, Provider, Install, Repair, Evolve, Check, Preflight, or First Run as first-path panels; those remain CLI/internal observation or release-gate surfaces.
 - The single Send action keeps granular Need/Feed/harness steps behind the bridge while still updating the current Need, Feed, pet, and activity Output.
 - `first-run [objective]` runs the same safe local loop from CLI and returns one JSON record with Bootstrap, Goal, Starter, Feed, Feedback, Beat, Product, Preflight, and Doctor evidence.
@@ -81,24 +81,23 @@ Updated: 2026-06-28
 - Clean-brain Goal, intent, brief, alignment, clarification, agenda, scout, memory, reflection, and exploration reports now include a Need audit that flags tool/API/command/file burden and exposes only clean Needs for follow-up commands or queueing.
 - `explore --save [prompt]` stores only audit-clean Needs in a reviewable Need Queue; `needs session [--live] [prompt]` writes a clean-brain review session, `needs take <index>` returns one command, and `needs script [path]` writes a reviewable Feed script without executing it.
 - The native HTML app keeps bootstrap as internal startup plumbing behind `start` and `first-run`.
-- The native HTML app can show current Goal, status, refinements, and recent clean-brain Goal turns from persisted state.
-- The native HTML app can paste an external brain reply into Goal through the local app API; Need Queue apply/take/drop remains an internal or developer-only flow.
-- The native HTML app may show older clean-brain mode panels, but the product bridge only accepts Goal-facing brain work from users.
+- The native HTML app shows only current Goal, pet state, current Need, current Feed, and Output from persisted state.
+- External brain reply import, Need Queue apply/take/drop, and older clean-brain mode panels remain internal or developer-only flows outside the first product page.
 - Memory, Need Queue, and review-session actions remain harness/agent internals unless routed through Goal.
 - `harness-repair-agent` can diagnose state, traces, check history, evolution artifacts, repo dirtiness, provider env, and local adapters as structured Feed.
 - `repair [query]` runs the harness-repair tentacle, records the Feed trace, exposes the latest repair plan when present, and queues the tentacle's structured next Need for review.
 - `repair continue [query]` runs repair, takes the queued clean Need, routes it back through the harness, and returns the continued Feed plus trace-scoring commands.
 - Repair Feed scoring exists for harness feedback; direct user scoring from the app is no longer the main product path.
 - Repair scoring mirrors session-backed outcomes into `.octopus/harness-repair/<session>/OUTCOME.md` and `outcomes.jsonl`; when the trace carries a target tentacle and candidate, the same score is reused as an evolution outcome, immediately producing the next reviewable recommendation/apply artifacts without overwriting the repair pet event.
-- `status`, `report`, and the native HTML app expose a compact harness-learning summary from repair/evolution outcomes, including target tentacle, candidate, score, summary, and next recommendation command.
+- `status` and `report` expose a compact harness-learning summary from repair/evolution outcomes, including target tentacle, candidate, score, summary, and next recommendation command; the app keeps that learning behind the current Feed/Output surface.
 - After Goal and queued-Need basics are satisfied, `status.next_action` follows the harness-learning recommendation once repair/evolution feedback exists, instead of sending users back to a generic beat.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
 - The HTML install guide can expand each check to inspect stdout, stderr, exit code, and recent harness check history.
 - `check <tentacle> [index]` records compact harness history and the HTML install guide can rerun one check at a time.
 - Structured Feed tests remain available as internal/developer diagnostics; the user-facing app treats Feed results as observation.
 - `report` emits a state-aware product report with clean-brain context, tentacle context, capability status, gaps, and next commands.
-- The native HTML app can render the same product report from the local app API.
-- `preflight [--live]` turns the `0.1.0` readiness gate into CLI, JSON, and native HTML checks without live provider calls unless requested.
+- Product reports remain CLI/internal observation data; the native app keeps the first product page focused on Goal, Need, Feed, pet, and Output.
+- `preflight [--live]` turns the `0.1.0` readiness gate into CLI and JSON checks without live provider calls unless requested.
 - `preflight script [path]` writes a reviewable local release-gate script that starts from `first-run`, then runs context, thinking, trace, repair, check, route, beat, pet, report, and optional live provider/PR dry-run gates.
 - `preflight record [path]` writes a real-machine evidence template with GitHub install, core loop, `start --check`, start/app, live provider, and PR dry-run commands; `preflight record check [path]` audits completed fields before appending it.
 - Real-machine records now include a Product bridge result and a `bridge_goal_surface` command so the brain-goal input boundary is signed off on real machines.
@@ -231,6 +230,7 @@ Updated: 2026-06-28
 - Reset `docs/app.html` into a one-page pet/Goal/Need/Feed/Output product app so user input stays on Goal and internal agent controls leave the primary UI.
 - Folded local state/API/constraint configuration under Local settings so the app's default visible surface stays pet, Goal, current Need, current Feed, and Output.
 - Rebuilt the one-page app again as a product surface: removed command-console styling, removed visible local settings, collapsed internal Start/Update/Think modes into one Send action, and turned Output into a compact activity stream.
+- Removed app navigation links and old report/preflight panel language from the current product surface, then added root `structure.md` as the committed architecture and capability map for release review.
 - Rolled the cleanup/version cadence to `0.0.19` after repair-score reuse, target-aware repair outcomes, immediate evolution follow-up artifacts, harness-learning product visibility, and the `0.0.24` core-audit gate.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.
 - Added clean-brain scout mapping with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can explore assumptions, unknowns, options, and risks before the next Need without tool context.

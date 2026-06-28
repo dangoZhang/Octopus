@@ -31,8 +31,12 @@ docs/
   *.md / *.html    英文文档、本地 app、pixel pet、release gate 记录
   zh/              中文文档入口
 
+structure.md       正式仓库结构和能力记录
+```
+
+```text
 cowork/
-  structure.md     跨线程结构记录和当前 gap 记录
+  structure.md     被忽略的跨线程同步稿
 ```
 
 ## 当前能力
