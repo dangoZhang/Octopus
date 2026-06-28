@@ -46,7 +46,7 @@ Every executed Feed is also written to a compact harness trace journal and retur
 
 `start [--open] [addr]` prepares local state, starts the native HTML app, overlays `.octopus/llm.env`, and exposes `/api/run` plus `/api/stream` through a narrow bridge. The bridge allows Goal writes through `chat`, `goal set/refine`, `brain --goal`, and `first-run [--live] [objective]`. Doctor, report, preflight, provider status/check, starter recommendations, traces, and pet state are observable. Need execution, Feed scoring, repair, evolve, OAuth grants, installs, checks, provider env writes, preflight record writes, and pet image writes stay internal or developer-only. Blocked bridge calls return `user_writes_brain_goal_only` with suggested Goal commands instead of a generic server error, and `preflight` treats that boundary as release evidence.
 
-`app_bridge.rs` owns the local app bridge policy: request/response shapes, command allow-listing, denial responses, and `.octopus/llm.env` overlay parsing. `main.rs` still owns the local HTTP/SSE server loop and child command execution.
+`app_bridge.rs` owns the local app bridge runtime: start parsing, HTTP/SSE serving, static app fallback, child command streaming, command allow-listing, denial responses, `.octopus/llm.env` overlay parsing, and the `bridge_goal_surface` preflight evidence. `main.rs` only dispatches `start` into that module.
 
 `release_gate.rs` owns preflight check records, real-machine record parsing, generated script commands, and docs-only record status logic. `main.rs` still aggregates doctor, provider, bridge, and product evidence into the final `preflight_report`.
 
