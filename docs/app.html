@@ -288,6 +288,7 @@
         color: var(--muted);
         font-size: 13px;
         line-height: 1.45;
+        overflow-wrap: anywhere;
       }
 
       .report-list {
@@ -2832,6 +2833,7 @@
           ["Status", goal.status || "unknown"],
           ["Refinements", String(goal.refinements || 0)],
           ["Turns", String((goal.turns || []).length)],
+          ["Harness Learning", harnessLearningText(report.harness_learning)],
         ].forEach(([label, value]) => {
           const metric = document.createElement("div");
           metric.className = "metric";
@@ -2925,6 +2927,7 @@
           ["Brain", context.brain || "Goal + Mem + Need + Feed"],
           ["Tentacle", context.tentacle || "Need + Tool + Action + Tool + Action -> Feed"],
           ["Loop", context.feedback_loop || "Need -> Feed -> Feedback"],
+          ["Harness Learning", harnessLearningText(report.harness_learning)],
         ].forEach(([label, value]) => {
           const metric = document.createElement("div");
           metric.className = "metric";
@@ -2936,6 +2939,16 @@
           grid.appendChild(metric);
         });
         return grid;
+      }
+
+      function harnessLearningText(summary) {
+        if (!summary || summary.source === "none") return "waiting for feedback";
+        const status = summary.status || "unknown";
+        const score = summary.score == null ? "n/a" : Number(summary.score).toFixed(2);
+        const target = summary.target_tentacle || "none";
+        const candidate = summary.candidate || "none";
+        const text = summary.summary || "no summary";
+        return `${summary.source}: ${target}/${candidate} · ${status} · ${score} · ${text}`;
       }
 
       function productBoundary(boundary) {
