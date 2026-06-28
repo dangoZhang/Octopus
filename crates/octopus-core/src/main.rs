@@ -17750,6 +17750,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("\"/app.html\""));
         assert!(record.contains("\"/pet.html\""));
         assert!(record.contains("\"/tutorial.html\""));
+        assert!(record.contains("\"/recipes.html\""));
         assert!(record.contains("\"web_demo\""));
         assert!(record.contains("\"web_try_app\""));
         assert!(record.contains("browser-tentacle Feed demo present"));
@@ -17769,6 +17770,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let (content_type, app) = bridge_static("/app.html").unwrap();
         let (_, index) = bridge_static("/").unwrap();
         let (_, tutorial) = bridge_static("/tutorial.html").unwrap();
+        let (_, recipes) = bridge_static("/recipes.html").unwrap();
         let (_, pet_embedded) = bridge_static_asset("/pet.html").unwrap();
 
         assert_eq!(content_type, "text/html");
@@ -17778,6 +17780,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(app_text.contains("runStartupSnapshot"));
         assert!(String::from_utf8_lossy(&index).contains("Octopus App"));
         assert!(String::from_utf8_lossy(&tutorial).contains("Octopus Tutorial"));
+        assert!(String::from_utf8_lossy(&recipes).contains("Octopus Recipes"));
         assert!(String::from_utf8_lossy(pet_embedded).contains("pixel-pet"));
         assert!(bridge_static("/missing.html").is_err());
     }

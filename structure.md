@@ -29,6 +29,7 @@ Octopus/
 └── docs/
     ├── app.html               One-page local product app plus browser-only Try App demo.
     ├── tutorial.html          Product tutorial from browser demo to whole-project local run.
+    ├── recipes.html           Goal-first recipes for browser, local repo, model, and evidence paths.
     ├── pet.html               Pixel Octopus.
     ├── architecture.md
     ├── product-gap.md

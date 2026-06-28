@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Octopus Recipes</title>
+    <meta name="description" content="Goal-first Octopus usage recipes for browser, local repo, model, and release evidence." />
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #111318;
+        --muted: #5b6474;
+        --line: #d8dde6;
+        --paper: #ffffff;
+        --soft: #f5f7fa;
+        --teal: #0f766e;
+        --coral: #cf4d32;
+        --gold: #a16207;
+        --blue: #2563eb;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .shell {
+        width: min(1080px, calc(100% - 32px));
+        margin: 0 auto;
+      }
+
+      header {
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.94);
+        position: sticky;
+        top: 0;
+        z-index: 2;
+      }
+
+      nav {
+        min-height: 64px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .brand {
+        font-weight: 800;
+      }
+
+      .links {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .button {
+        border: 1px solid var(--ink);
+        border-radius: 8px;
+        padding: 9px 12px;
+        text-decoration: none;
+        color: var(--ink);
+        font-weight: 700;
+      }
+
+      .hero {
+        min-height: 68vh;
+        display: grid;
+        align-content: center;
+        padding: 66px 0 38px;
+      }
+
+      h1 {
+        margin: 0;
+        max-width: 850px;
+        font-size: 78px;
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      .lead {
+        max-width: 740px;
+        margin: 22px 0 0;
+        color: var(--muted);
+        font-size: 20px;
+        line-height: 1.55;
+      }
+
+      section {
+        padding: 46px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      h2 {
+        margin: 0 0 14px;
+        font-size: 30px;
+      }
+
+      h3 {
+        margin: 0 0 8px;
+        font-size: 19px;
+        overflow-wrap: anywhere;
+      }
+
+      p,
+      li {
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .recipes {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .recipe {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        min-width: 0;
+        padding: 18px;
+      }
+
+      .recipe:nth-child(1) {
+        border-top: 5px solid var(--teal);
+      }
+
+      .recipe:nth-child(2) {
+        border-top: 5px solid var(--coral);
+      }
+
+      .recipe:nth-child(3) {
+        border-top: 5px solid var(--gold);
+      }
+
+      .recipe:nth-child(4) {
+        border-top: 5px solid var(--blue);
+      }
+
+      .tag {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      pre {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--soft);
+        padding: 14px;
+        line-height: 1.5;
+      }
+
+      code {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-size: 14px;
+      }
+
+      footer {
+        padding: 30px 0;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+      }
+
+      @media (max-width: 760px) {
+        nav {
+          align-items: flex-start;
+          flex-wrap: wrap;
+          padding: 12px 0;
+        }
+
+        .links {
+          width: 100%;
+          overflow-x: auto;
+          padding-bottom: 4px;
+        }
+
+        h1 {
+          max-width: 340px;
+          font-size: 44px;
+        }
+
+        .lead {
+          max-width: 340px;
+          font-size: 17px;
+        }
+
+        .recipes {
+          grid-template-columns: 1fr;
+        }
+
+        .recipe,
+        .recipe * {
+          max-width: 100%;
+          min-width: 0;
+        }
+
+        .recipe {
+          overflow: hidden;
+        }
+
+        .recipe h3,
+        .recipe p,
+        .recipe pre {
+          max-width: 300px;
+        }
+
+        pre code {
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <nav class="shell" aria-label="Primary navigation">
+        <div class="brand">Octopus</div>
+        <div class="links">
+          <a href="./">Home</a>
+          <a href="./tutorial.html">Tutorial</a>
+          <a href="./app.html">Try app</a>
+          <a href="./about.html">About</a>
+          <a class="button" href="https://github.com/dangoZhang/Octopus">GitHub</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero shell">
+        <div>
+          <h1>Goal-first recipes.</h1>
+          <p class="lead">These are the first tasks Octopus should make easy: try the clean-brain loop in a browser, run the full local product, connect a model, and collect evidence without turning internal harness controls into the user path.</p>
+        </div>
+      </section>
+
+      <section>
+        <div class="shell recipes">
+          <article class="recipe">
+            <div class="tag">Browser</div>
+            <h3>Generate Hello World</h3>
+            <p>Use the hosted app when you want to see the idea without installing anything. The page shows the Need first, then the browser tentacle Feed.</p>
+            <pre><code>Open docs/app.html
+Paste an API key
+Click Hello World or Draw Octopus</code></pre>
+          </article>
+
+          <article class="recipe">
+            <div class="tag">Local Repo</div>
+            <h3>Start the whole product in a repository</h3>
+            <p>Run this from the project you want Octopus to inhabit. The user steers Goal; the agent handles Need, routing, Feed, memory, and harness signals.</p>
+            <pre><code>octopus start --open
+octopus first-run "make this repo easier to use"
+octopus chat "make setup clearer"</code></pre>
+          </article>
+
+          <article class="recipe">
+            <div class="tag">Model</div>
+            <h3>Use Codex login or an OpenAI-compatible model</h3>
+            <p>Provider setup is runtime plumbing. It should make clean-brain and tentacle thinking available without leaking provider details into Need text.</p>
+            <pre><code>octopus provider save codex
+source .octopus/llm.env
+octopus provider status
+octopus first-run --live "make this repo easier to use"</code></pre>
+          </article>
+
+          <article class="recipe">
+            <div class="tag">Evidence</div>
+            <h3>Prove the product can run locally</h3>
+            <p>Use evidence commands when preparing a release or diagnosing a machine. They stay observable surfaces; the first product path remains Goal input.</p>
+            <pre><code>octopus start --check
+octopus doctor
+octopus report
+octopus preflight</code></pre>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <div class="shell">
+          <h2>What each recipe should reveal</h2>
+          <ul>
+            <li>The brain emits Need without choosing an implementation.</li>
+            <li>A tentacle owns the prompt, tool metadata, runtime code, permissions, traces, and local reasoning needed to supply Feed.</li>
+            <li>Heartbeat, memory, and harness evidence can improve future supply without polluting the main brain context.</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="shell"><a href="./tutorial.html">Tutorial</a> · <a href="./quickstart.html">Install guide</a> · <a href="./use.html">Detailed use guide</a></div>
+    </footer>
+  </body>
+</html>
