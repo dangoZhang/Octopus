@@ -24,7 +24,7 @@ Updated: 2026-06-28
 - Provider setup is runtime plumbing; start overlays `.octopus/llm.env` onto child Octopus commands without making provider writes the main user path.
 - Provider env supports optional model thinking controls: reasoning effort, token budget, temperature, top_p, and provider-specific JSON body keys.
 - Provider coverage readiness does not treat empty API keys as failure when the backend can be Codex OAuth or a local OpenAI-compatible model; `provider check` and `preflight --live` remain the live proof.
-- `provider matrix [path]` writes a reviewable current-head matrix template for Codex OAuth, API-key cloud, local model, and gateway providers across provider check, clean brain, tentacle planning, and harness evolution.
+- `provider matrix [path]` writes a reviewable current-head matrix template for Codex OAuth, API-key cloud, local model, and gateway providers across provider check, clean brain, tentacle planning, and harness evolution; `provider matrix check [path]` audits that evidence before it is summarized in the release log.
 - The local app bridge now limits user-writable commands to `chat`, `goal set/refine`, `brain --goal`, and `first-run`; provider status/check and other diagnostics are observation-only.
 - The local app bridge server, static app serving, streaming command runner, command policy, denial response, provider env overlay parser, and `bridge_goal_surface` preflight evidence now live in `app_bridge.rs`, so the product input boundary is separate from the general CLI backend.
 - Blocked local app bridge writes now return `user_writes_brain_goal_only` plus suggested Goal commands, so old/internal controls fail with product guidance instead of a generic server error.
@@ -302,7 +302,7 @@ Updated: 2026-06-28
 - Added a state-local editable profile registry copy plus `OCTOPUS_PROFILE_REGISTRY` override so profile harness data can evolve outside the immutable kernel through developer/harness flows.
 - Added profile-registry diagnostics to Doctor, Product Report, and Preflight so bad or missing editable registry data becomes release-gate evidence.
 - Added provider coverage evidence to `provider status`, Product Report, Preflight, and the native HTML app, so `0.0.18` can validate Goal chat, clean brain, tentacle planning, and harness evolution across OAuth, API-key, local, and gateway providers.
-- Added a provider matrix record generator and included it in the preflight record command list, so real-machine provider evidence can be collected in one format.
+- Added a provider matrix record generator/checker and included the matrix generator in the preflight record command list, so real-machine provider evidence can be collected and audited in one format.
 
 ## Remaining Gaps
 

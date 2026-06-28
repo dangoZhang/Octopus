@@ -101,6 +101,7 @@ octopus brain --council --models OCTOPUS_LLM --save "ask clean brains"
 
 ```bash
 octopus provider matrix
+octopus provider matrix check
 ```
 
 ## Harness 演化

@@ -100,6 +100,7 @@ Generate a provider matrix record before release testing:
 
 ```bash
 octopus provider matrix
+octopus provider matrix check
 ```
 
 Then run the same Goal path live:

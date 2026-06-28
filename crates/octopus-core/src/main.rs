@@ -561,6 +561,15 @@ struct ProviderMatrixReport {
     next: Vec<String>,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct ProviderMatrixCheckReport {
+    path: String,
+    current_head: Option<String>,
+    passed: bool,
+    checks: Vec<PreflightCheck>,
+    next: Vec<String>,
+}
+
 #[derive(Clone, Debug, serde::Serialize)]
 struct ProviderMatrixTarget {
     id: String,
@@ -2426,6 +2435,23 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 return Ok(());
             }
             if rest.get(1).map(String::as_str) == Some("matrix") {
+                if rest.get(2).map(String::as_str) == Some("check") {
+                    let path = rest
+                        .get(3)
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| PathBuf::from(".octopus/provider-matrix.md"));
+                    let report = check_provider_matrix_record(&path)?;
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&report)
+                                .map_err(|error| error.to_string())?
+                        );
+                    } else {
+                        print_provider_matrix_check(&report, language);
+                    }
+                    return Ok(());
+                }
                 let path = rest
                     .get(2)
                     .map(PathBuf::from)
@@ -4756,6 +4782,166 @@ Results:
     })
 }
 
+fn check_provider_matrix_record(path: &Path) -> Result<ProviderMatrixCheckReport, String> {
+    let current_head = git_short_head();
+    let content = fs::read_to_string(path).unwrap_or_default();
+    let file_exists = path.exists();
+    let machine_fields = ["Date", "Tester", "Machine", "OS", "Shell"];
+    let missing_machine = machine_fields
+        .iter()
+        .filter(|field| record_field_value(&content, field).is_none())
+        .map(|field| (*field).to_string())
+        .collect::<Vec<_>>();
+    let coverage_fields = [
+        "Goal chat",
+        "Clean brain",
+        "Tentacle planning",
+        "Harness evolution",
+    ];
+    let missing_coverage = coverage_fields
+        .iter()
+        .filter(|field| record_field_value(&content, field).is_none())
+        .map(|field| (*field).to_string())
+        .collect::<Vec<_>>();
+    let targets = provider_matrix_targets();
+    let target_result_fields = [
+        "Provider check",
+        "Clean brain",
+        "Tentacle planning",
+        "Harness evolution",
+    ];
+    let missing_targets = targets
+        .iter()
+        .filter_map(|target| {
+            let section = provider_matrix_target_section(&content, target)?;
+            let missing = target_result_fields
+                .iter()
+                .filter(|field| record_field_value_in(section, field).is_none())
+                .map(|field| (*field).to_string())
+                .collect::<Vec<_>>();
+            (!missing.is_empty()).then(|| format!("{} missing {}", target.id, missing.join(", ")))
+        })
+        .chain(targets.iter().filter_map(|target| {
+            provider_matrix_target_section(&content, target)
+                .is_none()
+                .then(|| format!("{} section missing", target.id))
+        }))
+        .collect::<Vec<_>>();
+    let pass_decision_value = record_field_value(&content, "Pass or fail");
+    let pass_decision = pass_decision_value
+        .as_deref()
+        .is_some_and(record_pass_decision_ready);
+    let head_ready = current_head
+        .as_ref()
+        .is_some_and(|head| content.contains(&format!("`{head}`")) || content.contains(head));
+    let mut checks = vec![
+        preflight_check(
+            "matrix_file",
+            file_exists,
+            true,
+            path.to_string_lossy(),
+            "octopus provider matrix",
+        ),
+        preflight_check(
+            "current_head",
+            head_ready,
+            true,
+            current_head
+                .as_ref()
+                .map(|head| format!("record must include current head {head}"))
+                .unwrap_or_else(|| "git head unavailable".to_string()),
+            "rerun octopus provider matrix on the target head",
+        ),
+        preflight_check(
+            "machine_fields",
+            missing_machine.is_empty(),
+            true,
+            if missing_machine.is_empty() {
+                "machine fields filled".to_string()
+            } else {
+                format!("missing {}", missing_machine.join(", "))
+            },
+            "fill Date, Tester, Machine, OS, and Shell",
+        ),
+        preflight_check(
+            "coverage_fields",
+            missing_coverage.is_empty(),
+            true,
+            if missing_coverage.is_empty() {
+                "coverage fields filled".to_string()
+            } else {
+                format!("missing {}", missing_coverage.join(", "))
+            },
+            "fill Goal chat, Clean brain, Tentacle planning, and Harness evolution",
+        ),
+        preflight_check(
+            "target_results",
+            missing_targets.is_empty(),
+            true,
+            if missing_targets.is_empty() {
+                "all provider target results filled".to_string()
+            } else {
+                missing_targets.join("; ")
+            },
+            "fill every provider target result field",
+        ),
+        preflight_check(
+            "pass_decision",
+            pass_decision,
+            true,
+            pass_decision_value.unwrap_or_else(|| "missing pass/fail decision".to_string()),
+            "write Pass or fail: pass after provider matrix checks pass",
+        ),
+    ];
+    checks.sort_by(|left, right| left.id.cmp(&right.id));
+    let passed = checks
+        .iter()
+        .filter(|check| check.required)
+        .all(|check| check.status == "pass");
+    let next = if passed {
+        vec![
+            "append summarized provider matrix results to docs/real-machine-test.md".to_string(),
+            "octopus preflight --live".to_string(),
+        ]
+    } else {
+        checks
+            .iter()
+            .filter(|check| check.status != "pass")
+            .map(|check| check.next.clone())
+            .collect::<Vec<_>>()
+    };
+    Ok(ProviderMatrixCheckReport {
+        path: path.to_string_lossy().to_string(),
+        current_head,
+        passed,
+        checks,
+        next,
+    })
+}
+
+fn provider_matrix_target_section<'a>(
+    content: &'a str,
+    target: &ProviderMatrixTarget,
+) -> Option<&'a str> {
+    let marker = format!("### {}: {}", target.kind, target.id);
+    let start = content.find(&marker)?;
+    let rest = &content[start..];
+    let next_target = rest
+        .find("\n### ")
+        .filter(|index| *index > 0)
+        .unwrap_or(rest.len());
+    let decision = rest.find("\n## Decision").unwrap_or(rest.len());
+    Some(&rest[..next_target.min(decision)])
+}
+
+fn record_field_value_in(content: &str, label: &str) -> Option<String> {
+    let prefix = format!("- {label}:");
+    content.lines().find_map(|line| {
+        let value = line.trim().strip_prefix(&prefix)?.trim();
+        (!value.is_empty()).then(|| value.to_string())
+    })
+}
+
 fn provider_matrix_targets() -> Vec<ProviderMatrixTarget> {
     [
         (
@@ -5392,6 +5578,37 @@ fn print_provider_matrix(report: &ProviderMatrixReport, language: Language) {
             );
             println!("目标数: {}", report.targets.len());
             println!("命令数: {}", report.commands.len());
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn print_provider_matrix_check(report: &ProviderMatrixCheckReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Provider matrix check");
+            println!("path: {}", report.path);
+            println!(
+                "head: {}",
+                report.current_head.as_deref().unwrap_or("unknown")
+            );
+            println!("passed: {}", report.passed);
+            for check in &report.checks {
+                println!("- {}: {} ({})", check.id, check.status, check.evidence);
+            }
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("Provider 矩阵检查");
+            println!("路径: {}", report.path);
+            println!(
+                "当前提交: {}",
+                report.current_head.as_deref().unwrap_or("未知")
+            );
+            println!("通过: {}", report.passed);
+            for check in &report.checks {
+                println!("- {}: {} ({})", check.id, check.status, check.evidence);
+            }
             println!("下一步: {}", join_or_none(&report.next));
         }
     }
@@ -13665,7 +13882,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair continue [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair continue [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix check [path] | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -13752,8 +13969,8 @@ fn parse_status(value: &str) -> Result<Status, String> {
 mod tests {
     use super::{
         app_open_command, append_preflight_record, bridge_command_allowed, bridge_command_name,
-        bridge_static, bridge_static_asset, check_preflight_record, check_report,
-        default_first_run_objective, default_tentacles_root_for, first_run_report,
+        bridge_static, bridge_static_asset, check_preflight_record, check_provider_matrix_record,
+        check_report, default_first_run_objective, default_tentacles_root_for, first_run_report,
         http_content_length, install_report, is_broken_pipe_panic, localize_summary,
         materialize_bundled_tentacles_root, parse_bridge_env_overlay, parse_first_run_args,
         parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
@@ -16295,6 +16512,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("provider save <profile>"));
         assert!(usage().contains("provider status"));
         assert!(usage().contains("provider matrix [path]"));
+        assert!(usage().contains("provider matrix check [path]"));
         assert!(usage().contains("update [--run]"));
         assert!(usage().contains("goal [set [--constraint text] objective|refine text]"));
         assert!(usage().contains("first-run [--live] [objective]"));
@@ -17071,6 +17289,24 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(content.contains("octopus brain --goal --live"));
         assert!(content.contains("OCTOPUS_LLM_MANIFEST=1"));
         assert!(content.contains("OCTOPUS_LLM_EVOLVE=1"));
+        let audit = check_provider_matrix_record(&path).unwrap();
+        assert!(!audit.passed);
+
+        let filled = content
+            .replace("- Date:", "- Date: 2026-06-28")
+            .replace("- Tester:", "- Tester: local tester")
+            .replace("- Machine:", "- Machine: local machine")
+            .replace("- OS:", "- OS: local os")
+            .replace("- Shell:", "- Shell: zsh")
+            .replace("- Goal chat:", "- Goal chat: pass")
+            .replace("- Clean brain:", "- Clean brain: pass")
+            .replace("- Tentacle planning:", "- Tentacle planning: pass")
+            .replace("- Harness evolution:", "- Harness evolution: pass")
+            .replace("- Provider check:", "- Provider check: pass")
+            .replace("- Pass or fail:", "- Pass or fail: pass");
+        fs::write(&path, filled).unwrap();
+        let audit = check_provider_matrix_record(&path).unwrap();
+        assert!(audit.passed);
 
         let _ = fs::remove_dir_all(dir);
     }
