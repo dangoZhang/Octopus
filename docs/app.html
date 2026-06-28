@@ -513,6 +513,11 @@
     <script>
       const $ = (id) => document.getElementById(id);
       const statePath = ".octopus/state.json";
+      const storageKeys = {
+        goal: "octopus.app.goal",
+        model: "octopus.app.model",
+        endpoint: "octopus.app.endpoint"
+      };
       let lastStatus = null;
       let artifactAnimation = 0;
       const petMap = [
@@ -556,6 +561,48 @@
 
       function goalText() {
         return $("goal").value.trim();
+      }
+
+      function readStored(key) {
+        try {
+          return localStorage.getItem(key) || "";
+        } catch (_) {
+          return "";
+        }
+      }
+
+      function writeStored(key, value) {
+        try {
+          if (value) localStorage.setItem(key, value);
+          else localStorage.removeItem(key);
+        } catch (_) {
+          // Storage can be disabled in private windows; the app still works without it.
+        }
+      }
+
+      function queryValue(name) {
+        return new URLSearchParams(location.search).get(name) || "";
+      }
+
+      function hydrateInputs() {
+        const demo = queryValue("demo").toLowerCase();
+        const queryGoal = queryValue("goal");
+        const goal =
+          queryGoal ||
+          (demo === "octopus" ? "Draw an animated Octopus and show Need becoming Feed." : "") ||
+          (demo === "hello" ? "Write Hello World and show Need becoming Feed." : "") ||
+          readStored(storageKeys.goal);
+        const model = queryValue("model") || readStored(storageKeys.model);
+        const endpoint = queryValue("endpoint") || readStored(storageKeys.endpoint);
+        if (goal) $("goal").value = goal;
+        if (model) $("model").value = model;
+        if (endpoint) $("endpoint").value = endpoint;
+      }
+
+      function persistInputs() {
+        writeStored(storageKeys.goal, goalText());
+        writeStored(storageKeys.model, $("model").value.trim());
+        writeStored(storageKeys.endpoint, $("endpoint").value.trim());
       }
 
       function setBusy(busy) {
@@ -701,11 +748,17 @@
         ];
         let lastError = "";
         for (const payload of attempts) {
-          const response = await fetch(config.endpoint, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(payload)
-          });
+          let response;
+          try {
+            response = await fetch(config.endpoint, {
+              method: "POST",
+              headers,
+              body: JSON.stringify(payload)
+            });
+          } catch (error) {
+            lastError = `Browser request failed for ${config.endpoint}: ${error.message || error}`;
+            continue;
+          }
           const body = await response.text();
           if (!response.ok) {
             lastError = body || `${response.status} ${response.statusText}`;
@@ -1013,7 +1066,11 @@
       }
 
       function bind() {
+        hydrateInputs();
         drawPet("waiting");
+        ["goal", "model", "endpoint"].forEach((id) => {
+          $(id).addEventListener("input", persistInputs);
+        });
         $("send").addEventListener("click", sendGoal);
         $("helloDemo").addEventListener("click", () => {
           runWebDemo("hello", "Write Hello World and show how a clean Need becomes browser Feed.");

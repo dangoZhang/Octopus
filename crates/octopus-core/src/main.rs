@@ -17442,6 +17442,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(app_text.contains("Endpoint or /v1 base URL"));
         assert!(app_text.contains("chatCompletionsEndpoint"));
         assert!(app_text.contains("Ready. Latest Feed is visible."));
+        assert!(app_text.contains("octopus.app.goal"));
+        assert!(app_text.contains("octopus.app.model"));
+        assert!(app_text.contains("octopus.app.endpoint"));
+        assert!(app_text.contains(r#"queryValue("demo")"#));
+        assert!(!app_text.contains("octopus.app.apiKey"));
+        assert!(!app_text.contains(r#"localStorage.setItem("apiKey""#));
         assert!(
             app_text.contains(r#"<button class="primary" type="button" id="send">Send</button>"#)
         );
