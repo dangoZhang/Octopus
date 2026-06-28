@@ -46,8 +46,8 @@ Octopus/
 
 ## Current Product Path
 
-1. Install or run `octopus start --open`.
-2. Enter one Goal in the local app.
+1. Try `docs/app.html` in the browser or install and run `octopus start --open`.
+2. Enter one Goal or use the browser Try App buttons.
 3. Octopus turns the Goal into Need, routes Feed through tentacles, records feedback, and pulses the three hearts.
 4. The app shows pet state, current Need, current Feed, Output, and a browser-only API-key demo when no local bridge is present.
 5. `benchmark record/check` collects the smallest SWE/Claw/Wild pass evidence.

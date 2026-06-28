@@ -243,6 +243,7 @@ Updated: 2026-06-28
 - Added a browser-only `Try the app` path: API-key clean-brain Need generation, browser-tentacle Feed planning, Hello World output, and animated Octopus drawing without local bridge.
 - Made the browser `Try the app` endpoint accept either a full chat-completions URL or an OpenAI-compatible `/v1` base URL.
 - Added `web_try_app` evidence to `start --check` and the required `local_app_run` gate, so release evidence covers the GitHub Pages API-key Need/Feed demo.
+- Rolled the cleanup/version cadence to `0.0.21` after benchmark evidence gates, release next-step summaries, real-machine benchmark record coverage, browser Try App Need/Feed demo, `/v1` endpoint support, and web demo release evidence.
 - Rolled the cleanup/version cadence to `0.0.20` after local app first-path reset, real bridge Send verification, `start --check` evidence, root structure mapping, first-path regression coverage, and version consistency.
 - Rolled the cleanup/version cadence to `0.0.19` after repair-score reuse, target-aware repair outcomes, immediate evolution follow-up artifacts, harness-learning product visibility, and the `0.0.24` core-audit gate.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.
