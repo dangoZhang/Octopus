@@ -461,8 +461,8 @@
                 </label>
               </div>
               <label>
-                Endpoint
-                <input id="endpoint" value="https://api.openai.com/v1/chat/completions" />
+                Endpoint or /v1 base URL
+                <input id="endpoint" value="https://api.openai.com/v1" />
               </label>
               <p class="demo-note">Web demo: the clean brain only returns a Need; the browser tentacle uses tool intelligence to create Feed in this page. Use an OpenAI-compatible endpoint that allows browser requests. The key stays in this tab.</p>
               <div class="controls">
@@ -663,8 +663,14 @@
         return {
           key: $("apiKey").value.trim(),
           model: $("model").value.trim() || "gpt-4.1-mini",
-          endpoint: $("endpoint").value.trim() || "https://api.openai.com/v1/chat/completions"
+          endpoint: chatCompletionsEndpoint($("endpoint").value.trim() || "https://api.openai.com/v1")
         };
+      }
+
+      function chatCompletionsEndpoint(value) {
+        const endpoint = value.replace(/\/+$/, "");
+        if (endpoint.endsWith("/chat/completions")) return endpoint;
+        return `${endpoint}/chat/completions`;
       }
 
       function parseJsonObject(text) {
