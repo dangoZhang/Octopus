@@ -19,6 +19,7 @@ crates/octopus-core/
   src/lib.rs      Rust kernel：合同、状态、路由、Feed、heartbeat、tentacle 执行
   src/main.rs     CLI 分发、provider、preflight、repair、product report
   src/app_bridge.rs  本地 app server、HTTP/SSE、输入策略、拒绝响应、provider env overlay
+  src/core_boundary.rs  稳定 Rust / 可变 harness 边界诊断
   src/release_gate.rs  preflight check、真实机器记录解析、release gate 脚本命令
 
 tentacles/
@@ -38,6 +39,7 @@ cowork/
 
 产品面只允许用户写入 Goal：`chat`、`goal set/refine`、`brain --goal` 和 `first-run` 的目标输入。Need、Feed、feedback、repair、evolve、install、check、provider 写入由 agent loop 或开发者流程驱动。
 本地 app bridge 已拆到 `app_bridge.rs`，包括 HTTP/SSE、静态 app fallback、命令流式执行、输入策略和 `bridge_goal_surface` preflight 证据。
+`report` 和 `preflight` 会显示稳定 Rust 层、产品 app 层和可变 code-as-harness 层，避免触手/feed 实现重新混进核心。
 
 - `bootstrap`：初始化状态，安装 seed tentacles，触发 heartbeat。
 - `first-run`：跑一次完整本地闭环并生成 preflight 证据。

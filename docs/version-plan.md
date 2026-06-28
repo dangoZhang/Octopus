@@ -25,8 +25,18 @@ Real-machine test gate for `0.1.0` and later tags:
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
+Road to `0.1.0`:
+
+- `0.0.17`: product path cleanup, bridge clarity, readiness diagnostics, and core/harness boundary evidence.
+- `0.0.18`: live LLM provider, OAuth, local model, and gateway validation.
+- `0.0.19`: stronger harness-evolution feedback loop and repair reuse.
+- `0.0.20`: real-machine local app run, release blockers, and current-head evidence.
+- `0.0.21`: smallest SWE/Claw/Wild benchmark evidence and stability fixes.
+- `0.0.22`: product README, docs, and OpenClaw-style usage tutorial pages.
+- `0.0.23`: slim release artifacts, install/update/download path, and final `0.1.0` candidate cleanup.
+
 Last cleanup/version correction: `0.0.16` on 2026-06-28. Scope: clean-brain alignment/scout modes, backend-aware provider routing, brain-goal bridge boundary, structured bridge denial feedback, preflight/real-machine product bridge gates, docs cleanup, and version consistency; no tag cut.
 
-Product commits toward `0.0.17`: 6/8.
+Product commits toward `0.0.17`: 7/8.
 
 Next planned cleanup/version commit: `0.0.17`.

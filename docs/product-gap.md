@@ -27,6 +27,7 @@ Updated: 2026-06-28
 - The local app bridge server, static app serving, streaming command runner, command policy, denial response, provider env overlay parser, and `bridge_goal_surface` preflight evidence now live in `app_bridge.rs`, so the product input boundary is separate from the general CLI backend.
 - Blocked local app bridge writes now return `user_writes_brain_goal_only` plus suggested Goal commands, so old/internal controls fail with product guidance instead of a generic server error.
 - `preflight` now includes a required `bridge_goal_surface` gate that checks allowed Goal writes, denied internal writes, and the structured denial policy.
+- `report` and `preflight` now expose the core/harness boundary: stable Rust kernel/product app files, editable tentacle/profile-registry harness units, and stale prototype warnings.
 - `preflight` now returns and prints a readiness summary with required/optional pass counts plus concrete required blockers, and the native HTML app renders those blockers before the full check list.
 - Release-gate check types, record parsing, script commands, and real-machine record status logic now live in a separate `release_gate` Rust module instead of the general CLI backend.
 - `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
@@ -221,6 +222,7 @@ Updated: 2026-06-28
 - Added `preflight [--live]` so release readiness can check state, seed tentacles, manifests, context boundary, docs/pet, LLM layers, live provider, feedback data, GitHub PR path, current-head real-machine record, desktop adapters, and harness repair.
 - Added preflight readiness summary and blocker rendering in CLI/JSON/native HTML so first-run users can see the shortest path to release readiness.
 - Removed the First Run panel's obsolete granular write buttons so `octopus start --open` no longer presents a first-use path that the bridge policy rejects.
+- Added core/harness boundary diagnostics to product report, preflight, CLI output, and native HTML so the stable Rust surface and editable code-as-harness surface stay visible.
 - Added `preflight script [path]` plus native HTML access so release-gate commands can be generated, reviewed, and run on a real machine.
 - Added `preflight record [path]` plus native HTML access so real-machine evidence can be generated as a reviewable Markdown record before appending to the gate log.
 - Made the real-machine record gate self-reference-safe for docs-only record commits.

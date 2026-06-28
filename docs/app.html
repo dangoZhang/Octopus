@@ -2254,6 +2254,7 @@
         root.className = "stack";
         root.textContent = "";
         root.appendChild(productSummary(report));
+        if (report.boundary) root.appendChild(productBoundary(report.boundary));
         root.appendChild(reportList("Capabilities", report.capabilities || [], capabilityItem));
         root.appendChild(reportList("Gaps", report.gaps || [], gapItem));
         root.appendChild(reportList("Next", report.next || [], textItem));
@@ -2934,6 +2935,39 @@
           grid.appendChild(metric);
         });
         return grid;
+      }
+
+      function productBoundary(boundary) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "stack";
+        const summary = document.createElement("div");
+        summary.className = "metric";
+        const strong = document.createElement("strong");
+        strong.textContent = "Boundary";
+        const span = document.createElement("span");
+        span.textContent = boundary.policy || "stable Rust plus editable harness";
+        summary.append(strong, span);
+        wrapper.appendChild(summary);
+        wrapper.appendChild(reportList("Stable Rust", boundary.stable_rust || [], boundaryPathItem));
+        wrapper.appendChild(reportList("Product App", boundary.product_app || [], boundaryPathItem));
+        wrapper.appendChild(reportList("Editable Harness", boundary.editable_harness || [], boundaryPathItem));
+        if ((boundary.warnings || []).length) wrapper.appendChild(reportList("Boundary Warnings", boundary.warnings, textItem));
+        return wrapper;
+      }
+
+      function boundaryPathItem(item) {
+        const node = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = item.exists ? "badge ok" : "badge failed";
+        badge.textContent = item.exists ? "exists" : "missing";
+        const command = document.createElement("span");
+        command.className = "check-command";
+        command.textContent = item.kind || "path";
+        const meta = document.createElement("span");
+        meta.className = "check-meta";
+        meta.textContent = item.path || "";
+        node.append(badge, command, meta);
+        return node;
       }
 
       function starterSummary(report) {

@@ -33,6 +33,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod app_bridge;
+mod core_boundary;
 mod release_gate;
 use app_bridge::run_start as run_app_bridge_start;
 #[cfg(test)]
@@ -579,6 +580,7 @@ struct ProductReport {
     state_path: String,
     state_exists: bool,
     context: ProductContextPolicy,
+    boundary: core_boundary::CoreBoundaryReport,
     capabilities: Vec<ProductCapability>,
     gaps: Vec<ProductGap>,
     next: Vec<String>,
@@ -6873,6 +6875,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         inspect_tentacle_manifests(default_tentacles_root()).map_err(|error| error.to_string())?;
     let provider = provider_status_report();
     let profile_registry = profile_registry_report(state_path);
+    let boundary = core_boundary::report(state_path);
     let pet_exists = repo_root().join("docs/pet.html").exists();
     let app_exists = repo_root().join("docs/app.html").exists();
     let docs_exists = repo_root().join("docs/index.html").exists();
@@ -6907,6 +6910,21 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
     let github_ready = state.active_grant("github", "dangoZhang/Octopus").is_some();
 
     let mut capabilities = vec![
+        product_capability(
+            "core_harness_boundary",
+            if boundary.ok {
+                "ready"
+            } else {
+                "needs_attention"
+            },
+            format!(
+                "stable_rust={}, editable_harness={}, warnings={}",
+                boundary.stable_rust.len(),
+                boundary.editable_harness.len(),
+                boundary.warnings.len()
+            ),
+            Some("octopus report"),
+        ),
         product_capability(
             "clean_brain",
             "ready",
@@ -7268,6 +7286,13 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             "octopus bootstrap",
         ));
     }
+    if !boundary.ok {
+        gaps.push(product_gap(
+            "core_harness_boundary",
+            boundary.warnings.join("; "),
+            "octopus report",
+        ));
+    }
     if state.evolution_outcomes.is_empty() {
         gaps.push(product_gap(
             "evolution_scores_empty",
@@ -7311,6 +7336,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             tentacle: "Need + Tool + Action + Tool + Action -> Feed".to_string(),
             feedback_loop: "Need -> Feed -> Feedback".to_string(),
         },
+        boundary,
         capabilities,
         gaps,
         next,
@@ -7456,6 +7482,23 @@ fn preflight_report(
                 product.context.brain, product.context.tentacle
             ),
             "octopus context observe .",
+        ),
+        preflight_check(
+            "core_harness_boundary",
+            product.boundary.ok,
+            true,
+            format!(
+                "stable_rust={}, product_app={}, editable_harness={}, warnings={}",
+                product.boundary.stable_rust.len(),
+                product.boundary.product_app.len(),
+                product.boundary.editable_harness.len(),
+                if product.boundary.warnings.is_empty() {
+                    "none".to_string()
+                } else {
+                    product.boundary.warnings.join("; ")
+                }
+            ),
+            "octopus report",
         ),
         app_bridge::goal_surface_preflight_check(state_path),
         preflight_check(
@@ -7991,6 +8034,35 @@ fn print_product_report(report: &ProductReport, language: Language) {
             println!("brain: {}", report.context.brain);
             println!("tentacle: {}", report.context.tentacle);
             println!("loop: {}", report.context.feedback_loop);
+            println!("boundary: {}", report.boundary.policy);
+            println!(
+                "stable_rust: {}",
+                join_or_none(
+                    &report
+                        .boundary
+                        .stable_rust
+                        .iter()
+                        .map(|item| format!("{}={}", item.kind, item.path))
+                        .collect::<Vec<_>>()
+                )
+            );
+            println!(
+                "editable_harness: {}",
+                join_or_none(
+                    &report
+                        .boundary
+                        .editable_harness
+                        .iter()
+                        .map(|item| format!("{}={}", item.kind, item.path))
+                        .collect::<Vec<_>>()
+                )
+            );
+            if !report.boundary.warnings.is_empty() {
+                println!(
+                    "boundary_warnings: {}",
+                    join_or_none(&report.boundary.warnings)
+                );
+            }
             println!("capabilities:");
             for capability in &report.capabilities {
                 let command = capability
@@ -8024,6 +8096,32 @@ fn print_product_report(report: &ProductReport, language: Language) {
             println!("主脑上下文: {}", report.context.brain);
             println!("触手上下文: {}", report.context.tentacle);
             println!("循环: {}", report.context.feedback_loop);
+            println!("边界: {}", report.boundary.policy);
+            println!(
+                "稳定 Rust: {}",
+                join_or_none(
+                    &report
+                        .boundary
+                        .stable_rust
+                        .iter()
+                        .map(|item| format!("{}={}", item.kind, item.path))
+                        .collect::<Vec<_>>()
+                )
+            );
+            println!(
+                "可变 harness: {}",
+                join_or_none(
+                    &report
+                        .boundary
+                        .editable_harness
+                        .iter()
+                        .map(|item| format!("{}={}", item.kind, item.path))
+                        .collect::<Vec<_>>()
+                )
+            );
+            if !report.boundary.warnings.is_empty() {
+                println!("边界警告: {}", join_or_none(&report.boundary.warnings));
+            }
             println!("能力:");
             for capability in &report.capabilities {
                 let command = capability
@@ -17130,6 +17228,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .capabilities
             .iter()
             .any(|item| item.id == "clean_brain"));
+        assert!(report.boundary.ok);
+        assert!(report
+            .capabilities
+            .iter()
+            .any(|item| item.id == "core_harness_boundary"));
         assert!(report
             .capabilities
             .iter()
@@ -17151,6 +17254,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .checks
             .iter()
             .any(|item| item.id == "bridge_goal_surface" && item.status == "pass"));
+        assert!(preflight
+            .checks
+            .iter()
+            .any(|item| item.id == "core_harness_boundary" && item.status == "pass"));
         assert!(preflight
             .checks
             .iter()
