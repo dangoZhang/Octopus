@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+use std::fs;
 use std::path::Path;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -13,6 +15,33 @@ pub(crate) struct PreflightCheck {
 pub(crate) struct RealMachineRecordStatus {
     pub(crate) passed: bool,
     pub(crate) evidence: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct BenchmarkCase {
+    pub(crate) id: String,
+    pub(crate) title: String,
+    pub(crate) suite: String,
+    pub(crate) target: String,
+    pub(crate) command_hint: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct BenchmarkRecordReport {
+    pub(crate) path: String,
+    pub(crate) version: String,
+    pub(crate) current_head: Option<String>,
+    pub(crate) cases: Vec<BenchmarkCase>,
+    pub(crate) next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct BenchmarkRecordCheckReport {
+    pub(crate) path: String,
+    pub(crate) current_head: Option<String>,
+    pub(crate) passed: bool,
+    pub(crate) checks: Vec<PreflightCheck>,
+    pub(crate) next: Vec<String>,
 }
 
 pub(crate) fn preflight_check(
@@ -192,4 +221,259 @@ fn real_machine_record_doc_path(path: &str) -> bool {
         path,
         "docs/real-machine-test.md" | "docs/product-gap.md" | "docs/version-plan.md"
     )
+}
+
+pub(crate) fn benchmark_cases() -> Vec<BenchmarkCase> {
+    [
+        (
+            "swe_bench_verify_mini_1",
+            "SWE-Bench verify mini 1",
+            "SWE-Bench verify mini",
+            "first task",
+            "run the first SWE-Bench verify mini case through Octopus or the chosen harness",
+        ),
+        (
+            "swe_bench_verify_mini_2",
+            "SWE-Bench verify mini 2",
+            "SWE-Bench verify mini",
+            "second task",
+            "run the second SWE-Bench verify mini case through Octopus or the chosen harness",
+        ),
+        (
+            "swe_bench_verify_mini_3",
+            "SWE-Bench verify mini 3",
+            "SWE-Bench verify mini",
+            "third task",
+            "run the third SWE-Bench verify mini case through Octopus or the chosen harness",
+        ),
+        (
+            "claw_swe_bench_simplest",
+            "Claw-SWE-Bench simplest",
+            "Claw-SWE-Bench",
+            "simplest task",
+            "run the simplest Claw-SWE-Bench case through Octopus or the chosen harness",
+        ),
+        (
+            "wild_claw_bench_simplest",
+            "Wild-Claw-Bench simplest",
+            "Wild-Claw-Bench",
+            "simplest task",
+            "run the simplest Wild-Claw-Bench case through Octopus or the chosen harness",
+        ),
+    ]
+    .into_iter()
+    .map(|(id, title, suite, target, command_hint)| BenchmarkCase {
+        id: id.to_string(),
+        title: title.to_string(),
+        suite: suite.to_string(),
+        target: target.to_string(),
+        command_hint: command_hint.to_string(),
+    })
+    .collect()
+}
+
+pub(crate) fn write_benchmark_record(
+    output_path: &Path,
+    version: impl Into<String>,
+    current_head: Option<String>,
+    shell_arg: impl Fn(&str) -> String,
+) -> Result<BenchmarkRecordReport, String> {
+    if let Some(parent) = output_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let version = version.into();
+    let cases = benchmark_cases();
+    let head_for_record = current_head.as_deref().unwrap_or("unknown");
+    let mut content = format!(
+        "# Benchmark Evidence\n\n\
+Record the smallest SWE/Claw/Wild evidence before `0.1.0`.\n\n\
+## Machine\n\n\
+- Date:\n\
+- Tester:\n\
+- Machine:\n\
+- OS:\n\
+- Git commit: `{head}`\n\
+- Package version: `{version}`\n\n\
+## Cases\n\n",
+        head = head_for_record,
+        version = version
+    );
+    for case in &cases {
+        content.push_str(&format!(
+            "### {title}\n\n\
+- Id: {id}\n\
+- Suite: {suite}\n\
+- Target: {target}\n\
+- Case id:\n\
+- Command:\n\
+- Pass or fail:\n\
+- Output summary:\n\
+- Artifact path:\n\
+- Notes: {command_hint}\n\n",
+            title = case.title,
+            id = case.id,
+            suite = case.suite,
+            target = case.target,
+            command_hint = case.command_hint
+        ));
+    }
+    fs::write(output_path, content).map_err(|error| error.to_string())?;
+    Ok(BenchmarkRecordReport {
+        path: output_path.to_string_lossy().to_string(),
+        version,
+        current_head,
+        cases,
+        next: vec![
+            "run each listed benchmark case".to_string(),
+            format!(
+                "octopus benchmark check {}",
+                shell_arg(&output_path.to_string_lossy())
+            ),
+            "octopus preflight".to_string(),
+        ],
+    })
+}
+
+pub(crate) fn check_benchmark_record(
+    path: &Path,
+    current_head: Option<String>,
+) -> Result<BenchmarkRecordCheckReport, String> {
+    let content = fs::read_to_string(path).unwrap_or_default();
+    let file_exists = path.exists();
+    let head_ready = current_head
+        .as_ref()
+        .is_some_and(|head| content.contains(&format!("`{head}`")) || content.contains(head));
+    let cases = benchmark_cases();
+    let missing_sections = cases
+        .iter()
+        .filter(|case| benchmark_case_section(&content, case).is_none())
+        .map(|case| case.id.clone())
+        .collect::<Vec<_>>();
+    let mut checks = vec![
+        preflight_check(
+            "benchmark_record_file",
+            file_exists,
+            true,
+            path.to_string_lossy(),
+            "octopus benchmark record",
+        ),
+        preflight_check(
+            "benchmark_current_head",
+            head_ready,
+            true,
+            current_head
+                .as_ref()
+                .map(|head| format!("record must include current head {head}"))
+                .unwrap_or_else(|| "git head unavailable".to_string()),
+            "rerun octopus benchmark record on the target head",
+        ),
+        preflight_check(
+            "benchmark_case_sections",
+            missing_sections.is_empty(),
+            true,
+            if missing_sections.is_empty() {
+                format!("{} benchmark case sections present", cases.len())
+            } else {
+                format!("missing {}", missing_sections.join(", "))
+            },
+            "regenerate with octopus benchmark record",
+        ),
+    ];
+    for case in &cases {
+        let Some(section) = benchmark_case_section(&content, case) else {
+            checks.push(preflight_check(
+                format!("benchmark_{}", case.id),
+                false,
+                true,
+                "section missing",
+                "regenerate with octopus benchmark record",
+            ));
+            continue;
+        };
+        let missing = ["Case id", "Command", "Output summary"]
+            .iter()
+            .filter(|label| record_field_value(section, label).is_none())
+            .map(|label| (*label).to_string())
+            .collect::<Vec<_>>();
+        let pass_decision_value = record_field_value(section, "Pass or fail");
+        let pass_decision = pass_decision_value
+            .as_deref()
+            .is_some_and(record_pass_decision_ready);
+        let ok = missing.is_empty() && pass_decision;
+        let evidence = if ok {
+            format!("{} pass evidence recorded", case.title)
+        } else {
+            let mut blockers = missing;
+            if !pass_decision {
+                blockers.push("Pass or fail".to_string());
+            }
+            format!("missing {}", blockers.join(", "))
+        };
+        checks.push(preflight_check(
+            format!("benchmark_{}", case.id),
+            ok,
+            true,
+            evidence,
+            format!("fill {} in {}", case.title, path.to_string_lossy()),
+        ));
+    }
+    checks.sort_by(|left, right| left.id.cmp(&right.id));
+    let passed = checks
+        .iter()
+        .filter(|check| check.required)
+        .all(|check| check.status == "pass");
+    let next = if passed {
+        vec!["octopus preflight".to_string()]
+    } else {
+        checks
+            .iter()
+            .filter(|check| check.status != "pass")
+            .map(|check| check.next.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    };
+    Ok(BenchmarkRecordCheckReport {
+        path: path.to_string_lossy().to_string(),
+        current_head,
+        passed,
+        checks,
+        next,
+    })
+}
+
+pub(crate) fn benchmark_record_evidence(report: &BenchmarkRecordCheckReport) -> String {
+    let failed = report
+        .checks
+        .iter()
+        .filter(|check| check.status != "pass")
+        .map(|check| format!("{}={}", check.id, check.status))
+        .collect::<Vec<_>>();
+    if failed.is_empty() {
+        format!("passed=true checks={}", report.checks.len())
+    } else {
+        format!(
+            "passed=false checks={} blockers={}",
+            report.checks.len(),
+            failed.join("; ")
+        )
+    }
+}
+
+fn benchmark_case_section<'a>(content: &'a str, case: &BenchmarkCase) -> Option<&'a str> {
+    let marker = format!("### {}", case.title);
+    let start = content.find(&marker)?;
+    let rest = &content[start..];
+    let next_case = rest
+        .find("\n### ")
+        .filter(|index| *index > 0)
+        .unwrap_or(rest.len());
+    let next_section = rest
+        .find("\n## ")
+        .filter(|index| *index > 0)
+        .unwrap_or(rest.len());
+    Some(&rest[..next_case.min(next_section)])
 }

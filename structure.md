@@ -16,7 +16,7 @@ Octopus/
 │       ├── main.rs            CLI dispatch and product/backend aggregation.
 │       ├── app_bridge.rs      Local app server, bridge policy, static app fallback, streaming.
 │       ├── core_boundary.rs   Stable Rust vs editable harness boundary report.
-│       └── release_gate.rs    Preflight records, real-machine record parsing, release scripts.
+│       └── release_gate.rs    Preflight records, benchmark evidence, real-machine records, release scripts.
 ├── tentacles/
 │   ├── profile-registry/      Editable seed profile data.
 │   ├── swe-agent/             Repo read/edit/patch/test tool-combo tentacle.
@@ -40,7 +40,7 @@ Octopus/
 
 - Clean brain context: `Goal + Mem + Need + Feed`.
 - Tentacle context: `Need + Tool + Action + Tool + Action -> Feed`.
-- Stable Rust owns the kernel, product bridge, release gates, and local app shell.
+- Stable Rust owns the kernel, product bridge, release gates, benchmark evidence checks, and local app shell.
 - Editable code-as-harness owns Feed supply: tentacle prompts, tool metadata, runtime code, checks, permissions, and evolution policy.
 - The product app lets the user change only Goal; Need/Feed execution, repair, scoring, provider setup, install/check, and evolution stay inside the agent loop or developer harness.
 

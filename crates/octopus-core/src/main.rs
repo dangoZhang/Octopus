@@ -45,9 +45,10 @@ use app_bridge::{
     start_check_requested, static_asset as bridge_static_asset, static_page as bridge_static,
 };
 use release_gate::{
-    preflight_check, preflight_record_commands, preflight_script_commands, preflight_status_check,
-    real_machine_record_status_from_parts, record_field_value, record_pass_decision_ready,
-    PreflightCheck, RealMachineRecordStatus,
+    benchmark_record_evidence, check_benchmark_record, preflight_check, preflight_record_commands,
+    preflight_script_commands, preflight_status_check, real_machine_record_status_from_parts,
+    record_field_value, record_pass_decision_ready, write_benchmark_record,
+    BenchmarkRecordCheckReport, BenchmarkRecordReport, PreflightCheck, RealMachineRecordStatus,
 };
 
 #[derive(serde::Serialize)]
@@ -834,33 +835,6 @@ struct PreflightRecordAppendReport {
     already_present: bool,
     bytes: usize,
     check: PreflightRecordCheckReport,
-    next: Vec<String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-struct BenchmarkCase {
-    id: String,
-    title: String,
-    suite: String,
-    target: String,
-    command_hint: String,
-}
-
-#[derive(Debug, serde::Serialize)]
-struct BenchmarkRecordReport {
-    path: String,
-    version: String,
-    current_head: Option<String>,
-    cases: Vec<BenchmarkCase>,
-    next: Vec<String>,
-}
-
-#[derive(Debug, serde::Serialize)]
-struct BenchmarkRecordCheckReport {
-    path: String,
-    current_head: Option<String>,
-    passed: bool,
-    checks: Vec<PreflightCheck>,
     next: Vec<String>,
 }
 
@@ -2679,7 +2653,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     .get(2)
                     .map(PathBuf::from)
                     .unwrap_or_else(|| PathBuf::from(DEFAULT_BENCHMARK_RECORD_PATH));
-                let report = check_benchmark_record(&path)?;
+                let report = check_benchmark_record(&path, git_short_head())?;
                 if json {
                     println!(
                         "{}",
@@ -2696,7 +2670,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .or_else(|| rest.get(2))
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from(DEFAULT_BENCHMARK_RECORD_PATH));
-            let report = write_benchmark_record(&path)?;
+            let report = write_benchmark_record(
+                &path,
+                env!("CARGO_PKG_VERSION"),
+                git_short_head(),
+                shell_arg,
+            )?;
             if json {
                 println!(
                     "{}",
@@ -8790,9 +8769,12 @@ fn preflight_report(
     let doctor = doctor_report(state, state_path.to_path_buf())?;
     let provider = provider_status_report();
     let provider_matrix = check_provider_matrix_record(Path::new(DEFAULT_PROVIDER_MATRIX_PATH))?;
-    let benchmark_record = check_benchmark_record(Path::new(DEFAULT_BENCHMARK_RECORD_PATH))?;
-    let status = &doctor.status;
     let current_head = git_short_head();
+    let benchmark_record = check_benchmark_record(
+        Path::new(DEFAULT_BENCHMARK_RECORD_PATH),
+        current_head.clone(),
+    )?;
+    let status = &doctor.status;
     let real_machine_doc = repo_root().join("docs/real-machine-test.md");
     let real_machine_log = fs::read_to_string(&real_machine_doc).unwrap_or_default();
     let real_machine_record =
@@ -9408,255 +9390,6 @@ fn append_preflight_record(
             "git commit -m \"Record real-machine preflight\"".to_string(),
         ],
     })
-}
-
-fn benchmark_cases() -> Vec<BenchmarkCase> {
-    [
-        (
-            "swe_bench_verify_mini_1",
-            "SWE-Bench verify mini 1",
-            "SWE-Bench verify mini",
-            "first task",
-            "run the first SWE-Bench verify mini case through Octopus or the chosen harness",
-        ),
-        (
-            "swe_bench_verify_mini_2",
-            "SWE-Bench verify mini 2",
-            "SWE-Bench verify mini",
-            "second task",
-            "run the second SWE-Bench verify mini case through Octopus or the chosen harness",
-        ),
-        (
-            "swe_bench_verify_mini_3",
-            "SWE-Bench verify mini 3",
-            "SWE-Bench verify mini",
-            "third task",
-            "run the third SWE-Bench verify mini case through Octopus or the chosen harness",
-        ),
-        (
-            "claw_swe_bench_simplest",
-            "Claw-SWE-Bench simplest",
-            "Claw-SWE-Bench",
-            "simplest task",
-            "run the simplest Claw-SWE-Bench case through Octopus or the chosen harness",
-        ),
-        (
-            "wild_claw_bench_simplest",
-            "Wild-Claw-Bench simplest",
-            "Wild-Claw-Bench",
-            "simplest task",
-            "run the simplest Wild-Claw-Bench case through Octopus or the chosen harness",
-        ),
-    ]
-    .into_iter()
-    .map(|(id, title, suite, target, command_hint)| BenchmarkCase {
-        id: id.to_string(),
-        title: title.to_string(),
-        suite: suite.to_string(),
-        target: target.to_string(),
-        command_hint: command_hint.to_string(),
-    })
-    .collect()
-}
-
-fn write_benchmark_record(output_path: &Path) -> Result<BenchmarkRecordReport, String> {
-    if let Some(parent) = output_path
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    let current_head = git_short_head();
-    let version = env!("CARGO_PKG_VERSION").to_string();
-    let cases = benchmark_cases();
-    let head_for_record = current_head.as_deref().unwrap_or("unknown");
-    let mut content = format!(
-        "# Benchmark Evidence\n\n\
-Record the smallest SWE/Claw/Wild evidence before `0.1.0`.\n\n\
-## Machine\n\n\
-- Date:\n\
-- Tester:\n\
-- Machine:\n\
-- OS:\n\
-- Git commit: `{head}`\n\
-- Package version: `{version}`\n\n\
-## Cases\n\n",
-        head = head_for_record,
-        version = version
-    );
-    for case in &cases {
-        content.push_str(&format!(
-            "### {title}\n\n\
-- Id: {id}\n\
-- Suite: {suite}\n\
-- Target: {target}\n\
-- Case id:\n\
-- Command:\n\
-- Pass or fail:\n\
-- Output summary:\n\
-- Artifact path:\n\
-- Notes: {command_hint}\n\n",
-            title = case.title,
-            id = case.id,
-            suite = case.suite,
-            target = case.target,
-            command_hint = case.command_hint
-        ));
-    }
-    fs::write(output_path, content).map_err(|error| error.to_string())?;
-    Ok(BenchmarkRecordReport {
-        path: output_path.to_string_lossy().to_string(),
-        version,
-        current_head,
-        cases,
-        next: vec![
-            "run each listed benchmark case".to_string(),
-            format!(
-                "octopus benchmark check {}",
-                shell_arg(&output_path.to_string_lossy())
-            ),
-            "octopus preflight".to_string(),
-        ],
-    })
-}
-
-fn check_benchmark_record(path: &Path) -> Result<BenchmarkRecordCheckReport, String> {
-    let current_head = git_short_head();
-    let content = fs::read_to_string(path).unwrap_or_default();
-    let file_exists = path.exists();
-    let head_ready = current_head
-        .as_ref()
-        .is_some_and(|head| content.contains(&format!("`{head}`")) || content.contains(head));
-    let cases = benchmark_cases();
-    let missing_sections = cases
-        .iter()
-        .filter(|case| benchmark_case_section(&content, case).is_none())
-        .map(|case| case.id.clone())
-        .collect::<Vec<_>>();
-    let mut checks = vec![
-        preflight_check(
-            "benchmark_record_file",
-            file_exists,
-            true,
-            path.to_string_lossy(),
-            "octopus benchmark record",
-        ),
-        preflight_check(
-            "benchmark_current_head",
-            head_ready,
-            true,
-            current_head
-                .as_ref()
-                .map(|head| format!("record must include current head {head}"))
-                .unwrap_or_else(|| "git head unavailable".to_string()),
-            "rerun octopus benchmark record on the target head",
-        ),
-        preflight_check(
-            "benchmark_case_sections",
-            missing_sections.is_empty(),
-            true,
-            if missing_sections.is_empty() {
-                format!("{} benchmark case sections present", cases.len())
-            } else {
-                format!("missing {}", missing_sections.join(", "))
-            },
-            "regenerate with octopus benchmark record",
-        ),
-    ];
-    for case in &cases {
-        let Some(section) = benchmark_case_section(&content, case) else {
-            checks.push(preflight_check(
-                format!("benchmark_{}", case.id),
-                false,
-                true,
-                "section missing",
-                "regenerate with octopus benchmark record",
-            ));
-            continue;
-        };
-        let missing = ["Case id", "Command", "Output summary"]
-            .iter()
-            .filter(|label| record_field_value_in(section, label).is_none())
-            .map(|label| (*label).to_string())
-            .collect::<Vec<_>>();
-        let pass_decision_value = record_field_value_in(section, "Pass or fail");
-        let pass_decision = pass_decision_value
-            .as_deref()
-            .is_some_and(record_pass_decision_ready);
-        let ok = missing.is_empty() && pass_decision;
-        let evidence = if ok {
-            format!("{} pass evidence recorded", case.title)
-        } else {
-            let mut blockers = missing;
-            if !pass_decision {
-                blockers.push("Pass or fail".to_string());
-            }
-            format!("missing {}", blockers.join(", "))
-        };
-        checks.push(preflight_check(
-            format!("benchmark_{}", case.id),
-            ok,
-            true,
-            evidence,
-            format!("fill {} in {}", case.title, path.to_string_lossy()),
-        ));
-    }
-    checks.sort_by(|left, right| left.id.cmp(&right.id));
-    let passed = checks
-        .iter()
-        .filter(|check| check.required)
-        .all(|check| check.status == "pass");
-    let next = if passed {
-        vec!["octopus preflight".to_string()]
-    } else {
-        checks
-            .iter()
-            .filter(|check| check.status != "pass")
-            .map(|check| check.next.clone())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect()
-    };
-    Ok(BenchmarkRecordCheckReport {
-        path: path.to_string_lossy().to_string(),
-        current_head,
-        passed,
-        checks,
-        next,
-    })
-}
-
-fn benchmark_record_evidence(report: &BenchmarkRecordCheckReport) -> String {
-    let failed = report
-        .checks
-        .iter()
-        .filter(|check| check.status != "pass")
-        .map(|check| format!("{}={}", check.id, check.status))
-        .collect::<Vec<_>>();
-    if failed.is_empty() {
-        format!("passed=true checks={}", report.checks.len())
-    } else {
-        format!(
-            "passed=false checks={} blockers={}",
-            report.checks.len(),
-            failed.join("; ")
-        )
-    }
-}
-
-fn benchmark_case_section<'a>(content: &'a str, case: &BenchmarkCase) -> Option<&'a str> {
-    let marker = format!("### {}", case.title);
-    let start = content.find(&marker)?;
-    let rest = &content[start..];
-    let next_case = rest
-        .find("\n### ")
-        .filter(|index| *index > 0)
-        .unwrap_or(rest.len());
-    let next_section = rest
-        .find("\n## ")
-        .filter(|index| *index > 0)
-        .unwrap_or(rest.len());
-    Some(&rest[..next_case.min(next_section)])
 }
 
 fn git_short_head() -> Option<String> {
@@ -15165,16 +14898,16 @@ mod tests {
         app_open_command, append_preflight_record, bridge_command_allowed, bridge_command_name,
         bridge_static, bridge_static_asset, check_benchmark_record, check_preflight_record,
         check_provider_matrix_record, check_report, default_first_run_objective,
-        default_tentacles_root_for, first_run_report, http_content_length, install_report,
-        is_broken_pipe_panic, localize_summary, materialize_bundled_tentacles_root,
+        default_tentacles_root_for, first_run_report, git_short_head, http_content_length,
+        install_report, is_broken_pipe_panic, localize_summary, materialize_bundled_tentacles_root,
         parse_bridge_env_overlay, parse_first_run_args, parse_start_check_addr,
         parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
         preflight_report, prepare_bridge_state, product_report, provider_coverage_ready,
         provider_env_report, provider_status_report, real_machine_record_status_from_parts,
         repair_continue_report, repair_report, run, run_bridge_command, run_provider_matrix_record,
-        save_provider_env_report_with_key, skill_reports, start_check_requested, starter_report,
-        tentacles_root_ready, update_report, usage, write_benchmark_record, write_pet_image_report,
-        write_provider_matrix_record, Language,
+        save_provider_env_report_with_key, shell_arg, skill_reports, start_check_requested,
+        starter_report, tentacles_root_ready, update_report, usage, write_benchmark_record,
+        write_pet_image_report, write_provider_matrix_record, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, load_tentacle_profiles_from_path,
@@ -18689,7 +18422,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .status()
             .unwrap();
 
-        let report = write_benchmark_record(&path).unwrap();
+        let head = git_short_head();
+        let report =
+            write_benchmark_record(&path, env!("CARGO_PKG_VERSION"), head.clone(), shell_arg)
+                .unwrap();
         let content = fs::read_to_string(&path).unwrap();
 
         assert_eq!(report.cases.len(), 5);
@@ -18699,7 +18435,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(content.contains("SWE-Bench verify mini 3"));
         assert!(content.contains("Claw-SWE-Bench simplest"));
         assert!(content.contains("Wild-Claw-Bench simplest"));
-        let audit = check_benchmark_record(&path).unwrap();
+        let audit = check_benchmark_record(&path, head.clone()).unwrap();
         assert!(!audit.passed);
         assert!(
             audit
@@ -18722,7 +18458,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
                 "- Output summary: passed with compact Feed",
             );
         fs::write(&path, filled).unwrap();
-        let audit = check_benchmark_record(&path).unwrap();
+        let audit = check_benchmark_record(&path, head).unwrap();
         assert!(audit.passed);
 
         std::env::set_current_dir(&_cwd.original).unwrap();
