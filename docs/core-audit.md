@@ -82,3 +82,13 @@ The `0.0.24` audit must update this file with:
 - Moved harness units: none; this pass separates product release plumbing from the CLI dispatcher.
 - Remaining candidates: continue shrinking `main.rs`, review historical docs/log residue, and remove any stale fallback that chooses Feed implementation for the clean brain.
 - Commands: `rg` for download symbols, `cargo fmt --all --check`, `cargo check -q -p octopus-core`, `cargo test -q -p octopus-core static_download_manifest_matches_cli_report`, `cargo test -q -p octopus-core download_artifacts_preflight_check_passes_for_current_docs`, `cargo test -q -p octopus-core download_report_exposes_install_update_and_pages_paths`.
+
+## Audit Pass 5: Shared Shell Display Quoting
+
+- Commit scanned: `37d0d92`.
+- Reviewed files: shell command display helpers in `crates/octopus-core/src/main.rs`, `crates/octopus-core/src/download.rs`, new `crates/octopus-core/src/shell_words.rs`, download/update tests, `structure.md`, and this audit log.
+- Removed residue: duplicate shell command quoting helpers no longer exist separately in the CLI aggregation file and download module.
+- Kept core behavior: command strings used by update, install, download, preflight records, provider matrix, and brain session files keep the same quoting rules.
+- Moved harness units: none; this pass removes duplicated product plumbing.
+- Remaining candidates: continue shrinking `main.rs`, review historical docs/log residue, and remove any stale fallback that chooses Feed implementation for the clean brain.
+- Commands: `rg` for shell helper symbols, `cargo fmt --all --check`, `cargo check -q -p octopus-core`, `cargo test -q -p octopus-core download_report_exposes_install_update_and_pages_paths`, `cargo test -q -p octopus-core update_report_defaults_to_dry_run_command`, `cargo test -q -p octopus-core static_download_manifest_matches_cli_report`.

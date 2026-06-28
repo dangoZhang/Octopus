@@ -37,6 +37,7 @@ mod bundled_harness;
 mod core_boundary;
 mod download;
 mod release_gate;
+mod shell_words;
 use app_bridge::run_start as run_app_bridge_start;
 #[cfg(test)]
 use app_bridge::{
@@ -53,6 +54,7 @@ use release_gate::{
     record_field_value, record_pass_decision_ready, write_benchmark_record,
     BenchmarkRecordCheckReport, BenchmarkRecordReport, PreflightCheck, RealMachineRecordStatus,
 };
+use shell_words::{shell_arg, shell_command};
 
 #[derive(serde::Serialize)]
 struct DoctorReport {
@@ -7744,17 +7746,6 @@ fn title_from_id(value: &str) -> String {
         .join(" ")
 }
 
-fn shell_arg(value: &str) -> String {
-    if !value.is_empty()
-        && value
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || "/._-=".contains(ch))
-    {
-        return value.to_string();
-    }
-    format!("'{}'", value.replace('\'', "'\\''"))
-}
-
 fn localize_beat(name: &str) -> &str {
     match name {
         "heartbeat" => "心跳",
@@ -12135,14 +12126,6 @@ fn update_report(run_update: bool) -> UpdateReport {
             next: vec!["octopus update".to_string(), "cargo --version".to_string()],
         },
     }
-}
-
-fn shell_command(command: &[String]) -> String {
-    command
-        .iter()
-        .map(|part| shell_arg(part))
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 fn check_report(tentacle_id: &str, selected: Option<usize>) -> Result<CheckReport, String> {

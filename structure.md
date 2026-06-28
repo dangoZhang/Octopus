@@ -20,7 +20,8 @@ Octopus/
 │       ├── bundled_harness.rs Embedded installed-binary seed harness materializer.
 │       ├── core_boundary.rs   Stable Rust vs editable harness boundary report.
 │       ├── download.rs        Download/install manifest and artifact release checks.
-│       └── release_gate.rs    Preflight records, benchmark evidence, real-machine records, release scripts.
+│       ├── release_gate.rs    Preflight records, benchmark evidence, real-machine records, release scripts.
+│       └── shell_words.rs     Shared shell command display quoting.
 ├── tentacles/
 │   ├── profile-registry/      Editable seed profile data.
 │   ├── swe-agent/             Repo read/edit/patch/test tool-combo tentacle.

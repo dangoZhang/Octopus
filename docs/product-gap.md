@@ -47,6 +47,7 @@ Updated: 2026-06-28
 - `docs/install.sh` now provides a one-line Pages/local install script, verifies the installed binary with `octopus --version` when it can find it, and the download manifest points to it.
 - `preflight` now gates the download artifacts so `octopus download`, `docs/download.json`, `docs/install.sh`, and local static serving stay aligned before release.
 - Download/install manifest generation and artifact checks now live in `download.rs` instead of the CLI aggregation file.
+- Shared shell command display quoting now lives in `shell_words.rs`, so install/update/report surfaces do not keep parallel quoting helpers.
 - Tool-side `ChatPlanner` no longer silently falls back to first-tool rule execution when LLM planning fails or returns invalid JSON; failed tool thinking now returns an unsupported Feed instead of accidental Action.
 - Seed manifests and the editable profile registry now declare explicit tool call contracts (`octopus-json-v1`, `stdio-argv-v1`, `adapter-v1`, `static-html-v1`, or `native-harness-v1`) instead of relying on omitted legacy semantics.
 - Installed-binary seed harness materialization now lives in `bundled_harness.rs` instead of the CLI aggregation file; editable source seeds remain under `tentacles/`.
