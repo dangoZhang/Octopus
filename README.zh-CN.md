@@ -66,4 +66,4 @@ octopus first-run "make this repo easier to use"
 - [英文架构](docs/architecture.md)
 - [产品 gap log](docs/product-gap.md)
 
-当前版本线是 `0.0.18`。`0.1.0` 需要完整真实机器记录、live provider gate、GitHub OAuth/PR 路径和发布前 preflight 全部通过。
+当前版本线是 `0.0.19`。`0.1.0` 需要完整真实机器记录、live provider gate、GitHub OAuth/PR 路径和发布前 preflight 全部通过。
