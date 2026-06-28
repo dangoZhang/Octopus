@@ -36,6 +36,7 @@ mod app_bridge;
 mod bundled_harness;
 mod core_boundary;
 mod download;
+mod pet;
 mod release_gate;
 mod shell_words;
 use app_bridge::run_start as run_app_bridge_start;
@@ -48,6 +49,9 @@ use app_bridge::{
     start_check_requested, static_asset as bridge_static_asset, static_page as bridge_static,
 };
 use download::{download_artifacts_preflight_check, download_report, DownloadReport};
+#[cfg(test)]
+use pet::percent_encode_path;
+use pet::{default_pet_image_path, write_pet_image_report, PetImageReport, PetReport};
 use release_gate::{
     benchmark_record_evidence, check_benchmark_record, preflight_check, preflight_record_commands,
     preflight_script_commands, preflight_status_check, real_machine_record_status_from_parts,
@@ -118,29 +122,6 @@ struct SelfIterationPrReport {
     publish_path: Option<String>,
     output: String,
     next: Vec<String>,
-}
-
-#[derive(Debug, serde::Serialize)]
-struct PetReport {
-    state: String,
-    title: String,
-    summary: String,
-    color: String,
-    fallback: String,
-    event_source: Option<String>,
-    event_summary: Option<String>,
-    path: String,
-    target: String,
-    exists: bool,
-}
-
-#[derive(Debug, serde::Serialize)]
-struct PetImageReport {
-    pet: PetReport,
-    image_path: String,
-    image_url: String,
-    format: String,
-    bytes: usize,
 }
 
 #[derive(serde::Serialize)]
@@ -6829,7 +6810,7 @@ fn auto_pet_state(report: &StatusReport) -> String {
         return "success".to_string();
     }
     if let Some(event) = &report.last_pet_event {
-        if pet_state_info(&event.state).is_ok() {
+        if pet::state_known(&event.state) {
             return event.state.clone();
         }
     }
@@ -6843,195 +6824,7 @@ fn auto_pet_state(report: &StatusReport) -> String {
 }
 
 fn pet_report(state: &str) -> Result<PetReport, String> {
-    let (state, title, summary, color, fallback) = pet_state_info(state)?;
-    let path = repo_root().join("docs/pet.html");
-    let path_text = path.to_string_lossy().to_string();
-    let target = format!("{}?state={state}", file_url(&path));
-    Ok(PetReport {
-        state: state.to_string(),
-        title: title.to_string(),
-        summary: summary.to_string(),
-        color: color.to_string(),
-        fallback: fallback.to_string(),
-        event_source: None,
-        event_summary: None,
-        target,
-        exists: path.exists(),
-        path: path_text,
-    })
-}
-
-const OCTOPUS_PIXEL_ROWS: [&str; 12] = [
-    ".....bbbbb.....",
-    "...bbbbbbbbb...",
-    "..bbbbbbbbbbb..",
-    ".bbbbbbbbbbbbb.",
-    ".bbbbebbbebbbb.",
-    ".bbbbbbbbbbbbb.",
-    "..bbbbbbbbbbb..",
-    "...bbbbbbbbb...",
-    "..bb.bbb.bb....",
-    ".bb..bbb..bb...",
-    "bb...b.b...bb..",
-    "b....b.b....b..",
-];
-
-fn default_pet_image_path(state_path: &Path, state: &str) -> PathBuf {
-    let base = state_path
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    base.join("pet").join(format!("octopus-{state}.svg"))
-}
-
-fn write_pet_image_report(report: PetReport, path: &Path) -> Result<PetImageReport, String> {
-    let svg = pet_svg(&report);
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    fs::write(path, svg.as_bytes()).map_err(|error| error.to_string())?;
-    let image_path = path.to_string_lossy().to_string();
-    let image_url_path = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        env::current_dir()
-            .map_err(|error| error.to_string())?
-            .join(path)
-    };
-    Ok(PetImageReport {
-        pet: report,
-        image_url: file_url(&image_url_path),
-        image_path,
-        format: "svg".to_string(),
-        bytes: svg.len(),
-    })
-}
-
-fn pet_svg(report: &PetReport) -> String {
-    let pixel = 16;
-    let gap = 2;
-    let margin = 12;
-    let width = margin * 2 + 15 * pixel + 14 * gap;
-    let height = margin * 2 + OCTOPUS_PIXEL_ROWS.len() as i32 * pixel + 11 * gap;
-    let mut body = String::new();
-    for (row_index, row) in OCTOPUS_PIXEL_ROWS.iter().enumerate() {
-        for (column_index, value) in row.chars().enumerate() {
-            if value == '.' {
-                continue;
-            }
-            let x = margin + column_index as i32 * (pixel + gap);
-            let y = margin + row_index as i32 * (pixel + gap);
-            match value {
-                'b' => body.push_str(&format!(
-                    r#"<rect x="{x}" y="{y}" width="{pixel}" height="{pixel}" rx="2" fill="{}"/>"#,
-                    report.color
-                )),
-                'e' => {
-                    let pupil = 6;
-                    let pupil_x = x + 5;
-                    let pupil_y = y + 5;
-                    body.push_str(&format!(
-                        r##"<rect x="{x}" y="{y}" width="{pixel}" height="{pixel}" rx="2" fill="#ffffff"/><rect x="{pupil_x}" y="{pupil_y}" width="{pupil}" height="{pupil}" rx="1" fill="#101318"/>"##
-                    ));
-                }
-                _ => {}
-            }
-        }
-    }
-    format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img" aria-labelledby="title desc" shape-rendering="crispEdges">
-<title id="title">Octopus pixel pet: {}</title>
-<desc id="desc">{}</desc>
-<rect width="100%" height="100%" rx="8" fill="#f5f7fa"/>
-{}
-</svg>
-"##,
-        xml_escape(&report.title),
-        xml_escape(&report.summary),
-        body
-    )
-}
-
-fn xml_escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
-
-fn file_url(path: &Path) -> String {
-    format!("file://{}", percent_encode_path(&path.to_string_lossy()))
-}
-
-fn percent_encode_path(path: &str) -> String {
-    let mut encoded = String::new();
-    for byte in path.as_bytes() {
-        match *byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'.' | b'-' | b'_' | b'~' => {
-                encoded.push(*byte as char)
-            }
-            value => encoded.push_str(&format!("%{value:02X}")),
-        }
-    }
-    encoded
-}
-
-fn pet_state_info(
-    state: &str,
-) -> Result<
-    (
-        &'static str,
-        &'static str,
-        &'static str,
-        &'static str,
-        &'static str,
-    ),
-    String,
-> {
-    match state {
-        "heartbeat" | "alive" => Ok((
-            "heartbeat",
-            "Heartbeat",
-            "Kernel and chat loop are alive.",
-            "#0f766e",
-            "🟩",
-        )),
-        "memory" => Ok((
-            "memory",
-            "Memory beat",
-            "Context was recalled, compacted, or forgotten.",
-            "#6d5bd0",
-            "🟪",
-        )),
-        "harness" | "route" => Ok((
-            "harness",
-            "Harness beat",
-            "Routes or tools are adapting from feedback.",
-            "#cf4d32",
-            "🟥",
-        )),
-        "blocked" => Ok((
-            "blocked",
-            "Blocked",
-            "The harness needs a grant or external change.",
-            "#a16207",
-            "🟨",
-        )),
-        "success" | "satisfied" => Ok((
-            "success",
-            "Success",
-            "Feedback returned useful evidence.",
-            "#16833a",
-            "🟩",
-        )),
-        value => Err(format!(
-            "unknown pet state: {value}; expected heartbeat, memory, harness, blocked, or success"
-        )),
-    }
+    pet::pet_report(state, &repo_root().join("docs/pet.html"))
 }
 
 fn skill_reports(state: &HarnessState, root: PathBuf) -> Result<Vec<SkillReport>, String> {

@@ -92,3 +92,13 @@ The `0.0.24` audit must update this file with:
 - Moved harness units: none; this pass removes duplicated product plumbing.
 - Remaining candidates: continue shrinking `main.rs`, review historical docs/log residue, and remove any stale fallback that chooses Feed implementation for the clean brain.
 - Commands: `rg` for shell helper symbols, `cargo fmt --all --check`, `cargo check -q -p octopus-core`, `cargo test -q -p octopus-core download_report_exposes_install_update_and_pages_paths`, `cargo test -q -p octopus-core update_report_defaults_to_dry_run_command`, `cargo test -q -p octopus-core static_download_manifest_matches_cli_report`.
+
+## Audit Pass 6: Pixel Pet Boundary
+
+- Commit scanned: `e404705`.
+- Reviewed files: pet reports, state table, SVG renderer, file URL encoding, `pet` CLI/image tests, `structure.md`, and this audit log.
+- Removed residue: pixel pet state/rendering helpers no longer live in the CLI aggregation file.
+- Kept core behavior: harness status still chooses the automatic pet state in the product flow, while `pet.rs` owns deterministic color state, SVG export, and browser file URLs.
+- Moved harness units: none; this pass separates the non-evolving product display layer from the CLI dispatcher.
+- Remaining candidates: continue shrinking `main.rs`, review historical docs/log residue, and remove any stale fallback that chooses Feed implementation for the clean brain.
+- Commands: `rg` for pet symbols, `cargo fmt --all --check`, `cargo check -q -p octopus-core`, `cargo test -q -p octopus-core pet_report_maps_state_to_local_target`, `cargo test -q -p octopus-core pet_image_writes_pixel_svg`, `cargo test -q -p octopus-core pet_auto_state_prefers_recent_action_event`.

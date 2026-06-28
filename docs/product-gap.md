@@ -11,6 +11,7 @@ Updated: 2026-06-28
 - Harness also stores scored repair outcomes with target tentacle/candidate hints so repair sessions can become route-learning, heartbeat, and harness-evolution evidence.
 - Three beats exist: heartbeat, memory compaction, and harness route/evolution recommendation.
 - Pixel pet exposes heartbeat, memory, harness, blocked, and success states through deterministic state mapping, and CLI can export the same pixel body as SVG.
+- Pixel pet state, SVG export, and file URL helpers now live in `pet.rs`; the CLI aggregation file only maps harness status to the selected pet state.
 - Pet auto-color now follows the latest persisted Need/Feed/beat/evolve-score event plus goal status.
 - Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools, repo-maintainer, harness-repair diagnostics, and a write-and-run harness.
 - Seed profile data now lives in `tentacles/profile-registry/default.json`; startup materializes `.octopus/profile-registry/default.json`, and the Rust kernel can load `OCTOPUS_PROFILE_REGISTRY` or the state-local registry instead of hard-coding starter prompt/tool/check/policy data in `lib.rs`. This is a developer/harness flow, not the public product bridge.
