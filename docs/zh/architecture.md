@@ -35,6 +35,8 @@ cowork/
 
 ## 当前能力
 
+产品面只允许用户写入 Goal：`chat`、`goal set/refine`、`brain --goal` 和 `first-run` 的目标输入。Need、Feed、feedback、repair、evolve、install、check、provider 写入由 agent loop 或开发者流程驱动。
+
 - `bootstrap`：初始化状态，安装 seed tentacles，触发 heartbeat。
 - `first-run`：跑一次完整本地闭环并生成 preflight 证据。
 - `brain`：导出或运行 clean-brain 会话，支持 intent、brief、clarify、agenda、deliberate、reflect、memory、focus、council、synthesize、rewrite。
@@ -65,4 +67,4 @@ cowork/
 - 需要 GitHub OAuth grant 和 PR dry-run/publish 路径证据。
 - 需要发布前 `preflight --live` 全部 required check 通过。
 - 旧 Python SDK 已移除；Python 继续作为 tentacle runtime 存在，例如 `json-feed` 和 repair tools。
-- Seed profiles 已从 Rust kernel 源码移到 `tentacles/profile-registry/default.json`。
+- Seed profiles 已从 Rust kernel 源码移到 `tentacles/profile-registry/default.json`；启动会写出 `.octopus/profile-registry/default.json`，也可用 `OCTOPUS_PROFILE_REGISTRY` 指向其他 registry。

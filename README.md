@@ -28,7 +28,7 @@ cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked 
 octopus start --open
 ```
 
-`start --open` prepares local state, seed tentacles, heartbeats, and the native app surface, then opens `http://127.0.0.1:8765/app.html`. Use `octopus start` on headless machines. If no source checkout is present, it creates editable seed tentacles under `.octopus/bundled-tentacles`.
+`start --open` prepares local state, seed tentacles, heartbeats, editable profile registry, and the native app surface, then opens `http://127.0.0.1:8765/app.html`. Use `octopus start` on headless machines. If no source checkout is present, it creates editable seed tentacles under `.octopus/bundled-tentacles`.
 
 Update later with `octopus update --run`.
 

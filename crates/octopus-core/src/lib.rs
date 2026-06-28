@@ -19,6 +19,9 @@ const STARTER_FEEDBACK_SUMMARY_BYTES: usize = 220;
 const MAX_TENTACLE_ACTIONS: usize = 2;
 const DEFAULT_PROFILE_REGISTRY: &str =
     include_str!("../../../tentacles/profile-registry/default.json");
+const OCTOPUS_PROFILE_REGISTRY_ENV: &str = "OCTOPUS_PROFILE_REGISTRY";
+const OCTOPUS_STATE_PATH_ENV: &str = "OCTOPUS_STATE_PATH";
+const LOCAL_PROFILE_REGISTRY_PATH: &str = ".octopus/profile-registry/default.json";
 pub const CLEAN_BRAIN_CONTEXT_POLICY: &str = "Goal + Mem + Need + Feed";
 pub const TENTACLE_CONTEXT_POLICY: &str = "Need + Tool + Action + Tool + Action -> Feed";
 
@@ -8294,6 +8297,48 @@ fn make_executable(path: &Path) -> Result<(), String> {
 }
 
 pub fn default_tentacle_profiles() -> Vec<TentacleProfile> {
+    external_profile_registry()
+        .and_then(|path| load_tentacle_profiles_from_path(&path).ok())
+        .unwrap_or_else(embedded_tentacle_profiles)
+}
+
+pub fn embedded_profile_registry_json() -> &'static str {
+    DEFAULT_PROFILE_REGISTRY
+}
+
+pub fn load_tentacle_profiles_from_path(
+    path: impl AsRef<Path>,
+) -> Result<Vec<TentacleProfile>, String> {
+    let path = path.as_ref();
+    let content = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    serde_json::from_str(&content).map_err(|error| error.to_string())
+}
+
+fn external_profile_registry() -> Option<PathBuf> {
+    env::var(OCTOPUS_PROFILE_REGISTRY_ENV)
+        .ok()
+        .map(PathBuf::from)
+        .filter(|path| path.exists())
+        .or_else(|| {
+            env::var(OCTOPUS_STATE_PATH_ENV)
+                .ok()
+                .map(PathBuf::from)
+                .and_then(|state_path| {
+                    let directory = state_path
+                        .parent()
+                        .filter(|path| !path.as_os_str().is_empty())
+                        .unwrap_or_else(|| Path::new("."));
+                    let path = directory.join("profile-registry").join("default.json");
+                    path.exists().then_some(path)
+                })
+        })
+        .or_else(|| {
+            let path = PathBuf::from(LOCAL_PROFILE_REGISTRY_PATH);
+            path.exists().then_some(path)
+        })
+}
+
+fn embedded_tentacle_profiles() -> Vec<TentacleProfile> {
     serde_json::from_str(DEFAULT_PROFILE_REGISTRY)
         .expect("embedded tentacle profile registry must be valid")
 }
@@ -12218,6 +12263,59 @@ mod tests {
             .iter()
             .any(|tool| tool.implementation.kind == "python"
                 && tool.implementation.contract.as_deref() == Some(OCTOPUS_JSON_CONTRACT)));
+    }
+
+    #[test]
+    fn profile_registry_file_supplies_profiles() {
+        let dir =
+            std::env::temp_dir().join(format!("octopus-profile-registry-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let registry = dir.join("default.json");
+        fs::write(
+            &registry,
+            r#"[
+  {
+    "id": "registry-probe",
+    "name": "Registry Probe",
+    "description": "Loaded from an external profile registry.",
+    "brain": {
+      "kind": "llm",
+      "description": "Probe",
+      "model": null,
+      "prompt": "Return compact Feed."
+    },
+    "skills": [
+      {
+        "id": "probe",
+        "name": "Probe",
+        "description": "Probe external registry loading.",
+        "needs": ["observe"],
+        "tools": ["probe"]
+      }
+    ],
+    "tools": [
+      {
+        "id": "probe",
+        "description": "External registry probe tool.",
+        "implementation": { "kind": "adapter", "entrypoint": "probe" }
+      }
+    ],
+    "evolution": {
+      "editable": ["manifest.json", "brain.prompt", "tools/*"],
+      "checks": ["echo ok"],
+      "constraints": ["stay compact"]
+    },
+    "llm_ready": true
+  }
+]"#,
+        )
+        .unwrap();
+        let profiles = load_tentacle_profiles_from_path(&registry).unwrap();
+
+        let _ = fs::remove_dir_all(dir);
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].id, "registry-probe");
     }
 
     #[test]

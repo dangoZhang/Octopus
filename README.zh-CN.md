@@ -28,7 +28,7 @@ cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked 
 octopus start --open
 ```
 
-`start --open` 会准备本地状态、种子触手、心跳和 HTML app，然后打开 `http://127.0.0.1:8765/app.html`。
+`start --open` 会准备本地状态、种子触手、可编辑 profile registry、心跳和 HTML app，然后打开 `http://127.0.0.1:8765/app.html`。
 
 更新：
 

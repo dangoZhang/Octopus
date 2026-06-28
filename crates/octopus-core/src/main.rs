@@ -1,26 +1,26 @@
 use octopus_core::{
-    default_permissions, default_tentacle_profiles, feed_tentacle_with_llm_factory,
-    inspect_tentacle_manifests, load_tentacle_manifests, plan_tentacle_evolution_apply,
-    propose_tentacle_evolution_with_client, propose_tentacle_evolution_with_state,
-    recommend_tentacle_evolution_apply, scaffold_tentacle, think_tentacle_with_llm_factory,
-    write_harness_beat_evolution_artifacts, write_tentacle_apply_artifacts,
-    write_tentacle_evolution_artifacts, AdaptReport, BrainDeliberationDraft,
-    BrainDeliberationReport, BrainDeliberationSaveReport, BrainExploreDraft, BrainExploreReport,
-    BrainGoalReport, BrainGoalSaveReport, BrainPromptReport, BrainReflectionDraft,
-    BrainReflectionReport, BrainReflectionSaveReport, BrainSynthesisDraft, BrainSynthesisInput,
-    BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant, ChatClient, ChatClientFactory,
-    ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord, CodexCliChatClient,
-    CodexCliConfig, ContextReport, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan,
-    EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed, FeedFeedbackOutcome,
-    FeedTraceRecord, Feedback, Goal, GoalChat, GoalNeedSuggestion, GoalRefinement, Harness,
-    HarnessBeatEvolution, HarnessState, HeartBeat, HeartbeatReport, InstalledTentacle,
-    LoadedTentacleManifest, Need, NeedKind, NeedQueueItem, NeedQueueReport, NeedQueueSaveReport,
-    NeedQueueStatus, NeedQueueTakeReport, OpenAiCompatibleChatClient, OpenAiCompatibleConfig,
-    OpenAiCompatibleTuning, RepairOutcome, RouteReport, SelfIterationPlan, StarterFeedbackInput,
-    StarterFeedbackRecord, StarterFeedbackStatus, Status, StatusReport, TentacleEvolutionProposal,
-    TentacleManifestReport, TentacleProfile, TentacleScaffold, TentacleThinkingPlan,
-    TentacleToolAction, TentacleToolCandidate, ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY,
-    TENTACLE_CONTEXT_POLICY,
+    default_permissions, default_tentacle_profiles, embedded_profile_registry_json,
+    feed_tentacle_with_llm_factory, inspect_tentacle_manifests, load_tentacle_manifests,
+    plan_tentacle_evolution_apply, propose_tentacle_evolution_with_client,
+    propose_tentacle_evolution_with_state, recommend_tentacle_evolution_apply, scaffold_tentacle,
+    think_tentacle_with_llm_factory, write_harness_beat_evolution_artifacts,
+    write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts, AdaptReport,
+    BrainDeliberationDraft, BrainDeliberationReport, BrainDeliberationSaveReport,
+    BrainExploreDraft, BrainExploreReport, BrainGoalReport, BrainGoalSaveReport, BrainPromptReport,
+    BrainReflectionDraft, BrainReflectionReport, BrainReflectionSaveReport, BrainSynthesisDraft,
+    BrainSynthesisInput, BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant,
+    ChatClient, ChatClientFactory, ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord,
+    CodexCliChatClient, CodexCliConfig, ContextReport, EnvironmentReport, EvolutionApplyArtifact,
+    EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed,
+    FeedFeedbackOutcome, FeedTraceRecord, Feedback, Goal, GoalChat, GoalNeedSuggestion,
+    GoalRefinement, Harness, HarnessBeatEvolution, HarnessState, HeartBeat, HeartbeatReport,
+    InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem, NeedQueueReport,
+    NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport, OpenAiCompatibleChatClient,
+    OpenAiCompatibleConfig, OpenAiCompatibleTuning, RepairOutcome, RouteReport, SelfIterationPlan,
+    StarterFeedbackInput, StarterFeedbackRecord, StarterFeedbackStatus, Status, StatusReport,
+    TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile, TentacleScaffold,
+    TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate, ToolPermission,
+    CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -6012,10 +6012,14 @@ fn init_files(state_path: &Path) -> Result<Vec<InitFileReport>, String> {
     fs::create_dir_all(directory).map_err(|error| error.to_string())?;
     let gitignore = write_init_file(
         &directory.join(".gitignore"),
-        "state.json\nllm.env\nself-iteration/\nevolution/\n",
+        "state.json\nllm.env\nself-iteration/\nevolution/\nprofile-registry/\n",
     )?;
     let llm_env = write_init_file(&directory.join("llm.env.example"), LLM_ENV_EXAMPLE)?;
-    Ok(vec![gitignore, llm_env])
+    let profile_registry = write_init_file(
+        &directory.join("profile-registry").join("default.json"),
+        embedded_profile_registry_json(),
+    )?;
+    Ok(vec![gitignore, llm_env, profile_registry])
 }
 
 const LLM_ENV_EXAMPLE: &str = r#"# Copy to llm.env, fill the key, then source that file.
@@ -6047,6 +6051,9 @@ export OCTOPUS_LLM_EVOLVE=1
 fn write_init_file(path: &Path, content: &str) -> Result<InitFileReport, String> {
     let created = !path.exists();
     if created {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
         fs::write(path, content).map_err(|error| error.to_string())?;
     }
     Ok(InitFileReport {
@@ -13837,9 +13844,9 @@ mod tests {
         Language,
     };
     use octopus_core::{
-        default_tentacle_profiles, load_tentacle_manifests, CheckHistoryInput, Feed, Goal,
-        GoalStatus, HarnessState, Need, NeedKind, NeedQueueStatus, StarterFeedbackInput,
-        StarterFeedbackStatus, Status,
+        default_tentacle_profiles, load_tentacle_manifests, load_tentacle_profiles_from_path,
+        CheckHistoryInput, Feed, Goal, GoalStatus, HarnessState, Need, NeedKind, NeedQueueStatus,
+        StarterFeedbackInput, StarterFeedbackStatus, Status,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -16587,6 +16594,13 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(installed.contains(&"harness-repair-agent"));
         assert!(restored.last_pet_event.is_some());
         assert!(dir.join(".octopus/llm.env.example").exists());
+        let registry_path = dir.join(".octopus/profile-registry/default.json");
+        assert!(registry_path.exists());
+        let profiles = load_tentacle_profiles_from_path(&registry_path).unwrap();
+        assert!(profiles.iter().any(|profile| profile.id == "swe-agent"));
+        assert!(profiles
+            .iter()
+            .any(|profile| profile.id == "computer-use-agent"));
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);

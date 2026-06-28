@@ -52,7 +52,7 @@ Every executed Feed is also written to a compact harness trace journal and retur
 
 `skills [root]` lists profile and manifest skills as user-facing capability bundles. It is a catalog view; execution still starts from Need and routes through harness data.
 
-Seed profiles live in `tentacles/profile-registry/default.json`. The Rust kernel loads that registry as data, so starter prompts, tool metadata, checks, permissions, and evolution policy are no longer hard-coded in `lib.rs`.
+Seed profiles live in `tentacles/profile-registry/default.json`. Startup writes an editable copy to `.octopus/profile-registry/default.json`, and `OCTOPUS_PROFILE_REGISTRY` can point to another registry. The Rust kernel loads that registry as data, so starter prompts, tool metadata, checks, permissions, and evolution policy are no longer hard-coded in `lib.rs`.
 
 `install <tentacle>` installs a profile or manifest, then reports the tentacle's needs, runtimes, required grants, evolution checks, recent check history, and next commands from its own metadata. It is an internal/developer operation, not the public brain-goal path.
 

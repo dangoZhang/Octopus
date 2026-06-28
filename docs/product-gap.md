@@ -13,7 +13,7 @@ Updated: 2026-06-28
 - Pixel pet exposes heartbeat, memory, harness, blocked, and success states through deterministic state mapping, and CLI can export the same pixel body as SVG.
 - Pet auto-color now follows the latest persisted Need/Feed/beat/evolve-score event plus goal status.
 - Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools, repo-maintainer, harness-repair diagnostics, and a write-and-run harness.
-- Seed profile data now lives in `tentacles/profile-registry/default.json`; the Rust kernel loads it instead of hard-coding starter prompt/tool/check/policy data in `lib.rs`.
+- Seed profile data now lives in `tentacles/profile-registry/default.json`; startup materializes `.octopus/profile-registry/default.json`, and the Rust kernel can load `OCTOPUS_PROFILE_REGISTRY` or the state-local registry instead of hard-coding starter prompt/tool/check/policy data in `lib.rs`.
 - `json-feed` is a runtime seed for the `octopus-json-v1` contract.
 - The old Python SDK/prototype package has been removed; Python remains a tentacle runtime, not a second product/kernel surface.
 - Memory is a heart/beat; visual is the color-changing pet layer.
@@ -44,7 +44,7 @@ Updated: 2026-06-28
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
 - `starter [objective]` recommends starter tentacles from profile and manifest metadata, including install, check, and first-Need commands without running tools.
-- The native HTML app renders starter recommendations as action cards with Use, Install, First Need, and Check controls.
+- The native HTML app renders starter recommendations as observation cards; user-facing actions stay Goal/First Run, while install, first-Need, and check commands remain developer previews.
 - Starter recommendations are grouped for first-run work: repo, desktop, self-iteration, repair, research, script, runtime, memory, and visual.
 - Starter recommendation cards now include group reasons and manifest-derived signals so first-run users can see why a tentacle was recommended.
 - Starter recommendations now record accepted, ignored, and failed first-run choices as harness feedback, and later ranking uses that feedback score.
@@ -102,7 +102,7 @@ Updated: 2026-06-28
 - `think <tentacle> <kind> <query>` exposes tool-side planning and planned actions without executing tools.
 - LLM-backed tentacle plans can execute up to two tool actions for one Need and return one compact Feed.
 - Executed Feed now writes a compact harness trace journal; manifest Feed includes `tentacle_plan` evidence and a CLI `feed_trace`.
-- Executed Feed returns `feed_trace_index`; users and the HTML app can score that trace as satisfied, partial, or failed.
+- Executed Feed returns `feed_trace_index`; agent/internal developer flows can score that trace, while the user-facing app treats Feed results as observation.
 - `routes <kind> <query>` explains which installed tentacle the harness would select, route scores, support state, and recent Feed trace evidence.
 - Harness evolution proposals now carry recent Feed traces and check history for the selected tentacle and expose them to the LLM evolution planner.
 - Runtime-code evolution candidates use recent Feed traces and failed checks to target the exact tool entrypoint that produced or broke Feed.
@@ -286,6 +286,7 @@ Updated: 2026-06-28
 - Removed the unused Python SDK/prototype package and Python CI lane so the product has one kernel/package surface.
 - Moved seed profile prompt/tool/check/policy data from `lib.rs` into `tentacles/profile-registry/default.json`.
 - Split release-gate check/record helper logic into `crates/octopus-core/src/release_gate.rs` as the first preflight modularization step.
+- Added a state-local editable profile registry copy plus `OCTOPUS_PROFILE_REGISTRY` override so profile harness data can evolve outside the immutable kernel.
 
 ## Remaining Gaps
 
