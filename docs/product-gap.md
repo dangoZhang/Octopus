@@ -41,12 +41,9 @@ Updated: 2026-06-28
 - `start --open` keeps the same whole-project startup path and attempts to open the native app after the local app server binds.
 - `start --check` runs the same startup preparation without keeping the server open, verifies embedded app/pet/use pages plus the brain-goal bridge policy, writes `.octopus/local-app-run.json`, and feeds the required `local_app_run` preflight gate.
 - The native HTML app defaults its local API URL to Octopus when opened from docs pages, and auto-renders a read-only startup snapshot when served by `octopus start`.
-- The native HTML app has been reset to one polished page with pet, Goal, current Need, current Feed, and Output as an activity stream. State/API/constraint details are internal, and the visible actions are product words: Start, Update, Think, and Refresh.
-- The native HTML app can render the dry-run update report and copy the explicit reinstall command while the local app API blocks `update --run`.
-- The native HTML app can render a structured Doctor panel with state, tentacles, manifests, environment, LLM, pet, warnings, and next actions.
-- The native HTML app Doctor panel shows readiness state and keeps product-facing mutation on Goal or First Run; bootstrap, provider, checks, repair, record, and beat commands are internal/developer paths.
-- The native HTML app now has a First Run path that runs the whole-project local loop while keeping granular Need/Feed/harness steps behind the bridge.
-- The First Run panel now exposes only the bridge-allowed local loop, live loop, Goal, Doctor, Starter, and Preflight paths; old granular Bootstrap/Feed/Feedback/Beat/Record write buttons are removed from that first-use path.
+- The native HTML app has been reset to one polished page with pet, Goal, current Need, current Feed, and Output as an activity stream. State/API/constraint details are internal, and the only visible write action is Send.
+- The native HTML app no longer exposes Doctor, Provider, Install, Repair, Evolve, Check, Preflight, or First Run as first-path panels; those remain CLI/internal observation or release-gate surfaces.
+- The single Send action keeps granular Need/Feed/harness steps behind the bridge while still updating the current Need, Feed, pet, and activity Output.
 - `first-run [objective]` runs the same safe local loop from CLI and returns one JSON record with Bootstrap, Goal, Starter, Feed, Feedback, Beat, Product, Preflight, and Doctor evidence.
 - `first-run --live [objective]` keeps the same loop but turns on the live provider preflight gate only when explicitly requested.
 - `update` reports the current GitHub reinstall command by default, and `update --run` performs the cargo reinstall explicitly.
@@ -54,12 +51,12 @@ Updated: 2026-06-28
 - `computer-use-agent` has browser diagnostics, front-window diagnostics, clipboard read/write adapters, and a configurable MCP JSON-RPC adapter.
 - `install` now returns an actionable tentacle report with needs, runtimes, scope-merged grant commands, manifest checks, and next commands; JSON output uses the same shape for the HTML app.
 - `starter [objective]` recommends starter tentacles from profile and manifest metadata, including install, check, and first-Need commands without running tools.
-- The native HTML app renders starter recommendations as observation cards; user-facing actions stay Goal/First Run, while install, first-Need, and check commands remain developer previews.
+- Starter recommendations remain CLI/report data; the native app keeps the first path to Goal, Send, Need, Feed, pet, and Output.
 - Starter recommendations are grouped for first-run work: repo, desktop, self-iteration, repair, research, script, runtime, memory, and visual.
 - Starter recommendation cards now include group reasons and manifest-derived signals so first-run users can see why a tentacle was recommended.
 - Starter recommendations now record accepted, ignored, and failed first-run choices as harness feedback, and later ranking uses that feedback score.
 - README now stays short with the Octopus story and install path; docs homepages carry the broader product landing copy.
-- The native HTML app can render install/check/grant reports as observation surfaces; direct user writes for those internal flows are blocked by the local bridge.
+- Install/check/grant reports stay internal observation surfaces; direct user writes for those flows are blocked by the local bridge.
 - `goal set --constraint ...` and `goal refine ...` let a human set or sharpen the clean-brain Goal without running Feed or touching route learning.
 - `status --json` exposes recent clean-brain Goal turns so Goal refinement history stays visible without replaying Feed.
 - `brain [prompt]` exports pasteable clean-brain chat messages from Goal/Mem/Need/Feed for any model UI.
@@ -233,7 +230,7 @@ Updated: 2026-06-28
 - Added `start --check` local app run evidence and a required `local_app_run` preflight gate, so `0.0.20` can prove the whole-project app surface on the current head before release records are appended.
 - Reset `docs/app.html` into a one-page pet/Goal/Need/Feed/Output product app so user input stays on Goal and internal agent controls leave the primary UI.
 - Folded local state/API/constraint configuration under Local settings so the app's default visible surface stays pet, Goal, current Need, current Feed, and Output.
-- Rebuilt the one-page app again as a product surface: removed command-console styling, removed visible local settings, renamed internal buttons to Start/Update/Think, and turned Output into a compact activity stream.
+- Rebuilt the one-page app again as a product surface: removed command-console styling, removed visible local settings, collapsed internal Start/Update/Think modes into one Send action, and turned Output into a compact activity stream.
 - Rolled the cleanup/version cadence to `0.0.19` after repair-score reuse, target-aware repair outcomes, immediate evolution follow-up artifacts, harness-learning product visibility, and the `0.0.24` core-audit gate.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.
 - Added clean-brain scout mapping with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can explore assumptions, unknowns, options, and risks before the next Need without tool context.

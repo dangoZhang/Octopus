@@ -132,9 +132,9 @@
 
       .mast {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr);
         gap: 16px;
-        align-items: end;
+        align-items: start;
         margin-bottom: 18px;
       }
 
@@ -188,12 +188,12 @@
 
       .pixel-pet {
         --pet: var(--blue);
-        width: 152px;
-        height: 152px;
+        width: 176px;
+        height: 176px;
         display: grid;
-        grid-template-columns: repeat(8, 1fr);
-        grid-template-rows: repeat(8, 1fr);
-        gap: 3px;
+        grid-template-columns: repeat(12, 1fr);
+        grid-template-rows: repeat(12, 1fr);
+        gap: 2px;
         padding: 12px;
         animation: breathe 2.6s ease-in-out infinite;
       }
@@ -349,10 +349,17 @@
           width: min(100% - 24px, 1180px);
         }
 
-        .mast,
-        .signals,
         .links {
           display: none;
+        }
+
+        .mast {
+          grid-template-columns: 1fr;
+          align-items: start;
+        }
+
+        .signals {
+          grid-template-columns: 1fr;
         }
 
         h1 {
@@ -383,7 +390,6 @@
           <h1>Octopus</h1>
           <div class="status" id="statusLine">127.0.0.1:8765 · waiting</div>
         </div>
-        <button type="button" id="refresh">Refresh</button>
       </section>
 
       <section class="app">
@@ -400,14 +406,12 @@
         <section class="panel goal-panel">
           <div class="goal-top">
             <h2>Goal</h2>
-            <span class="goal-label">goal only</span>
+            <span class="goal-label">one clear target</span>
           </div>
-          <textarea id="goal" placeholder="What should Octopus work toward?">make this repo easier to use</textarea>
+          <textarea id="goal" placeholder="What should Octopus work toward?"></textarea>
           <div>
             <div class="controls">
-              <button class="primary" type="button" id="start">Start</button>
-              <button type="button" id="update">Update</button>
-              <button type="button" id="think">Think</button>
+              <button class="primary" type="button" id="send">Send</button>
             </div>
           </div>
         </section>
@@ -432,7 +436,7 @@
         <div class="output-list" id="outputList">
           <div class="output-item warn">
             <strong>Waiting</strong>
-            <span>Start Octopus locally to connect this page.</span>
+            <span>Run Octopus locally to connect this page.</span>
           </div>
         </div>
       </section>
@@ -441,19 +445,21 @@
     <script>
       const $ = (id) => document.getElementById(id);
       const statePath = ".octopus/state.json";
-      const constraint = "keep tools outside the brain";
-      const petCells = new Set([
-        "0:3", "0:4",
-        "1:2", "1:3", "1:4", "1:5",
-        "2:1", "2:2", "2:3", "2:4", "2:5", "2:6",
-        "3:1", "3:2", "3:3", "3:4", "3:5", "3:6",
-        "4:0", "4:1", "4:2", "4:3", "4:4", "4:5", "4:6", "4:7",
-        "5:1", "5:2", "5:3", "5:4", "5:5", "5:6",
-        "6:0", "6:2", "6:3", "6:4", "6:5", "6:7",
-        "7:0", "7:1", "7:3", "7:4", "7:6", "7:7"
-      ]);
-      const eyeCells = new Set(["3:2", "3:5"]);
-      const shadowCells = new Set(["5:1", "5:6", "6:0", "6:7", "7:0", "7:7"]);
+      let lastStatus = null;
+      const petMap = [
+        "....BBBB....",
+        "...BBBBBB...",
+        "..BBBBBBBB..",
+        "..BBEBBEBB..",
+        ".BBBBBBBBBB.",
+        ".BBBBBBBBBB.",
+        "..BBBBBBBB..",
+        ".SBBBBBBBBS.",
+        "SS.BBBBBB.SS",
+        "S..SB..BS..S",
+        "S..S....S..S",
+        ".SS......SS."
+      ];
       const colors = {
         heartbeat: "#0f766e",
         memory: "#6d5bd0",
@@ -475,7 +481,7 @@
       }
 
       function goalText() {
-        return $("goal").value.trim() || "make this repo easier to use";
+        return $("goal").value.trim();
       }
 
       function setBusy(busy) {
@@ -496,13 +502,13 @@
         const root = $("pixelPet");
         root.textContent = "";
         root.style.setProperty("--pet", colors[state] || colors.waiting);
-        for (let row = 0; row < 8; row += 1) {
-          for (let col = 0; col < 8; col += 1) {
+        for (let row = 0; row < petMap.length; row += 1) {
+          for (let col = 0; col < petMap[row].length; col += 1) {
             const cell = document.createElement("span");
-            const key = row + ":" + col;
-            if (eyeCells.has(key)) cell.className = "eye";
-            else if (shadowCells.has(key)) cell.className = "shadow";
-            else if (petCells.has(key)) cell.className = "body";
+            const kind = petMap[row][col];
+            if (kind === "E") cell.className = "eye";
+            else if (kind === "S") cell.className = "shadow";
+            else if (kind === "B") cell.className = "body";
             root.appendChild(cell);
           }
         }
@@ -585,6 +591,7 @@
         setOutputStatus("checking");
         try {
           const report = await runJson([...baseArgs(), "status"]);
+          lastStatus = report;
           applyStatus(report);
           replaceOutput("Connected", report.next_action || "Octopus state is ready.", "pass");
           setStatus("127.0.0.1:8765 · connected");
@@ -633,21 +640,24 @@
         return "Done.";
       }
 
-      function start() {
-        return act("Started", [...baseArgs(), "first-run", goalText()], (report) => {
+      function sendGoal() {
+        const goal = goalText();
+        if (!goal) {
+          output("Goal needed", "Write one clear target first.", "warn");
+          setStatus("waiting for goal");
+          setOutputStatus("waiting");
+          return;
+        }
+        const hasFeed = lastStatus && Number(lastStatus.feed_trace_count || 0) > 0;
+        const args = hasFeed
+          ? [...baseArgs(), "chat", goal]
+          : [...baseArgs(), "first-run", goal];
+        return act("Sent", args, (report) => {
           if (report.feed && report.feed.feeds && report.feed.feeds[0]) {
             const feed = report.feed.feeds[0];
             setBlock("feedCard", feed.status || "Feed", feed.summary || "Feed returned.");
           }
         });
-      }
-
-      function updateGoal() {
-        return act("Goal updated", [...baseArgs(), "goal", "set", "--constraint", constraint, goalText()]);
-      }
-
-      function think() {
-        return act("Thought", [...baseArgs(), "brain", "--goal", "--save", goalText()]);
       }
 
       function runStartupSnapshot() {
@@ -656,10 +666,7 @@
 
       function bind() {
         drawPet("waiting");
-        $("refresh").addEventListener("click", refresh);
-        $("start").addEventListener("click", start);
-        $("update").addEventListener("click", updateGoal);
-        $("think").addEventListener("click", think);
+        $("send").addEventListener("click", sendGoal);
       }
 
       bind();
