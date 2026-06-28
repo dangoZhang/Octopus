@@ -86,3 +86,62 @@ Date: 2026-06-28 CST. Working tree package version `0.0.15`.
 
 - Pass or fail: pass for pre-`0.1.0` whole-project local preflight.
 - Follow-up: do not cut `0.1.0` yet; repeat this gate with live LLM provider, OAuth PR publishing, and richer desktop-control coverage.
+
+## 0.0.24 Installed Binary Gate
+
+- Date: 2026-06-28 20:15:02 CST
+- Tester: Codex local real-machine gate
+- Machine: TianyideMacBook-Pro.local, arm64
+- OS: macOS 15.0.1, build 24A348
+- Rust: rustc 1.86.0, cargo 1.86.0
+- Python: Python 3.14.3
+- Git commit tested: `604e44a`
+- Package version: `0.0.24`
+
+Install:
+
+```bash
+cargo install --git https://github.com/dangoZhang/Octopus --rev 604e44a octopus-core --locked --bin octopus --force --root "$tmp/root"
+"$tmp/root/bin/octopus" --version
+```
+
+Result: pass. GitHub install compiled `octopus-core v0.0.24`; `octopus --version` returned `octopus 0.0.24`.
+
+Installed binary product path:
+
+```bash
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" --json doctor
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" --json first-run "make Octopus 0.1.0 gate easier to trust"
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" --json chat "tighten the 0.1.0 release evidence"
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" --json goal refine "ship 0.1.0 only after installed binary Need Feed app preflight evidence passes"
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" --json brain --goal --save "prepare the next clean Need for release evidence"
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" pet harness
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" --json start --check 127.0.0.1:18766
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" --json preflight
+```
+
+Result: pass for installed binary app/core path. `first-run` returned satisfied Feed: `harness diagnosis: state=present; tentacles=7; profiles=8; ... provider_env=missing; git=not a git repo`. `pet harness` returned pixel `🟥`. `start --check` wrote `local-app-run.json` with `ready=true`, `seeds=7`, `installed=0`, `skipped=0`, pages `8/8`, web demo `pass`, and bridge policy `pass`. `preflight` reported `local_app_run=pass`, `download_artifacts=pass`, `bridge_goal_surface=pass`, `core_harness_boundary=pass`, and `feedback_data=pass`.
+
+Installed app server:
+
+```bash
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" start 127.0.0.1:18766
+curl -fsS "http://127.0.0.1:18766/app.html"
+curl -fsS "http://127.0.0.1:18766/pet.html?state=harness"
+curl -fsS -X POST "http://127.0.0.1:18766/api/run" \
+  -H "content-type: application/json" \
+  --data-binary "{\"args\":[\"--state\",\"$tmp/state/state.json\",\"--json\",\"doctor\"]}"
+```
+
+Result: pass. App returned 32476 bytes, pet returned 7440 bytes, and `/api/run` returned `ok=true`.
+
+Release blockers still open:
+
+- `benchmark_evidence`
+- `github_pr_path`
+- `live_provider`
+- `provider_layers`
+- `provider_matrix_record`
+- `real_machine_record`
+
+Tag decision: do not cut `0.1.0` yet. The installed binary product path now passes; remaining work is live/provider matrix evidence, benchmark evidence, GitHub PR/OAuth evidence, and final preflight record append.
