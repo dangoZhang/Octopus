@@ -2,7 +2,9 @@
 
 默认入口仍是 [README.md](README.md)。这份是中文阅读版。
 
-[5 分钟使用教学](docs/use.html) · [中文快速开始](docs/zh/quickstart.md) · [本地 App](docs/app.html)
+[网页试用](https://dangozhang.github.io/Octopus/app.html) · [5 分钟使用教学](docs/use.html) · [中文快速开始](docs/zh/quickstart.md) · [本地 App](docs/app.html)
+
+网页试用可以直接输入 API key：先看干净大脑生成 Need，再看浏览器触手执行 Feed，完成 Hello World 或绘制动态章鱼。
 
 ## Intro
 
@@ -56,6 +58,7 @@ octopus first-run "make this repo easier to use"
 - Seed tentacles：SWE、computer-use、repo-maintainer、harness-repair、bash-only、json-feed、visual。
 - Provider：Codex CLI OAuth、OpenAI-compatible API、本地模型、LiteLLM 等。
 - 本地 app：用户只改 Goal；provider、preflight、pet、trace、repair 和 harness 状态作为观察面。
+- 网页 app：API key demo 会展示 Need 到 Browser Tentacle Feed，并生成 Hello World 或动态章鱼。
 - Harness evolution：基于 Feed trace、check history、repair outcome 生成可审查的改动计划。
 
 ## 中文文档

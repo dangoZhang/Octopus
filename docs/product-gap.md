@@ -240,6 +240,7 @@ Updated: 2026-06-28
 - Added `preflight.summary.next_steps` so CLI/JSON surfaces expose a deduplicated required-blocker action list for the `0.1.0` release path.
 - Added benchmark evidence commands and result fields to the real-machine release record path, and restored English/Chinese quickstart release-gate steps.
 - Tightened `benchmark check` so every required SWE/Claw/Wild case must record an artifact path, not only a pass string.
+- Added a browser-only `Try the app` path: API-key clean-brain Need generation, browser-tentacle Feed planning, Hello World output, and animated Octopus drawing without local bridge.
 - Rolled the cleanup/version cadence to `0.0.20` after local app first-path reset, real bridge Send verification, `start --check` evidence, root structure mapping, first-path regression coverage, and version consistency.
 - Rolled the cleanup/version cadence to `0.0.19` after repair-score reuse, target-aware repair outcomes, immediate evolution follow-up artifacts, harness-learning product visibility, and the `0.0.24` core-audit gate.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.

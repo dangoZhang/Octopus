@@ -4,6 +4,8 @@ Clean brain. Independent tentacles.
 
 [Try the app](https://dangozhang.github.io/Octopus/app.html) · [5-minute use guide](https://dangozhang.github.io/Octopus/use.html) · [Docs](https://dangozhang.github.io/Octopus/) · [中文](README.zh-CN.md)
 
+Try the app runs in the browser: enter an API key, watch the clean brain emit a Need, then let a browser tentacle create Hello World or draw an animated Octopus as Feed.
+
 Biological octopuses use intent, local arm control, and feedback instead of routing every signal through one central brain.
 Octopus brings that shape to agents: the brain expresses the Goal and cognitive Need; tentacles own implementation through their own prompt, tool metadata, code, permissions, traces, and evolution surface.
 
@@ -47,6 +49,7 @@ Need, Feed, tool choice, provider routing, repair, and harness evolution stay in
 - Seed tentacles for SWE work, computer-use adapters, repo maintenance, harness repair, write-and-run execution, JSON Feed, and the pixel pet.
 - Tool-side LLM planning, grants, traces, route scores, and reviewable harness evolution.
 - Native app server, provider/readiness observation, preflight gates, and pixel pet state.
+- GitHub Pages app demo with API-key Need generation, browser-tentacle Feed, Hello World, and animated Octopus output.
 - `start --check` writes local app run evidence for release preflight.
 - LLM backends through Codex login, API-key clouds, local OpenAI-compatible models, or gateway routers.
 - Repo-maintainer can probe local Codex CLI OAuth/API-key readiness and write Codex-backed maintenance reports for granted repos.

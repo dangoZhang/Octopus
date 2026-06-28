@@ -27,7 +27,7 @@ Octopus/
 │   ├── json-feed/             `octopus-json-v1` runtime seed.
 │   └── visual/                Pixel pet state layer.
 └── docs/
-    ├── app.html               One-page local product app.
+    ├── app.html               One-page local product app plus browser-only Try App demo.
     ├── pet.html               Pixel Octopus.
     ├── architecture.md
     ├── product-gap.md
@@ -49,6 +49,6 @@ Octopus/
 1. Install or run `octopus start --open`.
 2. Enter one Goal in the local app.
 3. Octopus turns the Goal into Need, routes Feed through tentacles, records feedback, and pulses the three hearts.
-4. The app shows pet state, current Need, current Feed, and Output.
+4. The app shows pet state, current Need, current Feed, Output, and a browser-only API-key demo when no local bridge is present.
 5. `benchmark record/check` collects the smallest SWE/Claw/Wild pass evidence.
 6. `preflight`, provider matrix, real-machine records, and benchmark records remain release evidence before `0.1.0`.

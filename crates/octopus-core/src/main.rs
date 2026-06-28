@@ -17777,6 +17777,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(app_text.contains("Current Feed"));
         assert!(app_text.contains("Latest Feed"));
         assert!(app_text.contains("Local Octopus"));
+        assert!(app_text.contains(r#"id="apiKey""#));
+        assert!(app_text.contains("Hello World"));
+        assert!(app_text.contains("Draw Octopus"));
+        assert!(app_text.contains("clean brain only returns a Need"));
+        assert!(app_text.contains("browserTentaclePlan"));
         assert!(
             app_text.contains(r#"<button class="primary" type="button" id="send">Send</button>"#)
         );
