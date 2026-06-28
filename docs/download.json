@@ -4,6 +4,7 @@
   "source_archive_url": "https://github.com/dangoZhang/Octopus/archive/refs/heads/main.zip",
   "cargo_package": "octopus-core",
   "binary": "octopus",
+  "install_script_url": "https://dangozhang.github.io/Octopus/install.sh",
   "install": {
     "label": "Install from GitHub with Cargo",
     "command": [

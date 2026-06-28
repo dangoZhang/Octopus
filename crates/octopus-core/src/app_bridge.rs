@@ -253,6 +253,7 @@ fn local_app_pages() -> Vec<LocalAppPageReport> {
         ("/tutorial.html", "Octopus Tutorial"),
         ("/recipes.html", "Octopus Recipes"),
         ("/download.json", "cargo_package"),
+        ("/install.sh", "cargo install"),
         ("/use.html", "Use Octopus"),
     ]
     .into_iter()
@@ -646,6 +647,8 @@ pub(crate) fn static_page(path: &str) -> Result<(&'static str, Vec<u8>), String>
 fn static_content_type(file: &str) -> &'static str {
     if file.ends_with(".json") {
         "application/json"
+    } else if file.ends_with(".sh") {
+        "text/x-shellscript"
     } else {
         "text/html"
     }
@@ -674,6 +677,10 @@ pub(crate) fn static_asset(path: &str) -> Option<(&'static str, &'static [u8])> 
         "/download.json" => Some((
             "download.json",
             &include_bytes!("../../../docs/download.json")[..],
+        )),
+        "/install.sh" => Some((
+            "install.sh",
+            &include_bytes!("../../../docs/install.sh")[..],
         )),
         "/use.html" => Some(("use.html", &include_bytes!("../../../docs/use.html")[..])),
         "/about.html" => Some((

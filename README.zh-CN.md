@@ -28,6 +28,12 @@ Heartbeat -> Action Data -> Tentacle harness change
 ## 安装
 
 ```bash
+curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
+```
+
+或者：
+
+```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
 octopus download
 octopus start --open

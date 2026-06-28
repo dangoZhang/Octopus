@@ -4,6 +4,12 @@ For the shortest product walkthrough, open [Octopus Tutorial](tutorial.html), th
 
 Machine-readable install/update links are in [download.json](download.json) and from `octopus download`.
 
+One-line install:
+
+```bash
+curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
+```
+
 ## Install
 
 ```bash

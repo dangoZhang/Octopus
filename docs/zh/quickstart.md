@@ -2,6 +2,12 @@
 
 先看 [产品教学](tutorial.html) 和 [使用场景](recipes.html)，再照这里跑本地命令。
 
+一行安装：
+
+```bash
+curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
+```
+
 ## 安装
 
 ```bash

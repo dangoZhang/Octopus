@@ -372,6 +372,7 @@ struct DownloadReport {
     source_archive_url: String,
     cargo_package: String,
     binary: String,
+    install_script_url: String,
     install: DownloadCommand,
     update: DownloadCommand,
     start: String,
@@ -4422,6 +4423,7 @@ fn print_download_report(report: &DownloadReport, language: Language) {
             println!("version: {}", report.current_version);
             println!("repository: {}", report.repository);
             println!("source: {}", report.source_archive_url);
+            println!("install script: {}", report.install_script_url);
             println!("install: {}", report.install.shell);
             println!("update: {}", report.update.shell);
             println!("start: {}", report.start);
@@ -4436,6 +4438,7 @@ fn print_download_report(report: &DownloadReport, language: Language) {
             println!("版本: {}", report.current_version);
             println!("仓库: {}", report.repository);
             println!("源码: {}", report.source_archive_url);
+            println!("安装脚本: {}", report.install_script_url);
             println!("安装: {}", report.install.shell);
             println!("更新: {}", report.update.shell);
             println!("启动: {}", report.start);
@@ -12302,6 +12305,7 @@ fn download_report() -> DownloadReport {
         repository,
         cargo_package: "octopus-core".to_string(),
         binary: "octopus".to_string(),
+        install_script_url: "https://dangozhang.github.io/Octopus/install.sh".to_string(),
         install: DownloadCommand {
             label: "Install from GitHub with Cargo".to_string(),
             shell: shell_command(&install),
@@ -17883,6 +17887,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("\"/tutorial.html\""));
         assert!(record.contains("\"/recipes.html\""));
         assert!(record.contains("\"/download.json\""));
+        assert!(record.contains("\"/install.sh\""));
         assert!(record.contains("\"web_demo\""));
         assert!(record.contains("\"web_try_app\""));
         assert!(record.contains("browser-tentacle Feed demo present"));
@@ -17904,10 +17909,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let (_, tutorial) = bridge_static("/tutorial.html").unwrap();
         let (_, recipes) = bridge_static("/recipes.html").unwrap();
         let (download_type, download) = bridge_static("/download.json").unwrap();
+        let (install_type, install_script) = bridge_static("/install.sh").unwrap();
         let (_, pet_embedded) = bridge_static_asset("/pet.html").unwrap();
 
         assert_eq!(content_type, "text/html");
         assert_eq!(download_type, "application/json");
+        assert_eq!(install_type, "text/x-shellscript");
         let app_text = String::from_utf8_lossy(&app);
         assert!(app_text.contains("Octopus App"));
         assert!(app_text.contains("127.0.0.1:8765"));
@@ -17916,6 +17923,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(String::from_utf8_lossy(&tutorial).contains("Octopus Tutorial"));
         assert!(String::from_utf8_lossy(&recipes).contains("Octopus Recipes"));
         assert!(String::from_utf8_lossy(&download).contains("\"cargo_package\""));
+        assert!(String::from_utf8_lossy(&install_script).contains("cargo install"));
         assert!(String::from_utf8_lossy(pet_embedded).contains("pixel-pet"));
         assert!(bridge_static("/missing.html").is_err());
     }
@@ -17929,6 +17937,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
 
         assert_eq!(manifest["current_version"], report.current_version);
         assert_eq!(manifest["repository"], report.repository);
+        assert_eq!(manifest["install_script_url"], report.install_script_url);
         assert_eq!(manifest["install"]["shell"], report.install.shell);
         assert_eq!(manifest["update"]["shell"], report.update.shell);
         assert_eq!(manifest["start"], report.start);
@@ -20491,6 +20500,7 @@ JSON
         assert_eq!(report.current_version, env!("CARGO_PKG_VERSION"));
         assert_eq!(report.repository, "https://github.com/dangoZhang/Octopus");
         assert!(report.source_archive_url.ends_with("/main.zip"));
+        assert!(report.install_script_url.ends_with("/install.sh"));
         assert!(report.install.shell.contains("cargo"));
         assert!(report.install.shell.contains("octopus-core"));
         assert_eq!(report.update.shell, "octopus update --run");

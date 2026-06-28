@@ -31,6 +31,7 @@ Octopus/
     ├── tutorial.html          Product tutorial from browser demo to whole-project local run.
     ├── recipes.html           Goal-first recipes for browser, local repo, model, and evidence paths.
     ├── download.json          Machine-readable install/update/source/docs manifest.
+    ├── install.sh             One-line install script published through Pages/local app.
     ├── pet.html               Pixel Octopus.
     ├── architecture.md
     ├── product-gap.md
