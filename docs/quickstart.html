@@ -4,15 +4,19 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Octopus Quick Install & Use</title>
-    <meta name="description" content="Install and launch the whole Octopus project locally." />
+    <meta name="description" content="Install Octopus, start the whole local product, and run the first clean-brain loop." />
     <style>
       :root {
         color-scheme: light;
         --ink: #111318;
-        --muted: #596070;
+        --muted: #5b6474;
         --line: #d8dde6;
         --paper: #ffffff;
         --soft: #f5f7fa;
+        --teal: #0f766e;
+        --coral: #cf4d32;
+        --gold: #a16207;
+        --blue: #2563eb;
       }
 
       * {
@@ -27,27 +31,123 @@
         letter-spacing: 0;
       }
 
-      main {
-        width: min(920px, calc(100% - 32px));
+      a {
+        color: inherit;
+      }
+
+      .shell {
+        width: min(1040px, calc(100% - 32px));
         margin: 0 auto;
-        padding: 56px 0;
+      }
+
+      header {
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.94);
+        position: sticky;
+        top: 0;
+        z-index: 2;
+      }
+
+      nav {
+        min-height: 64px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .brand {
+        font-weight: 800;
+      }
+
+      .links {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .button {
+        border: 1px solid var(--ink);
+        border-radius: 8px;
+        padding: 9px 12px;
+        text-decoration: none;
+        color: var(--ink);
+        font-weight: 700;
+      }
+
+      .hero {
+        min-height: 62vh;
+        display: grid;
+        align-content: center;
+        padding: 64px 0 38px;
       }
 
       h1 {
-        margin: 0 0 10px;
-        font-size: 48px;
-        line-height: 1;
+        margin: 0;
+        max-width: 820px;
+        font-size: 76px;
+        line-height: 0.98;
         letter-spacing: 0;
       }
 
-      h2 {
-        margin: 34px 0 12px;
-        font-size: 24px;
+      .lead {
+        max-width: 740px;
+        margin: 22px 0 0;
+        color: var(--muted);
+        font-size: 20px;
+        line-height: 1.55;
       }
 
-      p {
+      section {
+        padding: 46px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      h2 {
+        margin: 0 0 14px;
+        font-size: 30px;
+      }
+
+      h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+
+      p,
+      li {
         color: var(--muted);
         line-height: 1.6;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        min-width: 0;
+        padding: 18px;
+      }
+
+      .card:nth-child(1) {
+        border-top: 5px solid var(--teal);
+      }
+
+      .card:nth-child(2) {
+        border-top: 5px solid var(--coral);
+      }
+
+      .card:nth-child(3) {
+        border-top: 5px solid var(--gold);
+      }
+
+      .card:nth-child(4) {
+        border-top: 5px solid var(--blue);
       }
 
       pre {
@@ -55,7 +155,8 @@
         border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--soft);
-        padding: 18px;
+        padding: 16px;
+        line-height: 1.5;
       }
 
       code {
@@ -63,80 +164,147 @@
         font-size: 14px;
       }
 
-      a {
-        color: inherit;
+      footer {
+        padding: 30px 0;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+      }
+
+      @media (max-width: 760px) {
+        nav {
+          align-items: flex-start;
+          flex-wrap: wrap;
+          padding: 12px 0;
+        }
+
+        .links {
+          width: 100%;
+          flex-wrap: wrap;
+          gap: 10px;
+          padding-bottom: 4px;
+          font-size: 13px;
+        }
+
+        .links a {
+          white-space: nowrap;
+        }
+
+        h1 {
+          max-width: 330px;
+          font-size: 42px;
+        }
+
+        .lead {
+          max-width: 340px;
+          font-size: 17px;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .card,
+        .card * {
+          max-width: 100%;
+          min-width: 0;
+        }
+
+        .card {
+          overflow: hidden;
+        }
+
+        .card h3,
+        .card p,
+        .card pre {
+          max-width: 300px;
+        }
+
+        pre code {
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
       }
     </style>
   </head>
   <body>
+    <header>
+      <nav class="shell" aria-label="Primary navigation">
+        <div class="brand">Octopus</div>
+        <div class="links">
+          <a href="./">Home</a>
+          <a href="./tutorial.html">Tutorial</a>
+          <a href="./recipes.html">Recipes</a>
+          <a href="./use.html">Use</a>
+          <a href="./app.html">App</a>
+          <a class="button" href="https://github.com/dangoZhang/Octopus">GitHub</a>
+        </div>
+      </nav>
+    </header>
+
     <main>
-      <h1>Quick Install & Use</h1>
-      <p>Install Octopus, start the whole local project, then continue from the native app. For the shortest product walkthrough, open <a href="./use.html">Use Octopus in five minutes</a>.</p>
+      <section class="hero shell">
+        <div>
+          <h1>Install Octopus. Run the whole product.</h1>
+          <p class="lead">Start the local agent app, give the brain one Goal, and let tentacles supply Feed while the harness records evidence.</p>
+        </div>
+      </section>
 
-      <h2>Install</h2>
-      <pre><code>cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
-octopus start --open</code></pre>
-      <p><code>start --open</code> opens <code>http://127.0.0.1:8765/app.html</code>. Use <code>octopus start</code> on headless machines.</p>
-      <p><code>start</code> prepares <code>.octopus/</code> state, installs editable seed tentacles, pulses the three hearts, serves the native app and pixel pet, loads <code>.octopus/llm.env</code>, and falls back to bundled app/tentacle files when no source checkout is present.</p>
-      <pre><code>octopus update
-octopus update --run</code></pre>
+      <section>
+        <div class="shell grid">
+          <article class="card">
+            <h3>1. Install</h3>
+            <pre><code>cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force</code></pre>
+            <p>This installs the Rust kernel and bundled product app.</p>
+          </article>
 
-      <h2>From Source</h2>
-      <pre><code>git clone https://github.com/dangoZhang/Octopus
-cd Octopus
-cargo run -p octopus-core --bin octopus -- start</code></pre>
-      <pre><code>cargo install --path crates/octopus-core --bin octopus --force
-octopus start --open</code></pre>
+          <article class="card">
+            <h3>2. Launch</h3>
+            <pre><code>octopus start --open</code></pre>
+            <p>The launcher prepares state, seed tentacles, the profile registry, three beats, the pixel pet, and the local app.</p>
+          </article>
 
-      <h2>First Loop</h2>
-      <pre><code>octopus first-run "make this repo easier to use"</code></pre>
-      <p><code>first-run</code> sets a clean Goal, bootstraps seed tentacles, runs a safe observe Feed, scores the latest trace, pulses the hearts, and returns Doctor plus Preflight evidence.</p>
-      <p>Manual equivalent:</p>
-      <pre><code>octopus bootstrap
-octopus goal set --constraint "keep tools outside the brain" "make this repo easier to use"
-octopus goal refine "prefer cognitive Needs over tool instructions"
-octopus brain --session "what should the brain ask next?"
-octopus brain --align --save "does this still follow the goal?"
-octopus brain --scout --save "map what the brain should understand next"
-octopus brain --focus verify --save "what proof matters?"
-octopus need observe README.md
-octopus feedback latest satisfied "useful evidence"
-octopus beat 200
-octopus pet</code></pre>
-      <p>The app continues through one product path: the user changes Goal, while Need, Feed, provider setup, repair, route feedback, preflight, and harness-beat state stay internal or observable through <code>octopus start</code>.</p>
+          <article class="card">
+            <h3>3. Run the first loop</h3>
+            <pre><code>octopus first-run "make this repo easier to use"
+octopus chat "make setup clearer"</code></pre>
+            <p>User input changes Goal. Need, route choice, provider routing, repair, and harness evolution stay inside the agent or evidence surfaces.</p>
+          </article>
 
-      <h2>Optional LLM</h2>
-      <pre><code>octopus provider save openai
+          <article class="card">
+            <h3>4. Check evidence</h3>
+            <pre><code>octopus start --check
+octopus doctor
+octopus preflight</code></pre>
+            <p>Use these when preparing a release or diagnosing a machine. They prove the product path can run locally.</p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <div class="shell">
+          <h2>Optional model setup</h2>
+          <p>Use Codex login, direct API keys, local OpenAI-compatible servers, or a gateway. Provider setup is runtime plumbing; clean Need text should stay provider-free.</p>
+          <pre><code>octopus provider save codex
 source .octopus/llm.env
-# Optional when your model/provider supports explicit thinking controls:
-# export OCTOPUS_LLM_REASONING_EFFORT=medium
-# export OCTOPUS_LLM_MAX_TOKENS=2048
-octopus provider check
-octopus first-run --live "make this repo easier to use"
-octopus brain --agenda --save "what matters next?"
-octopus brain --focus compare --save "which path should the brain compare?"
-octopus brain --llm-prefix OCTOPUS_LLM --agenda --save "what matters next?"
-octopus brain --council --models OCTOPUS_LLM --save "ask clean brains"
-octopus brain --live --save "what should the brain ask next?"</code></pre>
-      <p>OpenAI-compatible profiles include OpenAI, local servers, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.</p>
+octopus provider status
+octopus first-run --live "make this repo easier to use"</code></pre>
+          <pre><code>octopus provider save openai
+source .octopus/llm.env
+export OPENAI_API_KEY=...
+octopus provider check</code></pre>
+        </div>
+      </section>
 
-      <h2>Harness Evolution</h2>
-      <pre><code>octopus install swe-agent
-octopus need observe README.md
-octopus feedback latest partial "feed needs sharper file evidence"
-octopus beat 200
-octopus repair .</code></pre>
-      <p>Harness changes stay reviewable: plans, patches, repair bundles, and scores are written under <code>.octopus/</code> before any high-risk action.</p>
-
-      <h2>Release Gate</h2>
-      <pre><code>tmp=$(mktemp -d)
-octopus --state "$tmp/state.json" first-run "preflight local evidence"
-octopus --state "$tmp/state.json" preflight
-octopus --state "$tmp/state.json" preflight record "$tmp/real-machine-record.md"
-octopus --state "$tmp/state.json" preflight record check "$tmp/real-machine-record.md"
-octopus --state "$tmp/state.json" preflight record append "$tmp/real-machine-record.md" docs/real-machine-test.md</code></pre>
-
-      <p><a href="./index.html">Back to Octopus</a></p>
+      <section>
+        <div class="shell">
+          <h2>Read next</h2>
+          <p><a href="./tutorial.html">Tutorial</a> shows the browser-to-local Need/Feed path. <a href="./recipes.html">Recipes</a> gives copyable tasks. <a href="./use.html">Use guide</a> gives the detailed CLI walkthrough.</p>
+        </div>
+      </section>
     </main>
+
+    <footer>
+      <div class="shell">MIT licensed. Clean brain, independent tentacles, evolvable harness.</div>
+    </footer>
   </body>
 </html>
