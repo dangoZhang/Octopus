@@ -173,3 +173,63 @@ GitHub PR path result: pass for dry-run. `octopus oauth github dangoZhang/Octopu
 Live preflight result before docs-only record commit: pass, `17/17` required checks and `2/2` optional checks.
 
 Tag decision: do not cut `0.1.0` yet. Next step is a final GitHub-installed binary run from the new remote head, then tag `0.1.0` only if that installed run and live preflight stay green.
+
+## 0.1.0 Final GitHub-Installed Gate
+
+- Date: 2026-06-28 CST
+- Tester: Codex local release gate
+- Machine: TianyideMacBook-Pro.local, arm64
+- OS: Darwin 24.0.0
+- Git commit tested: `56a1276`
+- Package version: `0.1.0`
+
+Install:
+
+```bash
+cargo install --git https://github.com/dangoZhang/Octopus --rev 56a1276 octopus-core --locked --bin octopus --force --root "$tmp/root"
+"$tmp/root/bin/octopus" --version
+```
+
+Result: pass. GitHub install compiled `octopus-core v0.1.0`; `octopus --version` returned `octopus 0.1.0`.
+
+Installed binary product path in a clean temp workspace:
+
+```bash
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" --json doctor
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" --json first-run "ship Octopus 0.1.0 with installed Need Feed app evidence"
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" --json chat "tighten first release evidence"
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" --json goal refine "release only after GitHub installed binary startup app provider benchmark gates pass"
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" --json brain --goal --save "prepare clean Need for release evidence"
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" pet harness
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" --json start --check 127.0.0.1:18768
+```
+
+Result: pass. `first-run` returned satisfied Feed. `pet harness` returned pixel `🟥`. `start --check` returned `ready=true`, `version=0.1.0`, `seeds=7`, and `skipped=0`.
+
+Installed app server:
+
+```bash
+"$tmp/root/bin/octopus" --state "$tmp/state/state.json" start 127.0.0.1:18768
+curl -fsS "http://127.0.0.1:18768/app.html"
+curl -fsS "http://127.0.0.1:18768/pet.html?state=harness"
+curl -fsS -X POST "http://127.0.0.1:18768/api/run" \
+  -H "content-type: application/json" \
+  --data-binary "{\"args\":[\"--state\",\"$tmp/state/state.json\",\"--json\",\"doctor\"]}"
+```
+
+Result: pass. App returned 32476 bytes, pet returned 7440 bytes, and `/api/run` returned `ok=true`.
+
+Installed binary release gate from the repository root:
+
+```bash
+"$tmp/root/bin/octopus" --state .octopus/state.json --json start --check 127.0.0.1:18765
+OCTOPUS_LLM_BACKEND=codex OCTOPUS_CHAT_LLM=1 OCTOPUS_BRAIN_LLM=1 \
+  OCTOPUS_LLM_MANIFEST=1 OCTOPUS_LLM_EVOLVE=1 \
+  "$tmp/root/bin/octopus" --state .octopus/state.json --json preflight --live
+octopus provider matrix check .octopus/provider-matrix.md
+octopus benchmark check .octopus/benchmark-evidence.md
+```
+
+Result: pass except the expected pre-append self-record blocker. Installed `start --check` returned `ready=true`, `head=56a1276`, `version=0.1.0`, `seeds=7`, and `skipped=0`. Provider matrix and benchmark checks both passed on `56a1276`. Live preflight passed `16/17` required checks, with only `real_machine_record` failing because this section had not been appended yet.
+
+Tag decision: `0.1.0` can be tagged from a docs-only commit whose parent is `56a1276`, after preflight confirms the parent-recorded real-machine gate.
