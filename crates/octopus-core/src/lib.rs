@@ -4189,6 +4189,7 @@ impl HarnessState {
         let state_args = state_path
             .map(|path| format!(" --state {}", shell_arg(&path.to_string_lossy())))
             .unwrap_or_default();
+        let harness_learning = self.harness_learning_summary(&state_args);
         let next_action = if self.installed_tentacles.is_empty() {
             format!("octopus{state_args} adapt")
         } else if self.goal.is_none() {
@@ -4201,10 +4202,11 @@ impl HarnessState {
             format!("octopus{state_args} needs take {}", item.index)
         } else if self.routes.scores.is_empty() {
             format!("octopus{state_args} need observe .")
+        } else if harness_learning.source != "none" {
+            harness_learning.next_action.clone()
         } else {
             format!("octopus{state_args} beat 200")
         };
-        let harness_learning = self.harness_learning_summary(&state_args);
         StatusReport {
             hearts: vec![
                 HeartBeat {
@@ -11114,11 +11116,12 @@ mod tests {
             report.harness_learning.next_action,
             "octopus evolve recommend swe-agent"
         );
+        assert_eq!(report.next_action, "octopus evolve recommend swe-agent");
         let state_path = Path::new("/tmp/octopus state.json");
         let with_state = harness.state.status_report_with_state(Some(state_path));
         assert_eq!(
             with_state.next_action,
-            "octopus --state '/tmp/octopus state.json' beat 200".to_string()
+            "octopus --state '/tmp/octopus state.json' evolve recommend swe-agent".to_string()
         );
         assert_eq!(
             with_state.harness_learning.next_action,

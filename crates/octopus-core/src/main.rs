@@ -20147,6 +20147,10 @@ JSON
             status.harness_learning.candidate.as_deref(),
             Some("03-runtime-code")
         );
+        assert_eq!(
+            status.harness_learning.next_action,
+            "octopus evolve recommend swe-agent"
+        );
         let evolution_plan =
             workspace.join(".octopus/evolution/swe-agent/apply/03-runtime-code.md");
         let evolution_json =

@@ -92,6 +92,7 @@ Updated: 2026-06-28
 - Repair Feed scoring exists for harness feedback; direct user scoring from the app is no longer the main product path.
 - Repair scoring mirrors session-backed outcomes into `.octopus/harness-repair/<session>/OUTCOME.md` and `outcomes.jsonl`; when the trace carries a target tentacle and candidate, the same score is reused as an evolution outcome, immediately producing the next reviewable recommendation/apply artifacts without overwriting the repair pet event.
 - `status`, `report`, and the native HTML app expose a compact harness-learning summary from repair/evolution outcomes, including target tentacle, candidate, score, summary, and next recommendation command.
+- After Goal and queued-Need basics are satisfied, `status.next_action` follows the harness-learning recommendation once repair/evolution feedback exists, instead of sending users back to a generic beat.
 - `check <tentacle>` runs seed manifest/profile evolution checks and returns per-command status for the HTML install guide.
 - The HTML install guide can expand each check to inspect stdout, stderr, exit code, and recent harness check history.
 - `check <tentacle> [index]` records compact harness history and the HTML install guide can rerun one check at a time.
@@ -226,6 +227,7 @@ Updated: 2026-06-28
 - Consolidated repair-score target/candidate reuse so journals and evolution mirrors prefer the structured repair outcome fields.
 - Added `docs/core-audit.md` as the required `0.0.24` source-wide cleanup gate before `0.1.0`.
 - Added status/report/native-app harness-learning summaries so repair-driven evolution evidence is visible without reading raw state JSON.
+- Routed `status.next_action` through harness-learning evidence when scored repair/evolution feedback is available and the Goal path is already set.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.
 - Added clean-brain scout mapping with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can explore assumptions, unknowns, options, and risks before the next Need without tool context.
 - Recorded the first GitHub-install real-machine preflight for commit `b276956` on local macOS, including bootstrap, traces, feedback, heartbeat, pet, and local app API.
