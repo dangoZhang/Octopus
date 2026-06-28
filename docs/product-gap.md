@@ -308,6 +308,7 @@ Updated: 2026-06-28
 - Added provider matrix run/check to the real-machine preflight record command chain, so generated records now collect and audit matrix evidence instead of only creating a blank template.
 - Updated Product Report and Preflight next actions to point at matrix run/check, keeping provider evidence collection out of the old manual-fill path.
 - Made `provider matrix` prepare missing target env files without overwriting existing provider env, so real-machine validation can move from template to run with fewer setup steps.
+- Rolled the cleanup/version cadence to `0.0.18` after live provider coverage, provider matrix generation/run/check, OAuth/API-key/local/gateway evidence paths, preflight record integration, and version consistency.
 
 ## Remaining Gaps
 

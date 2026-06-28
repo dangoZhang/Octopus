@@ -1,6 +1,6 @@
 # Version Plan
 
-Current version: `0.0.17`.
+Current version: `0.0.18`.
 
 Cadence from this plan forward:
 
@@ -35,8 +35,8 @@ Road to `0.1.0`:
 - `0.0.22`: product README, docs, and OpenClaw-style usage tutorial pages.
 - `0.0.23`: slim release artifacts, install/update/download path, and final `0.1.0` candidate cleanup.
 
-Last cleanup/version correction: `0.0.17` on 2026-06-28. Scope: product path cleanup, bridge clarity, readiness diagnostics, core/harness boundary evidence, product use guide, docs/static fallback cleanup, and version consistency; no tag cut.
+Last cleanup/version correction: `0.0.18` on 2026-06-28. Scope: live LLM provider coverage, provider matrix generation/run/check, OAuth/API-key/local/gateway validation evidence, preflight record integration, and version consistency; no tag cut.
 
-Product commits toward `0.0.18`: 8/8.
+Product commits toward `0.0.19`: 0/8.
 
-Next planned cleanup/version commit: `0.0.18`.
+Next planned cleanup/version commit: `0.0.19`.
