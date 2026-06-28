@@ -17627,6 +17627,31 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     }
 
     #[test]
+    fn embedded_app_keeps_single_goal_surface() {
+        let (_, app) = bridge_static("/app.html").unwrap();
+        let app_text = String::from_utf8_lossy(&app);
+
+        assert!(app_text.contains("Current Need"));
+        assert!(app_text.contains("Current Feed"));
+        assert!(app_text.contains("Latest Feed"));
+        assert!(app_text.contains("Local Octopus"));
+        assert!(
+            app_text.contains(r#"<button class="primary" type="button" id="send">Send</button>"#)
+        );
+        assert!(!app_text.contains("report.next_action"));
+        assert!(!app_text.contains(r#"id="refresh""#));
+        assert!(!app_text.contains(r#"id="start""#));
+        assert!(!app_text.contains(r#"id="update""#));
+        assert!(!app_text.contains(r#"id="think""#));
+        assert!(!app_text.contains(">Use</a>"));
+        assert!(!app_text.contains(">Pet</a>"));
+        assert!(!app_text.contains(">GitHub</a>"));
+        assert!(!app_text.contains("First Run"));
+        assert!(!app_text.contains("Brain Goal"));
+        assert!(!app_text.contains("Local settings"));
+    }
+
+    #[test]
     fn cli_repair_queues_next_need_from_harness_feed() {
         let _env = env_guard();
         let _cwd = CwdGuard::new();
