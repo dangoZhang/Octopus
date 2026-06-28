@@ -306,6 +306,7 @@ Updated: 2026-06-28
 - Connected the provider matrix checker to Product Report and Preflight as a required current-head release gate, so missing OAuth/API-key/local/gateway evidence appears as a product gap before version closeout.
 - Added `provider matrix run`, which loads each enabled target env file, runs provider check, live clean-brain Goal, live tentacle planning, and provider-assisted harness evolution, then writes pass/fail/skipped results back into the matrix record.
 - Added provider matrix run/check to the real-machine preflight record command chain, so generated records now collect and audit matrix evidence instead of only creating a blank template.
+- Updated Product Report and Preflight next actions to point at matrix run/check, keeping provider evidence collection out of the old manual-fill path.
 
 ## Remaining Gaps
 

@@ -8349,7 +8349,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         gaps.push(product_gap(
             "provider_matrix_record",
             "current-head OAuth, API-key, local model, and gateway provider evidence is incomplete",
-            "octopus provider matrix; fill results; octopus provider matrix check",
+            "octopus provider matrix; octopus provider matrix run; octopus provider matrix check",
         ));
     }
     if status.feed_trace_count == 0 {
@@ -8622,7 +8622,7 @@ fn preflight_report(
             provider_matrix.passed,
             true,
             provider_matrix_check_evidence(&provider_matrix),
-            "octopus provider matrix; fill results; octopus provider matrix check",
+            "octopus provider matrix; octopus provider matrix run; octopus provider matrix check",
         ),
         preflight_status_check(
             "live_provider",
