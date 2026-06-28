@@ -56,7 +56,7 @@ Every executed Feed is also written to a compact harness trace journal and retur
 
 `core_boundary.rs` reports the current split between stable Rust and editable code-as-harness. Stable Rust covers the kernel, CLI dispatch, product app bridge, and release gate. Editable harness covers `tentacles/`, the seed profile registry, and the state-local profile registry. `report` and `preflight` expose this split so Rust remains the stable base while Feed supply stays easy to evolve.
 
-`update [--run]` reports the GitHub reinstall command by default and only executes it with `--run`. The local app API allows the dry-run report and blocks `--run`.
+`download` reports the current GitHub install command, update command, source archive, and product docs links as a machine-readable release path. `update [--run]` reports the GitHub reinstall command by default and only executes it with `--run`. The local app API allows the dry-run report and blocks `--run`.
 
 `skills [root]` lists profile and manifest skills as user-facing capability bundles. It is a catalog view; execution still starts from Need and routes through harness data.
 

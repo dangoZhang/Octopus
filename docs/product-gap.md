@@ -42,6 +42,7 @@ Updated: 2026-06-28
 - `docs/index.html` mobile navigation and hero copy now wrap cleanly after the tutorial/recipe links were added.
 - `docs/use.html` mobile layout now keeps the five-minute guide, navigation, and command cards readable without horizontal clipping.
 - `docs/quickstart.html` now matches the product Quick Install & Use path instead of exposing a long internal manual flow, and its mobile layout no longer clips commands.
+- `octopus download` now prints a machine-readable install/update/source/docs manifest, and `update` points to it before running a reinstall.
 - `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
 - `start` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
 - `start` and `bootstrap` can materialize editable bundled seed tentacles under `.octopus/bundled-tentacles` when source tentacles are unavailable.

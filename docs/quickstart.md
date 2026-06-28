@@ -6,6 +6,7 @@ For the shortest product walkthrough, open [Octopus Tutorial](tutorial.html), th
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
+octopus download
 octopus start --open
 ```
 
@@ -26,6 +27,7 @@ Product users change Goal. The profile registry is a developer/harness surface f
 Update later:
 
 ```bash
+octopus download
 octopus update
 octopus update --run
 ```

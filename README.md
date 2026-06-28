@@ -22,6 +22,7 @@ Heartbeat -> Action Data -> Tentacle harness change
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
+octopus download
 octopus start --open
 ```
 

@@ -6,6 +6,7 @@
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
+octopus download
 octopus start --open
 ```
 
@@ -16,6 +17,7 @@ octopus start
 ```
 
 它会准备 `.octopus/` 状态、安装可编辑 seed tentacles、触发三类 heartbeat，并加载 `.octopus/llm.env`。
+`octopus download` 会打印当前版本的安装命令、更新命令、源码包和文档入口。
 
 ## 从源码运行
 

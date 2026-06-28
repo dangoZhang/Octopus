@@ -928,6 +928,7 @@ pub(crate) fn command_allowed(args: &[String]) -> bool {
             | "doctor"
             | "report"
             | "status"
+            | "download"
             | "installed"
             | "skills"
             | "catalog"

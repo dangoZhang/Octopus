@@ -355,6 +355,7 @@ struct UpdateReport {
     current_version: String,
     command: Vec<String>,
     shell: String,
+    download_command: String,
     run: bool,
     cargo_available: bool,
     status: String,
@@ -362,6 +363,33 @@ struct UpdateReport {
     stdout: String,
     stderr: String,
     next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct DownloadReport {
+    current_version: String,
+    repository: String,
+    source_archive_url: String,
+    cargo_package: String,
+    binary: String,
+    install: DownloadCommand,
+    update: DownloadCommand,
+    start: String,
+    docs: Vec<DownloadLink>,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct DownloadCommand {
+    label: String,
+    command: Vec<String>,
+    shell: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct DownloadLink {
+    label: String,
+    url: String,
 }
 
 #[derive(serde::Serialize)]
@@ -3468,6 +3496,18 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
+        Some("download") => {
+            let report = download_report();
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_download_report(&report, language);
+            }
+            Ok(())
+        }
         Some("check") => {
             let tentacle_id = rest
                 .get(1)
@@ -4076,6 +4116,7 @@ fn print_update_report(report: &UpdateReport, language: Language) {
             println!("version: {}", report.current_version);
             println!("status: {}", report.status);
             println!("command: {}", report.shell);
+            println!("download: {}", report.download_command);
             println!("run: {}", report.run);
             println!("cargo: {}", report.cargo_available);
             if let Some(code) = report.code {
@@ -4094,6 +4135,7 @@ fn print_update_report(report: &UpdateReport, language: Language) {
             println!("版本: {}", report.current_version);
             println!("状态: {}", report.status);
             println!("命令: {}", report.shell);
+            println!("下载清单: {}", report.download_command);
             println!("执行: {}", report.run);
             println!("cargo: {}", report.cargo_available);
             if let Some(code) = report.code {
@@ -4370,6 +4412,39 @@ fn print_manifest_reports(reports: &[TentacleManifestReport], language: Language
             join_or_none(&report.evolution_surfaces),
             status
         );
+    }
+}
+
+fn print_download_report(report: &DownloadReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus download");
+            println!("version: {}", report.current_version);
+            println!("repository: {}", report.repository);
+            println!("source: {}", report.source_archive_url);
+            println!("install: {}", report.install.shell);
+            println!("update: {}", report.update.shell);
+            println!("start: {}", report.start);
+            println!("docs:");
+            for link in &report.docs {
+                println!("- {}: {}", link.label, link.url);
+            }
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼下载清单");
+            println!("版本: {}", report.current_version);
+            println!("仓库: {}", report.repository);
+            println!("源码: {}", report.source_archive_url);
+            println!("安装: {}", report.install.shell);
+            println!("更新: {}", report.update.shell);
+            println!("启动: {}", report.start);
+            println!("文档:");
+            for link in &report.docs {
+                println!("- {}: {}", link.label, link.url);
+            }
+            println!("下一步: {}", join_or_none(&report.next));
+        }
     }
 }
 
@@ -12137,17 +12212,14 @@ fn install_next_commands(
 
 fn update_report(run_update: bool) -> UpdateReport {
     let command = update_command();
-    let shell = command
-        .iter()
-        .map(|part| shell_arg(part))
-        .collect::<Vec<_>>()
-        .join(" ");
+    let shell = shell_command(&command);
     let cargo_available = command_ready("cargo");
     if !run_update {
         return UpdateReport {
             current_version: env!("CARGO_PKG_VERSION").to_string(),
             command,
             shell,
+            download_command: "octopus download".to_string(),
             run: false,
             cargo_available,
             status: "ready".to_string(),
@@ -12155,6 +12227,7 @@ fn update_report(run_update: bool) -> UpdateReport {
             stdout: String::new(),
             stderr: String::new(),
             next: vec![
+                "octopus download".to_string(),
                 "octopus update --run".to_string(),
                 "octopus start --open".to_string(),
             ],
@@ -12165,6 +12238,7 @@ fn update_report(run_update: bool) -> UpdateReport {
             current_version: env!("CARGO_PKG_VERSION").to_string(),
             command,
             shell,
+            download_command: "octopus download".to_string(),
             run: true,
             cargo_available,
             status: "cargo_missing".to_string(),
@@ -12181,6 +12255,7 @@ fn update_report(run_update: bool) -> UpdateReport {
                 current_version: env!("CARGO_PKG_VERSION").to_string(),
                 command,
                 shell,
+                download_command: "octopus download".to_string(),
                 run: true,
                 cargo_available,
                 status: if updated { "updated" } else { "failed" }.to_string(),
@@ -12201,6 +12276,7 @@ fn update_report(run_update: bool) -> UpdateReport {
             current_version: env!("CARGO_PKG_VERSION").to_string(),
             command,
             shell,
+            download_command: "octopus download".to_string(),
             run: true,
             cargo_available,
             status: "failed_to_start".to_string(),
@@ -12210,6 +12286,60 @@ fn update_report(run_update: bool) -> UpdateReport {
             next: vec!["octopus update".to_string(), "cargo --version".to_string()],
         },
     }
+}
+
+fn download_report() -> DownloadReport {
+    let install = update_command();
+    let update = vec![
+        "octopus".to_string(),
+        "update".to_string(),
+        "--run".to_string(),
+    ];
+    let repository = "https://github.com/dangoZhang/Octopus".to_string();
+    DownloadReport {
+        current_version: env!("CARGO_PKG_VERSION").to_string(),
+        source_archive_url: format!("{repository}/archive/refs/heads/main.zip"),
+        repository,
+        cargo_package: "octopus-core".to_string(),
+        binary: "octopus".to_string(),
+        install: DownloadCommand {
+            label: "Install from GitHub with Cargo".to_string(),
+            shell: shell_command(&install),
+            command: install,
+        },
+        update: DownloadCommand {
+            label: "Update existing install".to_string(),
+            shell: shell_command(&update),
+            command: update,
+        },
+        start: "octopus start --open".to_string(),
+        docs: vec![
+            DownloadLink {
+                label: "Try app".to_string(),
+                url: "https://dangozhang.github.io/Octopus/app.html".to_string(),
+            },
+            DownloadLink {
+                label: "Quick Install & Use".to_string(),
+                url: "https://dangozhang.github.io/Octopus/quickstart.html".to_string(),
+            },
+            DownloadLink {
+                label: "Recipes".to_string(),
+                url: "https://dangozhang.github.io/Octopus/recipes.html".to_string(),
+            },
+        ],
+        next: vec![
+            "octopus start --open".to_string(),
+            "octopus first-run \"make this repo easier to use\"".to_string(),
+        ],
+    }
+}
+
+fn shell_command(command: &[String]) -> String {
+    command
+        .iter()
+        .map(|part| shell_arg(part))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn update_command() -> Vec<String> {
@@ -14930,16 +15060,17 @@ mod tests {
         app_open_command, append_preflight_record, bridge_command_allowed, bridge_command_name,
         bridge_static, bridge_static_asset, check_benchmark_record, check_preflight_record,
         check_provider_matrix_record, check_report, default_first_run_objective,
-        default_tentacles_root_for, first_run_report, git_short_head, http_content_length,
-        install_report, is_broken_pipe_panic, localize_summary, materialize_bundled_tentacles_root,
-        parse_bridge_env_overlay, parse_first_run_args, parse_start_check_addr,
-        parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
-        preflight_report, prepare_bridge_state, product_report, provider_coverage_ready,
-        provider_env_report, provider_status_report, real_machine_record_status_from_parts,
-        repair_continue_report, repair_report, run, run_bridge_command, run_provider_matrix_record,
-        save_provider_env_report_with_key, shell_arg, skill_reports, start_check_requested,
-        starter_report, tentacles_root_ready, update_report, usage, write_benchmark_record,
-        write_pet_image_report, write_provider_matrix_record, Language,
+        default_tentacles_root_for, download_report, first_run_report, git_short_head,
+        http_content_length, install_report, is_broken_pipe_panic, localize_summary,
+        materialize_bundled_tentacles_root, parse_bridge_env_overlay, parse_first_run_args,
+        parse_start_check_addr, parse_start_options, percent_encode_path, pet_report,
+        pet_report_for_state, preflight_report, prepare_bridge_state, product_report,
+        provider_coverage_ready, provider_env_report, provider_status_report,
+        real_machine_record_status_from_parts, repair_continue_report, repair_report, run,
+        run_bridge_command, run_provider_matrix_record, save_provider_env_report_with_key,
+        shell_arg, skill_reports, start_check_requested, starter_report, tentacles_root_ready,
+        update_report, usage, write_benchmark_record, write_pet_image_report,
+        write_provider_matrix_record, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, load_tentacle_profiles_from_path,
@@ -18588,6 +18719,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "report".to_string()
         ]));
         assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "download".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
             "--json".to_string(),
             "provider".to_string(),
             "status".to_string()
@@ -20321,8 +20458,27 @@ JSON
         assert!(!report.run);
         assert_eq!(report.status, "ready");
         assert!(report.shell.contains("cargo install --git"));
+        assert_eq!(report.download_command, "octopus download");
         assert!(report.command.contains(&"octopus-core".to_string()));
+        assert!(report.next.contains(&"octopus download".to_string()));
         assert!(report.next.contains(&"octopus update --run".to_string()));
+        assert!(report.next.contains(&"octopus start --open".to_string()));
+    }
+
+    #[test]
+    fn download_report_exposes_install_update_and_pages_paths() {
+        let report = download_report();
+
+        assert_eq!(report.current_version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(report.repository, "https://github.com/dangoZhang/Octopus");
+        assert!(report.source_archive_url.ends_with("/main.zip"));
+        assert!(report.install.shell.contains("cargo"));
+        assert!(report.install.shell.contains("octopus-core"));
+        assert_eq!(report.update.shell, "octopus update --run");
+        assert!(report
+            .docs
+            .iter()
+            .any(|link| link.url.ends_with("/quickstart.html")));
         assert!(report.next.contains(&"octopus start --open".to_string()));
     }
 

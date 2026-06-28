@@ -41,7 +41,7 @@ cowork/
 
 ## 当前能力
 
-产品面只允许用户写入 Goal：`chat`、`goal set/refine`、`brain --goal` 和 `first-run` 的目标输入。Need、Feed、feedback、repair、evolve、install、check、provider 写入由 agent loop 或开发者流程驱动。
+产品面只允许用户写入 Goal：`chat`、`goal set/refine`、`brain --goal` 和 `first-run` 的目标输入。`download`、`doctor`、`report`、`preflight` 属于观察面。Need、Feed、feedback、repair、evolve、install、check、provider 写入由 agent loop 或开发者流程驱动。
 本地 app bridge 已拆到 `app_bridge.rs`，包括 HTTP/SSE、静态 app fallback、命令流式执行、输入策略和 `bridge_goal_surface` preflight 证据。
 `report` 和 `preflight` 会显示稳定 Rust 层、产品 app 层和可变 code-as-harness 层，避免触手/feed 实现重新混进核心。
 
