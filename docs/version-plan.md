@@ -1,6 +1,6 @@
 # Version Plan
 
-Current version: `0.0.19`.
+Current version: `0.0.20`.
 
 Cadence from this plan forward:
 
@@ -38,8 +38,8 @@ Road to `0.1.0`:
 - `0.0.24`: full core audit before `0.1.0`; remove redundant code, development residue, and fallback logic that conflicts with the clean-brain and code-as-harness boundary.
 - `0.1.0`: first release candidate only after the `0.0.24` audit and recorded real-machine test evidence pass.
 
-Last cleanup/version correction: `0.0.19` on 2026-06-28. Scope: repair-score reuse, target-aware repair outcomes, immediate evolution follow-up artifacts, harness-learning status/report/app visibility, 0.0.24 core-audit gate, and version consistency; no tag cut.
+Last cleanup/version correction: `0.0.20` on 2026-06-28. Scope: local app first path reset, real bridge Send verification, `start --check` app evidence, root structure map, first-path regression test, and version consistency; no tag cut.
 
-Product commits toward `0.0.20`: 8/8.
+Product commits toward `0.0.21`: 0/8.
 
-Next planned cleanup/version commit: `0.0.20`.
+Next planned cleanup/version commit: `0.0.21`.

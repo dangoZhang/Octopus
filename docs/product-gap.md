@@ -234,6 +234,7 @@ Updated: 2026-06-28
 - Made connected app Output product-facing: status shows compact readiness counts, Send keeps the returned Need/Feed summary visible, and internal next commands stay out of the first page.
 - Verified the real local bridge path with `octopus start`, browser Goal input, and Send; connected Output now prefers `Latest Feed` over readiness commands.
 - Added a first-path app regression test so embedded `app.html` must keep Send as the only visible write action, keep Need/Feed/Latest Feed visible, and keep navigation/internal command labels out.
+- Rolled the cleanup/version cadence to `0.0.20` after local app first-path reset, real bridge Send verification, `start --check` evidence, root structure mapping, first-path regression coverage, and version consistency.
 - Rolled the cleanup/version cadence to `0.0.19` after repair-score reuse, target-aware repair outcomes, immediate evolution follow-up artifacts, harness-learning product visibility, and the `0.0.24` core-audit gate.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.
 - Added clean-brain scout mapping with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can explore assumptions, unknowns, options, and risks before the next Need without tool context.
