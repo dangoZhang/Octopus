@@ -1,6 +1,6 @@
 use std::path::Path;
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub(crate) struct PreflightCheck {
     pub(crate) id: String,
     pub(crate) status: String,
@@ -172,6 +172,7 @@ pub(crate) fn preflight_record_commands(
         "\"$OCTOPUS\" provider matrix check \"$tmp/provider-matrix.md\"".to_string(),
         "\"$OCTOPUS\" provider check \"${OCTOPUS_LLM_PREFIX:-OCTOPUS_LLM}\"".to_string(),
         "\"$OCTOPUS\" --state \"$STATE\" preflight --live".to_string(),
+        "\"$OCTOPUS\" --state \"$STATE\" start --check 127.0.0.1:18765".to_string(),
         "\"$OCTOPUS\" start 127.0.0.1:18765 &".to_string(),
         "START_PID=$!".to_string(),
         "trap 'kill \"$START_PID\" 2>/dev/null || true' EXIT".to_string(),

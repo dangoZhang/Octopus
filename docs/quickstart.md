@@ -13,6 +13,14 @@ octopus start --open
 
 `start` is the whole-project entry: it prepares `.octopus/` state, installs editable seed tentacles, materializes the editable profile registry, pulses the three hearts, serves the native app and pixel pet, loads `.octopus/llm.env`, and falls back to bundled app/tentacle files when no source checkout is present.
 
+For release or machine evidence, run:
+
+```bash
+octopus start --check
+```
+
+That writes `.octopus/local-app-run.json` with state, page, app URL, and bridge-policy evidence for `preflight`.
+
 Product users change Goal. The profile registry is a developer/harness surface for changing tentacle supply paths, permissions, checks, and evolution policy.
 
 Update later:

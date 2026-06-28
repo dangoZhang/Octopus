@@ -39,7 +39,9 @@ Updated: 2026-06-28
 - `start` is the single product-facing launch path in CLI, doctor, and docs.
 - CI now follows the product launch path and no longer checks the removed demo command.
 - `start --open` keeps the same whole-project startup path and attempts to open the native app after the local app server binds.
+- `start --check` runs the same startup preparation without keeping the server open, verifies embedded app/pet/use pages plus the brain-goal bridge policy, writes `.octopus/local-app-run.json`, and feeds the required `local_app_run` preflight gate.
 - The native HTML app defaults its local API URL to Octopus when opened from docs pages, and auto-renders a read-only startup snapshot when served by `octopus start`.
+- The native HTML app has been reset to one page with pet, Goal, current Need, current Feed, and raw Output. Internal Need/Feed/repair/evolve/install/check/provider/preflight controls no longer occupy the first path.
 - The native HTML app can render the dry-run update report and copy the explicit reinstall command while the local app API blocks `update --run`.
 - The native HTML app can render a structured Doctor panel with state, tentacles, manifests, environment, LLM, pet, warnings, and next actions.
 - The native HTML app Doctor panel shows readiness state and keeps product-facing mutation on Goal or First Run; bootstrap, provider, checks, repair, record, and beat commands are internal/developer paths.
@@ -101,7 +103,7 @@ Updated: 2026-06-28
 - The native HTML app can render the same product report from the local app API.
 - `preflight [--live]` turns the `0.1.0` readiness gate into CLI, JSON, and native HTML checks without live provider calls unless requested.
 - `preflight script [path]` writes a reviewable local release-gate script that starts from `first-run`, then runs context, thinking, trace, repair, check, route, beat, pet, report, and optional live provider/PR dry-run gates.
-- `preflight record [path]` writes a real-machine evidence template with GitHub install, core loop, start/app, live provider, and PR dry-run commands; `preflight record check [path]` audits completed fields before appending it.
+- `preflight record [path]` writes a real-machine evidence template with GitHub install, core loop, `start --check`, start/app, live provider, and PR dry-run commands; `preflight record check [path]` audits completed fields before appending it.
 - Real-machine records now include a Product bridge result and a `bridge_goal_surface` command so the brain-goal input boundary is signed off on real machines.
 - `preflight record append [path] [log]` appends a passed real-machine record to `docs/real-machine-test.md` idempotently, and the native app exposes the same default-path action.
 - Real-machine record audit accepts the current `Start/app` result field while keeping legacy `Bridge/app` records valid.
@@ -228,6 +230,8 @@ Updated: 2026-06-28
 - Added `docs/core-audit.md` as the required `0.0.24` source-wide cleanup gate before `0.1.0`.
 - Added status/report/native-app harness-learning summaries so repair-driven evolution evidence is visible without reading raw state JSON.
 - Routed `status.next_action` through harness-learning evidence when scored repair/evolution feedback is available and the Goal path is already set.
+- Added `start --check` local app run evidence and a required `local_app_run` preflight gate, so `0.0.20` can prove the whole-project app surface on the current head before release records are appended.
+- Reset `docs/app.html` into a one-page pet/Goal/Need/Feed/Output product app so user input stays on Goal and internal agent controls leave the primary UI.
 - Rolled the cleanup/version cadence to `0.0.19` after repair-score reuse, target-aware repair outcomes, immediate evolution follow-up artifacts, harness-learning product visibility, and the `0.0.24` core-audit gate.
 - Added clean-brain alignment checks with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can keep Needs aligned with human Goal constraints without tool context.
 - Added clean-brain scout mapping with a dedicated provider slot, CLI/session/apply/save paths, and native HTML controls so strong models can explore assumptions, unknowns, options, and risks before the next Need without tool context.

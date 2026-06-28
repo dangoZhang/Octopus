@@ -18,6 +18,7 @@ Ship the smallest honest Octopus core:
 - Product app code that is stable infrastructure.
 - Tentacle manifests, prompts, tool metadata, runtime code, and evolution policy as editable harness units.
 - Regression tests that prove product invariants, release gates, context boundaries, provider routing, repair feedback, and local startup.
+- Current-head local app evidence from `octopus start --check`, stored as `.octopus/local-app-run.json` and checked by preflight.
 
 ## Remove Or Move
 

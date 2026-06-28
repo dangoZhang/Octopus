@@ -19,6 +19,28 @@ pub(crate) struct StartOptions {
     pub(crate) open: bool,
 }
 
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub(crate) struct LocalAppRunReport {
+    pub(crate) version: String,
+    pub(crate) state_path: String,
+    pub(crate) record_path: String,
+    pub(crate) current_head: Option<String>,
+    pub(crate) app_url: String,
+    pub(crate) ready: bool,
+    pub(crate) installed_tentacles: Vec<String>,
+    pub(crate) pages: Vec<LocalAppPageReport>,
+    pub(crate) api_policy: PreflightCheck,
+    pub(crate) next: Vec<String>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub(crate) struct LocalAppPageReport {
+    pub(crate) path: String,
+    pub(crate) ok: bool,
+    pub(crate) bytes: usize,
+    pub(crate) marker: String,
+}
+
 #[derive(serde::Deserialize)]
 pub(crate) struct RunRequest {
     pub(crate) args: Vec<String>,
@@ -37,6 +59,176 @@ pub(crate) struct RunResponse {
 pub(crate) fn run_start(rest: &[String], state_path: PathBuf) -> Result<(), String> {
     let options = parse_start_options(rest)?;
     run_bridge(&options.addr, state_path, options.open)
+}
+
+pub(crate) fn start_check_requested(rest: &[String]) -> bool {
+    rest.iter()
+        .skip(1)
+        .any(|value| value == "--check" || value == "check")
+}
+
+pub(crate) fn parse_start_check_addr(rest: &[String]) -> Result<String, String> {
+    let mut addr = None;
+    for value in rest.iter().skip(1) {
+        match value.as_str() {
+            "--check" | "check" => {}
+            "--open" => return Err("start --check cannot be combined with --open".to_string()),
+            option if option.starts_with("--") => {
+                return Err(format!("unknown start --check option: {option}"));
+            }
+            value => {
+                if addr.replace(value.to_string()).is_some() {
+                    return Err("start --check accepts at most one address".to_string());
+                }
+            }
+        }
+    }
+    Ok(addr.unwrap_or_else(|| "127.0.0.1:8765".to_string()))
+}
+
+pub(crate) fn write_local_app_run_report(
+    state_path: PathBuf,
+    addr: String,
+    current_head: Option<String>,
+) -> Result<LocalAppRunReport, String> {
+    let report = local_app_run_report(state_path, addr, current_head)?;
+    let path = PathBuf::from(&report.record_path);
+    if let Some(parent) = path.parent().filter(|path| !path.as_os_str().is_empty()) {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(&report).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(report)
+}
+
+pub(crate) fn local_app_run_status_check(
+    state_path: &Path,
+    current_head: Option<&str>,
+) -> PreflightCheck {
+    let path = local_app_run_record_path(state_path);
+    let next = format!(
+        "octopus --state {} start --check",
+        shell_arg(&state_path.to_string_lossy())
+    );
+    let Ok(content) = fs::read_to_string(&path) else {
+        return preflight_check(
+            "local_app_run",
+            false,
+            true,
+            format!("record missing: {}", path.to_string_lossy()),
+            next,
+        );
+    };
+    let report = match serde_json::from_str::<LocalAppRunReport>(&content) {
+        Ok(report) => report,
+        Err(error) => {
+            return preflight_check(
+                "local_app_run",
+                false,
+                true,
+                format!("record parse failed: {error}"),
+                next,
+            );
+        }
+    };
+    let head_ready = match current_head {
+        Some(head) => report.current_head.as_deref() == Some(head),
+        None => report.current_head.is_none(),
+    };
+    let version_ready = report.version == env!("CARGO_PKG_VERSION");
+    let pages_ready = report.pages.iter().all(|page| page.ok);
+    preflight_check(
+        "local_app_run",
+        report.ready && head_ready && version_ready && pages_ready,
+        true,
+        format!(
+            "ready={}, head={}, version={}, pages={}/{}, policy={}",
+            report.ready,
+            report.current_head.as_deref().unwrap_or("unknown"),
+            report.version,
+            report.pages.iter().filter(|page| page.ok).count(),
+            report.pages.len(),
+            report.api_policy.status
+        ),
+        next,
+    )
+}
+
+fn local_app_run_report(
+    state_path: PathBuf,
+    addr: String,
+    current_head: Option<String>,
+) -> Result<LocalAppRunReport, String> {
+    let startup = prepare_state(state_path.clone())?;
+    let pages = local_app_pages();
+    let api_policy = goal_surface_preflight_check(&state_path);
+    let pages_ready = pages.iter().all(|page| page.ok);
+    let ready = Path::new(&startup.state_path).exists()
+        && !startup.installed_tentacles.is_empty()
+        && pages_ready
+        && api_policy.status == "pass";
+    let mut next = vec![
+        format!(
+            "octopus --state {} preflight",
+            shell_arg(&startup.state_path)
+        ),
+        format!("octopus start {addr}"),
+    ];
+    if !ready {
+        next.push("octopus bootstrap".to_string());
+    }
+    next.sort();
+    next.dedup();
+    Ok(LocalAppRunReport {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        state_path: startup.state_path,
+        record_path: local_app_run_record_path(&state_path)
+            .to_string_lossy()
+            .to_string(),
+        current_head,
+        app_url: format!("http://{addr}/app.html"),
+        ready,
+        installed_tentacles: startup.installed_tentacles,
+        pages,
+        api_policy,
+        next,
+    })
+}
+
+fn local_app_pages() -> Vec<LocalAppPageReport> {
+    [
+        ("/app.html", "Octopus App"),
+        ("/pet.html", "pixel-pet"),
+        ("/index.html", "Octopus"),
+        ("/use.html", "Use Octopus"),
+    ]
+    .into_iter()
+    .map(|(path, marker)| {
+        let (ok, bytes) = static_page(path)
+            .map(|(_, body)| {
+                let ok = String::from_utf8_lossy(&body).contains(marker);
+                (ok, body.len())
+            })
+            .unwrap_or((false, 0));
+        LocalAppPageReport {
+            path: path.to_string(),
+            ok,
+            bytes,
+            marker: marker.to_string(),
+        }
+    })
+    .collect()
+}
+
+fn local_app_run_record_path(state_path: &Path) -> PathBuf {
+    state_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+        .join("local-app-run.json")
 }
 
 pub(crate) fn goal_surface_preflight_check(state_path: &Path) -> PreflightCheck {
@@ -235,6 +427,10 @@ fn join_or_none(values: &[String]) -> String {
     } else {
         values.join(", ")
     }
+}
+
+fn shell_arg(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn handle_connection(stream: &mut TcpStream) -> Result<(), String> {

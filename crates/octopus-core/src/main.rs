@@ -40,9 +40,9 @@ use app_bridge::run_start as run_app_bridge_start;
 use app_bridge::{
     app_open_command, command_allowed as bridge_command_allowed,
     command_name as bridge_command_name, http_content_length,
-    parse_env_overlay as parse_bridge_env_overlay, parse_start_options,
+    parse_env_overlay as parse_bridge_env_overlay, parse_start_check_addr, parse_start_options,
     prepare_state as prepare_bridge_state, run_command as run_bridge_command,
-    static_asset as bridge_static_asset, static_page as bridge_static,
+    start_check_requested, static_asset as bridge_static_asset, static_page as bridge_static,
 };
 use release_gate::{
     preflight_check, preflight_record_commands, preflight_script_commands, preflight_status_check,
@@ -2645,7 +2645,24 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
-        Some("start") => run_app_bridge_start(&rest, state.clone()),
+        Some("start") => {
+            if app_bridge::start_check_requested(&rest) {
+                let addr = app_bridge::parse_start_check_addr(&rest)?;
+                let report =
+                    app_bridge::write_local_app_run_report(state.clone(), addr, git_short_head())?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_local_app_run_report(&report, language);
+                }
+                Ok(())
+            } else {
+                run_app_bridge_start(&rest, state.clone())
+            }
+        }
         Some("init") => {
             let root = rest
                 .get(1)
@@ -8833,6 +8850,7 @@ fn preflight_report(
             "octopus report",
         ),
         app_bridge::goal_surface_preflight_check(state_path),
+        app_bridge::local_app_run_status_check(state_path, current_head.as_deref()),
         preflight_check(
             "docs_and_pet",
             docs_ready,
@@ -9221,9 +9239,10 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
                 && content.contains("provider matrix run")
                 && content.contains("provider matrix check")
                 && content.contains("preflight --live")
+                && content.contains("start --check")
                 && content.contains("self-iterate pr"),
             true,
-            "record should include first-run, bridge_goal_surface, provider matrix run/check, live provider, and PR dry-run commands",
+            "record should include first-run, bridge_goal_surface, provider matrix run/check, live provider, start --check, and PR dry-run commands",
             "regenerate with octopus preflight record",
         ),
     ];
@@ -9487,6 +9506,61 @@ fn print_product_report(report: &ProductReport, language: Language) {
             for gap in &report.gaps {
                 println!("- {}: {}; 下一步={}", gap.id, gap.impact, gap.next);
             }
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn print_local_app_run_report(report: &app_bridge::LocalAppRunReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus local app run");
+            println!("ready: {}", report.ready);
+            println!("version: {}", report.version);
+            println!("state: {}", report.state_path);
+            println!("record: {}", report.record_path);
+            println!("app: {}", report.app_url);
+            println!(
+                "head: {}",
+                report.current_head.as_deref().unwrap_or("unknown")
+            );
+            println!("installed: {}", join_or_none(&report.installed_tentacles));
+            println!("pages:");
+            for page in &report.pages {
+                println!(
+                    "- {} ok={} bytes={} marker={}",
+                    page.path, page.ok, page.bytes, page.marker
+                );
+            }
+            println!(
+                "api_policy: {} ({})",
+                report.api_policy.status, report.api_policy.evidence
+            );
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼本地 App 运行检查");
+            println!("就绪: {}", report.ready);
+            println!("版本: {}", report.version);
+            println!("状态文件: {}", report.state_path);
+            println!("记录: {}", report.record_path);
+            println!("App: {}", report.app_url);
+            println!(
+                "当前提交: {}",
+                report.current_head.as_deref().unwrap_or("未知")
+            );
+            println!("已安装触手: {}", join_or_none(&report.installed_tentacles));
+            println!("页面:");
+            for page in &report.pages {
+                println!(
+                    "- {} ok={} bytes={} marker={}",
+                    page.path, page.ok, page.bytes, page.marker
+                );
+            }
+            println!(
+                "API策略: {} ({})",
+                report.api_policy.status, report.api_policy.evidence
+            );
             println!("下一步: {}", join_or_none(&report.next));
         }
     }
@@ -14619,7 +14693,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair continue [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | update [--run] | start [--open] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair continue [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -14710,12 +14784,13 @@ mod tests {
         check_report, default_first_run_objective, default_tentacles_root_for, first_run_report,
         http_content_length, install_report, is_broken_pipe_panic, localize_summary,
         materialize_bundled_tentacles_root, parse_bridge_env_overlay, parse_first_run_args,
-        parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
-        preflight_report, prepare_bridge_state, product_report, provider_coverage_ready,
-        provider_env_report, provider_status_report, real_machine_record_status_from_parts,
-        repair_continue_report, repair_report, run, run_bridge_command, run_provider_matrix_record,
-        save_provider_env_report_with_key, skill_reports, starter_report, tentacles_root_ready,
-        update_report, usage, write_pet_image_report, write_provider_matrix_record, Language,
+        parse_start_check_addr, parse_start_options, percent_encode_path, pet_report,
+        pet_report_for_state, preflight_report, prepare_bridge_state, product_report,
+        provider_coverage_ready, provider_env_report, provider_status_report,
+        real_machine_record_status_from_parts, repair_continue_report, repair_report, run,
+        run_bridge_command, run_provider_matrix_record, save_provider_env_report_with_key,
+        skill_reports, start_check_requested, starter_report, tentacles_root_ready, update_report,
+        usage, write_pet_image_report, write_provider_matrix_record, Language,
     };
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, load_tentacle_profiles_from_path,
@@ -17252,6 +17327,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("provider matrix run [path]"));
         assert!(usage().contains("provider matrix check [path]"));
         assert!(usage().contains("update [--run]"));
+        assert!(usage().contains("start [--open|--check] [addr]"));
         assert!(usage().contains("goal [set [--constraint text] objective|refine text]"));
         assert!(usage().contains("first-run [--live] [objective]"));
         assert!(usage().contains("starter [objective]"));
@@ -17338,6 +17414,19 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "start".to_string(),
             "127.0.0.1:1".to_string(),
             "127.0.0.1:2".to_string(),
+        ])
+        .is_err());
+        let check = vec![
+            "start".to_string(),
+            "--check".to_string(),
+            "127.0.0.1:18765".to_string(),
+        ];
+        assert!(start_check_requested(&check));
+        assert_eq!(parse_start_check_addr(&check).unwrap(), "127.0.0.1:18765");
+        assert!(parse_start_check_addr(&[
+            "start".to_string(),
+            "--check".to_string(),
+            "--open".to_string(),
         ])
         .is_err());
     }
@@ -17478,6 +17567,44 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(profiles
             .iter()
             .any(|profile| profile.id == "computer-use-agent"));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn start_check_writes_local_app_evidence_for_preflight() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!("octopus-start-check-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let state = dir
+            .join(".octopus/state.json")
+            .to_string_lossy()
+            .to_string();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "start".to_string(),
+            "--check".to_string(),
+        ])
+        .unwrap();
+
+        let record_path = dir.join(".octopus/local-app-run.json");
+        let record = fs::read_to_string(&record_path).unwrap();
+        assert!(record.contains("\"ready\": true"));
+        assert!(record.contains("\"/app.html\""));
+        assert!(record.contains("\"/pet.html\""));
+        let loaded = HarnessState::load(&state).unwrap();
+        let preflight = preflight_report(&loaded, Path::new(&state), false).unwrap();
+        assert!(preflight
+            .checks
+            .iter()
+            .any(|check| check.id == "local_app_run" && check.status == "pass"));
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
@@ -18776,6 +18903,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("provider matrix run"));
         assert!(record.contains("provider matrix check"));
         assert!(record.contains("preflight --live"));
+        assert!(record.contains("start --check"));
         assert!(record.contains("self-iterate pr"));
         let audit = check_preflight_record(&record_path).unwrap();
         assert!(!audit.passed);

@@ -47,6 +47,7 @@ Need, Feed, tool choice, provider routing, repair, and harness evolution stay in
 - Seed tentacles for SWE work, computer-use adapters, repo maintenance, harness repair, write-and-run execution, JSON Feed, and the pixel pet.
 - Tool-side LLM planning, grants, traces, route scores, and reviewable harness evolution.
 - Native app server, provider/readiness observation, preflight gates, and pixel pet state.
+- `start --check` writes local app run evidence for release preflight.
 - LLM backends through Codex login, API-key clouds, local OpenAI-compatible models, or gateway routers.
 - Repo-maintainer can probe local Codex CLI OAuth/API-key readiness and write Codex-backed maintenance reports for granted repos.
 
