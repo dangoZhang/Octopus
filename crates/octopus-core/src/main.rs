@@ -373,6 +373,7 @@ struct DownloadReport {
     cargo_package: String,
     binary: String,
     install_script_url: String,
+    install_script_shell: String,
     install: DownloadCommand,
     update: DownloadCommand,
     start: String,
@@ -4424,6 +4425,7 @@ fn print_download_report(report: &DownloadReport, language: Language) {
             println!("repository: {}", report.repository);
             println!("source: {}", report.source_archive_url);
             println!("install script: {}", report.install_script_url);
+            println!("quick install: {}", report.install_script_shell);
             println!("install: {}", report.install.shell);
             println!("update: {}", report.update.shell);
             println!("start: {}", report.start);
@@ -4439,6 +4441,7 @@ fn print_download_report(report: &DownloadReport, language: Language) {
             println!("仓库: {}", report.repository);
             println!("源码: {}", report.source_archive_url);
             println!("安装脚本: {}", report.install_script_url);
+            println!("快速安装: {}", report.install_script_shell);
             println!("安装: {}", report.install.shell);
             println!("更新: {}", report.update.shell);
             println!("启动: {}", report.start);
@@ -12305,13 +12308,15 @@ fn download_report() -> DownloadReport {
         "--run".to_string(),
     ];
     let repository = "https://github.com/dangoZhang/Octopus".to_string();
+    let install_script_url = "https://dangozhang.github.io/Octopus/install.sh".to_string();
     DownloadReport {
         current_version: env!("CARGO_PKG_VERSION").to_string(),
         source_archive_url: format!("{repository}/archive/refs/heads/main.zip"),
         repository,
         cargo_package: "octopus-core".to_string(),
         binary: "octopus".to_string(),
-        install_script_url: "https://dangozhang.github.io/Octopus/install.sh".to_string(),
+        install_script_shell: format!("curl -fsSL {install_script_url} | sh"),
+        install_script_url,
         install: DownloadCommand {
             label: "Install from GitHub with Cargo".to_string(),
             shell: shell_command(&install),
@@ -17989,6 +17994,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(manifest["current_version"], report.current_version);
         assert_eq!(manifest["repository"], report.repository);
         assert_eq!(manifest["install_script_url"], report.install_script_url);
+        assert_eq!(
+            manifest["install_script_shell"],
+            report.install_script_shell
+        );
         assert_eq!(manifest["install"]["shell"], report.install.shell);
         assert_eq!(manifest["update"]["shell"], report.update.shell);
         assert_eq!(manifest["start"], report.start);
@@ -20569,6 +20578,8 @@ JSON
         assert_eq!(report.repository, "https://github.com/dangoZhang/Octopus");
         assert!(report.source_archive_url.ends_with("/main.zip"));
         assert!(report.install_script_url.ends_with("/install.sh"));
+        assert!(report.install_script_shell.starts_with("curl -fsSL"));
+        assert!(report.install_script_shell.ends_with("| sh"));
         assert!(report.install.shell.contains("cargo"));
         assert!(report.install.shell.contains("octopus-core"));
         assert_eq!(report.update.shell, "octopus update --run");

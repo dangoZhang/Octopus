@@ -42,7 +42,7 @@ Updated: 2026-06-28
 - `docs/index.html` mobile navigation and hero copy now wrap cleanly after the tutorial/recipe links were added.
 - `docs/use.html` mobile layout now keeps the five-minute guide, navigation, and command cards readable without horizontal clipping.
 - `docs/quickstart.html` now matches the product Quick Install & Use path instead of exposing a long internal manual flow, and its mobile layout no longer clips commands.
-- `octopus download` now prints a machine-readable install/update/source/docs manifest, and `update` points to it before running a reinstall.
+- `octopus download` now prints a machine-readable install/update/source/docs manifest plus the one-line Pages install command, and `update` points to it before running a reinstall.
 - `docs/download.json` now publishes the same install/update/source/docs manifest for GitHub Pages and the local app server with JSON content type.
 - `docs/install.sh` now provides a one-line Pages/local install script, and the download manifest points to it.
 - `preflight` now gates the download artifacts so `octopus download`, `docs/download.json`, `docs/install.sh`, and local static serving stay aligned before release.

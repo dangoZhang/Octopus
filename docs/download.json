@@ -5,6 +5,7 @@
   "cargo_package": "octopus-core",
   "binary": "octopus",
   "install_script_url": "https://dangozhang.github.io/Octopus/install.sh",
+  "install_script_shell": "curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh",
   "install": {
     "label": "Install from GitHub with Cargo",
     "command": [
