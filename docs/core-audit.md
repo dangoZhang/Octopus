@@ -62,3 +62,13 @@ The `0.0.24` audit must update this file with:
 - Moved harness units: none; the change keeps contract metadata in editable seed/profile files.
 - Remaining candidates: shrink `main.rs`, review historical docs/log residue, and keep hard-coded seed data out of Rust.
 - Commands: manifest/profile JSON parse and missing-contract scan, `cargo fmt --all --check`, `cargo check -q -p octopus-core`, `cargo test -q -p octopus-core default_catalog_contains_installable_profiles`, `cargo test -q -p octopus-core seed_manifests_declare_explicit_tool_contracts`, `cargo test -q -p octopus-core harness_state_installs_manifest_tentacle_package`.
+
+## Audit Pass 3: Bundled Harness Materializer Boundary
+
+- Commit scanned: `e8b5715`.
+- Reviewed files: bundled seed tentacle startup path in `crates/octopus-core/src/main.rs`, new `crates/octopus-core/src/bundled_harness.rs`, startup materialization tests, `structure.md`, and this audit log.
+- Removed residue: the large embedded seed file table and install-binary harness materialization helpers no longer live in the CLI aggregation file.
+- Kept deliberate exception: installed binaries still embed seed harness files only so `start` and `bootstrap` can materialize editable `.octopus/bundled-tentacles` when source `tentacles/` files are unavailable.
+- Moved harness units: the bundle fallback materializer moved to `bundled_harness.rs`; editable source-of-truth manifests, tools, and profile data remain under `tentacles/`.
+- Remaining candidates: continue shrinking `main.rs`, review historical docs/log residue, and remove any stale fallback that chooses Feed implementation for the clean brain.
+- Commands: `rg` for bundled seed symbols, `cargo fmt --all --check`, `cargo check -q -p octopus-core`, `cargo test -q -p octopus-core bundled_tentacles_materialize_as_editable_startup_surface`, `cargo test -q -p octopus-core bundled_tentacles_materialize_from_current_directory`, `cargo test -q -p octopus-core cli_bootstrap_installs_seed_tentacles`.

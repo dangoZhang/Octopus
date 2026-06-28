@@ -48,6 +48,7 @@ Updated: 2026-06-28
 - `preflight` now gates the download artifacts so `octopus download`, `docs/download.json`, `docs/install.sh`, and local static serving stay aligned before release.
 - Tool-side `ChatPlanner` no longer silently falls back to first-tool rule execution when LLM planning fails or returns invalid JSON; failed tool thinking now returns an unsupported Feed instead of accidental Action.
 - Seed manifests and the editable profile registry now declare explicit tool call contracts (`octopus-json-v1`, `stdio-argv-v1`, `adapter-v1`, `static-html-v1`, or `native-harness-v1`) instead of relying on omitted legacy semantics.
+- Installed-binary seed harness materialization now lives in `bundled_harness.rs` instead of the CLI aggregation file; editable source seeds remain under `tentacles/`.
 - `start` now prepares local state, seed tentacles, heartbeat state, and the native HTML app in one startup path.
 - `start` serves embedded HTML pages when source docs are unavailable, so installed binaries can still open the local app.
 - `start` and `bootstrap` can materialize editable bundled seed tentacles under `.octopus/bundled-tentacles` when source tentacles are unavailable.

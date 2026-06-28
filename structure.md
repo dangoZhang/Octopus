@@ -17,6 +17,7 @@ Octopus/
 │       ├── lib.rs             Stable kernel contracts, state, routing, providers, Feed traces.
 │       ├── main.rs            CLI dispatch and product/backend aggregation.
 │       ├── app_bridge.rs      Local app server, bridge policy, static app fallback, streaming.
+│       ├── bundled_harness.rs Embedded installed-binary seed harness materializer.
 │       ├── core_boundary.rs   Stable Rust vs editable harness boundary report.
 │       └── release_gate.rs    Preflight records, benchmark evidence, real-machine records, release scripts.
 ├── tentacles/
