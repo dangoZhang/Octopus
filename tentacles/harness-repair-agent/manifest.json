@@ -126,6 +126,7 @@
       "Let heartbeat_repair read REPAIR_RECALL.json and expose match count plus top recalled outcome before grant/apply/score.",
       "Let heartbeat_repair read REPAIR_LESSON_EFFECTIVENESS and expose lesson usage success rates before grant/apply/score.",
       "Let heartbeat_repair read REPAIR_DECISION and expose the local harness focus before grant/apply/score.",
+      "Let heartbeat_repair queue REPAIR_DECISION next Need when adapter, draft, action trace, and reviewed outcome are not blocking.",
       "Expose provider DRAFT and CODE_CONTEXT as repair-plan Feed metadata before grant, apply, or score.",
       "Expose ACTION_TRACE as repair-plan Feed metadata before grant, apply, or score.",
       "Prefer ACTION_TRACE.json as heartbeat's structured tool-side thinking signal, with ACTION_TRACE.md kept for human review.",

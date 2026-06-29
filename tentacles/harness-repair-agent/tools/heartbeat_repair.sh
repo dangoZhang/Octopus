@@ -567,6 +567,11 @@ if latest_repair_plan:
     effectiveness_success = effectiveness_metadata.get("repair_lesson_effectiveness_success_rate", "")
     decision_kind = decision_metadata.get("repair_decision_kind", "")
     decision_focus = decision_metadata.get("repair_decision_focus", "")
+    decision_next_kind = decision_metadata.get("repair_decision_next_need_kind", "")
+    decision_next_query = decision_metadata.get("repair_decision_next_need_query", "")
+    if decision_next_query:
+        next_need_kind = decision_next_kind or "verify"
+        next_need_query = decision_next_query
     action_trace_blocked = (
         not has_outcome
         and not adapter_blocked
@@ -638,7 +643,11 @@ if latest_repair_plan:
         suggested = []
     else:
         status = "satisfied"
-        next_need = "review latest repair action plan"
+        next_need = (
+            f"follow repair decision: {decision_kind}"
+            if decision_kind and decision_next_query
+            else "review latest repair action plan"
+        )
         output = (
             f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
             f"status={plan_status}; target={target_tentacle}/{target_tool}; "

@@ -20874,6 +20874,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan
             .repair_decision_next_need_query
             .contains("collect repair outcome memory"));
+        assert!(report.queued.iter().any(|item| {
+            item.need.kind == NeedKind::Verify
+                && item.need.query.contains("collect repair outcome memory")
+                && item.source == "harness-repair-agent"
+        }));
         assert!(plan.code_context.ends_with("CODE_CONTEXT.md"));
         assert!(plan.adapter_context.ends_with("ADAPTER_CONTEXT.md"));
         assert_eq!(plan.adapter_context_status, "satisfied");
