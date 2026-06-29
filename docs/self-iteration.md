@@ -32,7 +32,7 @@ octopus --state "$tmp/state.json" self-iterate dangoZhang/Octopus
 OCTOPUS_PR_DRY_RUN=1 octopus --state "$tmp/state.json" self-iterate pr dangoZhang/Octopus "improve usability"
 ```
 
-The first plan is `report-only`. After the grant, the repo-maintainer plan becomes `pr-ready`. The PR command uses the grant boundary; remove `OCTOPUS_PR_DRY_RUN=1` only when the local branch and `gh` auth are ready.
+The first plan is `report-only` and returns a structured `next_action` for the GitHub grant. CLI and JSON output preserve the current `--state` path in that next action, so the grant lands in the same harness state. After the grant, the repo-maintainer plan becomes `pr-ready` and its `next_action` points to the dry-run PR path. Remove `OCTOPUS_PR_DRY_RUN=1` only when the local branch and `gh` auth are ready.
 
 Codex CLI login is a local runtime credential. Octopus does not store the token
 or auth cache. Grant only the ability to execute Codex-backed maintenance work:
@@ -76,7 +76,7 @@ octopus evolve score swe-agent 03-runtime-code satisfied "runtime patch improved
 
 The draft lands under `.octopus/evolution/<tentacle>/` with `PROPOSAL.md`, `PATCH_CANDIDATES.md`, `PATCH_DRAFTS.md`, per-candidate files under `patches/`, and `proposal.json`. The proposal includes recent Feed traces and check history for that tentacle, so harness evolution can use real execution feedback. Runtime-code candidates point at the concrete traced or failing tool entrypoint when one is available. Patch candidates, drafts, and apply plans include a `feedback focus` block; LLM-generated candidates can also carry a provider-assisted unified diff for the declared target. `evolve score` records the outcome, feeds route learning, writes the next recommendation/apply plan from the updated feedback, and returns the review path. `evolve recommend` remains available when a user wants to regenerate that plan. `evolve apply` writes an apply plan under `apply/`; it stays in `needs_authorization` until the matching `octopus:evolve:<tentacle>` grant has `harness:write`, then writes a reviewable `.patch` file without applying it.
 
-`beat 200` also feeds this loop. If recent check history, Feed traces, or repair outcomes have a failed or partial record for a known tentacle, the harness beat writes the proposal, recommendation, and apply plan automatically and prints the next grant or apply command. The native HTML app shows the same candidate, apply-plan preview, next action, Harness Grant, Write Apply, and review buttons that record `evolve score` feedback for the next recommendation.
+`beat 200` also feeds this loop. If recent check history, Feed traces, or repair outcomes have a failed or partial record for a known tentacle, the harness beat writes the proposal, recommendation, and apply plan automatically and prints the next grant or apply command. The native HTML app stays an observer for Goal, Need, Feed, pet state, and Output; grant, write, and score remain CLI or internal review commands.
 
 ## Guardrails
 

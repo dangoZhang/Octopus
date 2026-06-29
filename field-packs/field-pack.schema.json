@@ -17,6 +17,7 @@
     "id": { "type": "string" },
     "version": { "type": "string" },
     "description": { "type": "string" },
+    "aliases": { "type": "array", "items": { "type": "string" } },
     "task_schema": {
       "type": "object",
       "required": ["inputs", "outputs"],

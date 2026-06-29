@@ -261,14 +261,16 @@ octopus download</code></pre>
 
           <article class="card">
             <h3>2. Launch</h3>
-            <pre><code>octopus start --open</code></pre>
-            <p>The launcher prepares state, seed tentacles, the profile registry, three beats, the pixel pet, and the local app.</p>
+            <pre><code>octopus start --check</code></pre>
+            <p>The launcher prepares state, seed tentacles, the profile registry, three beats, app evidence, and returns to the shell.</p>
           </article>
 
           <article class="card">
             <h3>3. Run the first loop</h3>
             <pre><code>octopus first-run "make this repo easier to use"
-octopus chat "make setup clearer"</code></pre>
+octopus chat "make setup clearer"
+octopus pet desktop
+octopus start --open</code></pre>
             <p>User input changes Goal. Need, route choice, provider routing, repair, and harness evolution stay inside the agent or evidence surfaces.</p>
           </article>
 
@@ -284,15 +286,26 @@ octopus preflight</code></pre>
 
       <section>
         <div class="shell">
+          <h2>Field evolution preview</h2>
+          <p>Run one worker slot from the peer field pool. Octopus writes a Need, lets the editable field harness work, records Feed plus verifier signal, and keeps the pet as a state observer.</p>
+          <pre><code>octopus evolve parallel --workers 1 --open "advance the eight peer field objectives toward v0.2.0"
+octopus fields summary</code></pre>
+        </div>
+      </section>
+
+      <section>
+        <div class="shell">
           <h2>Optional model setup</h2>
           <p>Use Codex login, direct API keys, local OpenAI-compatible servers, or a gateway. Provider setup is runtime plumbing; clean Need text should stay provider-free.</p>
-          <pre><code>octopus provider save codex
-source .octopus/llm.env
+          <pre><code>codex login
+export OCTOPUS_LLM_BACKEND=codex
+export OCTOPUS_LLM_CODEX_COMMAND=codex
 octopus provider status
 octopus first-run --live "make this repo easier to use"</code></pre>
-          <pre><code>octopus provider save openai
-source .octopus/llm.env
-export OPENAI_API_KEY=...
+          <pre><code>export OCTOPUS_LLM_BACKEND=openai-compatible
+export OCTOPUS_LLM_MODEL=gpt-4.1-mini
+export OCTOPUS_LLM_BASE_URL=https://api.openai.com/v1
+export OCTOPUS_LLM_API_KEY=&lt;api-key&gt;
 octopus provider check</code></pre>
         </div>
       </section>

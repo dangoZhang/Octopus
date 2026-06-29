@@ -2,6 +2,7 @@
   "id": "research",
   "version": "0.1.x",
   "description": "Paper, report, and claim-grounding tasks with source-aware synthesis.",
+  "aliases": ["research", "reserach", "paper", "claim", "literature"],
   "task_schema": {
     "inputs": ["claim", "domain", "source policy"],
     "outputs": ["grounded synthesis", "citations", "uncertainties"],

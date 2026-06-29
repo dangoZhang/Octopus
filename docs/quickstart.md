@@ -15,20 +15,20 @@ curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
 octopus download
-octopus start --open
-```
-
-`start --open` opens `http://127.0.0.1:8765/app.html`. Use `octopus start` on headless machines.
-
-`start` is the whole-project entry: it prepares `.octopus/` state, installs editable seed tentacles, materializes the editable profile registry, pulses the three hearts, serves the native app and pixel pet, loads `.octopus/llm.env`, and falls back to bundled app/tentacle files when no source checkout is present.
-
-For release or machine evidence, run:
-
-```bash
 octopus start --check
 ```
 
-That writes `.octopus/local-app-run.json` with state, page, app URL, and bridge-policy evidence for `preflight`.
+`start --check` prepares state and writes `.octopus/local-app-run.json` without keeping a server open.
+
+`start` is the whole-project entry: it prepares `.octopus/` state, installs editable seed tentacles, materializes the editable profile registry, pulses the three hearts, serves the native app and pixel pet, loads `.octopus/llm.env`, and falls back to bundled app/tentacle files when no source checkout is present.
+
+When you want the browser app, run:
+
+```bash
+octopus start --open
+```
+
+`start --open` opens `http://127.0.0.1:8765/app.html` and keeps the app server running. Use `octopus start` on headless machines.
 
 Product users change Goal. The profile registry is a developer/harness surface for changing tentacle supply paths, permissions, checks, and evolution policy.
 
@@ -52,7 +52,7 @@ Or install the local binary:
 
 ```bash
 cargo install --path crates/octopus-core --bin octopus --force
-octopus start --open
+octopus start --check
 ```
 
 ## First Loop
@@ -70,10 +70,22 @@ After launch, the user-writable surface stays limited to brain-goal:
 ```bash
 octopus chat "make this repo easier to use"
 octopus goal refine "prefer small reviewable changes"
-octopus brain --goal --save "tighten the current objective"
+octopus pet desktop
+octopus start --open
 ```
 
 Need, Feed, route choice, provider routing, repair, and harness evolution are internal agent work. The app can show those states for review, but user input should only change Goal.
+
+## Field Evolution Preview
+
+Run one worker slot from the peer field pool and watch the same Need -> Feed path:
+
+```bash
+octopus evolve parallel --workers 1 --open "advance the eight peer field objectives toward v0.2.0"
+octopus fields summary
+```
+
+The eight fields stay in one peer pool. `--workers 1` opens one execution slot; larger values open more concurrent slots from the same pool. Each slot writes its own field Need, runs the editable `field-mini-task` harness, records Feed plus verifier signal, and leaves the pet as an observer.
 
 ## Optional Model Backends
 
@@ -128,7 +140,8 @@ Then run the same Goal path live:
 
 ```bash
 octopus first-run --live "make this repo easier to use"
-octopus brain --goal --live --save "tighten the current objective"
+octopus chat "tighten the current objective with the latest Feed"
+octopus goal refine "prefer evidence from the latest Feed"
 ```
 
 ## Observe
@@ -137,7 +150,7 @@ octopus brain --goal --live --save "tighten the current objective"
 octopus doctor
 octopus report
 octopus preflight
-octopus pet
+octopus pet desktop
 ```
 
 These are observation surfaces. They should explain what the agent did without asking the user to drive tools directly.
@@ -148,6 +161,8 @@ These are observation surfaces. They should explain what the agent did without a
 tmp=$(mktemp -d)
 octopus --state "$tmp/state.json" first-run "preflight local evidence"
 octopus --state "$tmp/state.json" preflight
+octopus --state "$tmp/state.json" fields summary
+octopus --state "$tmp/state.json" status
 octopus benchmark record
 # Fill .octopus/benchmark-evidence.md with SWE/Claw/Wild case ids, commands, pass results, summaries, and artifacts.
 octopus benchmark check
@@ -156,4 +171,4 @@ octopus --state "$tmp/state.json" preflight record check "$tmp/real-machine-reco
 octopus --state "$tmp/state.json" preflight record append "$tmp/real-machine-record.md" docs/real-machine-test.md
 ```
 
-`0.1.0` passed this gate. Later tags need the same local loop, live provider, benchmark evidence, GitHub OAuth/PR path, and real-machine record before release.
+`0.1.0` passed the original release gate recorded in `docs/real-machine-test.md`. Current `0.1.x` tags need the same local loop plus field-pool result, live provider, benchmark evidence, GitHub OAuth/PR path, and real-machine record before release.

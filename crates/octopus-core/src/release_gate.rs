@@ -99,6 +99,87 @@ pub(crate) fn record_pass_decision_ready(value: &str) -> bool {
         || normalized.starts_with("pass:")
 }
 
+#[derive(Debug)]
+struct FieldMiniTaskTemplateSummary {
+    status: String,
+    checked_count: Option<u64>,
+    executed_count: Option<u64>,
+    missing_count: Option<usize>,
+    invalid_count: Option<usize>,
+}
+
+impl FieldMiniTaskTemplateSummary {
+    fn ready(&self, check_satisfied: bool) -> bool {
+        check_satisfied
+            && self.status == "ok"
+            && self.checked_count.is_some_and(|count| count >= 24)
+            && self.executed_count.is_some_and(|count| count >= 24)
+            && self.missing_count == Some(0)
+            && self.invalid_count == Some(0)
+    }
+}
+
+pub(crate) fn field_mini_task_template_result_ready(check_satisfied: bool, stdout: &str) -> bool {
+    field_mini_task_template_summary(stdout).is_some_and(|summary| summary.ready(check_satisfied))
+}
+
+pub(crate) fn field_mini_task_template_evidence(check_satisfied: bool, stdout: &str) -> String {
+    let summary = field_mini_task_template_summary(stdout);
+    let ready = summary
+        .as_ref()
+        .is_some_and(|summary| summary.ready(check_satisfied));
+    format!(
+        "check_status={}, status={}, checked_count={}, executed_count={}, missing_count={}, invalid_count={}, template_ready={}",
+        if check_satisfied { "satisfied" } else { "failed" },
+        summary
+            .as_ref()
+            .map(|item| item.status.as_str())
+            .unwrap_or("unknown"),
+        optional_u64(summary.as_ref().and_then(|item| item.checked_count)),
+        optional_u64(summary.as_ref().and_then(|item| item.executed_count)),
+        optional_usize(summary.as_ref().and_then(|item| item.missing_count)),
+        optional_usize(summary.as_ref().and_then(|item| item.invalid_count)),
+        ready
+    )
+}
+
+fn field_mini_task_template_summary(stdout: &str) -> Option<FieldMiniTaskTemplateSummary> {
+    let value = serde_json::from_str::<serde_json::Value>(stdout).ok()?;
+    Some(FieldMiniTaskTemplateSummary {
+        status: value
+            .get("status")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown")
+            .to_string(),
+        checked_count: value
+            .get("checked_count")
+            .and_then(serde_json::Value::as_u64),
+        executed_count: value
+            .get("executed_count")
+            .and_then(serde_json::Value::as_u64),
+        missing_count: value
+            .get("missing")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len),
+        invalid_count: value
+            .get("invalid")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len),
+    })
+}
+
+fn optional_u64(value: Option<u64>) -> String {
+    value
+        .map(|count| count.to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn optional_usize(value: Option<usize>) -> String {
+    value
+        .map(|count| count.to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
 pub(crate) fn preflight_script_commands() -> Vec<String> {
     [
         "octopus --version",
@@ -109,8 +190,11 @@ pub(crate) fn preflight_script_commands() -> Vec<String> {
         "octopus --state \"$STATE\" traces",
         "octopus --state \"$STATE\" repair .",
         "octopus --state \"$STATE\" needs",
+        "octopus --state \"$STATE\" evolve parallel --workers 2 \"preflight math and search field adaptation\"",
         "octopus --state \"$STATE\" fields summary",
+        "octopus --state \"$STATE\" status",
         "octopus --state \"$STATE\" check swe-agent",
+        "octopus --state \"$STATE\" check field-mini-task 2",
         "octopus --state \"$STATE\" routes observe README.md",
         "octopus --state \"$STATE\" beat 200",
         "octopus --state \"$STATE\" pet harness",
@@ -198,6 +282,7 @@ pub(crate) fn preflight_record_commands(
         "grep '\"install_script_url\"' \"$tmp/download.json\"".to_string(),
         "\"$OCTOPUS\" --state \"$STATE\" preflight".to_string(),
         "\"$OCTOPUS\" --state \"$STATE\" preflight | grep bridge_goal_surface".to_string(),
+        "\"$OCTOPUS\" --state \"$STATE\" preflight | grep desktop_pet_source".to_string(),
         "\"$OCTOPUS\" provider status".to_string(),
         "\"$OCTOPUS\" provider matrix \"$tmp/provider-matrix.md\"".to_string(),
         "\"$OCTOPUS\" --state \"$STATE\" provider matrix run \"$tmp/provider-matrix.md\""
@@ -511,4 +596,27 @@ fn benchmark_case_section<'a>(content: &'a str, case: &BenchmarkCase) -> Option<
         .filter(|index| *index > 0)
         .unwrap_or(rest.len());
     Some(&rest[..next_case.min(next_section)])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{field_mini_task_template_evidence, field_mini_task_template_result_ready};
+
+    #[test]
+    fn field_mini_task_template_evidence_requires_full_clean_coverage() {
+        let ok =
+            r#"{"status":"ok","checked_count":24,"executed_count":24,"missing":[],"invalid":[]}"#;
+        assert!(field_mini_task_template_result_ready(true, ok));
+        let evidence = field_mini_task_template_evidence(true, ok);
+        assert!(evidence.contains("checked_count=24"));
+        assert!(evidence.contains("executed_count=24"));
+        assert!(evidence.contains("missing_count=0"));
+        assert!(evidence.contains("invalid_count=0"));
+        assert!(evidence.contains("template_ready=true"));
+
+        let missing = r#"{"status":"ok","checked_count":24,"executed_count":24,"missing":["math"],"invalid":[]}"#;
+        assert!(!field_mini_task_template_result_ready(true, missing));
+        assert!(field_mini_task_template_evidence(true, missing).contains("missing_count=1"));
+        assert!(!field_mini_task_template_result_ready(false, ok));
+    }
 }

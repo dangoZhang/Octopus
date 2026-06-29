@@ -31,6 +31,10 @@ Heartbeat -> run data -> memory and harness updates
 
 种子触手放在 `tentacles/`。prompt、manifest、tools、repair policy 可以被检查和修改，而核心 Goal -> Need -> Feed 链路保持稳定。
 
+**领域是并列池。**
+
+`v0.2.0` 的目标是让 Octopus 适应 math、search、code、SWE、research、computer-use、IB work、robotics。八个领域留在同一个 Goal pool 里；`--workers n` 只改变同时打开几个执行槽，不把领域变成队列。
+
 **章鱼会变色。**
 
 像素章鱼是只读桌面观察器。它读取 `.octopus/state.json`：Need 出现时头部变色，触手执行时挥动，code-as-harness 运行时吐泡泡，蓝色表示进化，红色表示卡住，Feed 返回后变绿。
@@ -40,7 +44,7 @@ Heartbeat -> run data -> memory and harness updates
 ```bash
 curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
 octopus --version
-octopus start --open
+octopus start --check
 ```
 
 跑第一次本地闭环：
@@ -49,70 +53,22 @@ octopus start --open
 octopus first-run "make this repo easier to use"
 octopus chat "prefer one small evidence-backed improvement"
 octopus pet desktop
+octopus start --open
 ```
 
-你应该看到本地 app：`http://127.0.0.1:8765/app.html`，一个 `.octopus/state.json` 文件，一段 Feed summary，以及一个观察真实状态的原生桌面章鱼。
+你应该看到 `.octopus/state.json`、一段 Feed summary、一个观察真实状态的原生桌面章鱼，以及本地 app：`http://127.0.0.1:8765/app.html`。`start --open` 会持续运行本地 app server；只需要证据时用 `start --check`。
 
 直接从 GitHub 安装：
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
 octopus start --check
+octopus first-run "make this repo easier to use"
+octopus pet desktop
 octopus start --open
 ```
 
-## 模型接入
-
-Codex 登录：
-
-```bash
-octopus provider save codex
-source .octopus/llm.env
-octopus provider check
-octopus first-run --live "make this repo easier to use"
-```
-
-API key：
-
-```bash
-octopus provider save openai
-source .octopus/llm.env
-export OPENAI_API_KEY=...
-octopus provider check
-```
-
-本地 OpenAI 兼容模型、网关或路由服务也走同一套 provider 配置。
-
-## 当前形态
-
-Octopus 已经是一个本地产品：app、pet、docs、recipes、installer page、provider checks、seed tentacles 和 release evidence 都在同一条启动路径里。
-
-发布证据记录在 [docs/real-machine-test.md](docs/real-machine-test.md)。v0.1.0 已记录 installed binary、本地 app、provider matrix、最小 SWE/Claw/Wild benchmark 证据。当前 `0.1.x` release gate 也会记录 field pool 证据。
-
-GitHub Pages app 用来零安装体验想法。它直接请求你填写的 endpoint；项目不代理 API key。
-
-## 文档
-
-- [产品 Demo](docs/demo.html)
-- [网页教程](docs/docs.html)
-- [5 分钟使用教学](docs/use.html)
-- [Recipes](docs/recipes.html)
-- [架构](docs/architecture.md)
-- [领域适配 TODO](docs/field-adaptation.md)
-- [产品 gap log](docs/product-gap.md)
-
-## TODO
-
-`0.1.x` 先把 `v0.2.0` 的领域进化基建做稳。八个 field slot 属于同一个并行矩阵，worker 只决定一次并发几个槽位。
-
-平级槽位：`math`、`search`、`code`、`SWE`、`research`、`computer-use`、`IB`、`robotics`。
-每个槽位共用同一条 Need -> Feed 链路、verifier trace、repair template 和 harness evolution 闭环。
-
-- [x] 原生只读桌宠显示 Need 气泡、执行泡泡、Goal 展开、蓝色进化、红色卡住。
-- [x] Feed trace 记录 `field_pack`、verifier 结果、轨迹摘要和 repair signal。
-- [x] 领域修复代码放在 Rust kernel 外部的可编辑 harness template。
-- [x] 失败轨迹可以产出可审查 harness patch，授权后 apply、rerun、score。
-- [x] `mini-1/2/3` 是单个 field 内部训练阶梯，不给八个领域排序。
+Live 模型是可选项。Octopus 可以接 Codex 登录、API key、本地 OpenAI 兼容服务或网关路由，但 provider setup 只是运行时管道。用户主路径仍然只改 Goal。模型设置见 [快速开始](docs/zh/quickstart.md)。
 
 ## License
 

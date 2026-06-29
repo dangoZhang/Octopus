@@ -41,7 +41,7 @@ cowork/
 
 ## 当前能力
 
-产品面只允许用户写入 Goal：`chat`、`goal set/refine`、`brain --goal` 和 `first-run` 的目标输入。`download`、`doctor`、`report`、`preflight` 属于观察面。Need、Feed、feedback、repair、evolve、install、check、provider 写入由 agent loop 或开发者流程驱动。
+产品面只允许用户写入 Goal：`chat`、`goal set/refine` 和 `first-run` 的目标输入。`brain --goal` 保留为开发者 CLI；`download`、`doctor`、`report`、`preflight` 属于观察面。Need、Feed、feedback、repair、evolve、install、check、provider 写入由 agent loop 或开发者流程驱动。
 本地 app bridge 已拆到 `app_bridge.rs`，包括 HTTP/SSE、静态 app fallback、命令流式执行、输入策略和 `bridge_goal_surface` preflight 证据。
 `report` 和 `preflight` 会显示稳定 Rust 层、产品 app 层和可变 code-as-harness 层，避免触手/feed 实现重新混进核心。
 
@@ -51,7 +51,7 @@ cowork/
 - `needs`：维护可审查 Need Queue，不直接执行工具。
 - `think`：只看触手计划，不执行工具。
 - `need`：把 Need 交给 harness，执行触手并记录 Feed trace。
-- `feedback`：人工评分 Feed trace，更新 route learning 和 pet 状态。
+- `feedback`：内部/开发者反馈 Feed trace，更新 route learning 和 pet 状态。
 - `repair`：让 harness-repair-agent 诊断状态、trace、check、adapter，并写可审查 repair bundle。
 - `evolve` / `beat`：从失败 trace、check history、repair outcome 生成 harness 演化建议。
 - `provider`：生成、保存、检查 Codex/OpenAI-compatible/local/LiteLLM 配置，同一套 env 可供 clean brain、触手规划和 harness evolution 使用；`provider status` 会先显示 Goal chat、clean brain、tentacle planning、harness evolution 四类覆盖，避免把 Codex OAuth 或本地模型误判成缺少 API key。

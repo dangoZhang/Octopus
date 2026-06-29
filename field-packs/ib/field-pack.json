@@ -2,6 +2,7 @@
   "id": "ib",
   "version": "0.1.x",
   "description": "Investment-banking style spreadsheet, memo, market-data, and compliance-bounded analysis tasks.",
+  "aliases": ["ib", "ib work", "work in ib", "investment banking", "finance-work"],
   "task_schema": {
     "inputs": ["company or asset", "data sources", "analysis request", "compliance constraints"],
     "outputs": ["table", "memo", "assumptions", "source notes"],

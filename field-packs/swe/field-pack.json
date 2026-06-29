@@ -2,6 +2,7 @@
   "id": "swe",
   "version": "0.1.x",
   "description": "Issue-level software engineering tasks across files, tests, and regression evidence.",
+  "aliases": ["swe", "swe-bench", "claw-swe-bench", "issue-style", "repo task"],
   "task_schema": {
     "inputs": ["issue", "repo", "reproduction steps"],
     "outputs": ["root cause", "patch", "regression test", "feed"],

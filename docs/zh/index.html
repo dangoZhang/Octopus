@@ -194,7 +194,7 @@
       <section class="hero shell">
         <div>
           <h1>工具会思考。<br />大脑更干净。</h1>
-          <p class="lead">Octopus 是一个 Rust agent kernel。模型只说自己需要什么；环境学会怎样满足它；触手在执行工具前先思考。</p>
+          <p class="lead">让主模型专注目标，让本地触手处理文件、浏览器、命令、检查和嘈杂的工具过程。</p>
         </div>
       </section>
 
@@ -224,16 +224,14 @@
       <section>
         <div class="shell">
           <h2>装好就能跑</h2>
-          <pre><code>cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
-octopus update
+          <pre><code>curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
+octopus --version
+octopus start --check</code></pre>
+          <p><code>start --check</code> 会准备状态、seed tentacles、heartbeats 和 app 证据，并回到终端。</p>
+          <pre><code>octopus first-run "make this repo easier to use"
+octopus chat "prefer one small evidence-backed improvement"
+octopus pet desktop
 octopus start --open</code></pre>
-          <p><code>start --open</code> 会打开 <code>http://127.0.0.1:8765/app.html</code>；无浏览器环境用 <code>octopus start</code>。</p>
-          <pre><code>octopus --lang zh doctor
-octopus first-run "make this repo easier to use"
-octopus first-run --live "make this repo easier to use"
-octopus routes observe .
-octopus --lang zh beat 200
-octopus pet</code></pre>
           <p><a href="./tutorial.html">产品教学</a>。<a href="./recipes.html">使用场景</a>。<a href="../use.html">5 分钟使用教学</a>。<a href="./quickstart.md">中文完整流程</a>。<a href="./architecture.md">中文架构说明</a>。<a href="../app.html">打开 HTML App</a>。内核保持小，触手、SDK、harness code 围绕它进化。</p>
         </div>
       </section>

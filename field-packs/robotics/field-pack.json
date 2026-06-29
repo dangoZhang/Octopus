@@ -2,6 +2,7 @@
   "id": "robotics",
   "version": "0.1.x",
   "description": "Simulator-first perception, action planning, execution feedback, and safety-gated robotics tasks.",
+  "aliases": ["robotics", "robot", "simulator", "simulation", "control"],
   "task_schema": {
     "inputs": ["environment state", "robot capability", "task goal", "safety boundary"],
     "outputs": ["plan", "simulation result", "feedback"],

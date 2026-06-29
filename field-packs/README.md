@@ -8,7 +8,7 @@ Octopus core loads these packs from `field-packs/` or the embedded release copy.
 
 The packs describe task shape. Concrete tentacle behavior should be iterated by Octopus from trajectories, verifier results, and repair attempts.
 
-Current `0.1.x` scope: keep eight field goals as peer slots in one pool, sample execution slots from that pool, record traces, record verifier results, and route failed field evidence into harness repair. Each seed pack now has three mini tasks, and all three layers are satisfied after repair/rerun/score cycles.
+Current `0.1.x` scope: keep eight field goals as peer slots in one pool, open worker slots from that pool, record traces, record verifier results, and route failed field evidence into harness repair. The field list is not a backlog. Worker count controls concurrency only. Each seed pack now has three mini tasks, and all three layers are satisfied after repair/rerun/score cycles.
 
 ## Contract
 
@@ -38,10 +38,12 @@ field-packs/
 ## Pack Rules
 
 - Describe what the task needs, not how a tool must implement it.
+- Keep `aliases` in the pack data; they are the editable names users and benchmarks use for the field.
 - Keep permissions explicit. Observation, local writes, network use, external accounts, and physical actions must be separate.
 - Verifiers should produce pass, fail, or partial with an error category.
 - Mini tasks must be small enough for repeated evolution runs.
 - Put easier tasks before harder tasks inside one field. Math, search, code, SWE, research, computer-use, IB, and robotics stay peer slots in one worker pool.
+- Treat `--workers n` as execution capacity. `n=1` opens one visible slot from the same parallel pool; larger values open more slots without changing the field objective set.
 - Trajectory labels should make failed runs reusable.
 
 ## Human Role
@@ -55,6 +57,6 @@ octopus fields
 octopus fields summary
 octopus fields match verify "dedupe search results and keep citations"
 octopus fields score latest failed missing_source "citation coverage failed"
-octopus evolve parallel --workers 1 --open "eight parallel field goals; sample one execution slot"
+octopus evolve parallel --workers 4 --open "advance the eight peer field objectives toward v0.2.0"
 octopus traces 10
 ```

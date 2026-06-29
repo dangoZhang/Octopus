@@ -31,6 +31,10 @@ This separation is first-class in the runtime: Goal, Need, Feed, and tentacle ex
 
 Seed tentacles live under `tentacles/`. Their prompts, manifests, tools, and repair policy can be inspected and changed while the core Goal -> Need -> Feed loop stays stable.
 
+**Fields are a peer pool.**
+
+The `v0.2.0` target is broad field adaptation across math, search, code, SWE, research, computer-use, IB work, and robotics. Octopus keeps those fields in one Goal pool. `--workers n` only changes how many execution slots are open; it does not turn the fields into a queue.
+
 **The Octopus shows state.**
 
 The pixel pet is a read-only desktop observer. It watches `.octopus/state.json`: head color marks Need, moving tentacles mark action, bubbles mark code-as-harness work, blue marks evolution, red marks blocked, and green marks Feed.
@@ -40,7 +44,7 @@ The pixel pet is a read-only desktop observer. It watches `.octopus/state.json`:
 ```bash
 curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
 octopus --version
-octopus start --open
+octopus start --check
 ```
 
 Then run one local loop:
@@ -49,71 +53,22 @@ Then run one local loop:
 octopus first-run "make this repo easier to use"
 octopus chat "prefer one small evidence-backed improvement"
 octopus pet desktop
+octopus start --open
 ```
 
-You should see the local app at `http://127.0.0.1:8765/app.html`, a `.octopus/state.json` file, one Feed summary, and one native desktop Octopus observing that state.
+You should see `.octopus/state.json`, one Feed summary, one native desktop Octopus observing that state, and the local app at `http://127.0.0.1:8765/app.html`. `start --open` keeps the app server running; use `start --check` when you only need evidence.
 
 Direct GitHub install:
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
 octopus start --check
+octopus first-run "make this repo easier to use"
+octopus pet desktop
 octopus start --open
 ```
 
-## Models
-
-Codex login:
-
-```bash
-octopus provider save codex
-source .octopus/llm.env
-octopus provider check
-octopus first-run --live "make this repo easier to use"
-```
-
-API-key provider:
-
-```bash
-octopus provider save openai
-source .octopus/llm.env
-export OPENAI_API_KEY=...
-octopus provider check
-```
-
-Local OpenAI-compatible servers and gateway routers use the same provider shape.
-
-## Current Shape
-
-Octopus already starts as one local product: app, pet, docs, recipes, installer page, provider checks, seed tentacles, and release evidence.
-
-The release evidence is recorded in [docs/real-machine-test.md](docs/real-machine-test.md). The v0.1.0 line includes installed-binary checks, local app checks, provider matrix evidence, and minimal SWE/Claw/Wild benchmark records. The current `0.1.x` release gate also records field-pool evidence.
-
-The GitHub Pages app is a zero-install taste of the idea. It sends requests directly to the endpoint you enter; the project does not proxy API keys.
-
-## Docs
-
-- [Product Demo](docs/demo.html)
-- [Docs Tutorial](docs/docs.html)
-- [5-minute Use Guide](docs/use.html)
-- [Recipes](docs/recipes.html)
-- [Architecture](docs/architecture.md)
-- [Research Map](docs/references.md)
-- [Field Adaptation TODO](docs/field-adaptation.md)
-- [Current Gap Log](docs/product-gap.md)
-
-## TODO
-
-`0.1.x` is building the field-evolution base for `v0.2.0`. The eight fields form one parallel matrix; workers choose slots from that matrix.
-
-Peer slots: `math`, `search`, `code`, `SWE`, `research`, `computer-use`, `IB`, and `robotics`.
-Each slot uses the same Need -> Feed chain, verifier traces, repair templates, and harness evolution loop.
-
-- [x] Native read-only desktop pet with Need bubbles, action bubbles, Goal view, evolution blue, and blocked red.
-- [x] Feed traces record `field_pack`, verifier result, trajectory summary, and repair signal.
-- [x] Field-specific repair code lives in editable harness templates outside the Rust kernel.
-- [x] Failed field traces can produce reviewable harness patches, apply them with a grant, rerun, and score the result.
-- [x] `mini-1/2/3` are training rungs inside each field. They do not create order across fields.
+Live models are optional. Octopus can use Codex login, API-key providers, local OpenAI-compatible servers, or gateway routers, but provider setup is runtime plumbing. The user path stays Goal-first. See [Quickstart](docs/quickstart.md) for model setup.
 
 ## License
 

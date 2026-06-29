@@ -274,8 +274,9 @@ octopus chat "make setup clearer"</code></pre>
             <div class="tag">Model</div>
             <h3>Use Codex login or an OpenAI-compatible model</h3>
             <p>Provider setup is runtime plumbing. It should make clean-brain and tentacle thinking available without leaking provider details into Need text.</p>
-            <pre><code>octopus provider save codex
-source .octopus/llm.env
+            <pre><code>codex login
+export OCTOPUS_LLM_BACKEND=codex
+export OCTOPUS_LLM_CODEX_COMMAND=codex
 octopus provider status
 octopus first-run --live "make this repo easier to use"</code></pre>
           </article>

@@ -2,6 +2,7 @@
   "id": "search",
   "version": "0.1.x",
   "description": "Retrieval, deduplication, source quality, and citation tasks.",
+  "aliases": ["search", "retrieval", "web search", "browse", "source lookup"],
   "task_schema": {
     "inputs": ["query", "time range", "source constraints"],
     "outputs": ["ranked sources", "deduplicated facts", "citations"],

@@ -383,6 +383,9 @@ octopus start --open</code></pre>
 octopus chat "make setup clearer"
 octopus preflight</code></pre>
           <p>App 页面只让用户改 Goal。Need、路由、provider、repair、harness evolution 都留在 agent 内部，并通过当前 Need、当前 Feed、章鱼颜色和 Output 展示。</p>
+          <pre><code>octopus evolve parallel --workers 1 --open "advance the eight peer field objectives toward v0.2.0"
+octopus fields summary</code></pre>
+          <p>这个入口会从八个并列领域里打开一个 worker 槽位，让可编辑的 <code>field-mini-task</code> harness 进入 Need -&gt; Feed 链路，并留下 verifier signal 给后续自进化。</p>
         </div>
       </section>
 

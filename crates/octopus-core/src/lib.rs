@@ -1,10 +1,11 @@
 mod field_pack;
 
 pub use field_pack::{
-    annotate_need_with_field, default_field_pack_catalog, default_field_pack_root,
-    embedded_field_pack_catalog, field_pack_report, load_field_pack_catalog, select_field_pack,
-    FieldMiniTask, FieldPack, FieldPackCatalog, FieldPackIndex, FieldPackReport,
-    FieldPackSelection, FieldPackSummary, FieldPermissionBoundary, FieldTaskSchema, FieldVerifier,
+    annotate_need_with_field, default_field_pack_aliases, default_field_pack_catalog,
+    default_field_pack_ids, default_field_pack_root, embedded_field_pack_catalog,
+    field_pack_report, load_field_pack_catalog, select_field_pack, FieldMiniTask, FieldPack,
+    FieldPackCatalog, FieldPackIndex, FieldPackReport, FieldPackSelection, FieldPackSummary,
+    FieldPermissionBoundary, FieldTaskSchema, FieldVerifier,
 };
 
 use serde::{Deserialize, Serialize};
@@ -157,6 +158,8 @@ pub struct GoalChat {
     pub goal: Goal,
     pub turn: GoalTurn,
     pub feedback: Feedback,
+    #[serde(default)]
+    pub queued: Vec<NeedQueueItem>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -187,6 +190,8 @@ pub enum NeedQueueStatus {
 pub struct NeedQueueItem {
     pub index: u64,
     pub need: GoalNeedSuggestion,
+    #[serde(default)]
+    pub context: BTreeMap<String, String>,
     pub source: String,
     pub prompt: String,
     pub summary: String,
@@ -280,6 +285,7 @@ pub struct SelfIterationPlan {
     pub repository: String,
     pub authorized: bool,
     pub mode: String,
+    pub next_action: String,
     pub grant_id: Option<String>,
     pub steps: Vec<String>,
     pub checks: Vec<String>,
@@ -397,7 +403,11 @@ pub struct FieldVerifierResult {
 pub struct ParallelEvolutionWorker {
     pub id: String,
     pub field: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mini_task: Option<String>,
     pub goal: String,
+    #[serde(default)]
+    pub updated_at_secs: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub queued_need_index: Option<u64>,
     pub source_trace_index: Option<u64>,
@@ -410,9 +420,50 @@ pub struct ParallelEvolutionWorker {
 pub struct ParallelEvolutionRun {
     pub index: u64,
     pub objective: String,
+    #[serde(default = "default_parallel_field_pool_size")]
+    pub field_pool_size: usize,
+    #[serde(default = "default_parallel_field_pool_policy")]
+    pub field_pool_policy: String,
+    #[serde(default)]
+    pub candidate_fields: Vec<String>,
+    #[serde(default)]
+    pub requested_worker_count: usize,
     pub worker_count: usize,
+    #[serde(default = "default_parallel_worker_policy")]
+    pub worker_policy: String,
     pub workers: Vec<ParallelEvolutionWorker>,
     pub summary: String,
+}
+
+pub fn parallel_field_pool_policy() -> &'static str {
+    "eight peer field slots; workers only open execution capacity"
+}
+
+fn default_parallel_field_pool_policy() -> String {
+    parallel_field_pool_policy().to_string()
+}
+
+fn default_parallel_field_pool_size() -> usize {
+    default_field_pack_ids().len()
+}
+
+pub fn parallel_worker_policy() -> &'static str {
+    "workers are execution slots from the peer field pool; fields stay peer"
+}
+
+fn default_parallel_worker_policy() -> String {
+    parallel_worker_policy().to_string()
+}
+
+pub fn field_harder_layer_objective() -> &'static str {
+    "add a harder mini task layer to the peer field packs and editable field-mini-task harness"
+}
+
+pub fn field_harder_layer_next_action(state_args: &str) -> String {
+    format!(
+        "octopus{state_args} evolve recommend field-mini-task {}",
+        shell_arg(field_harder_layer_objective())
+    )
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -443,15 +494,54 @@ pub struct FieldTrajectorySummary {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct FieldTrajectoryReport {
     pub field_count: usize,
+    #[serde(default)]
+    pub latest_worker_slot_count: usize,
     pub trace_count: usize,
     pub verifier_result_count: usize,
     pub parallel_evolution_run_count: usize,
     pub all_first_pass_satisfied: bool,
     pub all_pack_tasks_satisfied: bool,
-    #[serde(alias = "next_field", alias = "next_sampled_field_candidate")]
-    pub sampled_slot_field: Option<String>,
+    #[serde(default, alias = "next_field")]
+    pub active_slot_field: Option<String>,
+    #[serde(default)]
+    pub active_slot_reason: String,
     pub fields: Vec<FieldTrajectorySummary>,
     pub next: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct FieldPoolStatusReport {
+    pub policy: String,
+    pub field_count: usize,
+    #[serde(default)]
+    pub field_slot_count: usize,
+    #[serde(default)]
+    pub latest_worker_slot_count: usize,
+    pub completed_fields: usize,
+    pub active_slot_field: Option<String>,
+    #[serde(default)]
+    pub active_slot_reason: String,
+    pub worker_slots: String,
+    pub slots: Vec<FieldPoolSlotReport>,
+    pub next: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct FieldPoolSlotReport {
+    pub field: String,
+    pub completed: bool,
+    pub mini_task_count: usize,
+    pub satisfied_mini_task_count: usize,
+    pub next_mini_task: Option<String>,
+    pub latest_worker_id: Option<String>,
+    pub latest_mini_task: Option<String>,
+    pub latest_worker_status: Option<Status>,
+    pub latest_status: Option<Status>,
+    pub latest_parallel_run_index: Option<u64>,
+    #[serde(default)]
+    pub latest_updated_at_secs: u64,
+    pub needs_repair: bool,
+    pub next_action: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -511,6 +601,8 @@ pub struct StatusReport {
     pub latest_feed_trace: Option<FeedTraceRecord>,
     pub latest_field_verifier_result: Option<FieldVerifierResult>,
     pub latest_parallel_evolution_run: Option<ParallelEvolutionRun>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field_pool: Option<FieldPoolStatusReport>,
     pub latest_need_queue_item: Option<NeedQueueItem>,
     pub latest_check: Option<CheckHistoryRecord>,
     pub latest_repair_outcome: Option<RepairOutcome>,
@@ -4045,6 +4137,7 @@ impl HarnessState {
             let item = NeedQueueItem {
                 index: self.next_need_queue_index,
                 need: need.clone(),
+                context: BTreeMap::new(),
                 source: report.source.clone(),
                 prompt: report.prompt.clone(),
                 summary: report.summary.clone(),
@@ -4144,17 +4237,27 @@ impl HarnessState {
         prompt: impl Into<String>,
         summary: impl Into<String>,
     ) -> NeedQueueItem {
-        if let Some(existing) = self
-            .need_queue
-            .iter()
-            .find(|item| item.status == NeedQueueStatus::Pending && item.need == need)
-        {
+        self.queue_need_suggestion_with_context(need, BTreeMap::new(), source, prompt, summary)
+    }
+
+    pub fn queue_need_suggestion_with_context(
+        &mut self,
+        need: GoalNeedSuggestion,
+        context: BTreeMap<String, String>,
+        source: impl Into<String>,
+        prompt: impl Into<String>,
+        summary: impl Into<String>,
+    ) -> NeedQueueItem {
+        if let Some(existing) = self.need_queue.iter().find(|item| {
+            item.status == NeedQueueStatus::Pending && item.need == need && item.context == context
+        }) {
             return existing.clone();
         }
         self.next_need_queue_index += 1;
         let item = NeedQueueItem {
             index: self.next_need_queue_index,
             need,
+            context,
             source: source.into(),
             prompt: prompt.into(),
             summary: summary.into(),
@@ -4299,6 +4402,7 @@ impl HarnessState {
             .map(|path| format!(" --state {}", shell_arg(&path.to_string_lossy())))
             .unwrap_or_default();
         let harness_learning = self.harness_learning_summary(&state_args);
+        let field_pool = self.field_pool_status_report(state_path);
         let next_action = if self.installed_tentacles.is_empty() {
             format!("octopus{state_args} adapt")
         } else if self.goal.is_none() {
@@ -4331,7 +4435,9 @@ impl HarnessState {
         } else if self.has_active_parallel_field_goal() {
             format!(
                 "octopus{state_args} evolve parallel --workers 1 {}",
-                shell_arg("eight parallel field objectives; sample one verifier target from the parallel pool")
+                shell_arg(
+                    "eight parallel field objectives; open one worker slot from the peer field pool"
+                )
             )
         } else if harness_learning.source != "none" {
             harness_learning.next_action.clone()
@@ -4380,6 +4486,7 @@ impl HarnessState {
             latest_feed_trace: self.feed_traces.last().cloned(),
             latest_field_verifier_result: self.field_verifier_results.last().cloned(),
             latest_parallel_evolution_run: self.parallel_evolution_runs.last().cloned(),
+            field_pool,
             latest_need_queue_item: self.need_queue.last().cloned(),
             latest_check: self.check_history.last().cloned(),
             latest_repair_outcome: self.repair_outcomes.last().cloned(),
@@ -4525,16 +4632,20 @@ impl HarnessState {
                     shell_arg(&format!("improve {field} harness after {reason}"))
                 )
             } else if field_pack_layer_complete {
-                "add the next harder mini task layer to field packs".to_string()
+                field_harder_layer_next_action(&state_args)
             } else if ready_for_harder_task || has_pending_mini_task {
                 format!(
                     "octopus{state_args} evolve parallel --workers 1 {}",
-                    shell_arg("eight parallel field objectives; sample one harder verifier target from the parallel pool")
+                    shell_arg(
+                        "eight parallel field objectives; open one harder-task worker slot from the peer field pool"
+                    )
                 )
             } else {
                 format!(
                     "octopus{state_args} evolve parallel --workers 1 {}",
-                    shell_arg("eight parallel field objectives; sample one verifier target from the parallel pool")
+                    shell_arg(
+                        "eight parallel field objectives; open one worker slot from the peer field pool"
+                    )
                 )
             };
             summaries.push(FieldTrajectorySummary {
@@ -4562,7 +4673,7 @@ impl HarnessState {
             });
         }
 
-        let sampled_slot_field = summaries
+        let active_slot_field = summaries
             .iter()
             .find(|summary| summary.needs_repair)
             .map(|summary| summary.field.clone())
@@ -4607,16 +4718,34 @@ impl HarnessState {
                         self.field_mini_task_status(&pack.id, &task.id) == Some(Status::Satisfied)
                     })
             });
+        let active_slot_reason = if all_pack_tasks_satisfied {
+            "all peer field tasks satisfied; add a harder mini task layer".to_string()
+        } else if let Some(field) = &active_slot_field {
+            summaries
+                .iter()
+                .find(|summary| summary.field == *field)
+                .map(|summary| {
+                    if summary.needs_repair {
+                        format!("{field} selected by latest verifier failure")
+                    } else {
+                        format!("{field} selected by field status and recent-run fairness")
+                    }
+                })
+                .unwrap_or_else(|| format!("{field} selected from the peer field pool"))
+        } else {
+            "no runnable peer field slot selected".to_string()
+        };
+        let latest_worker_slot_count = self
+            .parallel_evolution_runs
+            .last()
+            .map(|run| run.worker_count)
+            .unwrap_or_default();
         let next = if all_pack_tasks_satisfied {
             vec![
                 format!("octopus{state_args} fields summary"),
-                "add the next harder mini task layer to field packs".to_string(),
-                format!(
-                    "octopus{state_args} evolve parallel --workers 1 {}",
-                    shell_arg("eight parallel field objectives; sample one harder verifier target from the parallel pool")
-                ),
+                field_harder_layer_next_action(&state_args),
             ]
-        } else if let Some(field) = &sampled_slot_field {
+        } else if let Some(field) = &active_slot_field {
             summaries
                 .iter()
                 .find(|summary| summary.field == *field)
@@ -4627,14 +4756,70 @@ impl HarnessState {
         };
         Ok(FieldTrajectoryReport {
             field_count: summaries.len(),
+            latest_worker_slot_count,
             trace_count: self.feed_traces.len(),
             verifier_result_count: self.field_verifier_results.len(),
             parallel_evolution_run_count: self.parallel_evolution_runs.len(),
             all_first_pass_satisfied,
             all_pack_tasks_satisfied,
-            sampled_slot_field,
+            active_slot_field,
+            active_slot_reason,
             fields: summaries,
             next,
+        })
+    }
+
+    pub fn field_pool_status_report(
+        &self,
+        state_path: Option<&Path>,
+    ) -> Option<FieldPoolStatusReport> {
+        let report = self.field_trajectory_report_with_state(state_path).ok()?;
+        let slots = report
+            .fields
+            .iter()
+            .map(|summary| {
+                let latest_worker = self
+                    .parallel_evolution_runs
+                    .iter()
+                    .rev()
+                    .flat_map(|run| run.workers.iter())
+                    .find(|worker| worker.field == summary.field);
+                FieldPoolSlotReport {
+                    field: summary.field.clone(),
+                    completed: summary.mini_task_count > 0
+                        && summary.satisfied_mini_task_count == summary.mini_task_count,
+                    mini_task_count: summary.mini_task_count,
+                    satisfied_mini_task_count: summary.satisfied_mini_task_count,
+                    next_mini_task: summary.next_mini_task.clone(),
+                    latest_worker_id: latest_worker.map(|worker| worker.id.clone()),
+                    latest_mini_task: latest_worker
+                        .and_then(|worker| worker.mini_task.clone())
+                        .or_else(|| summary.latest_mini_task.clone()),
+                    latest_worker_status: latest_worker.map(|worker| worker.status.clone()),
+                    latest_status: latest_worker
+                        .map(|worker| worker.status.clone())
+                        .or_else(|| summary.latest_verifier_status.clone())
+                        .or_else(|| summary.latest_trace_status.clone()),
+                    latest_parallel_run_index: summary.latest_parallel_run_index,
+                    latest_updated_at_secs: latest_worker
+                        .map(|worker| worker.updated_at_secs)
+                        .unwrap_or_default(),
+                    needs_repair: summary.needs_repair,
+                    next_action: summary.next_action.clone(),
+                }
+            })
+            .collect::<Vec<_>>();
+        Some(FieldPoolStatusReport {
+            policy: parallel_field_pool_policy().to_string(),
+            field_count: report.field_count,
+            field_slot_count: report.field_count,
+            latest_worker_slot_count: report.latest_worker_slot_count,
+            completed_fields: slots.iter().filter(|slot| slot.completed).count(),
+            active_slot_field: report.active_slot_field,
+            active_slot_reason: report.active_slot_reason,
+            worker_slots: parallel_worker_policy().to_string(),
+            slots,
+            next: report.next,
         })
     }
 
@@ -5057,7 +5242,7 @@ impl HarnessState {
             push_unique_limited(&mut fields, objective_fields[0].clone(), limit);
             None
         } else if objective_fields.len() > 1 {
-            Some(objective_fields)
+            Some(objective_fields.clone())
         } else {
             None
         };
@@ -5120,8 +5305,14 @@ impl HarnessState {
             }
         }
 
+        let candidate_fields = if objective_fields.is_empty() {
+            default_field_pack_ids()
+        } else {
+            objective_fields.clone()
+        };
         self.next_parallel_evolution_run_index += 1;
         let run_index = self.next_parallel_evolution_run_index;
+        let now = unix_timestamp_secs();
         let workers = fields
             .iter()
             .enumerate()
@@ -5142,9 +5333,11 @@ impl HarnessState {
                 ParallelEvolutionWorker {
                     id: format!("octopus-{run_index}-{}", index + 1),
                     field: field.clone(),
+                    mini_task: None,
                     goal: format!(
                         "Improve {field} Feed supply from trajectories while keeping Brain clean: {objective}"
                     ),
+                    updated_at_secs: now,
                     queued_need_index: None,
                     source_trace_index: trace.map(|trace| trace.index),
                     verifier_result_index: verifier.map(|result| result.index),
@@ -5158,7 +5351,7 @@ impl HarnessState {
             })
             .collect::<Vec<_>>();
         let summary = format!(
-            "field evolution run #{run_index}: {} sampled field slot(s): {}",
+            "field evolution run #{run_index}: {} active peer field slot(s): {}",
             workers.len(),
             workers
                 .iter()
@@ -5169,7 +5362,12 @@ impl HarnessState {
         let mut run = ParallelEvolutionRun {
             index: run_index,
             objective,
+            field_pool_size: default_field_pack_ids().len(),
+            field_pool_policy: parallel_field_pool_policy().to_string(),
+            candidate_fields,
+            requested_worker_count: worker_limit,
             worker_count: workers.len(),
+            worker_policy: parallel_worker_policy().to_string(),
             workers,
             summary: summary.clone(),
         };
@@ -5179,33 +5377,45 @@ impl HarnessState {
                 .iter()
                 .find(|pack| pack.id == worker.field)
                 .and_then(|pack| self.next_field_mini_task(pack));
-            let queued = self.queue_need_suggestion(
+            let mut context = BTreeMap::from([("field_pack".to_string(), worker.field.clone())]);
+            if let Some(task) = mini_task {
+                context.insert("field_mini_task".to_string(), task.id.clone());
+                context.insert(
+                    "field_expected_feed".to_string(),
+                    task.expected_feed.clone(),
+                );
+                worker.mini_task = Some(task.id.clone());
+            }
+            let query = mini_task
+                .map(|task| {
+                    format!(
+                        "Run {} mini task {}: {}",
+                        worker.field, task.id, task.goal
+                    )
+                })
+                .unwrap_or_else(|| {
+                    format!(
+                        "Run {} in this peer field slot: run or define one mini task, record trajectory and verifier result, then propose harness repair if it fails",
+                        worker.field
+                    )
+                });
+            let summary = mini_task
+                .map(|task| {
+                    format!(
+                        "field: {}; mini task: {}; expected Feed: {}",
+                        worker.field, task.id, task.expected_feed
+                    )
+                })
+                .unwrap_or_else(|| "selected from the peer field pool".to_string());
+            let queued = self.queue_need_suggestion_with_context(
                 GoalNeedSuggestion {
                     kind: NeedKind::Verify,
-                    query: mini_task
-                        .map(|task| {
-                            format!(
-                                "Run {} mini task {}: {}",
-                                worker.field, task.id, task.goal
-                            )
-                        })
-                        .unwrap_or_else(|| {
-                            format!(
-                                "Sample {} in this run: run or define one mini task, record trajectory and verifier result, then propose harness repair if it fails",
-                                worker.field
-                            )
-                        }),
+                    query,
                 },
+                context,
                 "field evolution",
                 run.objective.clone(),
-                mini_task
-                    .map(|task| {
-                        format!(
-                            "field: {}; mini task: {}; expected Feed: {}",
-                            worker.field, task.id, task.expected_feed
-                        )
-                    })
-                    .unwrap_or_else(|| "sampled from the parallel field pool".to_string()),
+                summary,
             );
             worker.queued_need_index = Some(queued.index);
         }
@@ -5233,6 +5443,7 @@ impl HarnessState {
         worker.source_trace_index = source_trace_index.or(worker.source_trace_index);
         worker.verifier_result_index = verifier_result_index.or(worker.verifier_result_index);
         worker.status = status;
+        worker.updated_at_secs = unix_timestamp_secs();
         Some(run.clone())
     }
 
@@ -5256,7 +5467,7 @@ impl HarnessState {
                 .is_some_and(|task| {
                     self.field_mini_task_status(field, &task.id) != Some(Status::Satisfied)
                 });
-            let needs_sampling = has_pending_task
+            let needs_attention = has_pending_task
                 || self.latest_field_verifier_status(field) != Some(Status::Satisfied);
             let latest_run = self.latest_parallel_run_index_for_field(field);
             let rotated_position = rotated
@@ -5264,7 +5475,7 @@ impl HarnessState {
                 .position(|candidate| candidate == field)
                 .unwrap_or(usize::MAX);
             (
-                !needs_sampling,
+                !needs_attention,
                 latest_run.unwrap_or(0),
                 latest_run.is_some(),
                 rotated_position,
@@ -5725,6 +5936,15 @@ impl HarnessState {
                 .map(|check| format!("pending: {check}"))
                 .collect(),
         });
+        let next_action = if authorized {
+            format!(
+                "OCTOPUS_PR_DRY_RUN=1 octopus self-iterate pr {} {}",
+                shell_arg(&repository),
+                shell_arg(&objective)
+            )
+        } else {
+            format!("octopus oauth github {}", shell_arg(&repository))
+        };
         SelfIterationPlan {
             repository,
             authorized,
@@ -5733,6 +5953,7 @@ impl HarnessState {
             } else {
                 "report-only".to_string()
             },
+            next_action,
             grant_id: grant.map(|grant| grant.id.clone()),
             steps,
             checks,
@@ -6061,10 +6282,23 @@ impl Harness {
         };
         self.state.goal = Some(goal.clone());
         self.state.goal_turns.push(turn.clone());
+        let queued = refinement
+            .needs
+            .iter()
+            .map(|need| {
+                self.state.queue_need_suggestion(
+                    need.clone(),
+                    "goal chat",
+                    refinement.source(),
+                    "queued clean-brain Need from chat",
+                )
+            })
+            .collect::<Vec<_>>();
         GoalChat {
             goal,
             turn,
             feedback,
+            queued,
         }
     }
 
@@ -7281,6 +7515,8 @@ pub struct TentacleEvolutionProposal {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct EvolutionFileTarget {
     pub path: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub target_files: Vec<String>,
     pub action: String,
     pub rationale: String,
 }
@@ -7291,6 +7527,8 @@ pub struct EvolutionPatchCandidate {
     pub surface_id: String,
     pub title: String,
     pub target: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub target_files: Vec<String>,
     pub rationale: String,
     #[serde(default)]
     pub feedback: Vec<EvolutionPatchFeedback>,
@@ -7370,6 +7608,8 @@ pub struct EvolutionApplyPlan {
     pub required_grant: String,
     pub active_grant: Option<String>,
     pub target: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub target_files: Vec<String>,
     pub draft_path: String,
     pub checks: Vec<String>,
     #[serde(default)]
@@ -7666,11 +7906,11 @@ fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Result<String, 
                 {
                     "surface_id": "one declared surface id",
                     "title": "short title",
-                    "target": "relative manifest/tool target inside this tentacle",
+                    "target": "one declared target or target-file path; field-pack surfaces may use field-packs/... paths outside the tentacle directory",
                     "rationale": "why this improves Need-to-Feed",
                     "change_plan": ["concrete harness edit step"],
                     "checks": ["command to verify"],
-                    "suggested_patch": "optional unified diff for the declared target only; omit if uncertain"
+                    "suggested_patch": "optional unified diff for declared target files only; omit if uncertain"
                 }
             ]
         }
@@ -7712,6 +7952,11 @@ fn llm_candidate_to_evolution(
         candidate.change_plan
     };
     let target = llm_candidate_target(proposal, surface, &candidate.target);
+    let manifest_dir = Path::new(&proposal.manifest_path)
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("tentacles").join(&proposal.tentacle_id));
+    let target_files = evolution_candidate_target_files(&manifest_dir, surface, &target);
     let mut patch_candidate = EvolutionPatchCandidate {
         id: evolution_candidate_id(surface_index, &surface.id),
         surface_id: surface.id.clone(),
@@ -7721,6 +7966,7 @@ fn llm_candidate_to_evolution(
             candidate.title
         },
         target,
+        target_files,
         rationale: if candidate.rationale.trim().is_empty() {
             format!(
                 "advance {} through {}",
@@ -7750,6 +7996,9 @@ fn llm_candidate_target(
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("tentacles").join(&proposal.tentacle_id));
     let target = target.trim();
+    if let Some(target) = field_pack_evolution_target(target) {
+        return target;
+    }
     if target.is_empty() || target.contains("..") {
         return evolution_candidate_target(&manifest_dir, surface);
     }
@@ -7980,6 +8229,7 @@ pub fn plan_tentacle_evolution_apply(
         required_grant,
         active_grant,
         target: candidate.target.clone(),
+        target_files: candidate.target_files.clone(),
         draft_path: candidate.draft.path.clone(),
         checks: candidate.checks.clone(),
         feedback: candidate.feedback.clone(),
@@ -8030,6 +8280,23 @@ fn recommend_tentacle_evolution_apply_with_preference(
                 apply,
             });
         }
+    }
+    if let Some(candidate) = harder_layer_field_pack_candidate(proposal) {
+        let apply = plan_tentacle_evolution_apply(proposal, state, &candidate.id)?;
+        return Ok(EvolutionRecommendation {
+            tentacle_id: proposal.tentacle_id.clone(),
+            objective: proposal.objective.clone(),
+            candidate_id: candidate.id.clone(),
+            candidate_title: candidate.title.clone(),
+            surface_id: candidate.surface_id.clone(),
+            outcome_count: 0,
+            feed_trace_count: 0,
+            check_history_count: 0,
+            recommendation_score: 0.25,
+            reason: "selected field-pack task definitions for the next harder mini task layer"
+                .to_string(),
+            apply,
+        });
     }
     let Some(scored) = proposal
         .patch_candidates
@@ -8280,6 +8547,12 @@ pub fn render_tentacle_apply_plan(plan: &EvolutionApplyPlan) -> String {
         markdown.push_str(&format!("active_grant: `{grant}`\n"));
     }
     markdown.push_str(&format!("target: `{}`\n", plan.target));
+    if !plan.target_files.is_empty() {
+        markdown.push_str(&format!(
+            "target_files: `{}`\n",
+            plan.target_files.join("`, `")
+        ));
+    }
     markdown.push_str(&format!("draft: `{}`\n\n", plan.draft_path));
     if plan.authorized {
         markdown.push_str(&format!("patch: `{}.patch`\n\n", plan.candidate_id));
@@ -8398,9 +8671,12 @@ pub fn render_authorized_apply_patch(plan: &EvolutionApplyPlan, apply_dir: &Path
     {
         return patch;
     }
-    if let Some(target) = resolve_existing_patch_target(&plan.target) {
-        if let Some(patch) = render_existing_file_patch(plan, &target) {
-            return patch;
+    let target_path = plan.target.split('#').next().unwrap_or(&plan.target);
+    if !target_path.contains('*') {
+        if let Some(target) = resolve_existing_patch_target(&plan.target) {
+            if let Some(patch) = render_existing_file_patch(plan, &target) {
+                return patch;
+            }
         }
     }
     render_apply_note_patch(plan, apply_dir)
@@ -8411,6 +8687,27 @@ fn candidate_matches(candidate: &EvolutionPatchCandidate, value: &str) -> bool {
         || candidate.surface_id == value
         || candidate.id.replace('-', "_") == value
         || candidate.surface_id.replace('_', "-") == value
+}
+
+fn harder_layer_field_pack_candidate(
+    proposal: &TentacleEvolutionProposal,
+) -> Option<&EvolutionPatchCandidate> {
+    if proposal.tentacle_id != "field-mini-task" {
+        return None;
+    }
+    let objective = proposal.objective.to_ascii_lowercase();
+    let names_harder_layer = objective.contains("harder mini task")
+        || objective.contains("harder task")
+        || objective.contains("next harder")
+        || objective.contains("mini task layer");
+    let names_field_packs = objective.contains("field pack") || objective.contains("peer field");
+    if !(names_harder_layer && names_field_packs) {
+        return None;
+    }
+    proposal
+        .patch_candidates
+        .iter()
+        .find(|candidate| candidate.surface_id == "field_pack_tasks")
 }
 
 fn evolution_candidate_outcome_score(
@@ -8616,21 +8913,41 @@ fn feedback_from_feed_trace(
 }
 
 fn resolve_existing_patch_target(target: &str) -> Option<PathBuf> {
-    let path = target.split('#').next().unwrap_or(target);
-    if path.contains('*') {
-        return resolve_wildcard_target(path);
-    }
-    let path = PathBuf::from(path);
-    path.exists().then_some(path)
+    resolve_existing_patch_targets(target).into_iter().next()
 }
 
-fn resolve_wildcard_target(value: &str) -> Option<PathBuf> {
+fn resolve_existing_patch_targets(target: &str) -> Vec<PathBuf> {
+    let path = target.split('#').next().unwrap_or(target);
+    let field_pack_targets = field_pack_evolution_targets(path)
+        .into_iter()
+        .map(PathBuf::from)
+        .filter(|path| path.exists())
+        .collect::<Vec<_>>();
+    if !field_pack_targets.is_empty() {
+        return field_pack_targets;
+    }
+    if path.contains('*') {
+        return resolve_wildcard_targets(path);
+    }
+    let path = PathBuf::from(path);
+    path.exists().then(|| vec![path]).unwrap_or_default()
+}
+
+fn resolve_wildcard_targets(value: &str) -> Vec<PathBuf> {
     let path = Path::new(value);
-    let parent = path.parent()?;
-    let pattern = path.file_name()?.to_string_lossy();
-    let (prefix, suffix) = pattern.split_once('*')?;
-    let mut matches = fs::read_dir(parent)
-        .ok()?
+    let Some(parent) = path.parent() else {
+        return Vec::new();
+    };
+    let Some(pattern) = path.file_name().map(|name| name.to_string_lossy()) else {
+        return Vec::new();
+    };
+    let Some((prefix, suffix)) = pattern.split_once('*') else {
+        return Vec::new();
+    };
+    let Ok(entries) = fs::read_dir(parent) else {
+        return Vec::new();
+    };
+    let mut matches = entries
         .filter_map(Result::ok)
         .map(|entry| entry.path())
         .filter(|path| {
@@ -8640,7 +8957,7 @@ fn resolve_wildcard_target(value: &str) -> Option<PathBuf> {
         })
         .collect::<Vec<_>>();
     matches.sort();
-    matches.into_iter().next()
+    matches
 }
 
 fn render_existing_file_patch(plan: &EvolutionApplyPlan, target: &Path) -> Option<String> {
@@ -8678,19 +8995,26 @@ fn render_existing_file_patch(plan: &EvolutionApplyPlan, target: &Path) -> Optio
 }
 
 fn provider_patch_for_plan(plan: &EvolutionApplyPlan, patch: &str) -> Option<String> {
-    if plan
-        .target
-        .split('#')
-        .next()
-        .unwrap_or(&plan.target)
-        .contains('*')
-    {
+    let paths = diff_paths(patch);
+    if paths.is_empty() {
         return None;
     }
-    let target = resolve_existing_patch_target(&plan.target)?;
-    let target = patch_display_path(&target);
-    let paths = diff_paths(patch);
-    if paths.is_empty() || paths.iter().any(|path| path != &target) {
+    let mut allowed_paths = plan
+        .target_files
+        .iter()
+        .map(|path| patch_display_path(Path::new(path)))
+        .collect::<Vec<_>>();
+    if allowed_paths.is_empty() {
+        allowed_paths = resolve_existing_patch_targets(&plan.target)
+            .iter()
+            .map(|path| patch_display_path(path))
+            .collect::<Vec<_>>();
+    }
+    if allowed_paths.is_empty()
+        || paths
+            .iter()
+            .any(|path| !allowed_paths.iter().any(|allowed| allowed == path))
+    {
         return None;
     }
     let patch = patch.trim();
@@ -8757,7 +9081,7 @@ fn patch_comment_for(target: &Path, plan: &EvolutionApplyPlan) -> Option<String>
 fn render_apply_note_patch(plan: &EvolutionApplyPlan, apply_dir: &Path) -> String {
     let note_path = apply_dir.join(format!("{}-note.md", plan.candidate_id));
     let display = patch_display_path(&note_path);
-    let lines = [
+    let mut lines = vec![
         format!("# Authorized Evolution Candidate {}", plan.candidate_id),
         String::new(),
         format!("tentacle: {}", plan.tentacle_id),
@@ -8765,6 +9089,11 @@ fn render_apply_note_patch(plan: &EvolutionApplyPlan, apply_dir: &Path) -> Strin
         format!("objective: {}", one_line(&plan.objective)),
         "status: ready_for_authorized_patch".to_string(),
     ];
+    if !plan.target_files.is_empty() {
+        lines.push(String::new());
+        lines.push("target_files:".to_string());
+        lines.extend(plan.target_files.iter().map(|path| format!("- {path}")));
+    }
     let mut patch = String::new();
     patch.push_str(&format!("diff --git a/{display} b/{display}\n"));
     patch.push_str("new file mode 100644\n");
@@ -8779,7 +9108,7 @@ fn render_apply_note_patch(plan: &EvolutionApplyPlan, apply_dir: &Path) -> Strin
 
 fn patch_display_path(path: &Path) -> String {
     let value = path.to_string_lossy().replace('\\', "/");
-    for marker in ["tentacles/", "docs/", ".octopus/"] {
+    for marker in ["tentacles/", "field-packs/", "docs/", ".octopus/"] {
         if let Some(index) = value.find(marker) {
             return value[index..].to_string();
         }
@@ -8833,6 +9162,12 @@ pub fn render_tentacle_evolution_proposal(proposal: &TentacleEvolutionProposal) 
             "- `{}`: {} ({})\n",
             file.path, file.action, file.rationale
         ));
+        if !file.target_files.is_empty() {
+            markdown.push_str(&format!(
+                "  target_files: `{}`\n",
+                file.target_files.join("`, `")
+            ));
+        }
     }
     markdown.push_str("\n## Evolution Surfaces\n\n");
     for surface in &proposal.surfaces {
@@ -8926,6 +9261,12 @@ pub fn render_tentacle_patch_candidates(proposal: &TentacleEvolutionProposal) ->
         markdown.push_str(&format!("## {}. {}\n\n", candidate.id, candidate.title));
         markdown.push_str(&format!("surface: `{}`\n", candidate.surface_id));
         markdown.push_str(&format!("target: `{}`\n", candidate.target));
+        if !candidate.target_files.is_empty() {
+            markdown.push_str(&format!(
+                "target_files: `{}`\n",
+                candidate.target_files.join("`, `")
+            ));
+        }
         markdown.push_str(&format!("rationale: {}\n\n", candidate.rationale));
         if !candidate.feedback.is_empty() {
             markdown.push_str("feedback:\n");
@@ -8979,6 +9320,12 @@ pub fn render_single_patch_draft(
     markdown.push_str(&format!("objective: {}\n", proposal.objective));
     markdown.push_str(&format!("surface: `{}`\n", candidate.surface_id));
     markdown.push_str(&format!("target: `{}`\n", candidate.target));
+    if !candidate.target_files.is_empty() {
+        markdown.push_str(&format!(
+            "target_files: `{}`\n",
+            candidate.target_files.join("`, `")
+        ));
+    }
     markdown.push_str(&format!("status: `{}`\n", candidate.draft.status));
     markdown.push_str(&format!(
         "authorization_required: {}\n",
@@ -9427,9 +9774,21 @@ fn evolution_file_target(
     target: &str,
     objective: &str,
 ) -> EvolutionFileTarget {
+    if let Some(path) = field_pack_evolution_target(target) {
+        return EvolutionFileTarget {
+            target_files: field_pack_evolution_targets(target),
+            path,
+            action: "extend editable peer-field task definitions".to_string(),
+            rationale: format!("support {objective}"),
+        };
+    }
     match target {
         "brain.prompt" => EvolutionFileTarget {
             path: "manifest.json#brain.prompt".to_string(),
+            target_files: vec![manifest_dir
+                .join("manifest.json")
+                .to_string_lossy()
+                .to_string()],
             action: "tighten the tentacle brain prompt".to_string(),
             rationale: format!("align tool-side planning with {objective}"),
         },
@@ -9438,20 +9797,32 @@ fn evolution_file_target(
                 .join("manifest.json")
                 .to_string_lossy()
                 .to_string(),
+            target_files: vec![manifest_dir
+                .join("manifest.json")
+                .to_string_lossy()
+                .to_string()],
             action: "review skills, tools, feedback contract, and evolution policy".to_string(),
             rationale: "keep prompt, metadata, code, checks, and constraints consistent"
                 .to_string(),
         },
-        value if value.contains('*') => EvolutionFileTarget {
-            path: manifest_dir.join(value).to_string_lossy().to_string(),
-            action: "inspect matching harness code before editing".to_string(),
-            rationale: "wildcards require a narrow patch target".to_string(),
-        },
-        value => EvolutionFileTarget {
-            path: manifest_dir.join(value).to_string_lossy().to_string(),
-            action: "prepare a scoped harness edit".to_string(),
-            rationale: format!("support {objective}"),
-        },
+        value if value.contains('*') => {
+            let path = manifest_dir.join(value).to_string_lossy().to_string();
+            EvolutionFileTarget {
+                target_files: evolution_target_files(&path),
+                path,
+                action: "inspect matching harness code before editing".to_string(),
+                rationale: "wildcards require a narrow patch target".to_string(),
+            }
+        }
+        value => {
+            let path = manifest_dir.join(value).to_string_lossy().to_string();
+            EvolutionFileTarget {
+                target_files: evolution_target_files(&path),
+                path,
+                action: "prepare a scoped harness edit".to_string(),
+                rationale: format!("support {objective}"),
+            }
+        }
     }
 }
 
@@ -9476,11 +9847,13 @@ fn evolution_patch_candidates(
                 trace_tool,
                 check_tool,
             );
+            let target_files = evolution_candidate_target_files(manifest_dir, surface, &target);
             EvolutionPatchCandidate {
                 id: evolution_candidate_id(index, &surface.id),
                 surface_id: surface.id.clone(),
                 title: evolution_candidate_title(&surface.id, tentacle_id),
                 target: target.clone(),
+                target_files,
                 rationale: evolution_candidate_rationale(
                     objective, surface, trace_tool, check_tool,
                 ),
@@ -9894,6 +10267,7 @@ fn evolution_candidate_title(surface_id: &str, tentacle_id: &str) -> String {
         "brain_prompt" => format!("Retune {tentacle_id} tool-side thinking"),
         "tool_meta" => format!("Tighten {tentacle_id} tool metadata"),
         "runtime_code" => format!("Improve {tentacle_id} runtime harness code"),
+        "field_pack_tasks" => "Extend peer-field task definitions".to_string(),
         "evolution_policy" => format!("Strengthen {tentacle_id} evolution policy"),
         value => format!("Improve {tentacle_id} {value}"),
     }
@@ -9905,6 +10279,9 @@ fn evolution_candidate_target(manifest_dir: &Path, surface: &EvolutionSurface) -
         .first()
         .map(String::as_str)
         .unwrap_or("manifest.json");
+    if let Some(target) = field_pack_evolution_target(target) {
+        return target;
+    }
     if target.starts_with("brain.")
         || target.starts_with("tools[]")
         || target.starts_with("evolution.")
@@ -9916,6 +10293,46 @@ fn evolution_candidate_target(manifest_dir: &Path, surface: &EvolutionSurface) -
         );
     }
     manifest_dir.join(target).to_string_lossy().to_string()
+}
+
+fn evolution_target_files(target: &str) -> Vec<String> {
+    let path = target.split('#').next().unwrap_or(target).trim();
+    if path.is_empty() {
+        return Vec::new();
+    }
+    let field_pack_targets = field_pack_evolution_targets(path);
+    if !field_pack_targets.is_empty() {
+        return field_pack_targets;
+    }
+    if path.contains('*') {
+        return resolve_wildcard_targets(path)
+            .into_iter()
+            .filter(|path| path.exists())
+            .map(|path| path.to_string_lossy().to_string())
+            .collect();
+    }
+    let path = PathBuf::from(path);
+    path.exists()
+        .then(|| vec![path.to_string_lossy().to_string()])
+        .unwrap_or_default()
+}
+
+fn evolution_candidate_target_files(
+    manifest_dir: &Path,
+    surface: &EvolutionSurface,
+    target: &str,
+) -> Vec<String> {
+    let mut files = evolution_target_files(target);
+    if surface.id != "field_pack_tasks" {
+        return files;
+    }
+    for declared_target in &surface.targets {
+        let resolved = evolution_file_target(manifest_dir, declared_target, "");
+        for file in evolution_target_files(&resolved.path) {
+            push_unique_limited(&mut files, file, usize::MAX);
+        }
+    }
+    files
 }
 
 fn evolution_candidate_plan(surface: &EvolutionSurface) -> Vec<String> {
@@ -9932,6 +10349,10 @@ fn evolution_candidate_plan(surface: &EvolutionSurface) -> Vec<String> {
             "patch only the runtime adapter needed for this objective".to_string(),
             "preserve path safety, exit status, and compact evidence output".to_string(),
         ],
+        "field_pack_tasks" => vec![
+            "add the next harder mini task definitions to the peer field packs".to_string(),
+            "keep expected Feed explicit enough for verifier-driven harness evolution".to_string(),
+        ],
         "evolution_policy" => vec![
             "add the smallest check that proves the changed surface works".to_string(),
             "keep constraints aligned with user-visible safety boundaries".to_string(),
@@ -9941,6 +10362,69 @@ fn evolution_candidate_plan(surface: &EvolutionSurface) -> Vec<String> {
             "return a narrow harness patch with matching checks".to_string(),
         ],
     }
+}
+
+fn field_pack_evolution_target(target: &str) -> Option<String> {
+    let suffix = field_pack_evolution_suffix(target)?;
+    Some(
+        field_pack_evolution_root()
+            .join(suffix)
+            .to_string_lossy()
+            .to_string(),
+    )
+}
+
+fn field_pack_evolution_targets(target: &str) -> Vec<String> {
+    let Some(suffix) = field_pack_evolution_suffix(target) else {
+        return Vec::new();
+    };
+    let root = field_pack_evolution_root();
+    if suffix == "*/field-pack.json" {
+        return default_field_pack_ids()
+            .into_iter()
+            .map(|field| root.join(field).join("field-pack.json"))
+            .filter(|path| path.exists())
+            .map(|path| path.to_string_lossy().to_string())
+            .collect();
+    }
+    if suffix.contains('*') {
+        return Vec::new();
+    }
+    let path = root.join(suffix);
+    path.exists()
+        .then(|| vec![path.to_string_lossy().to_string()])
+        .unwrap_or_default()
+}
+
+fn field_pack_evolution_suffix(target: &str) -> Option<String> {
+    let target = target
+        .split('#')
+        .next()
+        .unwrap_or(target)
+        .trim()
+        .replace('\\', "/");
+    let suffix = target
+        .strip_prefix("field-packs/")
+        .map(str::to_string)
+        .or_else(|| {
+            target
+                .find("/field-packs/")
+                .map(|index| target[index + "/field-packs/".len()..].to_string())
+        })?;
+    if suffix.trim().is_empty() || suffix.contains("..") {
+        return None;
+    }
+    Some(suffix)
+}
+
+fn field_pack_evolution_root() -> PathBuf {
+    let root = default_field_pack_root();
+    if root.join("index.json").exists() {
+        return root;
+    }
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("field-packs")
 }
 
 fn installed_tentacle_from_manifest(
@@ -12226,7 +12710,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
     }
 
     #[test]
-    fn status_ignores_ad_hoc_field_verifier_when_sampling_parallel_goal() {
+    fn status_ignores_ad_hoc_field_verifier_when_parallel_goal() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
             .join("tentacles");
@@ -12306,7 +12790,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
         assert_eq!(math.latest_mini_task.as_deref(), Some("math-mini-1"));
         assert!(math.next_action.contains("evolve recommend"));
         assert!(math.next_action.contains("improve math harness"));
-        assert_eq!(report.sampled_slot_field.as_deref(), Some("math"));
+        assert_eq!(report.active_slot_field.as_deref(), Some("math"));
     }
 
     #[test]
@@ -12349,7 +12833,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
         assert_eq!(report.field_count, 8);
         assert!(report.all_first_pass_satisfied);
         assert!(!report.all_pack_tasks_satisfied);
-        assert_eq!(report.sampled_slot_field.as_deref(), Some("math"));
+        assert_eq!(report.active_slot_field.as_deref(), Some("math"));
         let math = report
             .fields
             .iter()
@@ -12365,11 +12849,11 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
         assert!(report
             .next
             .iter()
-            .any(|item| item.contains("harder verifier target")));
+            .any(|item| item.contains("harder-task worker slot")));
 
         state.next_parallel_evolution_run_index = 35;
         let rotated_report = state.field_trajectory_report().unwrap();
-        assert_eq!(rotated_report.sampled_slot_field.as_deref(), Some("swe"));
+        assert_eq!(rotated_report.active_slot_field.as_deref(), Some("swe"));
     }
 
     #[test]
@@ -12409,7 +12893,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
 
         assert!(report.all_first_pass_satisfied);
         assert!(report.all_pack_tasks_satisfied);
-        assert_eq!(report.sampled_slot_field, None);
+        assert_eq!(report.active_slot_field, None);
         assert!(report
             .fields
             .iter()
@@ -12417,7 +12901,19 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
         assert!(report
             .next
             .iter()
-            .any(|item| item.contains("add the next harder mini task layer")));
+            .any(|item| item.contains("evolve recommend field-mini-task")
+                && item.contains("harder mini task layer")));
+        assert!(!report
+            .next
+            .iter()
+            .any(|item| item == "add the next harder mini task layer to field packs"));
+
+        let stateful_report = state
+            .field_trajectory_report_with_state(Some(Path::new("/tmp/octopus fields/state.json")))
+            .unwrap();
+        assert!(stateful_report.next.iter().any(|item| item.contains(
+            "octopus --state '/tmp/octopus fields/state.json' evolve recommend field-mini-task"
+        )));
     }
 
     #[test]
@@ -12462,7 +12958,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
 
         assert!(report.all_first_pass_satisfied);
         assert!(!report.all_pack_tasks_satisfied);
-        assert_eq!(report.sampled_slot_field.as_deref(), Some("math"));
+        assert_eq!(report.active_slot_field.as_deref(), Some("math"));
         assert_eq!(math.satisfied_mini_task_count, 2);
         assert_eq!(math.next_mini_task.as_deref(), Some("math-mini-3"));
         assert!(math
@@ -12505,7 +13001,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
 
         let run = state
             .start_parallel_evolution(
-                "eight parallel field objectives; sample one harder verifier target from the parallel pool",
+                "eight parallel field objectives; open one harder-task worker slot from the peer field pool",
                 1,
             )
             .unwrap();
@@ -13638,6 +14134,10 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
             state.self_iteration_plan("dangoZhang/Octopus", Some("improve usability"));
         assert!(!report_only.authorized);
         assert_eq!(report_only.mode, "report-only");
+        assert_eq!(
+            report_only.next_action,
+            "octopus oauth github dangoZhang/Octopus"
+        );
         assert!(report_only.draft.is_none());
         assert!(report_only
             .steps
@@ -13652,6 +14152,10 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
 
         assert!(pr_ready.authorized);
         assert_eq!(pr_ready.mode, "pr-ready");
+        assert_eq!(
+            pr_ready.next_action,
+            "OCTOPUS_PR_DRY_RUN=1 octopus self-iterate pr dangoZhang/Octopus 'improve usability'"
+        );
         assert_eq!(pr_ready.grant_id, Some(grant.id));
         assert_eq!(pr_ready.candidates[0].branch, "octopus/improve-usability");
         let draft = pr_ready.draft.as_ref().unwrap();
@@ -14820,6 +15324,69 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
         let _ = fs::remove_dir_all(workspace);
     }
 
+    #[test]
+    fn field_mini_task_evolution_resolves_field_pack_task_targets() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let proposal = propose_tentacle_evolution(
+            &root,
+            "field-mini-task",
+            "add a harder mini task layer to the peer field packs and editable field-mini-task harness",
+        )
+        .unwrap();
+        let candidate = proposal
+            .patch_candidates
+            .iter()
+            .find(|candidate| candidate.surface_id == "field_pack_tasks")
+            .expect("field pack task surface");
+
+        assert_eq!(candidate.title, "Extend peer-field task definitions");
+        assert!(candidate.target.contains("field-packs"));
+        assert!(candidate.target.contains("*"));
+        assert_eq!(candidate.target_files.len(), 9);
+        assert!(candidate
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("field-packs/math/field-pack.json")));
+        assert!(candidate
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("field-packs/robotics/field-pack.json")));
+        assert!(candidate
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("field-packs/index.json")));
+        assert!(!candidate.target_files.iter().any(|path| path.contains('*')));
+        assert!(candidate
+            .change_plan
+            .iter()
+            .any(|step| step.contains("next harder mini task definitions")));
+    }
+
+    #[test]
+    fn harder_layer_recommendation_selects_field_pack_task_surface() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let state = HarnessState::default();
+        let proposal =
+            propose_tentacle_evolution(&root, "field-mini-task", field_harder_layer_objective())
+                .unwrap();
+
+        let recommendation = recommend_tentacle_evolution_apply(&proposal, &state).unwrap();
+
+        assert_eq!(recommendation.surface_id, "field_pack_tasks");
+        assert_eq!(recommendation.candidate_id, "04-field-pack-tasks");
+        assert_eq!(recommendation.apply.target_files.len(), 9);
+        assert!(recommendation
+            .apply
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("field-packs/index.json")));
+        assert!(recommendation.reason.contains("harder mini task layer"));
+    }
+
     struct EvolutionFakeChat {
         response: String,
         prompt: String,
@@ -14952,6 +15519,73 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
         assert!(fake.prompt.contains("recent_check_history"));
         assert!(fake.prompt.contains("observed README before evolution"));
         assert!(fake.prompt.contains("read check failed before evolution"));
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn llm_field_pack_task_patch_can_touch_multiple_resolved_pack_files() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        let mut fake = EvolutionFakeChat {
+            response: r#"{
+              "summary": "extend peer field pack tasks",
+              "candidates": [
+                {
+                  "surface_id": "field_pack_tasks",
+                  "title": "Add harder peer field tasks",
+                  "target": "field-packs/*/field-pack.json",
+                  "rationale": "harder tasks should live in editable field packs",
+                  "change_plan": ["edit task definitions in the field packs"],
+                  "checks": ["octopus check field-mini-task 2"],
+                  "suggested_patch": "diff --git a/field-packs/math/field-pack.json b/field-packs/math/field-pack.json\n--- a/field-packs/math/field-pack.json\n+++ b/field-packs/math/field-pack.json\n@@ -1,2 +1,3 @@\n {\n+  \"llm_patch_probe\": true,\ndiff --git a/field-packs/search/field-pack.json b/field-packs/search/field-pack.json\n--- a/field-packs/search/field-pack.json\n+++ b/field-packs/search/field-pack.json\n@@ -1,2 +1,3 @@\n {\n+  \"llm_patch_probe\": true,\ndiff --git a/field-packs/index.json b/field-packs/index.json\n--- a/field-packs/index.json\n+++ b/field-packs/index.json\n@@ -1,2 +1,3 @@\n {\n+  \"llm_registry_probe\": true,\n"
+                }
+              ]
+            }"#
+            .to_string(),
+            prompt: String::new(),
+        };
+
+        let proposal = propose_tentacle_evolution_with_client(
+            &root,
+            "field-mini-task",
+            "add a harder mini task layer",
+            &state,
+            &mut fake,
+        )
+        .unwrap();
+        let candidate = proposal
+            .patch_candidates
+            .iter()
+            .find(|candidate| candidate.surface_id == "field_pack_tasks")
+            .unwrap();
+        assert_eq!(candidate.target_files.len(), 9);
+        assert!(candidate
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("field-packs/index.json")));
+        assert!(fake.prompt.contains("declared target files"));
+        assert!(fake
+            .prompt
+            .contains("field-pack surfaces may use field-packs"));
+        assert!(!fake.prompt.contains("inside this tentacle"));
+        state.grant_oauth(
+            "octopus",
+            "evolve:field-mini-task",
+            default_permissions("octopus"),
+        );
+        let plan = plan_tentacle_evolution_apply(&proposal, &state, "field_pack_tasks").unwrap();
+        let workspace =
+            std::env::temp_dir().join(format!("octopus-field-pack-apply-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&workspace);
+        let artifact = write_tentacle_apply_artifacts(&workspace, &plan).unwrap();
+        let patch = fs::read_to_string(artifact.patch_path.as_ref().unwrap()).unwrap();
+
+        assert!(patch.contains("b/field-packs/math/field-pack.json"));
+        assert!(patch.contains("b/field-packs/search/field-pack.json"));
+        assert!(patch.contains("b/field-packs/index.json"));
+        assert!(!patch.contains("Authorized Evolution Candidate"));
         let _ = fs::remove_dir_all(workspace);
     }
 

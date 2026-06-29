@@ -3,7 +3,7 @@
   "schema_version": "0.0.1",
   "id": "field-mini-task",
   "name": "Field Mini Task Tentacle",
-  "description": "Generic evolvable harness for sampling field mini tasks and turning them into reusable trajectories.",
+  "description": "Generic evolvable harness for peer-field worker tasks and reusable trajectories.",
   "brain": {
     "kind": "llm",
     "model": null,
@@ -13,7 +13,7 @@
   "skills": [
     {
       "id": "field-mini-task-runner",
-      "description": "Sample a field task, save its trajectory, and expose a repairable execution surface.",
+      "description": "Run a peer-field task, save its trajectory, and expose a repairable execution surface.",
       "needs": [
         "verify",
         "reproduce",
@@ -73,8 +73,16 @@
         ]
       },
       {
+        "id": "field_pack_tasks",
+        "description": "Editable peer-field mini task definitions, expected Feed, and domain aliases.",
+        "targets": [
+          "field-packs/*/field-pack.json",
+          "field-packs/index.json"
+        ]
+      },
+      {
         "id": "evolution_policy",
-        "description": "Checks and constraints for honest field-task sampling and repair.",
+        "description": "Checks and constraints for honest peer-field execution and repair.",
         "targets": [
           "evolution.checks",
           "evolution.constraints",
@@ -83,7 +91,7 @@
       }
     ],
     "checks": [
-      "tools/run_field_mini_task.sh . <<'JSON' | python3 -m json.tool > /dev/null\n{\"schema_version\":\"octopus-tool-call-v1\",\"need\":{\"kind\":\"verify\",\"query\":\"Run math mini task sample\",\"context\":{\"field_pack\":\"math\",\"field_mini_task\":\"math-mini-1\",\"field_expected_feed\":\"Derivative 3x^2 + 2 with a numeric check near 14.\"}},\"tool\":{\"id\":\"run_field_mini_task\"},\"tentacle\":{\"id\":\"field-mini-task\"}}\nJSON",
+      "tools/run_field_mini_task.sh . <<'JSON' | python3 -m json.tool > /dev/null\n{\"schema_version\":\"octopus-tool-call-v1\",\"need\":{\"kind\":\"verify\",\"query\":\"Run math mini task\",\"context\":{\"field_pack\":\"math\",\"field_mini_task\":\"math-mini-1\",\"field_expected_feed\":\"Derivative 3x^2 + 2 with a numeric check near 14.\"}},\"tool\":{\"id\":\"run_field_mini_task\"},\"tentacle\":{\"id\":\"field-mini-task\"}}\nJSON",
       "python3 tools/check_repair_templates.py"
     ],
     "constraints": [

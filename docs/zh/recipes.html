@@ -275,8 +275,9 @@ octopus chat "make setup clearer"</code></pre>
             <div class="tag">Model</div>
             <h3>接入 Codex 或兼容模型</h3>
             <p>Provider 是运行环境，不应该污染 Need。它只负责让干净大脑和触手智能真正可用。</p>
-            <pre><code>octopus provider save codex
-source .octopus/llm.env
+            <pre><code>codex login
+export OCTOPUS_LLM_BACKEND=codex
+export OCTOPUS_LLM_CODEX_COMMAND=codex
 octopus provider status
 octopus first-run --live "make this repo easier to use"</code></pre>
           </article>

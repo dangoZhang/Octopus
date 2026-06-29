@@ -2,6 +2,7 @@
   "id": "computer-use",
   "version": "0.1.x",
   "description": "Browser, desktop, clipboard, file, and UI-operation tasks.",
+  "aliases": ["computer-use", "computer use", "desktop", "browser", "ui operation"],
   "task_schema": {
     "inputs": ["user goal", "visible app state", "allowed actions"],
     "outputs": ["observations", "actions taken", "verified result"],

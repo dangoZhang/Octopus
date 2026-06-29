@@ -54,6 +54,8 @@ pub struct FieldPack {
     pub id: String,
     pub version: String,
     pub description: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
     pub task_schema: FieldTaskSchema,
     pub capability_hints: Vec<String>,
     pub permission_boundary: FieldPermissionBoundary,
@@ -114,6 +116,7 @@ pub struct FieldPackSummary {
     pub id: String,
     pub version: String,
     pub description: String,
+    pub aliases: Vec<String>,
     pub capability_hints: Vec<String>,
     pub verifier_method: String,
     pub mini_tasks: usize,
@@ -142,6 +145,46 @@ pub fn default_field_pack_catalog() -> Result<FieldPackCatalog, String> {
         return load_field_pack_catalog(&root);
     }
     embedded_field_pack_catalog()
+}
+
+pub fn default_field_pack_ids() -> Vec<String> {
+    default_field_pack_catalog()
+        .or_else(|_| embedded_field_pack_catalog())
+        .map(|catalog| catalog.packs.into_iter().map(|pack| pack.id).collect())
+        .unwrap_or_else(|_| {
+            EMBEDDED_FIELD_PACKS
+                .iter()
+                .map(|(id, _)| (*id).to_string())
+                .collect()
+        })
+}
+
+pub fn default_field_pack_aliases() -> Vec<(String, Vec<String>)> {
+    default_field_pack_catalog()
+        .or_else(|_| embedded_field_pack_catalog())
+        .map(field_pack_aliases_from_catalog)
+        .unwrap_or_else(|_| {
+            EMBEDDED_FIELD_PACKS
+                .iter()
+                .map(|(id, _)| ((*id).to_string(), vec![(*id).to_string()]))
+                .collect()
+        })
+}
+
+fn field_pack_aliases_from_catalog(catalog: FieldPackCatalog) -> Vec<(String, Vec<String>)> {
+    catalog
+        .packs
+        .into_iter()
+        .map(|pack| {
+            let mut aliases = vec![pack.id.clone()];
+            for alias in pack.aliases {
+                if !aliases.iter().any(|existing| existing == &alias) {
+                    aliases.push(alias);
+                }
+            }
+            (pack.id, aliases)
+        })
+        .collect()
 }
 
 pub fn load_field_pack_catalog(root: impl AsRef<Path>) -> Result<FieldPackCatalog, String> {
@@ -208,6 +251,7 @@ pub fn field_pack_report(root: Option<&Path>) -> FieldPackReport {
                     id: pack.id.clone(),
                     version: pack.version.clone(),
                     description: pack.description.clone(),
+                    aliases: pack.aliases.clone(),
                     capability_hints: pack.capability_hints.clone(),
                     verifier_method: pack.verifier.method.clone(),
                     mini_tasks: pack.mini_tasks.len(),
@@ -238,6 +282,9 @@ pub fn select_field_pack(
     goal: Option<&Goal>,
     need: &Need,
 ) -> Option<FieldPackSelection> {
+    if !field_pack_selectable_need(need) {
+        return None;
+    }
     if let Some(field) = explicit_field_signal(goal, need) {
         if let Some(pack) = packs.iter().find(|pack| pack.id == field) {
             return Some(selection_from_pack(
@@ -252,7 +299,7 @@ pub fn select_field_pack(
         return None;
     }
 
-    let signals = field_signal_tokens(goal, need);
+    let signals = field_selection_tokens(need);
     let mut best: Option<(f32, Vec<String>, &FieldPack)> = None;
     for pack in packs {
         let haystack = pack_tokens(pack);
@@ -278,14 +325,28 @@ pub fn select_field_pack(
         }
     }
 
-    best.map(|(score, matched, pack)| {
-        selection_from_pack(
-            pack,
-            score,
-            format!("metadata overlap: {}", matched.join(",")),
-            matched,
-        )
-    })
+    best.filter(|(score, _, _)| *score >= MIN_FIELD_SELECTION_SCORE)
+        .map(|(score, matched, pack)| {
+            selection_from_pack(
+                pack,
+                score,
+                format!("metadata overlap: {}", matched.join(",")),
+                matched,
+            )
+        })
+}
+
+const MIN_FIELD_SELECTION_SCORE: f32 = 2.0;
+
+fn field_pack_selectable_need(need: &Need) -> bool {
+    matches!(
+        need.kind,
+        NeedKind::Observe
+            | NeedKind::Verify
+            | NeedKind::Reproduce
+            | NeedKind::Compare
+            | NeedKind::Execute
+    )
 }
 
 fn is_harness_meta_need(need: &Need) -> bool {
@@ -357,33 +418,31 @@ fn explicit_field_signal(goal: Option<&Goal>, need: &Need) -> Option<String> {
         .filter(|field| !field.is_empty())
 }
 
-fn field_signal_tokens(goal: Option<&Goal>, need: &Need) -> BTreeSet<String> {
+fn field_signal_tokens(need: &Need) -> BTreeSet<String> {
     let mut text = format!("{:?} {}", need.kind, need.query);
-    for value in need.context.values() {
+    for (key, value) in &need.context {
+        if FIELD_SELECTION_CONTEXT_SKIP_KEYS.contains(&key.as_str()) {
+            continue;
+        }
         text.push(' ');
         text.push_str(value);
     }
-    if let Some(goal) = goal {
-        text.push(' ');
-        text.push_str(&goal.objective);
-        for value in &goal.constraints {
-            text.push(' ');
-            text.push_str(value);
-        }
-        for value in goal.signals.values() {
-            text.push(' ');
-            text.push_str(value);
-        }
-    }
     tokens(&text)
+}
+
+fn field_selection_tokens(need: &Need) -> BTreeSet<String> {
+    field_signal_tokens(need)
+        .into_iter()
+        .filter(|token| !FIELD_SELECTION_STOPWORDS.contains(&token.as_str()))
+        .collect()
 }
 
 fn pack_tokens(pack: &FieldPack) -> BTreeSet<String> {
     let mut text = format!("{} {}", pack.id, pack.description);
     for value in pack
-        .task_schema
-        .inputs
+        .aliases
         .iter()
+        .chain(pack.task_schema.inputs.iter())
         .chain(pack.task_schema.outputs.iter())
         .chain(pack.task_schema.constraints.iter())
         .chain(pack.capability_hints.iter())
@@ -438,6 +497,39 @@ const TOKEN_STOPWORDS: &[&str] = &[
     "this", "to", "with",
 ];
 
+const FIELD_SELECTION_STOPWORDS: &[&str] = &[
+    "action",
+    "actions",
+    "artifact",
+    "check",
+    "checked",
+    "compact",
+    "constraint",
+    "constraints",
+    "context",
+    "evidence",
+    "execute",
+    "expected",
+    "feed",
+    "goal",
+    "input",
+    "inputs",
+    "need",
+    "observe",
+    "output",
+    "outputs",
+    "present",
+    "result",
+    "results",
+    "summary",
+    "task",
+    "tasks",
+    "verify",
+    "verifier",
+];
+
+const FIELD_SELECTION_CONTEXT_SKIP_KEYS: &[&str] = &["field", "field_pack", "goal"];
+
 fn selection_from_pack(
     pack: &FieldPack,
     score: f32,
@@ -457,7 +549,7 @@ fn selection_from_pack(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Need, NeedKind};
+    use crate::{Goal, Need, NeedKind};
 
     #[test]
     fn embedded_catalog_contains_initial_fields() {
@@ -481,6 +573,39 @@ mod tests {
                 "robotics"
             ]
         );
+        let research = catalog
+            .packs
+            .iter()
+            .find(|pack| pack.id == "research")
+            .unwrap();
+        assert!(research.aliases.contains(&"reserach".to_string()));
+        let ib = catalog.packs.iter().find(|pack| pack.id == "ib").unwrap();
+        assert!(ib.aliases.contains(&"work in ib".to_string()));
+    }
+
+    #[test]
+    fn default_field_helpers_use_pack_data() {
+        assert_eq!(
+            default_field_pack_ids(),
+            vec![
+                "math".to_string(),
+                "search".to_string(),
+                "code".to_string(),
+                "swe".to_string(),
+                "research".to_string(),
+                "computer-use".to_string(),
+                "ib".to_string(),
+                "robotics".to_string(),
+            ]
+        );
+        let aliases = default_field_pack_aliases();
+        let research = aliases
+            .iter()
+            .find(|(field, _)| field == "research")
+            .unwrap();
+        assert!(research.1.contains(&"reserach".to_string()));
+        let ib = aliases.iter().find(|(field, _)| field == "ib").unwrap();
+        assert!(ib.1.contains(&"work in ib".to_string()));
     }
 
     #[test]
@@ -494,6 +619,33 @@ mod tests {
 
         assert_eq!(selection.field, "robotics");
         assert_eq!(selection.score, 100.0);
+    }
+
+    #[test]
+    fn selection_uses_explicit_goal_field_signal() {
+        let catalog = embedded_field_pack_catalog().unwrap();
+        let mut goal = Goal::new("run the next field task");
+        goal.signals
+            .insert("field_pack".to_string(), "math".to_string());
+        let need = Need::new(NeedKind::Verify, "check the result");
+
+        let selection = select_field_pack(&catalog.packs, Some(&goal), &need).unwrap();
+
+        assert_eq!(selection.field, "math");
+        assert_eq!(selection.score, 100.0);
+    }
+
+    #[test]
+    fn selection_ignores_broad_goal_field_list() {
+        let catalog = embedded_field_pack_catalog().unwrap();
+        let goal = Goal::new(
+            "adapt math, search, code, swe, research, computer-use, ib, and robotics in parallel",
+        );
+        let need = goal.need(NeedKind::Verify, "check the next mini task");
+
+        let selection = select_field_pack(&catalog.packs, Some(&goal), &need);
+
+        assert!(selection.is_none());
     }
 
     #[test]
@@ -511,6 +663,41 @@ mod tests {
     }
 
     #[test]
+    fn selection_ignores_generic_agent_words() {
+        let catalog = embedded_field_pack_catalog().unwrap();
+        let need = Need::new(
+            NeedKind::Verify,
+            "check task feed result verifier evidence and compact summary",
+        );
+
+        let selection = select_field_pack(&catalog.packs, None, &need);
+
+        assert!(selection.is_none());
+    }
+
+    #[test]
+    fn selection_ignores_single_weak_tool_word() {
+        let catalog = embedded_field_pack_catalog().unwrap();
+        let need = Need::new(NeedKind::Observe, "read README.md");
+
+        let selection = select_field_pack(&catalog.packs, None, &need);
+
+        assert!(selection.is_none());
+    }
+
+    #[test]
+    fn selection_accepts_single_explicit_field_name() {
+        let catalog = embedded_field_pack_catalog().unwrap();
+        let need = Need::new(NeedKind::Verify, "search");
+
+        let selection = select_field_pack(&catalog.packs, None, &need).unwrap();
+
+        assert_eq!(selection.field, "search");
+        assert_eq!(selection.signals, vec!["search".to_string()]);
+        assert_eq!(selection.score, 2.0);
+    }
+
+    #[test]
     fn selection_ignores_harness_evolution_commands() {
         let catalog = embedded_field_pack_catalog().unwrap();
         let need = Need::new(NeedKind::Execute, "evolve recommend field-mini-task");
@@ -518,6 +705,23 @@ mod tests {
         let selection = select_field_pack(&catalog.packs, None, &need);
 
         assert!(selection.is_none());
+    }
+
+    #[test]
+    fn selection_ignores_memory_needs_even_with_field_words() {
+        let catalog = embedded_field_pack_catalog().unwrap();
+        for kind in [NeedKind::Remember, NeedKind::Recall, NeedKind::Forget] {
+            let mut need = Need::new(
+                kind,
+                "math search code swe research computer-use ib robotics feed",
+            );
+            need.context
+                .insert("field_pack".to_string(), "robotics".to_string());
+
+            let selection = select_field_pack(&catalog.packs, None, &need);
+
+            assert!(selection.is_none());
+        }
     }
 
     #[test]

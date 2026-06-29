@@ -2,6 +2,7 @@
   "id": "code",
   "version": "0.1.x",
   "description": "Local code reading, small edits, tests, and patch summaries.",
+  "aliases": ["code", "coding", "local code", "patch", "repo edit"],
   "task_schema": {
     "inputs": ["repo path", "goal", "constraints"],
     "outputs": ["patch", "test result", "feed summary"],

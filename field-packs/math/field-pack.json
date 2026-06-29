@@ -2,6 +2,7 @@
   "id": "math",
   "version": "0.1.x",
   "description": "Proof, calculation, symbolic reasoning, and numeric verification tasks.",
+  "aliases": ["math", "mathematical", "calculation", "numeric", "symbolic"],
   "task_schema": {
     "inputs": ["problem", "known facts", "required rigor"],
     "outputs": ["answer", "derivation", "verification"],

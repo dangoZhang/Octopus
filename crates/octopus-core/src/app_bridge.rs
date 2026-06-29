@@ -191,18 +191,19 @@ fn local_app_run_report(
         && pages_ready
         && web_demo.status == "pass"
         && api_policy.status == "pass";
-    let mut next = vec![
-        format!(
-            "octopus --state {} preflight",
-            shell_arg(&startup.state_path)
-        ),
-        format!("octopus start {addr}"),
-    ];
-    if !ready {
-        next.push("octopus bootstrap".to_string());
-    }
-    next.sort();
-    next.dedup();
+    let state_arg = shell_arg(&startup.state_path);
+    let next = if ready {
+        vec![
+            format!("octopus --state {state_arg} first-run \"make this repo easier to use\""),
+            format!("octopus --state {state_arg} start --open {addr}"),
+            format!("octopus --state {state_arg} preflight"),
+        ]
+    } else {
+        vec![
+            format!("octopus --state {state_arg} bootstrap"),
+            format!("octopus --state {state_arg} start --check {addr}"),
+        ]
+    };
     Ok(LocalAppRunReport {
         version: env!("CARGO_PKG_VERSION").to_string(),
         state_path: startup.state_path,
@@ -243,6 +244,8 @@ fn web_demo_preflight_check() -> PreflightCheck {
         "clean brain only returns a Need",
         "browserTentaclePlan",
         "chatCompletionsEndpoint",
+        "modelRequestTimeoutMs",
+        "AbortError",
         "renderOctopusAnimation",
     ];
     let missing = markers
@@ -324,15 +327,6 @@ pub(crate) fn goal_surface_preflight_check(state_path: &Path) -> PreflightCheck 
             "--state".to_string(),
             state.clone(),
             "--json".to_string(),
-            "brain".to_string(),
-            "--goal".to_string(),
-            "--save".to_string(),
-            "tighten the objective".to_string(),
-        ],
-        vec![
-            "--state".to_string(),
-            state.clone(),
-            "--json".to_string(),
             "first-run".to_string(),
             "make this repo easier".to_string(),
         ],
@@ -345,6 +339,43 @@ pub(crate) fn goal_surface_preflight_check(state_path: &Path) -> PreflightCheck 
             "need".to_string(),
             "observe".to_string(),
             ".".to_string(),
+        ],
+        vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "needs".to_string(),
+            "run".to_string(),
+            "latest".to_string(),
+        ],
+        vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "feedback".to_string(),
+            "latest".to_string(),
+            "partial".to_string(),
+            "needs sharper evidence".to_string(),
+        ],
+        vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "fields".to_string(),
+            "score".to_string(),
+            "latest".to_string(),
+            "satisfied".to_string(),
+            "verifier_pass".to_string(),
+            "field verifier passed".to_string(),
+        ],
+        vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--goal".to_string(),
+            "--save".to_string(),
+            "tighten the objective".to_string(),
         ],
         vec![
             "--state".to_string(),
@@ -364,11 +395,46 @@ pub(crate) fn goal_surface_preflight_check(state_path: &Path) -> PreflightCheck 
         ],
         vec![
             "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "provider".to_string(),
+            "matrix".to_string(),
+            "run".to_string(),
+        ],
+        vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "oauth".to_string(),
+            "codex".to_string(),
+            "repo".to_string(),
+        ],
+        vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "install".to_string(),
+            "swe-agent".to_string(),
+        ],
+        vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "check".to_string(),
+            "swe-agent".to_string(),
+        ],
+        vec![
+            "--state".to_string(),
             state,
             "--json".to_string(),
             "preflight".to_string(),
             "record".to_string(),
             "append".to_string(),
+        ],
+        vec![
+            "--json".to_string(),
+            "update".to_string(),
+            "--run".to_string(),
         ],
     ];
     let allowed_count = allowed_cases
@@ -385,7 +451,7 @@ pub(crate) fn goal_surface_preflight_check(state_path: &Path) -> PreflightCheck 
         && denied
             .suggested_args
             .iter()
-            .any(|args| args.iter().any(|arg| arg == "--goal"));
+            .any(|args| args.iter().any(|arg| arg == "chat" || arg == "goal"));
     preflight_check(
         "bridge_goal_surface",
         allowed_count == allowed_cases.len() && denied_count == denied_cases.len() && policy_ok,
@@ -853,7 +919,7 @@ pub(crate) fn denied_response(args: &[String]) -> RunResponse {
     let command = command_name(args).unwrap_or("unknown");
     let state = state_arg(args).unwrap_or_else(|| ".octopus/state.json".to_string());
     let message = format!(
-        "local app input is limited to brain-goal. `{command}` is internal, developer-only, or observation-only from this surface. Use chat, goal set/refine, brain --goal, or first-run."
+        "local app input is limited to brain-goal. `{command}` is internal, developer-only, or observation-only from this surface. Use chat, goal set/refine, or first-run."
     );
     RunResponse {
         ok: false,
@@ -881,10 +947,8 @@ pub(crate) fn denied_response(args: &[String]) -> RunResponse {
                 "--state".to_string(),
                 state,
                 "--json".to_string(),
-                "brain".to_string(),
-                "--goal".to_string(),
-                "--save".to_string(),
-                "tighten the current objective".to_string(),
+                "first-run".to_string(),
+                "make this repo easier to use".to_string(),
             ],
         ],
     }
@@ -956,12 +1020,6 @@ pub(crate) fn command_allowed(args: &[String]) -> bool {
     if command == "first-run" {
         return first_run_allowed(args);
     }
-    if command == "update" {
-        return update_allowed(args);
-    }
-    if command == "brain" {
-        return brain_goal_allowed(args);
-    }
     if command == "goal" {
         return goal_allowed(args);
     }
@@ -1007,34 +1065,6 @@ fn goal_allowed(args: &[String]) -> bool {
     )
 }
 
-fn brain_goal_allowed(args: &[String]) -> bool {
-    let Some(index) = command_index(args) else {
-        return false;
-    };
-    let rest = &args[index + 1..];
-    let mut has_goal = false;
-    let mut position = 0;
-    while position < rest.len() {
-        match rest[position].as_str() {
-            "--goal" => has_goal = true,
-            "--live" | "--save" | "--session" => {}
-            "--apply" | "--apply-json" | "--llm-prefix" | "--provider-prefix" => {
-                position += 1;
-                if position >= rest.len() {
-                    return false;
-                }
-            }
-            "--intent" | "--brief" | "--clarify" | "--agenda" | "--scout" | "--deliberate"
-            | "--synthesize" | "--council" | "--reflect" | "--align" | "--memory" | "--focus"
-            | "--rewrite" | "--models" => return false,
-            value if value.starts_with('-') => return false,
-            _ => {}
-        }
-        position += 1;
-    }
-    has_goal
-}
-
 fn first_run_allowed(args: &[String]) -> bool {
     let Some(index) = command_index(args) else {
         return false;
@@ -1042,17 +1072,6 @@ fn first_run_allowed(args: &[String]) -> bool {
     args[index + 1..]
         .iter()
         .all(|arg| !arg.starts_with('-') || arg == "--live")
-}
-
-fn update_allowed(args: &[String]) -> bool {
-    let Some(index) = command_index(args) else {
-        return false;
-    };
-    args.len() == index + 1
-        || (args.len() == index + 2
-            && args
-                .get(index + 1)
-                .is_some_and(|value| value == "--dry-run"))
 }
 
 fn pet_observe_allowed(args: &[String]) -> bool {

@@ -255,8 +255,8 @@
             <article class="step">
               <h3>1. Install and launch</h3>
               <pre><code>cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
-octopus start --open</code></pre>
-              <p>The launcher prepares state, editable seed tentacles, the registry, three beats, the app, and the pixel pet.</p>
+octopus start --check</code></pre>
+              <p>The check prepares state, editable seed tentacles, the registry, three beats, and app evidence, then returns to the shell.</p>
             </article>
             <article class="step">
               <h3>2. Give it a Goal</h3>
@@ -266,8 +266,7 @@ octopus start --open</code></pre>
             <article class="step">
               <h3>3. Keep steering by Goal</h3>
               <pre><code>octopus chat "make setup clearer"
-octopus goal refine "prefer small reviewable changes"
-octopus brain --goal --save "tighten the objective"</code></pre>
+octopus goal refine "prefer small reviewable changes"</code></pre>
               <p>User input stays on Goal. Tool choice, repair, provider routing, and harness changes stay agent-internal or observable.</p>
             </article>
             <article class="step">
@@ -275,8 +274,9 @@ octopus brain --goal --save "tighten the objective"</code></pre>
               <pre><code>octopus doctor
 octopus report
 octopus preflight
-octopus pet</code></pre>
-              <p>Doctor shows readiness. Report shows capability and gaps. Preflight shows blockers. The pixel Octopus changes color from state.</p>
+octopus pet desktop
+octopus start --open</code></pre>
+              <p>Doctor shows readiness. Report shows capability and gaps. Preflight shows blockers. The native pet and app show state after the first loop exists.</p>
             </article>
           </div>
         </div>
@@ -299,19 +299,17 @@ octopus pet</code></pre>
         <div class="shell">
           <h2>Add a model when ready</h2>
           <p>Octopus can use Codex login, direct API keys, local OpenAI-compatible servers, or a gateway such as LiteLLM. Provider setup is runtime plumbing, so Need text stays clean.</p>
-          <pre><code>octopus provider save codex
-source .octopus/llm.env
-octopus provider check
+          <pre><code>codex login
+export OCTOPUS_LLM_BACKEND=codex
+export OCTOPUS_LLM_CODEX_COMMAND=codex
+octopus provider status
 octopus first-run --live "make this repo easier to use"</code></pre>
-          <pre><code>octopus provider save openai
-source .octopus/llm.env
-export OPENAI_API_KEY=...
+          <pre><code>export OCTOPUS_LLM_BACKEND=openai-compatible
+export OCTOPUS_LLM_MODEL=gpt-4.1-mini
+export OCTOPUS_LLM_BASE_URL=https://api.openai.com/v1
+export OCTOPUS_LLM_API_KEY=&lt;api-key&gt;
 octopus provider check</code></pre>
-          <p><code>octopus provider status</code> shows a coverage matrix for Goal chat, clean brain, tentacle planning, and harness evolution before the detailed model slots. Codex OAuth and local models can be ready without an API key; <code>provider check</code> and <code>preflight --live</code> provide live proof.</p>
-          <pre><code>octopus provider matrix
-OCTOPUS_LOCAL_OK=1 octopus provider matrix run
-octopus provider matrix check</code></pre>
-          <p>The matrix prepares missing provider env files, runs explicitly enabled targets, and audits a reviewable record for Codex OAuth, API-key cloud, local model, and gateway providers.</p>
+          <p><code>octopus provider status</code> shows Goal chat, clean brain, tentacle planning, and harness evolution readiness. Codex OAuth and local models can be ready without an API key; <code>provider check</code> and <code>preflight --live</code> provide live proof.</p>
         </div>
       </section>
 
@@ -319,11 +317,10 @@ octopus provider matrix check</code></pre>
         <div class="shell">
           <h2>When it learns</h2>
           <p>Feed traces, check history, and repair outcomes can become harness recommendations. High-risk changes stay reviewable under <code>.octopus/</code> before any apply path.</p>
-          <pre><code>octopus install swe-agent
-octopus need observe README.md
-octopus feedback latest partial "feed needs sharper file evidence"
+          <pre><code>octopus first-run "make this repo easier to use"
+octopus chat "tighten setup from the latest Feed"
 octopus beat 200
-octopus repair .</code></pre>
+octopus report</code></pre>
         </div>
       </section>
     </main>

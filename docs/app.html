@@ -601,6 +601,7 @@
       };
       let lastStatus = null;
       let artifactAnimation = 0;
+      const modelRequestTimeoutMs = 45000;
       const petMap = [
         "....BBBB....",
         "...BBBBBB...",
@@ -784,18 +785,33 @@
         return JSON.parse(result.stdout || "{}");
       }
 
+      function goalStatus(goal) {
+        return String((goal || {}).status || "").toLowerCase();
+      }
+
+      function queuedNeedContext(queued) {
+        const context = (queued || {}).context || {};
+        const parts = [];
+        if (context.field_pack) parts.push(`field=${context.field_pack}`);
+        if (context.field_mini_task) parts.push(`task=${context.field_mini_task}`);
+        return parts.join(" · ");
+      }
+
       function applyStatus(report) {
         const event = report.last_pet_event || {};
         const goal = report.goal || {};
-        const petState = event.state || (goal.status === "Blocked" ? "blocked" : "heartbeat");
+        const queued = report.latest_need_queue_item;
+        const hasPendingNeed = Boolean(queued && queued.need);
+        const queuedContext = queuedNeedContext(queued);
+        const queuedText = queued && queued.need ? [queued.need.query, queuedContext].filter(Boolean).join(" · ") : "";
+        const petState = goalStatus(goal) === "blocked" ? "blocked" : (hasPendingNeed ? "need" : (event.state || "heartbeat"));
         drawPet(petState);
-        setBlock("petText", petState, event.summary || event.source || "Connected.");
+        setBlock("petText", petState, hasPendingNeed ? (queuedText || "Pending Need") : (event.summary || event.source || "Connected."));
         if (goal.objective) $("goal").value = goal.objective;
 
-        const queued = report.latest_need_queue_item;
         const trace = report.latest_feed_trace;
         if (queued && queued.need) {
-          setBlock("needCard", queued.need.kind || "Need", queued.need.query || queued.status || "Pending Need");
+          setBlock("needCard", queued.need.kind || "Need", queuedText || queued.status || "Pending Need");
         } else if (trace) {
           setBlock("needCard", trace.need_kind || "Need", trace.need_query || "Need supplied by latest Feed");
         } else {
@@ -853,15 +869,23 @@
         let lastError = "";
         for (const payload of attempts) {
           let response;
+          const controller = new AbortController();
+          const timeout = window.setTimeout(() => controller.abort(), modelRequestTimeoutMs);
           try {
             response = await fetch(config.endpoint, {
               method: "POST",
               headers,
-              body: JSON.stringify(payload)
+              body: JSON.stringify(payload),
+              signal: controller.signal
             });
           } catch (error) {
-            lastError = `Browser request failed for ${config.endpoint}: ${error.message || error}`;
+            const timedOut = error && error.name === "AbortError";
+            lastError = timedOut
+              ? `Browser request timed out after ${Math.round(modelRequestTimeoutMs / 1000)}s for ${config.endpoint}.`
+              : `Browser request failed for ${config.endpoint}: ${error.message || error}`;
             continue;
+          } finally {
+            window.clearTimeout(timeout);
           }
           const body = await response.text();
           if (!response.ok) {
@@ -1067,8 +1091,47 @@
       }
 
       function statusText(report) {
+        const pool = report.field_pool;
+        if (pool && Array.isArray(pool.slots)) {
+          const active = pool.active_slot_field || "none";
+          const policy = pool.worker_slots || pool.policy || "workers are execution slots";
+          const fieldSlots = pool.field_slot_count || pool.field_count || pool.slots.length;
+          const workerSlots = pool.latest_worker_slot_count || 0;
+          const reason = pool.active_slot_reason ? ` Reason=${pool.active_slot_reason}.` : "";
+          const recent = recentFieldPoolActivity(pool);
+          const runDetail = parallelRunStatusText(report.latest_parallel_evolution_run, workerSlots);
+          return `Field pool: ${fieldSlots} peer slots, worker slots=${workerSlots}, ${pool.completed_fields || 0} complete, active=${active}.${reason} ${policy}.${runDetail}${recent}`;
+        }
         const hasFeed = Number(report.feed_trace_count || 0) > 0;
         return hasFeed ? "Ready. Latest Feed is visible." : "Ready. Give Octopus a goal.";
+      }
+
+      function parallelRunStatusText(run, activeWorkerSlots) {
+        if (!run) return "";
+        const requested = Number(run.requested_worker_count || run.worker_count || activeWorkerSlots || 0);
+        const active = Number(run.worker_count || activeWorkerSlots || 0);
+        const candidates = Array.isArray(run.candidate_fields) ? run.candidate_fields.filter(Boolean) : [];
+        if (!requested && candidates.length === 0) return "";
+        const candidateText = candidates.length ? candidates.join(", ") : "all peer fields";
+        return ` Run requested=${requested}, active=${active}, candidates=${candidateText}.`;
+      }
+
+      function recentFieldPoolActivity(pool) {
+        const slots = Array.isArray(pool.slots) ? pool.slots : [];
+        const latest = slots
+          .map((slot) => ({
+            worker: slot.latest_worker_id || "",
+            field: slot.field || "field",
+            task: slot.latest_mini_task || slot.next_mini_task || "done",
+            status: slot.latest_worker_status || slot.latest_status || "unknown",
+            updatedAt: Number(slot.latest_updated_at_secs || 0),
+          }))
+          .filter((slot) => slot.updatedAt > 0)
+          .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+        if (!latest) return "";
+        const age = Math.max(0, Math.floor(Date.now() / 1000 - latest.updatedAt));
+        const worker = latest.worker ? `${latest.worker} ` : "";
+        return ` Last activity=${worker}${latest.field}/${latest.task} ${latest.status} ${age}s ago.`;
       }
 
       async function refresh(options = {}) {

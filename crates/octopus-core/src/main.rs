@@ -1,29 +1,33 @@
-use octopus_core::{default_field_pack_catalog, field_pack_report, select_field_pack};
+use octopus_core::{
+    default_field_pack_catalog, default_field_pack_ids, field_harder_layer_next_action,
+    field_pack_report, select_field_pack,
+};
 use octopus_core::{
     default_permissions, default_tentacle_profiles, embedded_profile_registry_json,
     feed_tentacle_with_llm_factory, inspect_tentacle_manifests, load_tentacle_manifests,
-    plan_tentacle_evolution_apply, propose_tentacle_evolution_with_client,
-    propose_tentacle_evolution_with_state, recommend_tentacle_evolution_apply, scaffold_tentacle,
-    think_tentacle_with_llm_factory, write_harness_beat_evolution_artifacts,
-    write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts, AdaptReport,
-    BrainDeliberationDraft, BrainDeliberationReport, BrainDeliberationSaveReport,
-    BrainExploreDraft, BrainExploreReport, BrainGoalReport, BrainGoalSaveReport, BrainPromptReport,
-    BrainReflectionDraft, BrainReflectionReport, BrainReflectionSaveReport, BrainSynthesisDraft,
-    BrainSynthesisInput, BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant,
-    ChatClient, ChatClientFactory, ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord,
-    CodexCliChatClient, CodexCliConfig, ContextReport, EnvironmentReport, EvolutionApplyArtifact,
-    EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed,
-    FeedFeedbackOutcome, FeedTraceRecord, Feedback, FieldPackReport, FieldPackSelection,
-    FieldTrajectoryReport, FieldVerifierResult, Goal, GoalChat, GoalNeedSuggestion, GoalRefinement,
-    Harness, HarnessBeatEvolution, HarnessLearningSummary, HarnessState, HeartBeat,
-    HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem,
-    NeedQueueReport, NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport,
-    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, OpenAiCompatibleTuning,
-    ParallelEvolutionRun, RepairOutcome, RouteReport, SelfIterationPlan, StarterFeedbackInput,
-    StarterFeedbackRecord, StarterFeedbackStatus, Status, StatusReport, TentacleEvolutionProposal,
-    TentacleManifestReport, TentacleProfile, TentacleScaffold, TentacleThinkingPlan,
-    TentacleToolAction, TentacleToolCandidate, ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY,
-    TENTACLE_CONTEXT_POLICY,
+    parallel_field_pool_policy, parallel_worker_policy, plan_tentacle_evolution_apply,
+    propose_tentacle_evolution_with_client, propose_tentacle_evolution_with_state,
+    recommend_tentacle_evolution_apply, scaffold_tentacle, think_tentacle_with_llm_factory,
+    write_harness_beat_evolution_artifacts, write_tentacle_apply_artifacts,
+    write_tentacle_evolution_artifacts, AdaptReport, BrainDeliberationDraft,
+    BrainDeliberationReport, BrainDeliberationSaveReport, BrainExploreDraft, BrainExploreReport,
+    BrainGoalReport, BrainGoalSaveReport, BrainPromptReport, BrainReflectionDraft,
+    BrainReflectionReport, BrainReflectionSaveReport, BrainSynthesisDraft, BrainSynthesisInput,
+    BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant, ChatClient, ChatClientFactory,
+    ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord, CodexCliChatClient,
+    CodexCliConfig, ContextReport, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan,
+    EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed, FeedFeedbackOutcome,
+    FeedTraceRecord, Feedback, FieldPackReport, FieldPackSelection, FieldPoolStatusReport,
+    FieldTrajectoryReport, FieldTrajectorySummary, FieldVerifierResult, Goal, GoalChat,
+    GoalNeedSuggestion, GoalRefinement, Harness, HarnessBeatEvolution, HarnessLearningSummary,
+    HarnessState, HeartBeat, HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need,
+    NeedKind, NeedQueueItem, NeedQueueReport, NeedQueueSaveReport, NeedQueueStatus,
+    NeedQueueTakeReport, OpenAiCompatibleChatClient, OpenAiCompatibleConfig,
+    OpenAiCompatibleTuning, ParallelEvolutionRun, PetEvent, RepairOutcome, RouteReport,
+    SelfIterationPlan, StarterFeedbackInput, StarterFeedbackRecord, StarterFeedbackStatus, Status,
+    StatusReport, TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile,
+    TentacleScaffold, TentacleThinkingPlan, TentacleToolAction, TentacleToolCandidate,
+    ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -52,19 +56,34 @@ use app_bridge::{
     prepare_state as prepare_bridge_state, run_command as run_bridge_command,
     start_check_requested, static_asset as bridge_static_asset, static_page as bridge_static,
 };
-use desktop_pet::{launch_desktop_pet, DesktopPetConfig, DesktopPetReport};
+use desktop_pet::{
+    desktop_pet_source_check, launch_desktop_pet, DesktopPetConfig, DesktopPetReport,
+};
 use download::{download_artifacts_preflight_check, download_report, DownloadReport};
 #[cfg(test)]
 use pet::percent_encode_path;
 use pet::{default_pet_image_path, write_pet_image_report, PetImageReport, PetReport};
 use profile_registry::{profile_registry_report, ProfileRegistryReport};
 use release_gate::{
-    benchmark_record_evidence, check_benchmark_record, preflight_check, preflight_record_commands,
+    benchmark_record_evidence, check_benchmark_record, field_mini_task_template_evidence,
+    field_mini_task_template_result_ready, preflight_check, preflight_record_commands,
     preflight_script_commands, preflight_status_check, real_machine_record_status_from_parts,
     record_field_value, record_pass_decision_ready, write_benchmark_record,
     BenchmarkRecordCheckReport, BenchmarkRecordReport, PreflightCheck, RealMachineRecordStatus,
 };
 use shell_words::{shell_arg, shell_command};
+
+const MAX_WORKER_COUNT: usize = 8;
+const REQUIRED_PEER_FIELD_IDS: &[&str] = &[
+    "math",
+    "search",
+    "code",
+    "swe",
+    "research",
+    "computer-use",
+    "ib",
+    "robotics",
+];
 
 #[derive(serde::Serialize)]
 struct DoctorReport {
@@ -1153,9 +1172,13 @@ struct ProductContextPolicy {
 struct ProductFieldPoolReport {
     policy: String,
     field_count: usize,
+    field_slot_count: usize,
+    latest_worker_slot_count: usize,
+    latest_activity: String,
     fields: Vec<String>,
     completed_fields: usize,
-    sampled_slot_field: Option<String>,
+    active_slot_field: Option<String>,
+    active_slot_reason: String,
     worker_slots: String,
     next: String,
 }
@@ -2797,7 +2820,11 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     let values = rest.get(2..).unwrap_or(&[]);
                     match parse_need_run_request(values)? {
                         NeedRunRequest::Single(selector) => {
-                            let (report, next_state) = run_queued_need(loaded, selector)?;
+                            let (report, next_state) = run_queued_need_with_observer_state(
+                                loaded,
+                                selector,
+                                Some(&state),
+                            )?;
                             loaded = next_state;
                             loaded.save(&state).map_err(|error| error.to_string())?;
                             if json {
@@ -2811,7 +2838,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
                             }
                         }
                         NeedRunRequest::Batch(limit) => {
-                            let (report, next_state) = run_queued_needs(loaded, limit)?;
+                            let (report, next_state) =
+                                run_queued_needs_with_observer_state(loaded, limit, Some(&state))?;
                             loaded = next_state;
                             loaded.save(&state).map_err(|error| error.to_string())?;
                             if json {
@@ -3373,9 +3401,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("pet") => {
-            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             if matches!(rest.get(1).map(String::as_str), Some("desktop" | "open")) {
-                let worker_cap = parse_worker_cap(&rest[2..]);
+                let worker_cap = parse_worker_cap(&rest[2..])?;
                 let report = launch_desktop_pet(&state, DesktopPetConfig { worker_cap })?;
                 if json {
                     println!(
@@ -3387,6 +3414,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 }
                 return Ok(());
             }
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             if rest.get(1).map(String::as_str) == Some("image") {
                 let pet_state = rest.get(2).map(String::as_str).unwrap_or("auto");
                 let report = pet_report_for_state(&loaded, &state, pet_state)?;
@@ -3528,7 +3556,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .filter(|values| !values.is_empty())
                 .map(|values| values.join(" "));
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            let plan = loaded.self_iteration_plan(repository.as_str(), objective.as_deref());
+            let plan = self_iteration_plan_for_state(
+                loaded.self_iteration_plan(repository.as_str(), objective.as_deref()),
+                &state,
+            );
             if json {
                 println!(
                     "{}",
@@ -3541,7 +3572,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         Some("evolve") => {
             if matches!(rest.get(1).map(String::as_str), Some("parallel" | "swarm")) {
-                let (open_pet, worker_limit, objective) = parse_parallel_evolution_args(&rest[2..]);
+                let (open_pet, worker_limit, objective) =
+                    parse_parallel_evolution_args(&rest[2..])?;
                 let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
                 let prepared_field_tentacle = ensure_field_mini_task_tentacle(&mut loaded)?;
                 let objective = objective
@@ -3566,7 +3598,18 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     .iter()
                     .filter_map(|worker| worker.queued_need_index)
                     .collect::<Vec<_>>();
-                let (auto_feed, next_state) = run_queued_need_indices(loaded, &queued_indices)?;
+                if record_parallel_evolution_action_event(&mut loaded, &run).is_some() {
+                    loaded.save(&state).map_err(|error| error.to_string())?;
+                }
+                let (auto_feed, next_state) = if queued_indices.is_empty() {
+                    (empty_parallel_evolution_batch_report(&loaded), loaded)
+                } else {
+                    run_queued_need_indices_with_observer_state(
+                        loaded,
+                        &queued_indices,
+                        Some(&state),
+                    )?
+                };
                 loaded = next_state;
                 for report in &auto_feed.reports {
                     let status = report
@@ -3585,7 +3628,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     }
                 }
                 loaded.save(&state).map_err(|error| error.to_string())?;
+                let next = parallel_evolution_next_actions(&auto_feed);
                 if json {
+                    let worker_policy = run.worker_policy.clone();
                     println!(
                         "{}",
                         serde_json::to_string_pretty(&serde_json::json!({
@@ -3593,12 +3638,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
                             "auto_feed": auto_feed,
                             "desktop_pet": desktop_pet,
                             "prepared_field_tentacle": prepared_field_tentacle,
-                            "mode": "0.1.x automatic active-field step",
-                            "next": [
-                                "octopus traces 10",
-                                "octopus fields score latest <status> <error-category> <summary>",
-                                "octopus beat 200"
-                            ]
+                            "mode": "0.1.x automatic peer-field worker step",
+                            "worker_policy": worker_policy,
+                            "next": next
                         }))
                         .map_err(|error| error.to_string())?
                     );
@@ -8099,6 +8141,10 @@ fn print_chat(chat: &GoalChat, language: Language) {
             if let Some(needs) = chat.goal.signals.get("suggested_needs") {
                 println!("suggested needs: {needs}");
             }
+            println!("queued: {}", chat.queued.len());
+            for item in &chat.queued {
+                println!("need #{}: {}", item.index, item.need.query);
+            }
         }
         Language::Zh => {
             println!("目标: {}", chat.goal.objective);
@@ -8110,6 +8156,10 @@ fn print_chat(chat: &GoalChat, language: Language) {
             println!("调整: {}", chat.goal.constraints.len());
             if let Some(needs) = chat.goal.signals.get("suggested_needs") {
                 println!("建议需求: {needs}");
+            }
+            println!("已入队: {}", chat.queued.len());
+            for item in &chat.queued {
+                println!("Need #{}: {}", item.index, item.need.query);
             }
         }
     }
@@ -10631,13 +10681,13 @@ fn auto_pet_state(report: &StatusReport) -> String {
     {
         return "success".to_string();
     }
+    if report.need_queue_count > 0 {
+        return "need".to_string();
+    }
     if let Some(event) = &report.last_pet_event {
         if pet::state_known(&event.state) {
             return event.state.clone();
         }
-    }
-    if report.need_queue_count > 0 {
-        return "need".to_string();
     }
     if report.latest_feed_trace.is_some() {
         return "feed".to_string();
@@ -11566,6 +11616,12 @@ fn print_status_report(report: &StatusReport, language: Language) {
             if let Some(trace) = &report.latest_feed_trace {
                 println!("latest_trace: {}", trace_line(trace));
             }
+            if let Some(field_pool) = &report.field_pool {
+                println!("field_pool: {}", field_pool_status_line(field_pool));
+            }
+            if let Some(run) = &report.latest_parallel_evolution_run {
+                println!("parallel_run: {}", parallel_run_status_line(run, language));
+            }
             println!("check_history: {}", report.check_history_count);
             if let Some(record) = &report.latest_check {
                 println!("latest_check: {}", check_history_line(record));
@@ -11606,6 +11662,12 @@ fn print_status_report(report: &StatusReport, language: Language) {
             println!("Feed轨迹数: {}", report.feed_trace_count);
             if let Some(trace) = &report.latest_feed_trace {
                 println!("最近轨迹: {}", trace_line(trace));
+            }
+            if let Some(field_pool) = &report.field_pool {
+                println!("领域池: {}", field_pool_status_line(field_pool));
+            }
+            if let Some(run) = &report.latest_parallel_evolution_run {
+                println!("并行领域运行: {}", parallel_run_status_line(run, language));
             }
             println!("检查历史数: {}", report.check_history_count);
             if let Some(record) = &report.latest_check {
@@ -14303,10 +14365,11 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
     let profile_registry = profile_registry_report(state_path);
     let boundary = core_boundary::report(state_path);
     let field_trajectory = state.field_trajectory_report_with_state(Some(state_path))?;
-    let field_pool = product_field_pool_report(&field_trajectory);
+    let field_pool = product_field_pool_report(&field_trajectory, status.field_pool.as_ref());
     let pet_exists = repo_root().join("docs/pet.html").exists();
     let app_exists = repo_root().join("docs/app.html").exists();
     let docs_exists = repo_root().join("docs/index.html").exists();
+    let swiftc_ready = command_ready("swiftc");
     let broken_manifests = manifests
         .iter()
         .filter(|manifest| !manifest.missing_entrypoints.is_empty())
@@ -14506,19 +14569,15 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         ),
         product_capability(
             "field_parallel_pool",
-            if field_pool.field_count >= 8 {
+            if product_field_pool_ready(&field_pool) {
                 "ready"
             } else {
                 "needs_field_packs"
             },
-            format!(
-                "{} peer slots, {} completed, sampled_slot={}",
-                field_pool.field_count,
-                field_pool.completed_fields,
-                option_or_none(&field_pool.sampled_slot_field)
-            ),
+            product_field_pool_line(&field_pool, Language::En),
             Some("octopus fields summary"),
         ),
+        field_mini_task_harness_product_capability(),
         product_capability(
             "profile_registry",
             if profile_registry.ok {
@@ -14555,6 +14614,22 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
                 .to_string_lossy()
                 .to_string(),
             Some("octopus pet"),
+        ),
+        product_capability(
+            "native_desktop_pet",
+            if cfg!(target_os = "macos") && swiftc_ready {
+                "ready"
+            } else if cfg!(target_os = "macos") {
+                "needs_swiftc"
+            } else {
+                "macos_only"
+            },
+            format!(
+                "observer=read-only, macos={}, swiftc={}, preflight_gate=desktop_pet_source",
+                cfg!(target_os = "macos"),
+                swiftc_ready
+            ),
+            Some("octopus preflight"),
         ),
         product_capability(
             "native_html_app",
@@ -14825,7 +14900,10 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
     })
 }
 
-fn product_field_pool_report(report: &FieldTrajectoryReport) -> ProductFieldPoolReport {
+fn product_field_pool_report(
+    report: &FieldTrajectoryReport,
+    pool: Option<&FieldPoolStatusReport>,
+) -> ProductFieldPoolReport {
     let fields = report
         .fields
         .iter()
@@ -14839,14 +14917,122 @@ fn product_field_pool_report(report: &FieldTrajectoryReport) -> ProductFieldPool
         })
         .count();
     ProductFieldPoolReport {
-        policy: "eight peer field slots; workers are sampled execution slots".to_string(),
+        policy: parallel_field_pool_policy().to_string(),
         field_count: report.field_count,
+        field_slot_count: report.fields.len(),
+        latest_worker_slot_count: report.latest_worker_slot_count,
+        latest_activity: pool
+            .map(field_pool_latest_activity_line)
+            .unwrap_or_else(|| "none".to_string()),
         fields,
         completed_fields,
-        sampled_slot_field: report.sampled_slot_field.clone(),
-        worker_slots: "worker count selects concurrent sampled slots; fields stay peer".to_string(),
+        active_slot_field: report.active_slot_field.clone(),
+        active_slot_reason: report.active_slot_reason.clone(),
+        worker_slots: parallel_worker_policy().to_string(),
         next: report.next.first().cloned().unwrap_or_default(),
     }
+}
+
+fn product_field_pool_line(report: &ProductFieldPoolReport, language: Language) -> String {
+    let fields = join_or_none(&report.fields);
+    let missing_required = join_or_none(&product_field_pool_missing_required_fields(report));
+    match language {
+        Language::En => format!(
+            "{} peer slots, fields={}, missing_required={}, latest_worker_slots={}, latest_activity={}, {} completed, active_slot={}, reason={}, workers={}",
+            report.field_slot_count,
+            fields,
+            missing_required,
+            report.latest_worker_slot_count,
+            report.latest_activity,
+            report.completed_fields,
+            option_or_none(&report.active_slot_field),
+            report.active_slot_reason,
+            report.worker_slots
+        ),
+        Language::Zh => format!(
+            "{} 个并列领域槽，领域={}，缺失必需领域={}，最新 worker 执行槽数={}，最新活动={}，{} 个完成，当前活动槽={}，原因={}，worker策略={}",
+            report.field_slot_count,
+            fields,
+            missing_required,
+            report.latest_worker_slot_count,
+            report.latest_activity,
+            report.completed_fields,
+            option_or_none(&report.active_slot_field),
+            report.active_slot_reason,
+            report.worker_slots
+        ),
+    }
+}
+
+fn product_field_pool_missing_required_fields(report: &ProductFieldPoolReport) -> Vec<String> {
+    REQUIRED_PEER_FIELD_IDS
+        .iter()
+        .filter(|id| !report.fields.iter().any(|field| field == **id))
+        .map(|id| (*id).to_string())
+        .collect()
+}
+
+fn product_field_pool_ready(report: &ProductFieldPoolReport) -> bool {
+    report.field_slot_count >= REQUIRED_PEER_FIELD_IDS.len()
+        && product_field_pool_missing_required_fields(report).is_empty()
+}
+
+fn field_mini_task_harness_preflight_check() -> PreflightCheck {
+    match check_report("field-mini-task", Some(2)) {
+        Ok(report) => {
+            let result = report.results.first();
+            let template_ready = result.is_some_and(|result| {
+                field_mini_task_template_result_ready(
+                    result.status == Status::Satisfied,
+                    &result.stdout,
+                )
+            });
+            preflight_check(
+                "field_mini_task_harness",
+                report.passed && template_ready,
+                true,
+                field_mini_task_harness_evidence(&report),
+                "octopus check field-mini-task 2",
+            )
+        }
+        Err(error) => preflight_check(
+            "field_mini_task_harness",
+            false,
+            true,
+            error,
+            "octopus check field-mini-task 2",
+        ),
+    }
+}
+
+fn field_mini_task_harness_evidence(report: &CheckReport) -> String {
+    let Some(result) = report.results.first() else {
+        return format!(
+            "source={}, cwd={}, checks=0, template_check=missing",
+            report.source_kind, report.cwd
+        );
+    };
+    format!(
+        "source={}, cwd={}, command={}, {}",
+        report.source_kind,
+        report.cwd,
+        result.command,
+        field_mini_task_template_evidence(result.status == Status::Satisfied, &result.stdout)
+    )
+}
+
+fn field_mini_task_harness_product_capability() -> ProductCapability {
+    let check = field_mini_task_harness_preflight_check();
+    product_capability(
+        "field_mini_task_harness",
+        if check.status == "pass" {
+            "ready"
+        } else {
+            "needs_harness_check"
+        },
+        check.evidence,
+        Some("octopus check field-mini-task 2"),
+    )
 }
 
 fn product_capability(
@@ -14881,6 +15067,10 @@ fn preflight_report(
     live: bool,
 ) -> Result<PreflightReport, String> {
     let product = product_report(state, state_path)?;
+    let field_mini_task_harness = product
+        .capabilities
+        .iter()
+        .find(|capability| capability.id == "field_mini_task_harness");
     let doctor = doctor_report(state, state_path.to_path_buf())?;
     let provider = provider_status_report();
     let provider_matrix = check_provider_matrix_record(Path::new(DEFAULT_PROVIDER_MATRIX_PATH))?;
@@ -14918,6 +15108,7 @@ fn preflight_report(
         .filter(|trace| trace.metadata.contains_key("feedback_status"))
         .count();
     let feedback_ready = scored_feed_traces > 0;
+    let desktop_pet_source = desktop_pet_source_check();
     let mut live_provider = None;
     let mut live_provider_error = None;
     if live {
@@ -15011,16 +15202,19 @@ fn preflight_report(
         ),
         preflight_check(
             "field_parallel_pool",
-            product.field_pool.field_count >= 8,
+            product_field_pool_ready(&product.field_pool),
             true,
-            format!(
-                "{} peer slots, completed={}, sampled_slot={}, workers={}",
-                product.field_pool.field_count,
-                product.field_pool.completed_fields,
-                option_or_none(&product.field_pool.sampled_slot_field),
-                product.field_pool.worker_slots
-            ),
+            product_field_pool_line(&product.field_pool, Language::En),
             "octopus fields summary",
+        ),
+        preflight_check(
+            "field_mini_task_harness",
+            field_mini_task_harness.is_some_and(|capability| capability.status == "ready"),
+            true,
+            field_mini_task_harness
+                .map(|capability| capability.evidence.clone())
+                .unwrap_or_else(|| "missing field-mini-task harness capability".to_string()),
+            "octopus check field-mini-task 2",
         ),
         app_bridge::goal_surface_preflight_check(state_path),
         app_bridge::local_app_run_status_check(state_path, current_head.as_deref()),
@@ -15030,6 +15224,13 @@ fn preflight_report(
             true,
             "README, docs homepage, app, and pixel pet files",
             "octopus start",
+        ),
+        preflight_status_check(
+            "desktop_pet_source",
+            desktop_pet_source.status,
+            cfg!(target_os = "macos"),
+            desktop_pet_source.evidence,
+            desktop_pet_source.next,
         ),
         download_artifacts_preflight_check(),
         preflight_check(
@@ -15309,7 +15510,12 @@ Append the completed result to `docs/real-machine-test.md` after the run.
 - Download artifacts:
 - Core loop:
 - Product bridge:
+
+Field pool result should include the eight named peer fields, `missing_required=none`, latest worker slots, `latest_activity` with `worker=`, and `parallel_run` with `requested_worker_slots=`, `active_worker_slots=`, and `candidate_pool=` containing `math` and `search` from `octopus status` or `octopus report`.
 - Field pool:
+Field mini task harness result should include `checked_count=24`, `executed_count=24`, `missing_count=0`, `invalid_count=0`, and `status=ok` from `octopus check field-mini-task 2`.
+- Field mini task harness:
+- Desktop pet source:
 - Start/app:
 - Live provider:
 - Benchmark evidence:
@@ -15357,6 +15563,8 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
         &["Core loop"],
         &["Product bridge"],
         &["Field pool"],
+        &["Field mini task harness"],
+        &["Desktop pet source"],
         &["Start/app", "Bridge/app"],
         &["Live provider"],
         &["Benchmark evidence"],
@@ -15375,6 +15583,27 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
     let pass_decision = pass_decision_value
         .as_deref()
         .is_some_and(record_pass_decision_ready);
+    let field_pool_value = record_field_value(&content, "Field pool");
+    let field_pool_worker_ready = field_pool_value
+        .as_deref()
+        .is_some_and(|value| value.contains("latest_activity") && value.contains("worker="));
+    let field_pool_named_fields_ready = field_pool_value.as_deref().is_some_and(|value| {
+        value.contains("missing_required=none")
+            && REQUIRED_PEER_FIELD_IDS
+                .iter()
+                .all(|field| value.contains(field))
+    });
+    let field_pool_parallel_run_ready = field_pool_value
+        .as_deref()
+        .is_some_and(field_pool_parallel_run_record_ready);
+    let field_mini_task_value = record_field_value(&content, "Field mini task harness");
+    let field_mini_task_record_ready = field_mini_task_value.as_deref().is_some_and(|value| {
+        value.contains("checked_count=24")
+            && value.contains("executed_count=24")
+            && value.contains("missing_count=0")
+            && value.contains("invalid_count=0")
+            && value.contains("status=ok")
+    });
     let head_ready = current_head
         .as_ref()
         .is_some_and(|head| content.contains(&format!("`{head}`")) || content.contains(head));
@@ -15416,7 +15645,38 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
             } else {
                 format!("missing {}", missing_results.join(", "))
             },
-            "fill Install, Download artifacts, Core loop, Product bridge, Field pool, Start/app, Live provider, Benchmark evidence, and PR dry run results",
+            "fill Install, Download artifacts, Core loop, Product bridge, Field pool, Field mini task harness, Desktop pet source, Start/app, Live provider, Benchmark evidence, and PR dry run results",
+        ),
+        preflight_check(
+            "field_pool_worker_identity",
+            field_pool_worker_ready,
+            true,
+            field_pool_value.unwrap_or_else(|| "missing Field pool result".to_string()),
+            "fill Field pool with latest_activity=... worker=...",
+        ),
+        preflight_check(
+            "field_pool_named_fields",
+            field_pool_named_fields_ready,
+            true,
+            record_field_value(&content, "Field pool")
+                .unwrap_or_else(|| "missing Field pool result".to_string()),
+            "fill Field pool with fields=math,...,robotics missing_required=none",
+        ),
+        preflight_check(
+            "field_pool_parallel_run",
+            field_pool_parallel_run_ready,
+            true,
+            record_field_value(&content, "Field pool")
+                .unwrap_or_else(|| "missing Field pool result".to_string()),
+            "fill Field pool with parallel_run requested_worker_slots=... active_worker_slots=... candidate_pool=math,search",
+        ),
+        preflight_check(
+            "field_mini_task_harness_record",
+            field_mini_task_record_ready,
+            true,
+            field_mini_task_value
+                .unwrap_or_else(|| "missing Field mini task harness result".to_string()),
+            "fill Field mini task harness with checked_count=24 executed_count=24 missing_count=0 invalid_count=0 status=ok",
         ),
         preflight_check(
             "pass_decision",
@@ -15432,17 +15692,21 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
                 && content.contains("download.json")
                 && content.contains("install.sh")
                 && content.contains("bridge_goal_surface")
+                && content.contains("desktop_pet_source")
                 && content.contains("provider matrix")
                 && content.contains("provider matrix run")
                 && content.contains("provider matrix check")
                 && content.contains("fields summary")
+                && content.contains("evolve parallel --workers 2")
+                && content.contains("preflight math and search field adaptation")
+                && content.contains("check field-mini-task 2")
                 && content.contains("benchmark record")
                 && content.contains("benchmark check")
                 && content.contains("preflight --live")
                 && content.contains("start --check")
                 && content.contains("self-iterate pr"),
             true,
-            "record should include first-run, download artifacts, bridge_goal_surface, provider matrix run/check, field pool summary, live provider, benchmark record/check, start --check, and PR dry-run commands",
+            "record should include first-run, download artifacts, bridge_goal_surface, desktop_pet_source, provider matrix run/check, the math/search field evolution run, field pool summary, field-mini-task harness check, live provider, benchmark record/check, start --check, and PR dry-run commands",
             "regenerate with octopus preflight record",
         ),
     ];
@@ -15540,6 +15804,37 @@ fn append_preflight_record(
     })
 }
 
+fn field_pool_parallel_run_record_ready(value: &str) -> bool {
+    value.contains("parallel_run")
+        && value.contains("requested_worker_slots=")
+        && value.contains("active_worker_slots=")
+        && field_pool_record_candidate_contains(value, "math")
+        && field_pool_record_candidate_contains(value, "search")
+}
+
+fn field_pool_record_candidate_contains(value: &str, field: &str) -> bool {
+    value
+        .split("candidate_pool=")
+        .skip(1)
+        .any(|segment| field_pool_candidate_segment_contains(segment, field))
+}
+
+fn field_pool_candidate_segment_contains(segment: &str, field: &str) -> bool {
+    let segment = segment
+        .split(", workers=")
+        .next()
+        .unwrap_or(segment)
+        .split(" workers=")
+        .next()
+        .unwrap_or(segment)
+        .split(" worker_policy=")
+        .next()
+        .unwrap_or(segment);
+    segment.split([',', ' ', '\t', ';', '[', ']']).any(|token| {
+        token.trim_matches(|character: char| character == ':' || character == '"') == field
+    })
+}
+
 fn git_short_head() -> Option<String> {
     git_short_rev("HEAD")
 }
@@ -15595,11 +15890,8 @@ fn print_product_report(report: &ProductReport, language: Language) {
             println!("tentacle: {}", report.context.tentacle);
             println!("loop: {}", report.context.feedback_loop);
             println!(
-                "field_pool: {} slots, {} completed, sampled_slot={}, workers={}",
-                report.field_pool.field_count,
-                report.field_pool.completed_fields,
-                option_or_none(&report.field_pool.sampled_slot_field),
-                report.field_pool.worker_slots
+                "field_pool: {}",
+                product_field_pool_line(&report.field_pool, language)
             );
             println!("boundary: {}", report.boundary.policy);
             println!(
@@ -15668,11 +15960,8 @@ fn print_product_report(report: &ProductReport, language: Language) {
             println!("触手上下文: {}", report.context.tentacle);
             println!("循环: {}", report.context.feedback_loop);
             println!(
-                "领域池: {} 个并列槽，{} 个完成，当前采样槽={}，workers={}",
-                report.field_pool.field_count,
-                report.field_pool.completed_fields,
-                option_or_none(&report.field_pool.sampled_slot_field),
-                report.field_pool.worker_slots
+                "领域池: {}",
+                product_field_pool_line(&report.field_pool, language)
             );
             println!("边界: {}", report.boundary.policy);
             println!(
@@ -16817,20 +17106,23 @@ fn print_need_queue_item(item: &NeedQueueItem, language: Language) {
             Language::Zh => "已丢弃",
         },
     };
+    let context = need_queue_context_label(item);
     match language {
         Language::En => println!(
-            "#{} [{}] {} {}",
+            "#{} [{}] {} {}{}",
             item.index,
             status,
             need_label(&item.need.kind),
-            item.need.query
+            item.need.query,
+            context
         ),
         Language::Zh => println!(
-            "#{} [{}] {} {}",
+            "#{} [{}] {} {}{}",
             item.index,
             status,
             need_label(&item.need.kind),
-            item.need.query
+            item.need.query,
+            context
         ),
     }
 }
@@ -17032,7 +17324,8 @@ fn print_field_pack_report(report: &FieldPackReport, language: Language) {
             for pack in &report.packs {
                 println!("- {} {} :: {}", pack.id, pack.version, pack.description);
                 println!(
-                    "  hints={} verifier={} mini_tasks={}",
+                    "  aliases={} hints={} verifier={} mini_tasks={}",
+                    join_or_none(&pack.aliases),
                     join_or_none(&pack.capability_hints),
                     pack.verifier_method,
                     pack.mini_tasks
@@ -17053,7 +17346,8 @@ fn print_field_pack_report(report: &FieldPackReport, language: Language) {
             for pack in &report.packs {
                 println!("- {} {} :: {}", pack.id, pack.version, pack.description);
                 println!(
-                    "  能力={} 验证={} mini_tasks={}",
+                    "  别名={} 能力={} 验证={} mini_tasks={}",
+                    join_or_none(&pack.aliases),
                     join_or_none(&pack.capability_hints),
                     pack.verifier_method,
                     pack.mini_tasks
@@ -17118,7 +17412,9 @@ fn print_field_trajectory_report(report: &FieldTrajectoryReport, language: Langu
     match language {
         Language::En => {
             println!("Field trajectory summary");
+            println!("{}", field_trajectory_policy_line(language));
             println!("fields: {}", report.field_count);
+            println!("{}", field_trajectory_worker_slot_line(report, language));
             println!("traces: {}", report.trace_count);
             println!("verifier_results: {}", report.verifier_result_count);
             println!(
@@ -17138,41 +17434,20 @@ fn print_field_trajectory_report(report: &FieldTrajectoryReport, language: Langu
                 }
             );
             for field in &report.fields {
-                println!(
-                    "- {} status={} tasks={}/{} next_task={} traces={} verifiers={} latest_trace={} latest_verifier={} latest_task={} next={}",
-                    field.field,
-                    field
-                        .latest_verifier_status
-                        .as_ref()
-                        .or(field.latest_trace_status.as_ref())
-                        .map(|status| format!("{status:?}"))
-                        .unwrap_or_else(|| "None".to_string()),
-                    field.satisfied_mini_task_count,
-                    field.mini_task_count,
-                    field.next_mini_task.as_deref().unwrap_or("none"),
-                    field.trace_count,
-                    field.verifier_result_count,
-                    field
-                        .latest_trace_index
-                        .map(|index| format!("#{index}"))
-                        .unwrap_or_else(|| "none".to_string()),
-                    field
-                        .latest_verifier_result_index
-                        .map(|index| format!("#{index}"))
-                        .unwrap_or_else(|| "none".to_string()),
-                    field.latest_mini_task.as_deref().unwrap_or("none"),
-                    field.next_action
-                );
+                println!("{}", render_field_trajectory_summary_line(field, language));
             }
             println!(
-                "sampled_slot_field: {}",
-                option_or_none(&report.sampled_slot_field)
+                "active_slot_field: {}",
+                option_or_none(&report.active_slot_field)
             );
+            println!("active_slot_reason: {}", report.active_slot_reason);
             println!("next: {}", join_or_none(&report.next));
         }
         Language::Zh => {
             println!("领域轨迹汇总");
+            println!("{}", field_trajectory_policy_line(language));
             println!("领域数: {}", report.field_count);
+            println!("{}", field_trajectory_worker_slot_line(report, language));
             println!("轨迹数: {}", report.trace_count);
             println!("验证结果数: {}", report.verifier_result_count);
             println!(
@@ -17192,38 +17467,87 @@ fn print_field_trajectory_report(report: &FieldTrajectoryReport, language: Langu
                 }
             );
             for field in &report.fields {
-                println!(
-                    "- {} 状态={} 任务={}/{} 下一题={} 轨迹={} 验证={} 最新轨迹={} 最新验证={} 最新题={} 下一步={}",
-                    field.field,
-                    field
-                        .latest_verifier_status
-                        .as_ref()
-                        .or(field.latest_trace_status.as_ref())
-                        .map(|status| format!("{status:?}"))
-                        .unwrap_or_else(|| "None".to_string()),
-                    field.satisfied_mini_task_count,
-                    field.mini_task_count,
-                    field.next_mini_task.as_deref().unwrap_or("无"),
-                    field.trace_count,
-                    field.verifier_result_count,
-                    field
-                        .latest_trace_index
-                        .map(|index| format!("#{index}"))
-                        .unwrap_or_else(|| "无".to_string()),
-                    field
-                        .latest_verifier_result_index
-                        .map(|index| format!("#{index}"))
-                        .unwrap_or_else(|| "无".to_string()),
-                    field.latest_mini_task.as_deref().unwrap_or("无"),
-                    field.next_action
-                );
+                println!("{}", render_field_trajectory_summary_line(field, language));
             }
             println!(
-                "当前采样槽领域: {}",
-                option_or_none(&report.sampled_slot_field)
+                "当前活动槽领域: {}",
+                option_or_none(&report.active_slot_field)
             );
+            println!("当前活动槽原因: {}", report.active_slot_reason);
             println!("下一步: {}", join_or_none(&report.next));
         }
+    }
+}
+
+fn field_trajectory_policy_line(language: Language) -> &'static str {
+    match language {
+        Language::En => "pool_policy: eight peer field slots; workers are execution capacity only",
+        Language::Zh => "领域池策略: 8 个并列领域槽；workers 只表示执行容量",
+    }
+}
+
+fn field_trajectory_worker_slot_line(report: &FieldTrajectoryReport, language: Language) -> String {
+    match language {
+        Language::En => format!("latest_worker_slots: {}", report.latest_worker_slot_count),
+        Language::Zh => format!("最新 worker 执行槽数: {}", report.latest_worker_slot_count),
+    }
+}
+
+fn render_field_trajectory_summary_line(
+    field: &FieldTrajectorySummary,
+    language: Language,
+) -> String {
+    let status = field
+        .latest_verifier_status
+        .as_ref()
+        .or(field.latest_trace_status.as_ref())
+        .map(|status| format!("{status:?}"))
+        .unwrap_or_else(|| "None".to_string());
+    let latest_trace = field
+        .latest_trace_index
+        .map(|index| format!("#{index}"))
+        .unwrap_or_else(|| match language {
+            Language::En => "none".to_string(),
+            Language::Zh => "无".to_string(),
+        });
+    let latest_verifier = field
+        .latest_verifier_result_index
+        .map(|index| format!("#{index}"))
+        .unwrap_or_else(|| match language {
+            Language::En => "none".to_string(),
+            Language::Zh => "无".to_string(),
+        });
+    match language {
+        Language::En => format!(
+            "- {} status={} tasks={}/{} next_task={} goal={} traces={} verifiers={} latest_trace={} latest_verifier={} latest_task={} next={}",
+            field.field,
+            status,
+            field.satisfied_mini_task_count,
+            field.mini_task_count,
+            field.next_mini_task.as_deref().unwrap_or("none"),
+            field.next_mini_task_goal.as_deref().unwrap_or("none"),
+            field.trace_count,
+            field.verifier_result_count,
+            latest_trace,
+            latest_verifier,
+            field.latest_mini_task.as_deref().unwrap_or("none"),
+            field.next_action
+        ),
+        Language::Zh => format!(
+            "- {} 状态={} 任务={}/{} 下一题={} 目标={} 轨迹={} 验证={} 最新轨迹={} 最新验证={} 最新题={} 下一步={}",
+            field.field,
+            status,
+            field.satisfied_mini_task_count,
+            field.mini_task_count,
+            field.next_mini_task.as_deref().unwrap_or("无"),
+            field.next_mini_task_goal.as_deref().unwrap_or("无"),
+            field.trace_count,
+            field.verifier_result_count,
+            latest_trace,
+            latest_verifier,
+            field.latest_mini_task.as_deref().unwrap_or("无"),
+            field.next_action
+        ),
     }
 }
 
@@ -17267,13 +17591,19 @@ fn print_parallel_evolution_run(
         Language::En => {
             println!("Octopus automatic field evolution");
             println!("run: #{}", run.index);
-            println!("sampled_slots: {}", run.worker_count);
+            println!("{}", parallel_worker_slot_line(run.worker_count, language));
+            println!(
+                "requested_worker_slots: {}",
+                run.requested_worker_count.max(run.worker_count)
+            );
+            println!("candidate_pool: {}", join_or_none(&run.candidate_fields));
             println!("summary: {}", run.summary);
             for worker in &run.workers {
                 println!(
-                    "- {} field={} need={} trace={} verifier={} :: {}",
+                    "- {} field={} task={} need={} trace={} verifier={} :: {}",
                     worker.id,
                     worker.field,
+                    worker.mini_task.as_deref().unwrap_or("none"),
                     worker
                         .queued_need_index
                         .map(|index| format!("#{index}"))
@@ -17299,13 +17629,19 @@ fn print_parallel_evolution_run(
         Language::Zh => {
             println!("章鱼自动领域进化");
             println!("run: #{}", run.index);
-            println!("采样执行槽数: {}", run.worker_count);
+            println!("{}", parallel_worker_slot_line(run.worker_count, language));
+            println!(
+                "请求 worker 执行槽数: {}",
+                run.requested_worker_count.max(run.worker_count)
+            );
+            println!("候选领域池: {}", join_or_none(&run.candidate_fields));
             println!("摘要: {}", run.summary);
             for worker in &run.workers {
                 println!(
-                    "- {} 领域={} Need={} 轨迹={} 验证={} :: {}",
+                    "- {} 领域={} 任务={} Need={} 轨迹={} 验证={} :: {}",
                     worker.id,
                     worker.field,
+                    worker.mini_task.as_deref().unwrap_or("无"),
                     worker
                         .queued_need_index
                         .map(|index| format!("#{index}"))
@@ -17328,6 +17664,15 @@ fn print_parallel_evolution_run(
                 println!("桌宠: octopus pet desktop");
             }
         }
+    }
+}
+
+fn parallel_worker_slot_line(worker_count: usize, language: Language) -> String {
+    match language {
+        Language::En => {
+            format!("worker_slots: {worker_count} execution slot(s) from the peer field pool")
+        }
+        Language::Zh => format!("worker 执行槽数: {worker_count}，来自并列领域池"),
     }
 }
 
@@ -17422,12 +17767,38 @@ fn trace_line(trace: &FeedTraceRecord) -> String {
 
 fn need_queue_line(item: &NeedQueueItem) -> String {
     format!(
-        "#{} {:?} {}:{}",
+        "#{} {:?} {}:{}{}",
         item.index,
         item.status,
         need_label(&item.need.kind),
-        item.need.query
+        item.need.query,
+        need_queue_context_label(item)
     )
+}
+
+fn need_queue_context_label(item: &NeedQueueItem) -> String {
+    let mut parts = Vec::new();
+    if let Some(field) = item
+        .context
+        .get("field_pack")
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        parts.push(format!("field={field}"));
+    }
+    if let Some(task) = item
+        .context
+        .get("field_mini_task")
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        parts.push(format!("task={task}"));
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!(" [{}]", parts.join(" "))
+    }
 }
 
 fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorReport, String> {
@@ -17688,6 +18059,94 @@ fn doctor_llm_line(report: &DoctorLlmReport) -> String {
     }
 }
 
+fn field_pool_status_line(report: &FieldPoolStatusReport) -> String {
+    let active = report.active_slot_field.as_deref().unwrap_or("none");
+    let slots = report
+        .slots
+        .iter()
+        .map(|slot| {
+            let active_marker = if report.active_slot_field.as_deref() == Some(slot.field.as_str())
+            {
+                "*"
+            } else {
+                ""
+            };
+            let next = slot.next_mini_task.as_deref().unwrap_or("done");
+            format!(
+                "{active_marker}{}:{}/{}:{}",
+                slot.field, slot.satisfied_mini_task_count, slot.mini_task_count, next
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let latest_activity = field_pool_latest_activity_line(report);
+    format!(
+        "{} field slots ({} peer slots), latest_worker_slots={}, latest_activity={}, {} complete, active={}, reason={}, workers={}, [{}]",
+        report.field_slot_count,
+        report.field_count,
+        report.latest_worker_slot_count,
+        latest_activity,
+        report.completed_fields,
+        active,
+        report.active_slot_reason,
+        report.worker_slots,
+        slots
+    )
+}
+
+fn parallel_run_status_line(run: &ParallelEvolutionRun, language: Language) -> String {
+    let candidate_pool = join_or_none(&run.candidate_fields);
+    match language {
+        Language::En => format!(
+            "#{} requested_worker_slots={}, active_worker_slots={}, candidate_pool={}, workers={}",
+            run.index,
+            run.requested_worker_count,
+            run.worker_count,
+            candidate_pool,
+            run.worker_policy
+        ),
+        Language::Zh => format!(
+            "#{} 请求worker执行槽={}, 活动worker执行槽={}, 候选领域池={}, worker策略={}",
+            run.index,
+            run.requested_worker_count,
+            run.worker_count,
+            candidate_pool,
+            run.worker_policy
+        ),
+    }
+}
+
+fn field_pool_latest_activity_line(report: &FieldPoolStatusReport) -> String {
+    let Some(slot) = report
+        .slots
+        .iter()
+        .filter(|slot| slot.latest_updated_at_secs > 0)
+        .max_by_key(|slot| slot.latest_updated_at_secs)
+    else {
+        return "none".to_string();
+    };
+    let task = slot
+        .latest_mini_task
+        .as_deref()
+        .or(slot.next_mini_task.as_deref())
+        .unwrap_or("done");
+    let status = slot
+        .latest_worker_status
+        .as_ref()
+        .or(slot.latest_status.as_ref())
+        .map(|status| format!("{status:?}"))
+        .unwrap_or_else(|| "unknown".to_string());
+    let worker = slot
+        .latest_worker_id
+        .as_deref()
+        .map(|worker| format!(" worker={worker}"))
+        .unwrap_or_default();
+    format!(
+        "{}:{}:{}@{}{}",
+        slot.field, task, status, slot.latest_updated_at_secs, worker
+    )
+}
+
 fn status_tentacles(report: &StatusReport) -> String {
     let items = report
         .tentacles
@@ -17760,7 +18219,8 @@ fn print_self_iteration_plan(plan: &SelfIterationPlan, language: Language) {
             println!("repo: {}", plan.repository);
             println!("mode: {}", plan.mode);
             println!("authorized: {}", plan.authorized);
-            println!("next: {}", plan.steps.join(" -> "));
+            println!("next: {}", plan.next_action);
+            println!("steps: {}", plan.steps.join(" -> "));
             if let Some(draft) = &plan.draft {
                 println!("draft branch: {}", draft.branch);
                 println!("draft title: {}", draft.title);
@@ -17770,13 +18230,36 @@ fn print_self_iteration_plan(plan: &SelfIterationPlan, language: Language) {
             println!("仓库: {}", plan.repository);
             println!("模式: {}", plan.mode);
             println!("已授权: {}", plan.authorized);
-            println!("下一步: {}", plan.steps.join(" -> "));
+            println!("下一步: {}", plan.next_action);
+            println!("步骤: {}", plan.steps.join(" -> "));
             if let Some(draft) = &plan.draft {
                 println!("草稿分支: {}", draft.branch);
                 println!("草稿标题: {}", draft.title);
             }
         }
     }
+}
+
+fn self_iteration_plan_for_state(
+    mut plan: SelfIterationPlan,
+    state_path: &Path,
+) -> SelfIterationPlan {
+    plan.next_action = stateful_octopus_command(&plan.next_action, state_path);
+    plan
+}
+
+fn stateful_octopus_command(command: &str, state_path: &Path) -> String {
+    if command.contains("octopus --state ") {
+        return command.to_string();
+    }
+    let state_arg = shell_arg(&state_path.to_string_lossy());
+    if let Some(rest) = command.strip_prefix("octopus ") {
+        return format!("octopus --state {state_arg} {rest}");
+    }
+    if let Some(rest) = command.strip_prefix("OCTOPUS_PR_DRY_RUN=1 octopus ") {
+        return format!("OCTOPUS_PR_DRY_RUN=1 octopus --state {state_arg} {rest}");
+    }
+    command.to_string()
 }
 
 fn publish_self_iteration_pr(plan: &SelfIterationPlan) -> Result<SelfIterationPrReport, String> {
@@ -17956,6 +18439,8 @@ fn print_evolution_apply_plan(
             println!("status: {}", plan.status);
             println!("authorized: {}", plan.authorized);
             println!("required grant: {}", plan.required_grant);
+            println!("target: {}", plan.target);
+            println!("target files: {}", join_or_none(&plan.target_files));
             println!("plan: {}", artifact.plan_path);
             if let Some(path) = &artifact.patch_path {
                 println!("patch: {path}");
@@ -17969,6 +18454,8 @@ fn print_evolution_apply_plan(
             println!("状态: {}", plan.status);
             println!("已授权: {}", plan.authorized);
             println!("所需授权: {}", plan.required_grant);
+            println!("目标: {}", plan.target);
+            println!("目标文件: {}", join_or_none(&plan.target_files));
             println!("计划: {}", artifact.plan_path);
             if let Some(path) = &artifact.patch_path {
                 println!("补丁: {path}");
@@ -18084,6 +18571,11 @@ fn print_evolution_recommendation(
             println!("check history: {}", recommendation.check_history_count);
             println!("reason: {}", recommendation.reason);
             println!("status: {}", recommendation.apply.status);
+            println!("target: {}", recommendation.apply.target);
+            println!(
+                "target files: {}",
+                join_or_none(&recommendation.apply.target_files)
+            );
             println!("plan: {}", artifact.plan_path);
             if let Some(path) = &artifact.patch_path {
                 println!("patch: {path}");
@@ -18100,6 +18592,11 @@ fn print_evolution_recommendation(
             println!("检查历史: {}", recommendation.check_history_count);
             println!("原因: {}", recommendation.reason);
             println!("状态: {}", recommendation.apply.status);
+            println!("目标: {}", recommendation.apply.target);
+            println!(
+                "目标文件: {}",
+                join_or_none(&recommendation.apply.target_files)
+            );
             println!("计划: {}", artifact.plan_path);
             if let Some(path) = &artifact.patch_path {
                 println!("补丁: {path}");
@@ -18117,6 +18614,11 @@ fn print_evolution_score_report(report: &EvolutionScoreReport, language: Languag
                 println!("next recommended: {}", recommendation.candidate_id);
                 println!("next score: {:.2}", recommendation.recommendation_score);
                 println!("next reason: {}", recommendation.reason);
+                println!("next target: {}", recommendation.apply.target);
+                println!(
+                    "next target files: {}",
+                    join_or_none(&recommendation.apply.target_files)
+                );
                 if let Some(artifact) = &report.apply_artifact {
                     println!("next plan: {}", artifact.plan_path);
                     if let Some(path) = &artifact.patch_path {
@@ -18135,6 +18637,11 @@ fn print_evolution_score_report(report: &EvolutionScoreReport, language: Languag
                 println!("下一推荐: {}", recommendation.candidate_id);
                 println!("下一分数: {:.2}", recommendation.recommendation_score);
                 println!("下一原因: {}", recommendation.reason);
+                println!("下一目标: {}", recommendation.apply.target);
+                println!(
+                    "下一目标文件: {}",
+                    join_or_none(&recommendation.apply.target_files)
+                );
                 if let Some(artifact) = &report.apply_artifact {
                     println!("下一计划: {}", artifact.plan_path);
                     if let Some(path) = &artifact.patch_path {
@@ -21715,7 +22222,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair apply [query] | repair verify [query] | repair continue [query] [--score status [summary]] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers n]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state]|pet desktop [--workers n]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers n] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair apply [query] | repair verify [query] | repair continue [query] [--score status [summary]] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers 1..8]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state]|pet desktop [--workers 1..8]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers 1..8] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -21750,7 +22257,9 @@ fn parse_goal_set_args(values: &[String]) -> Result<(String, Vec<String>), Strin
     Ok((objective, constraints))
 }
 
-fn parse_parallel_evolution_args(values: &[String]) -> (bool, usize, Option<String>) {
+fn parse_parallel_evolution_args(
+    values: &[String],
+) -> Result<(bool, usize, Option<String>), String> {
     let mut open_pet = false;
     let mut workers = 4usize;
     let mut objective = Vec::new();
@@ -21760,31 +22269,152 @@ fn parse_parallel_evolution_args(values: &[String]) -> (bool, usize, Option<Stri
             "--open" => open_pet = true,
             "--workers" => {
                 index += 1;
-                if let Some(value) = values.get(index).and_then(|value| value.parse().ok()) {
-                    workers = value;
-                }
+                let value = values
+                    .get(index)
+                    .ok_or_else(|| "evolve parallel --workers requires 1..8".to_string())?;
+                workers = parse_worker_count_1_to_8(value)?;
             }
             value => objective.push(value.to_string()),
         }
         index += 1;
     }
     let objective = (!objective.is_empty()).then(|| objective.join(" "));
-    (open_pet, workers, objective)
+    Ok((open_pet, workers, objective))
 }
 
-fn parse_worker_cap(values: &[String]) -> usize {
+fn record_parallel_evolution_action_event(
+    state: &mut HarnessState,
+    run: &ParallelEvolutionRun,
+) -> Option<PetEvent> {
+    (!run.workers.is_empty()).then(|| {
+        let labels = run
+            .workers
+            .iter()
+            .map(|worker| match worker.mini_task.as_deref() {
+                Some(task) => format!("{}/{}", worker.field, task),
+                None => worker.field.clone(),
+            })
+            .collect::<Vec<_>>();
+        let detail = truncate_chars(&join_or_none(&labels), 180);
+        state.record_pet_event(
+            "action",
+            "parallel evolution",
+            format!(
+                "running {} peer field worker Need(s) through Feed: {}",
+                run.workers.len(),
+                detail
+            ),
+            Status::Partial,
+        )
+    })
+}
+
+fn parallel_evolution_next_actions(auto_feed: &NeedRunBatchReport) -> Vec<String> {
+    let mut next = if auto_feed
+        .reports
+        .iter()
+        .any(|report| report.field.is_some())
+    {
+        vec![
+            "octopus fields summary".to_string(),
+            "octopus status".to_string(),
+        ]
+    } else {
+        auto_feed.next.clone()
+    };
+    if !next.iter().any(|action| action == "octopus beat 200") {
+        next.push("octopus beat 200".to_string());
+    }
+    next
+}
+
+fn empty_parallel_evolution_batch_report(state: &HarnessState) -> NeedRunBatchReport {
+    NeedRunBatchReport {
+        requested: 0,
+        ran: 0,
+        reports: Vec::new(),
+        remaining_pending: state.pending_need_queue_count(),
+        next: vec![
+            "octopus fields summary".to_string(),
+            field_harder_layer_next_action(""),
+        ],
+    }
+}
+
+fn need_run_next_actions(
+    field: Option<&str>,
+    verifier_result: Option<&FieldVerifierResult>,
+    feed_trace_index: Option<u64>,
+) -> Vec<String> {
+    let Some(_) = field else {
+        return vec!["octopus status".to_string()];
+    };
+    if verifier_result.is_some() {
+        return vec![
+            "octopus fields summary".to_string(),
+            "octopus status".to_string(),
+        ];
+    }
+    let Some(trace_index) = feed_trace_index else {
+        return vec!["octopus status".to_string()];
+    };
+    vec![
+        format!(
+            "octopus fields score {trace_index} satisfied verifier_pass \"record field verifier result\""
+        ),
+        format!("octopus fields score {trace_index} failed error_category \"record field failure\""),
+        "octopus status".to_string(),
+    ]
+}
+
+fn need_run_batch_next_actions(
+    reports: &[NeedRunReport],
+    remaining_pending: usize,
+    current_batch_size: usize,
+) -> Vec<String> {
+    if remaining_pending > 0 {
+        return vec![format!(
+            "octopus needs run --workers {}",
+            next_need_run_worker_count(remaining_pending, current_batch_size)
+        )];
+    }
+    if reports.iter().any(|report| report.field.is_some()) {
+        return vec![
+            "octopus fields summary".to_string(),
+            "octopus status".to_string(),
+        ];
+    }
+    vec!["octopus status".to_string()]
+}
+
+fn parse_worker_cap(values: &[String]) -> Result<usize, String> {
     let mut workers = 1usize;
     let mut index = 0;
     while index < values.len() {
         if values[index] == "--workers" {
             index += 1;
-            if let Some(value) = values.get(index).and_then(|value| value.parse().ok()) {
-                workers = value;
-            }
+            let value = values
+                .get(index)
+                .ok_or_else(|| "pet desktop --workers requires 1..8".to_string())?;
+            workers = parse_worker_count_1_to_8(value)?;
         }
         index += 1;
     }
-    workers.clamp(1, 8)
+    Ok(workers)
+}
+
+fn parse_worker_count_1_to_8(value: &str) -> Result<usize, String> {
+    value
+        .parse::<usize>()
+        .ok()
+        .filter(|value| (1..=MAX_WORKER_COUNT).contains(value))
+        .ok_or_else(|| format!("invalid workers value: {value}; expected 1..8"))
+}
+
+fn next_need_run_worker_count(remaining_pending: usize, current_batch_size: usize) -> usize {
+    remaining_pending
+        .min(current_batch_size.max(1))
+        .min(MAX_WORKER_COUNT)
 }
 
 fn clean_goal_constraint(value: &str) -> Result<String, String> {
@@ -21815,41 +22445,57 @@ fn resolve_feed_trace_selector(value: &str, state: &HarnessState) -> Result<u64,
     }
 }
 
-fn parse_need_run_selector(value: Option<&str>) -> NeedRunSelector {
+fn parse_need_run_selector(value: Option<&str>) -> Result<NeedRunSelector, String> {
     match value {
-        Some("latest") => NeedRunSelector::Latest,
+        Some("latest") => Ok(NeedRunSelector::Latest),
         Some(value) => value
             .parse::<u64>()
             .ok()
             .filter(|index| *index > 0)
             .map(NeedRunSelector::Index)
-            .unwrap_or(NeedRunSelector::First),
-        None => NeedRunSelector::First,
+            .ok_or_else(|| {
+                format!(
+                    "invalid Need run selector: {value}; expected latest or positive queue index"
+                )
+            }),
+        None => Ok(NeedRunSelector::First),
     }
 }
 
 fn parse_need_run_request(values: &[String]) -> Result<NeedRunRequest, String> {
     match values.first().map(String::as_str) {
-        Some("all") | Some("--all") => Ok(NeedRunRequest::Batch(usize::MAX)),
+        Some("all") | Some("--all") => {
+            if values.len() > 1 {
+                return Err("needs run all does not accept extra arguments".to_string());
+            }
+            Ok(NeedRunRequest::Batch(MAX_WORKER_COUNT))
+        }
         Some("--workers") => {
+            if values.len() > 2 {
+                return Err("needs run --workers accepts exactly one value".to_string());
+            }
             let value = values
                 .get(1)
-                .ok_or_else(|| "needs run --workers requires a number".to_string())?;
-            let workers = value
-                .parse::<usize>()
-                .ok()
-                .filter(|value| *value > 0)
-                .ok_or_else(|| format!("invalid workers value: {value}"))?;
+                .ok_or_else(|| "needs run --workers requires 1..8".to_string())?;
+            let workers = parse_worker_count_1_to_8(value)?;
             Ok(NeedRunRequest::Batch(workers))
         }
-        Some(value) => Ok(NeedRunRequest::Single(parse_need_run_selector(Some(value)))),
+        Some(value) => {
+            if values.len() > 1 {
+                return Err("needs run selector accepts one value".to_string());
+            }
+            Ok(NeedRunRequest::Single(parse_need_run_selector(Some(
+                value,
+            ))?))
+        }
         None => Ok(NeedRunRequest::Single(NeedRunSelector::First)),
     }
 }
 
-fn run_queued_need(
+fn run_queued_need_with_observer_state(
     mut state: HarnessState,
     selector: NeedRunSelector,
+    observer_state_path: Option<&Path>,
 ) -> Result<(NeedRunReport, HarnessState), String> {
     let pending = state
         .need_queue
@@ -21867,12 +22513,20 @@ fn run_queued_need(
     let kind = taken.item.need.kind.clone();
     let query = taken.item.need.query.clone();
     state.record_pet_event("need", "need queue", query.clone(), Status::Partial);
+    if let Some(path) = observer_state_path {
+        state.save(path).map_err(|error| error.to_string())?;
+    }
     let field_hint = field_hint_from_queue_item(&taken.item);
     if field_hint.is_some() {
         ensure_field_mini_task_tentacle(&mut state)?;
     }
     let mut harness = harness_for_need(state, &kind)?;
     let mut need = Need::new(kind, query);
+    for (key, value) in &taken.item.context {
+        if !value.trim().is_empty() {
+            need.context.insert(key.clone(), value.clone());
+        }
+    }
     if let Some(field) = field_hint {
         need.context
             .insert("field_original_need".to_string(), need.query.clone());
@@ -21894,7 +22548,7 @@ fn run_queued_need(
         .or_else(|| feed.metadata.get("field"))
         .or_else(|| feed.need.context.get("field_pack"))
         .cloned();
-    let verifier_result = feed_trace_index.and_then(|index| {
+    let verifier_result = field.as_ref().and_then(|_| feed_trace_index).and_then(|index| {
         let explicit_verifier_status = feed
             .metadata
             .get("verifier_status")
@@ -21940,14 +22594,13 @@ fn run_queued_need(
                 .record_field_verifier_result(index, verifier_status, error_category, None, summary)
             .ok()
     });
-    let trace_arg = feed_trace_index
-        .map(|index| index.to_string())
-        .unwrap_or_else(|| "latest".to_string());
-    let next = vec![
-        format!("octopus fields score {trace_arg} satisfied verifier_pass \"record field verifier result\""),
-        format!("octopus fields score {trace_arg} failed error_category \"record field failure\""),
-        "octopus status".to_string(),
-    ];
+    let next = need_run_next_actions(field.as_deref(), verifier_result.as_ref(), feed_trace_index);
+    if let Some(path) = observer_state_path {
+        harness
+            .state
+            .save(path)
+            .map_err(|error| error.to_string())?;
+    }
     Ok((
         NeedRunReport {
             taken,
@@ -21961,9 +22614,10 @@ fn run_queued_need(
     ))
 }
 
-fn run_queued_needs(
+fn run_queued_needs_with_observer_state(
     mut state: HarnessState,
     limit: usize,
+    observer_state_path: Option<&Path>,
 ) -> Result<(NeedRunBatchReport, HarnessState), String> {
     let pending = state.pending_need_queue_count();
     if pending == 0 {
@@ -21976,22 +22630,16 @@ fn run_queued_needs(
     };
     let mut reports = Vec::new();
     for _ in 0..requested {
-        let (report, next_state) = run_queued_need(state, NeedRunSelector::First)?;
+        let (report, next_state) = run_queued_need_with_observer_state(
+            state,
+            NeedRunSelector::First,
+            observer_state_path,
+        )?;
         state = next_state;
         reports.push(report);
     }
     let remaining_pending = state.pending_need_queue_count();
-    let next = if remaining_pending > 0 {
-        vec![format!(
-            "octopus needs run --workers {}",
-            remaining_pending.min(requested.max(1))
-        )]
-    } else {
-        vec![
-            "octopus fields summary".to_string(),
-            "octopus status".to_string(),
-        ]
-    };
+    let next = need_run_batch_next_actions(&reports, remaining_pending, requested);
     Ok((
         NeedRunBatchReport {
             requested,
@@ -22004,31 +22652,26 @@ fn run_queued_needs(
     ))
 }
 
-fn run_queued_need_indices(
+fn run_queued_need_indices_with_observer_state(
     mut state: HarnessState,
     indices: &[u64],
+    observer_state_path: Option<&Path>,
 ) -> Result<(NeedRunBatchReport, HarnessState), String> {
     if indices.is_empty() {
         return Err("no queued Need indices to run".to_string());
     }
     let mut reports = Vec::new();
     for index in indices {
-        let (report, next_state) = run_queued_need(state, NeedRunSelector::Index(*index))?;
+        let (report, next_state) = run_queued_need_with_observer_state(
+            state,
+            NeedRunSelector::Index(*index),
+            observer_state_path,
+        )?;
         state = next_state;
         reports.push(report);
     }
     let remaining_pending = state.pending_need_queue_count();
-    let next = if remaining_pending > 0 {
-        vec![format!(
-            "octopus needs run --workers {}",
-            remaining_pending.min(indices.len().max(1))
-        )]
-    } else {
-        vec![
-            "octopus fields summary".to_string(),
-            "octopus status".to_string(),
-        ]
-    };
+    let next = need_run_batch_next_actions(&reports, remaining_pending, indices.len());
     Ok((
         NeedRunBatchReport {
             requested: indices.len(),
@@ -22045,6 +22688,11 @@ fn field_hint_from_queue_item(item: &NeedQueueItem) -> Option<String> {
     if item.source != "field evolution" {
         return None;
     }
+    if let Some(field) = item.context.get("field_pack") {
+        if field_hint_ids().iter().any(|candidate| candidate == field) {
+            return Some(field.clone());
+        }
+    }
     let text = format!(
         "{} {} {}",
         item.need.query.to_ascii_lowercase(),
@@ -22054,45 +22702,26 @@ fn field_hint_from_queue_item(item: &NeedQueueItem) -> Option<String> {
     if let Some(field) = explicit_field_hint_from_text(&text) {
         return Some(field);
     }
-    for (field, aliases) in [
-        ("math", &["math", "mathematical"][..]),
-        ("search", &["search", "retrieval"]),
-        ("code", &["code", "coding"]),
-        ("swe", &["swe", "issue-style", "repo task"]),
-        ("research", &["research", "claim"]),
-        (
-            "computer-use",
-            &["computer-use", "computer use", "desktop", "browser"],
-        ),
-        ("ib", &["ib", "investment banking", "finance-work"]),
-        ("robotics", &["robotics", "simulator", "robot"]),
-    ] {
-        if aliases.iter().any(|alias| text.contains(alias)) {
+    None
+}
+
+fn explicit_field_hint_from_text(text: &str) -> Option<String> {
+    for field in field_hint_ids() {
+        if text.contains(&format!("field: {field}"))
+            || text.contains(&format!("run {field} mini task"))
+            || text.contains(&format!("run {field} in this peer field slot"))
+            || text.contains(&format!("run {field} in this worker slot"))
+            || text.contains(&format!("improve {field} harness"))
+            || contains_field_mini_marker(text, &field)
+        {
             return Some(field.to_string());
         }
     }
     None
 }
 
-fn explicit_field_hint_from_text(text: &str) -> Option<String> {
-    for field in [
-        "math",
-        "search",
-        "code",
-        "swe",
-        "research",
-        "computer-use",
-        "ib",
-        "robotics",
-    ] {
-        if text.contains(&format!("field: {field}"))
-            || text.contains(&format!("run {field} mini task"))
-            || contains_field_mini_marker(text, field)
-        {
-            return Some(field.to_string());
-        }
-    }
-    None
+fn field_hint_ids() -> Vec<String> {
+    default_field_pack_ids()
 }
 
 fn contains_field_mini_marker(text: &str, field: &str) -> bool {
@@ -22115,12 +22744,25 @@ fn contains_field_mini_marker(text: &str, field: &str) -> bool {
 fn field_mini_task_context(field: &str, item: &NeedQueueItem) -> Option<(String, String)> {
     let catalog = default_field_pack_catalog().ok()?;
     let pack = catalog.packs.iter().find(|pack| pack.id == field)?;
-    let query = item.need.query.to_ascii_lowercase();
+    if let Some(task_id) = item.context.get("field_mini_task") {
+        let task = pack.mini_tasks.iter().find(|task| task.id == *task_id)?;
+        return Some((
+            task.id.clone(),
+            item.context
+                .get("field_expected_feed")
+                .cloned()
+                .unwrap_or_else(|| task.expected_feed.clone()),
+        ));
+    }
+    let text = format!(
+        "{} {}",
+        item.need.query.to_ascii_lowercase(),
+        item.summary.to_ascii_lowercase()
+    );
     let task = pack
         .mini_tasks
         .iter()
-        .find(|task| query.contains(&task.id.to_ascii_lowercase()))
-        .or_else(|| pack.mini_tasks.first())?;
+        .find(|task| text.contains(&task.id.to_ascii_lowercase()))?;
     Some((task.id.clone(), task.expected_feed.clone()))
 }
 
@@ -22153,32 +22795,43 @@ mod tests {
         command_ready, default_first_run_objective, default_tentacles_root,
         default_tentacles_root_for, doctor_report, download_artifacts_preflight_check,
         download_report, ensure_field_mini_task_tentacle,
-        ensure_field_mini_task_tentacle_from_root, field_hint_from_queue_item, first_run_report,
+        ensure_field_mini_task_tentacle_from_root, field_hint_from_queue_item, field_hint_ids,
+        field_mini_task_context, field_pool_parallel_run_record_ready, field_pool_status_line,
+        field_trajectory_policy_line, field_trajectory_worker_slot_line, first_run_report,
         git_short_head, http_content_length, inspect_tentacle_manifests_with_bundled_seed_fallback,
         install_report, is_broken_pipe_panic, localize_summary, materialize_bundled_tentacles_root,
+        need_queue_line, parallel_run_status_line, parallel_worker_slot_line,
         parse_bridge_env_overlay, parse_first_run_args, parse_start_check_addr,
         parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
-        preflight_report, prepare_bridge_state, product_report, provider_coverage_ready,
-        provider_env_report, provider_status_report, real_machine_record_status_from_parts,
+        preflight_report, prepare_bridge_state, product_field_pool_line,
+        product_field_pool_missing_required_fields, product_field_pool_ready, product_report,
+        provider_coverage_ready, provider_env_report, provider_status_report,
+        real_machine_record_status_from_parts, render_field_trajectory_summary_line,
         repair_continue_report, repair_patch_apply_report, repair_patch_verify_report,
         repair_report, repair_score_report, resolve_tentacle_manifest_root, run,
         run_bridge_command, run_provider_matrix_record, save_provider_env_report_with_key,
         shell_arg, skill_reports, start_check_requested, starter_report, tentacles_root_ready,
         update_report, usage, write_benchmark_record, write_pet_image_report,
-        write_provider_matrix_record, Language,
+        write_provider_matrix_record, Language, ProductFieldPoolReport, REQUIRED_PEER_FIELD_IDS,
     };
     use super::{
-        parse_need_run_request, run_queued_need_indices, run_queued_needs, NeedRunRequest,
-        NeedRunSelector,
+        empty_parallel_evolution_batch_report, next_need_run_worker_count,
+        parallel_evolution_next_actions, parse_need_run_request, parse_parallel_evolution_args,
+        parse_worker_cap, record_parallel_evolution_action_event,
+        run_queued_need_indices_with_observer_state, run_queued_need_with_observer_state,
+        run_queued_needs_with_observer_state, NeedRunBatchReport, NeedRunReport, NeedRunRequest,
+        NeedRunSelector, MAX_WORKER_COUNT,
     };
     use crate::contains_field_mini_marker;
     use octopus_core::{
-        default_tentacle_profiles, load_tentacle_manifests, load_tentacle_profiles_from_path,
-        CheckHistoryInput, Feed, Goal, GoalNeedSuggestion, GoalStatus, HarnessState,
-        InstalledTentacle, Need, NeedKind, NeedQueueItem, NeedQueueStatus, StarterFeedbackInput,
+        default_field_pack_catalog, default_tentacle_profiles, load_tentacle_manifests,
+        load_tentacle_profiles_from_path, parallel_field_pool_policy, parallel_worker_policy,
+        CheckHistoryInput, Evidence, Feed, FieldTrajectoryReport, FieldTrajectorySummary, Goal,
+        GoalNeedSuggestion, GoalStatus, HarnessState, InstalledTentacle, Need, NeedKind,
+        NeedQueueItem, NeedQueueStatus, NeedQueueTakeReport, StarterFeedbackInput,
         StarterFeedbackStatus, Status,
     };
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::io::Write as _;
     use std::path::{Path, PathBuf};
@@ -22202,6 +22855,451 @@ mod tests {
     }
 
     #[test]
+    fn public_field_docs_do_not_describe_peer_fields_as_sampled_or_sequential() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let docs = [
+            "README.md",
+            "README.zh-CN.md",
+            "docs/field-adaptation.md",
+            "docs/product-gap.md",
+            "docs/quickstart.md",
+            "field-packs/README.md",
+            "tentacles/README.md",
+            "tentacles/field-mini-task/manifest.json",
+        ];
+        let forbidden = [
+            "sampled field",
+            "sampled slot",
+            "sample one",
+            "sampled execution",
+            "sequential field",
+            "one by one",
+            "采样",
+            "抽样",
+            "逐个",
+            "逐一",
+        ];
+
+        for rel in docs {
+            let content =
+                fs::read_to_string(repo.join(rel)).unwrap_or_else(|err| panic!("{rel}: {err}"));
+            let lower = content.to_ascii_lowercase();
+            for term in forbidden {
+                assert!(
+                    !lower.contains(term),
+                    "{rel} contains forbidden field wording: {term}"
+                );
+            }
+        }
+
+        let field_adaptation = fs::read_to_string(repo.join("docs/field-adaptation.md")).unwrap();
+        assert!(field_adaptation.contains("八个 field 是同一个 Goal 的并列适应面"));
+        assert!(field_adaptation.contains("`--workers n` 只表示一次打开几个执行槽"));
+        assert!(field_adaptation.contains("Goal 层仍然同时保留"));
+
+        let readme = fs::read_to_string(repo.join("README.md")).unwrap();
+        assert!(readme.contains("Fields are a peer pool"));
+        assert!(readme.contains("it does not turn the fields into a queue"));
+
+        let zh_readme = fs::read_to_string(repo.join("README.zh-CN.md")).unwrap();
+        assert!(zh_readme.contains("领域是并列池"));
+        assert!(zh_readme.contains("不把领域变成队列"));
+
+        let field_pack_readme = fs::read_to_string(repo.join("field-packs/README.md")).unwrap();
+        assert!(field_pack_readme.contains("The field list is not a backlog"));
+        assert!(field_pack_readme.contains("Worker count controls concurrency only"));
+        assert!(field_pack_readme.contains("same parallel pool"));
+
+        let lib_rs = fs::read_to_string(repo.join("crates/octopus-core/src/lib.rs")).unwrap();
+        assert!(!lib_rs.contains("sampled_slot_field"));
+        assert!(!lib_rs.contains("next_sampled_field_candidate"));
+        assert!(!lib_rs.contains("sample one"));
+        assert!(!lib_rs.contains("sampled field"));
+        assert!(!lib_rs.contains("sampled slot"));
+    }
+
+    #[test]
+    fn field_summary_policy_line_explains_worker_slots_as_capacity() {
+        let en = field_trajectory_policy_line(Language::En);
+        let zh = field_trajectory_policy_line(Language::Zh);
+
+        assert!(en.contains("eight peer field slots"));
+        assert!(en.contains("workers are execution capacity only"));
+        assert!(zh.contains("8 个并列领域槽"));
+        assert!(zh.contains("workers 只表示执行容量"));
+        assert!(!en.contains("sampled"));
+        assert!(!zh.contains("抽样"));
+    }
+
+    #[test]
+    fn field_summary_worker_line_exposes_latest_worker_slots() {
+        let report = FieldTrajectoryReport {
+            field_count: 8,
+            latest_worker_slot_count: 2,
+            trace_count: 0,
+            verifier_result_count: 0,
+            parallel_evolution_run_count: 1,
+            all_first_pass_satisfied: false,
+            all_pack_tasks_satisfied: false,
+            active_slot_field: Some("math".to_string()),
+            active_slot_reason: "math selected by field status and recent-run fairness".to_string(),
+            fields: Vec::new(),
+            next: Vec::new(),
+        };
+
+        assert_eq!(
+            field_trajectory_worker_slot_line(&report, Language::En),
+            "latest_worker_slots: 2"
+        );
+        assert_eq!(
+            field_trajectory_worker_slot_line(&report, Language::Zh),
+            "最新 worker 执行槽数: 2"
+        );
+    }
+
+    #[test]
+    fn local_app_status_uses_field_pool_worker_policy() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let app = fs::read_to_string(repo.join("docs/app.html"))
+            .unwrap_or_else(|err| panic!("docs/app.html: {err}"));
+
+        assert!(app.contains("const policy = pool.worker_slots || pool.policy"));
+        assert!(app.contains("const fieldSlots = pool.field_slot_count || pool.field_count"));
+        assert!(app.contains("const workerSlots = pool.latest_worker_slot_count || 0"));
+        assert!(app.contains("worker slots=${workerSlots}"));
+        assert!(app.contains("pool.active_slot_reason"));
+        assert!(app.contains("Reason=${pool.active_slot_reason}"));
+        assert!(app.contains("parallelRunStatusText(report.latest_parallel_evolution_run"));
+        assert!(app.contains("run.requested_worker_count"));
+        assert!(app.contains("run.candidate_fields"));
+        assert!(app.contains(
+            "Run requested=${requested}, active=${active}, candidates=${candidateText}."
+        ));
+        assert!(app.contains("workers are execution slots"));
+        assert!(app.contains("${policy}"));
+        assert!(app.contains("latest_updated_at_secs"));
+        assert!(app.contains("slot.latest_worker_id || \"\""));
+        assert!(app.contains("slot.latest_mini_task || slot.next_mini_task"));
+        assert!(app.contains("slot.latest_worker_status || slot.latest_status"));
+        assert!(app.contains("Last activity="));
+    }
+
+    #[test]
+    fn status_field_pool_line_includes_worker_policy() {
+        let state = HarnessState::default();
+        let pool = state.status_report().field_pool.expect("field pool status");
+        let line = field_pool_status_line(&pool);
+
+        assert!(line.contains("peer slots"));
+        assert!(line.contains("field slots"));
+        assert!(line.contains("latest_worker_slots=0"));
+        assert!(line.contains("latest_activity=none"));
+        assert!(line.contains("reason="));
+        assert!(line.contains(&format!("workers={}", parallel_worker_policy())));
+    }
+
+    #[test]
+    fn status_parallel_run_line_explains_candidate_pool_and_worker_capacity() {
+        let mut state = HarnessState::default();
+        let run = state
+            .start_parallel_evolution("advance math and search field adaptation", 4)
+            .unwrap();
+        let en = parallel_run_status_line(&run, Language::En);
+        let zh = parallel_run_status_line(&run, Language::Zh);
+
+        assert!(en.contains("requested_worker_slots=4"));
+        assert!(en.contains("active_worker_slots=2"));
+        assert!(en.contains("candidate_pool=math, search"));
+        assert!(en.contains(parallel_worker_policy()));
+        assert!(zh.contains("请求worker执行槽=4"));
+        assert!(zh.contains("活动worker执行槽=2"));
+        assert!(zh.contains("候选领域池=math, search"));
+    }
+
+    #[test]
+    fn preflight_field_pool_parallel_run_requires_goal_candidate_pool() {
+        let base = "fields=math,search,code,swe,research,computer-use,ib,robotics \
+            missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1 \
+            parallel_run=#1 requested_worker_slots=2 active_worker_slots=2";
+
+        assert!(field_pool_parallel_run_record_ready(&format!(
+            "{base} candidate_pool=math,search"
+        )));
+        assert!(field_pool_parallel_run_record_ready(&format!(
+            "{base} candidate_pool=math, search workers=workers are execution slots"
+        )));
+        assert!(!field_pool_parallel_run_record_ready(base));
+        assert!(!field_pool_parallel_run_record_ready(&format!(
+            "{base} candidate_pool=code,robotics"
+        )));
+        assert!(!field_pool_parallel_run_record_ready(
+            "fields=math,search,code,swe,research,computer-use,ib,robotics \
+            missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1 \
+            parallel_run=#1 requested_worker_slots=2 active_worker_slots=2 candidate_pool=code"
+        ));
+    }
+
+    #[test]
+    fn status_field_pool_line_exposes_latest_activity() {
+        let mut state = HarnessState::default();
+        let run = state
+            .start_parallel_evolution("eight peer field objectives", 1)
+            .unwrap();
+        let worker = run.workers[0].clone();
+        let pool = state.status_report().field_pool.expect("field pool status");
+        let line = field_pool_status_line(&pool);
+
+        assert!(line.contains(&format!(
+            "latest_activity={}:{}:",
+            worker.field,
+            worker.mini_task.as_deref().unwrap_or("done")
+        )));
+        assert!(line.contains(&format!("worker={}", worker.id)));
+        assert!(line.contains(&format!("@{}", worker.updated_at_secs)));
+    }
+
+    #[test]
+    fn parallel_evolution_output_names_workers_as_execution_slots() {
+        let en = parallel_worker_slot_line(3, Language::En);
+        let zh = parallel_worker_slot_line(3, Language::Zh);
+
+        assert!(en.contains("worker_slots: 3 execution slot"));
+        assert!(en.contains("peer field pool"));
+        assert!(zh.contains("worker 执行槽数: 3"));
+        assert!(zh.contains("并列领域池"));
+    }
+
+    #[test]
+    fn public_goal_first_docs_do_not_teach_direct_need_feedback() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let docs = [
+            "README.md",
+            "README.zh-CN.md",
+            "docs/index.html",
+            "docs/docs.html",
+            "docs/quickstart.md",
+            "docs/quickstart.html",
+            "docs/recipes.html",
+            "docs/tutorial.html",
+            "docs/use.html",
+            "docs/zh/index.html",
+            "docs/zh/quickstart.md",
+            "docs/zh/tutorial.html",
+        ];
+        let forbidden = [
+            "octopus need observe README.md",
+            "octopus need observe .",
+            "octopus feedback latest",
+            "feedback latest partial",
+        ];
+
+        for rel in docs {
+            let content =
+                fs::read_to_string(repo.join(rel)).unwrap_or_else(|err| panic!("{rel}: {err}"));
+            for term in forbidden {
+                assert!(
+                    !content.contains(term),
+                    "{rel} exposes internal Need/Feedback command as a product path: {term}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn readme_keeps_models_as_linked_runtime_plumbing() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let docs = ["README.md", "README.zh-CN.md"];
+        let forbidden = [
+            "octopus provider save",
+            "source .octopus/llm.env",
+            "export OPENAI_API_KEY",
+            "## Models",
+            "## 模型接入",
+        ];
+
+        for rel in docs {
+            let content =
+                fs::read_to_string(repo.join(rel)).unwrap_or_else(|err| panic!("{rel}: {err}"));
+            assert!(
+                content.contains("Quick Install") || content.contains("快速安装"),
+                "{rel} should keep the fast product path visible"
+            );
+            for term in forbidden {
+                assert!(
+                    !content.contains(term),
+                    "{rel} makes provider setup look like the README product path: {term}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn readme_stays_story_and_quick_start_only() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let docs = ["README.md", "README.zh-CN.md"];
+        let forbidden = [
+            "## Current Shape",
+            "## Docs",
+            "## TODO",
+            "## 当前形态",
+            "## 文档",
+        ];
+
+        for rel in docs {
+            let content =
+                fs::read_to_string(repo.join(rel)).unwrap_or_else(|err| panic!("{rel}: {err}"));
+            assert!(
+                content.contains("Quick Install") || content.contains("快速安装"),
+                "{rel} should keep the quick-start path"
+            );
+            assert!(
+                content.contains("Goal -> Brain -> Need"),
+                "{rel} should keep the core story"
+            );
+            for term in forbidden {
+                assert!(
+                    !content.contains(term),
+                    "{rel} should leave status, docs index, and TODO detail to docs pages: {term}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn markdown_quickstarts_use_env_first_model_setup() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let docs = ["docs/quickstart.md", "docs/zh/quickstart.md"];
+        let forbidden = ["octopus provider save", "source .octopus/llm.env"];
+
+        for rel in docs {
+            let content =
+                fs::read_to_string(repo.join(rel)).unwrap_or_else(|err| panic!("{rel}: {err}"));
+            assert!(
+                content.contains("OCTOPUS_LLM_BACKEND"),
+                "{rel} should show env-first provider setup"
+            );
+            for term in forbidden {
+                assert!(
+                    !content.contains(term),
+                    "{rel} teaches provider write plumbing as quickstart setup: {term}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn public_html_docs_use_env_first_model_setup() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let docs = [
+            "docs/docs.html",
+            "docs/quickstart.html",
+            "docs/use.html",
+            "docs/recipes.html",
+            "docs/zh/recipes.html",
+        ];
+        let forbidden = ["octopus provider save", "source .octopus/llm.env"];
+
+        for rel in docs {
+            let content =
+                fs::read_to_string(repo.join(rel)).unwrap_or_else(|err| panic!("{rel}: {err}"));
+            assert!(
+                content.contains("OCTOPUS_LLM_BACKEND"),
+                "{rel} should show env-first provider setup"
+            );
+            for term in forbidden {
+                assert!(
+                    !content.contains(term),
+                    "{rel} teaches provider write plumbing as public model setup: {term}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn five_minute_use_guide_keeps_release_matrix_out() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let content = fs::read_to_string(repo.join("docs/use.html"))
+            .unwrap_or_else(|err| panic!("docs/use.html: {err}"));
+
+        assert!(content.contains("Use Octopus in five minutes"));
+        assert!(content.contains("octopus first-run"));
+        assert!(content.contains("OCTOPUS_LLM_BACKEND"));
+        assert!(
+            !content.contains("provider matrix"),
+            "five-minute use guide should not teach release provider matrix flow"
+        );
+        assert!(
+            !content.contains("OCTOPUS_LOCAL_OK"),
+            "five-minute use guide should keep release-only provider toggles out"
+        );
+    }
+
+    #[test]
+    fn public_homepages_keep_hosted_goal_first_install() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let docs = ["docs/index.html", "docs/zh/index.html"];
+        let forbidden = ["octopus update", "cargo install --git", "provider matrix"];
+
+        for rel in docs {
+            let content =
+                fs::read_to_string(repo.join(rel)).unwrap_or_else(|err| panic!("{rel}: {err}"));
+            assert!(
+                content.contains("curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh"),
+                "{rel} should use the hosted installer on the public homepage"
+            );
+            assert!(
+                content.contains("octopus start --check"),
+                "{rel} should prepare local evidence before opening the app"
+            );
+            assert!(
+                content.contains("octopus first-run"),
+                "{rel} should return users to the Goal-first loop"
+            );
+            for term in forbidden {
+                assert!(
+                    !content.contains(term),
+                    "{rel} should keep update/release/provider plumbing out of the homepage: {term}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn field_summary_line_exposes_next_task_goal() {
+        let field = FieldTrajectorySummary {
+            field: "math".to_string(),
+            mini_task_count: 3,
+            satisfied_mini_task_count: 1,
+            next_mini_task: Some("math-mini-2".to_string()),
+            next_mini_task_goal: Some("verify a symbolic simplification".to_string()),
+            trace_count: 2,
+            verifier_result_count: 1,
+            satisfied_verifier_count: 1,
+            unsatisfied_verifier_count: 0,
+            latest_trace_index: Some(7),
+            latest_trace_status: Some(Status::Satisfied),
+            latest_verifier_result_index: Some(3),
+            latest_verifier_status: Some(Status::Satisfied),
+            latest_parallel_run_index: Some(2),
+            latest_mini_task: Some("math-mini-1".to_string()),
+            latest_error_category: None,
+            latest_pass_evidence: Some("checked derivative".to_string()),
+            latest_summary: Some("math passed".to_string()),
+            needs_repair: false,
+            ready_for_harder_task: true,
+            next_action: "octopus evolve parallel --workers 1".to_string(),
+        };
+
+        let english = render_field_trajectory_summary_line(&field, Language::En);
+        let chinese = render_field_trajectory_summary_line(&field, Language::Zh);
+
+        assert!(english.contains("next_task=math-mini-2"));
+        assert!(english.contains("goal=verify a symbolic simplification"));
+        assert!(chinese.contains("下一题=math-mini-2"));
+        assert!(chinese.contains("目标=verify a symbolic simplification"));
+    }
+
+    #[test]
     fn field_queue_hint_prefers_explicit_mini_task_field() {
         let item = NeedQueueItem {
             index: 1,
@@ -22209,6 +23307,7 @@ mod tests {
                 kind: NeedKind::Verify,
                 query: "Run ib mini task ib-mini-1: Create a tiny revenue growth table from provided numbers and draft a neutral memo sentence.".to_string(),
             },
+            context: BTreeMap::new(),
             source: "field evolution".to_string(),
             prompt: "eight parallel field objectives".to_string(),
             summary: "field: ib; mini task: ib-mini-1; expected Feed: Checked table math, assumptions, and a non-advisory memo line.".to_string(),
@@ -22219,6 +23318,71 @@ mod tests {
     }
 
     #[test]
+    fn field_queue_hint_prefers_structured_context() {
+        let item = NeedQueueItem {
+            index: 7,
+            need: GoalNeedSuggestion {
+                kind: NeedKind::Verify,
+                query: "Run the next worker mini task".to_string(),
+            },
+            context: BTreeMap::from([
+                ("field_pack".to_string(), "robotics".to_string()),
+                ("field_mini_task".to_string(), "robotics-mini-2".to_string()),
+                (
+                    "field_expected_feed".to_string(),
+                    "structured expected feed".to_string(),
+                ),
+            ]),
+            source: "field evolution".to_string(),
+            prompt: "adapt math, search, code, swe, research, computer-use, ib, and robotics"
+                .to_string(),
+            summary: "selected from the peer field pool".to_string(),
+            status: NeedQueueStatus::Pending,
+        };
+
+        assert_eq!(
+            field_hint_from_queue_item(&item).as_deref(),
+            Some("robotics")
+        );
+        assert_eq!(
+            field_mini_task_context("robotics", &item).unwrap(),
+            (
+                "robotics-mini-2".to_string(),
+                "structured expected feed".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn need_queue_line_shows_structured_field_context() {
+        let item = NeedQueueItem {
+            index: 8,
+            need: GoalNeedSuggestion {
+                kind: NeedKind::Verify,
+                query: "Run the next worker mini task".to_string(),
+            },
+            context: BTreeMap::from([
+                ("field_pack".to_string(), "robotics".to_string()),
+                ("field_mini_task".to_string(), "robotics-mini-2".to_string()),
+                (
+                    "field_expected_feed".to_string(),
+                    "long verifier expectation stays out of the compact queue line".to_string(),
+                ),
+            ]),
+            source: "field evolution".to_string(),
+            prompt: "eight peer field objectives".to_string(),
+            summary: "selected from the peer field pool".to_string(),
+            status: NeedQueueStatus::Pending,
+        };
+
+        let line = need_queue_line(&item);
+
+        assert!(line.contains("field=robotics"));
+        assert!(line.contains("task=robotics-mini-2"));
+        assert!(!line.contains("long verifier expectation"));
+    }
+
+    #[test]
     fn field_queue_hint_does_not_steal_research_into_search() {
         let item = NeedQueueItem {
             index: 2,
@@ -22226,6 +23390,7 @@ mod tests {
                 kind: NeedKind::Verify,
                 query: "Run research mini task research-mini-1: Ground one sentence about octopus distributed control using provided sources.".to_string(),
             },
+            context: BTreeMap::new(),
             source: "field evolution".to_string(),
             prompt: "eight parallel field objectives".to_string(),
             summary: "field: research; mini task: research-mini-1; expected Feed: A short synthesis with source coverage and uncertainty.".to_string(),
@@ -22241,6 +23406,103 @@ mod tests {
     }
 
     #[test]
+    fn field_queue_hint_accepts_explicit_worker_slot_field() {
+        let item = NeedQueueItem {
+            index: 3,
+            need: GoalNeedSuggestion {
+                kind: NeedKind::Verify,
+                query: "Run robotics in this peer field slot: run or define one mini task, record trajectory and verifier result, then propose harness repair if it fails".to_string(),
+            },
+            context: BTreeMap::new(),
+            source: "field evolution".to_string(),
+            prompt: "eight parallel field objectives".to_string(),
+            summary: "selected from the peer field pool".to_string(),
+            status: NeedQueueStatus::Pending,
+        };
+
+        assert_eq!(
+            field_hint_from_queue_item(&item).as_deref(),
+            Some("robotics")
+        );
+    }
+
+    #[test]
+    fn field_queue_hint_ignores_broad_parallel_prompt_without_worker_field() {
+        let item = NeedQueueItem {
+            index: 4,
+            need: GoalNeedSuggestion {
+                kind: NeedKind::Verify,
+                query: "Check the next runnable worker Need".to_string(),
+            },
+            context: BTreeMap::new(),
+            source: "field evolution".to_string(),
+            prompt: "adapt math, search, code, swe, research, computer-use, ib, and robotics in parallel".to_string(),
+            summary: "selected from the peer field pool".to_string(),
+            status: NeedQueueStatus::Pending,
+        };
+
+        assert_eq!(field_hint_from_queue_item(&item), None);
+    }
+
+    #[test]
+    fn field_hint_ids_follow_field_pack_catalog_order() {
+        assert_eq!(
+            field_hint_ids(),
+            vec![
+                "math".to_string(),
+                "search".to_string(),
+                "code".to_string(),
+                "swe".to_string(),
+                "research".to_string(),
+                "computer-use".to_string(),
+                "ib".to_string(),
+                "robotics".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn field_mini_task_context_uses_explicit_task_id() {
+        let item = NeedQueueItem {
+            index: 5,
+            need: GoalNeedSuggestion {
+                kind: NeedKind::Verify,
+                query: "Run robotics mini task robotics-mini-2: plan a simulator route".to_string(),
+            },
+            context: BTreeMap::new(),
+            source: "field evolution".to_string(),
+            prompt: "eight parallel field objectives".to_string(),
+            summary: "field: robotics; mini task: robotics-mini-2; expected Feed: route plan"
+                .to_string(),
+            status: NeedQueueStatus::Pending,
+        };
+
+        let (task, expected) = field_mini_task_context("robotics", &item).unwrap();
+
+        assert_eq!(task, "robotics-mini-2");
+        assert!(expected.contains("Route plan"));
+    }
+
+    #[test]
+    fn field_mini_task_context_does_not_fallback_to_first_task() {
+        let item = NeedQueueItem {
+            index: 6,
+            need: GoalNeedSuggestion {
+                kind: NeedKind::Verify,
+                query: "Run robotics in this peer field slot: define the next harder mini task"
+                    .to_string(),
+            },
+            context: BTreeMap::new(),
+            source: "field evolution".to_string(),
+            prompt: "eight parallel field objectives".to_string(),
+            summary: "selected from the peer field pool".to_string(),
+            status: NeedQueueStatus::Pending,
+        };
+
+        assert_eq!(field_mini_task_context("robotics", &item), None);
+    }
+
+    #[test]
     fn need_run_request_parses_batch_workers() {
         assert_eq!(
             parse_need_run_request(&[]).unwrap(),
@@ -22252,13 +23514,463 @@ mod tests {
         );
         assert_eq!(
             parse_need_run_request(&["all".to_string()]).unwrap(),
-            NeedRunRequest::Batch(usize::MAX)
+            NeedRunRequest::Batch(MAX_WORKER_COUNT)
+        );
+        assert_eq!(
+            parse_need_run_request(&["--all".to_string()]).unwrap(),
+            NeedRunRequest::Batch(MAX_WORKER_COUNT)
         );
         assert_eq!(
             parse_need_run_request(&["--workers".to_string(), "3".to_string()]).unwrap(),
             NeedRunRequest::Batch(3)
         );
         assert!(parse_need_run_request(&["--workers".to_string()]).is_err());
+        assert!(parse_need_run_request(&["--workers".to_string(), "bad".to_string()]).is_err());
+        assert!(parse_need_run_request(&["--workers".to_string(), "0".to_string()]).is_err());
+        assert!(parse_need_run_request(&["--workers".to_string(), "99".to_string()]).is_err());
+        assert!(parse_need_run_request(&["bogus".to_string()]).is_err());
+        assert!(parse_need_run_request(&["0".to_string()]).is_err());
+        assert!(parse_need_run_request(&["latest".to_string(), "extra".to_string()]).is_err());
+        assert!(parse_need_run_request(&["all".to_string(), "extra".to_string()]).is_err());
+        assert!(parse_need_run_request(&[
+            "--workers".to_string(),
+            "3".to_string(),
+            "extra".to_string()
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn need_run_next_worker_suggestion_stays_inside_worker_boundary() {
+        assert_eq!(next_need_run_worker_count(3, 8), 3);
+        assert_eq!(next_need_run_worker_count(12, 4), 4);
+        assert_eq!(next_need_run_worker_count(12, 99), 8);
+        assert_eq!(next_need_run_worker_count(12, 0), 1);
+    }
+
+    #[test]
+    fn parallel_evolution_args_validate_worker_slots() {
+        assert_eq!(
+            parse_parallel_evolution_args(&[]).unwrap(),
+            (false, 4, None)
+        );
+        assert_eq!(
+            parse_parallel_evolution_args(&[
+                "--open".to_string(),
+                "--workers".to_string(),
+                "3".to_string(),
+                "adapt math and robotics".to_string()
+            ])
+            .unwrap(),
+            (true, 3, Some("adapt math and robotics".to_string()))
+        );
+        assert!(parse_parallel_evolution_args(&["--workers".to_string()]).is_err());
+        assert!(
+            parse_parallel_evolution_args(&["--workers".to_string(), "bad".to_string()]).is_err()
+        );
+        assert!(
+            parse_parallel_evolution_args(&["--workers".to_string(), "0".to_string()]).is_err()
+        );
+        assert!(
+            parse_parallel_evolution_args(&["--workers".to_string(), "99".to_string()]).is_err()
+        );
+    }
+
+    #[test]
+    fn desktop_pet_worker_cap_validates_observer_slots() {
+        assert_eq!(parse_worker_cap(&[]).unwrap(), 1);
+        assert_eq!(
+            parse_worker_cap(&["--workers".to_string(), "4".to_string()]).unwrap(),
+            4
+        );
+        assert!(parse_worker_cap(&["--workers".to_string()]).is_err());
+        assert!(parse_worker_cap(&["--workers".to_string(), "bad".to_string()]).is_err());
+        assert!(parse_worker_cap(&["--workers".to_string(), "0".to_string()]).is_err());
+        assert!(parse_worker_cap(&["--workers".to_string(), "99".to_string()]).is_err());
+    }
+
+    #[test]
+    fn desktop_pet_worker_error_does_not_require_state() {
+        let state = std::env::temp_dir()
+            .join(format!("octopus-missing-state-{}", std::process::id()))
+            .join("state.json");
+
+        let error = run(vec![
+            "--state".to_string(),
+            state.to_string_lossy().to_string(),
+            "pet".to_string(),
+            "desktop".to_string(),
+            "--workers".to_string(),
+            "bad".to_string(),
+        ])
+        .unwrap_err();
+
+        assert!(error.contains("invalid workers value: bad"));
+    }
+
+    #[test]
+    fn parallel_evolution_action_event_is_observable_before_feed() {
+        let mut state = HarnessState::default();
+        let mut run = state
+            .start_parallel_evolution("math and search peer field objectives", 2)
+            .unwrap();
+
+        let event = record_parallel_evolution_action_event(&mut state, &run).unwrap();
+
+        assert_eq!(event.state, "action");
+        assert_eq!(event.source, "parallel evolution");
+        assert_eq!(event.status, Status::Partial);
+        assert!(event.summary.contains("2 peer field worker Need"));
+        assert!(event.summary.contains("math/"));
+        assert!(event.summary.contains("search/"));
+        assert_eq!(state.last_pet_event, Some(event));
+        run.workers.clear();
+        assert!(record_parallel_evolution_action_event(&mut state, &run).is_none());
+    }
+
+    #[test]
+    fn parallel_evolution_next_actions_follow_auto_feed_without_manual_score() {
+        let report = NeedRunBatchReport {
+            requested: 2,
+            ran: 2,
+            reports: Vec::new(),
+            remaining_pending: 0,
+            next: vec![
+                "octopus fields summary".to_string(),
+                "octopus status".to_string(),
+            ],
+        };
+
+        let next = parallel_evolution_next_actions(&report);
+
+        assert_eq!(
+            next,
+            vec![
+                "octopus fields summary".to_string(),
+                "octopus status".to_string(),
+                "octopus beat 200".to_string(),
+            ]
+        );
+        assert!(!next.iter().any(|action| action.contains("fields score")));
+        assert!(!next.iter().any(|action| action.contains("needs run")));
+    }
+
+    #[test]
+    fn parallel_evolution_next_actions_ignore_unrelated_pending_queue() {
+        let need = Need::new(NeedKind::Verify, "Run math mini task math-mini-1");
+        let report = NeedRunBatchReport {
+            requested: 1,
+            ran: 1,
+            reports: vec![NeedRunReport {
+                taken: NeedQueueTakeReport {
+                    item: NeedQueueItem {
+                        index: 4,
+                        need: GoalNeedSuggestion {
+                            kind: NeedKind::Verify,
+                            query: "Run math mini task math-mini-1".to_string(),
+                        },
+                        context: BTreeMap::from([(
+                            "field_pack".to_string(),
+                            "math".to_string(),
+                        )]),
+                        source: "field evolution".to_string(),
+                        prompt: "field pool".to_string(),
+                        summary: "field: math".to_string(),
+                        status: NeedQueueStatus::Taken,
+                    },
+                    command: "octopus need verify math".to_string(),
+                    next: Vec::new(),
+                },
+                feed: Feed::satisfied(&need, "math field Feed", "field-mini-task"),
+                feed_trace_index: Some(9),
+                field: Some("math".to_string()),
+                verifier_result: None,
+                next: vec![
+                    "octopus fields score 9 satisfied verifier_pass \"record field verifier result\""
+                        .to_string(),
+                    "octopus status".to_string(),
+                ],
+            }],
+            remaining_pending: 1,
+            next: vec!["octopus needs run --workers 1".to_string()],
+        };
+
+        let next = parallel_evolution_next_actions(&report);
+
+        assert_eq!(
+            next,
+            vec![
+                "octopus fields summary".to_string(),
+                "octopus status".to_string(),
+                "octopus beat 200".to_string(),
+            ]
+        );
+        assert!(!next.iter().any(|action| action.contains("needs run")));
+        assert!(!next.iter().any(|action| action.contains("fields score")));
+    }
+
+    #[test]
+    fn empty_parallel_evolution_batch_points_to_harder_layer() {
+        let state = HarnessState::default();
+        let report = empty_parallel_evolution_batch_report(&state);
+        let next = parallel_evolution_next_actions(&report);
+
+        assert_eq!(report.requested, 0);
+        assert_eq!(report.ran, 0);
+        assert!(report.reports.is_empty());
+        assert!(next.iter().any(|action| action == "octopus fields summary"));
+        assert!(next
+            .iter()
+            .any(|action| action.contains("evolve recommend field-mini-task")
+                && action.contains("harder mini task layer")));
+        assert!(!next.iter().any(|action| action.contains("needs run")));
+        assert!(!next.iter().any(|action| action.contains("fields score")));
+    }
+
+    #[test]
+    fn need_run_non_field_next_actions_do_not_suggest_field_score() {
+        let mut state = HarnessState::default();
+        state.queue_need_suggestion(
+            GoalNeedSuggestion {
+                kind: NeedKind::Remember,
+                query: "remember that the user wants automatic worker flow".to_string(),
+            },
+            "test",
+            "non-field need",
+            "non-field Feed path",
+        );
+
+        let (report, _state) =
+            run_queued_need_with_observer_state(state, NeedRunSelector::First, None).unwrap();
+
+        assert_eq!(report.field, None);
+        assert!(report.verifier_result.is_none());
+        assert_eq!(report.next, vec!["octopus status".to_string()]);
+        assert!(!report
+            .next
+            .iter()
+            .any(|action| action.contains("fields score")));
+    }
+
+    #[test]
+    fn need_run_auto_verified_field_next_actions_do_not_suggest_manual_score() {
+        let _env = env_guard();
+        let mut state = HarnessState::default();
+        state.queue_need_suggestion_with_context(
+            GoalNeedSuggestion {
+                kind: NeedKind::Verify,
+                query:
+                    "Run math mini task math-mini-1: Differentiate x^3 + 2x and verify near x=2."
+                        .to_string(),
+            },
+            BTreeMap::from([
+                ("field_pack".to_string(), "math".to_string()),
+                ("field_mini_task".to_string(), "math-mini-1".to_string()),
+                (
+                    "field_expected_feed".to_string(),
+                    "Derivative 3x^2 + 2 with a numeric check near 14.".to_string(),
+                ),
+            ]),
+            "field evolution",
+            "eight peer field objectives",
+            "field: math; mini task: math-mini-1; expected Feed: derivative plus numeric check",
+        );
+
+        let (report, state) =
+            run_queued_need_with_observer_state(state, NeedRunSelector::First, None).unwrap();
+
+        assert_eq!(report.field.as_deref(), Some("math"));
+        assert!(report.feed_trace_index.is_some());
+        assert!(report.verifier_result.is_some());
+        assert_eq!(
+            report.next,
+            vec![
+                "octopus fields summary".to_string(),
+                "octopus status".to_string()
+            ]
+        );
+        assert!(!report
+            .next
+            .iter()
+            .any(|action| action.contains("fields score")));
+        assert_eq!(state.field_verifier_results.len(), 1);
+    }
+
+    #[test]
+    fn evolve_parallel_cli_auto_runs_worker_needs_to_feed() {
+        let _env = env_guard();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolve-parallel-auto-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
+
+        run(vec![
+            "--state".to_string(),
+            state_path.to_string_lossy().to_string(),
+            "--json".to_string(),
+            "evolve".to_string(),
+            "parallel".to_string(),
+            "--workers".to_string(),
+            "2".to_string(),
+            "advance math and search peer field objectives".to_string(),
+        ])
+        .unwrap();
+
+        let state = HarnessState::load(&state_path).unwrap();
+        let run = state.parallel_evolution_runs.last().expect("parallel run");
+
+        assert_eq!(run.worker_count, 2);
+        assert_eq!(state.pending_need_queue_count(), 0);
+        assert_eq!(
+            state
+                .need_queue
+                .iter()
+                .filter(|item| item.status == NeedQueueStatus::Taken)
+                .count(),
+            2
+        );
+        assert_eq!(state.feed_traces.len(), 2);
+        assert_eq!(state.field_verifier_results.len(), 2);
+        assert!(run.workers.iter().all(|worker| {
+            worker.queued_need_index.is_some()
+                && worker.source_trace_index.is_some()
+                && worker.verifier_result_index.is_some()
+                && !worker.next_action.contains("needs run")
+        }));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn evolve_parallel_cli_skips_completed_candidate_layer_without_queueing_need() {
+        let _env = env_guard();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolve-parallel-complete-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
+        let mut state = HarnessState::default();
+        let catalog = default_field_pack_catalog().unwrap();
+        for pack in &catalog.packs {
+            for task in &pack.mini_tasks {
+                let trace = state.record_feed_trace_from_feed(&Feed {
+                    need: Need::new(
+                        NeedKind::Verify,
+                        format!("Run {} mini task {}", pack.id, task.id),
+                    ),
+                    status: Status::Satisfied,
+                    evidence: vec![Evidence::new("field-mini-task", "pass evidence")],
+                    summary: format!("{} satisfied", task.id),
+                    metadata: BTreeMap::from([
+                        ("tentacle".to_string(), "field-mini-task".to_string()),
+                        ("tool".to_string(), "run_field_mini_task".to_string()),
+                        ("field_pack".to_string(), pack.id.clone()),
+                        ("field_mini_task".to_string(), task.id.clone()),
+                    ]),
+                });
+                state
+                    .record_field_verifier_result(
+                        trace.index,
+                        Status::Satisfied,
+                        None,
+                        None,
+                        format!("{} verifier passed", task.id),
+                    )
+                    .unwrap();
+            }
+        }
+        state.save(&state_path).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state_path.to_string_lossy().to_string(),
+            "--json".to_string(),
+            "evolve".to_string(),
+            "parallel".to_string(),
+            "--workers".to_string(),
+            "4".to_string(),
+            "advance math and search peer field objectives".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        let run = restored
+            .parallel_evolution_runs
+            .last()
+            .expect("parallel run");
+
+        assert_eq!(run.worker_count, 0);
+        assert!(run.workers.is_empty());
+        assert_eq!(
+            run.candidate_fields,
+            vec!["math".to_string(), "search".to_string()]
+        );
+        assert_eq!(restored.pending_need_queue_count(), 0);
+        assert!(run.summary.contains("add a harder mini task layer"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn need_run_saves_feed_event_after_feed_for_desktop_observer() {
+        let _env = env_guard();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-need-run-observer-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
+        let mut state = HarnessState::default();
+        state.queue_need_suggestion(
+            GoalNeedSuggestion {
+                kind: NeedKind::Remember,
+                query: "remember live need before feed".to_string(),
+            },
+            "test",
+            "observer",
+            "live need",
+        );
+
+        let (report, returned) =
+            run_queued_need_with_observer_state(state, NeedRunSelector::First, Some(&state_path))
+                .unwrap();
+        let observed = HarnessState::load(&state_path).unwrap();
+
+        assert_eq!(report.feed.status, Status::Satisfied);
+        assert!(report.feed_trace_index.is_some());
+        assert_ne!(returned.last_pet_event.as_ref().unwrap().state, "need");
+        assert!(returned.field_verifier_results.is_empty());
+        assert_eq!(observed.last_pet_event, returned.last_pet_event);
+        assert_eq!(observed.feed_traces.len(), returned.feed_traces.len());
+        assert_eq!(observed.need_queue[0].status, NeedQueueStatus::Taken);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn need_run_source_saves_need_before_feed_and_feed_after() {
+        let source =
+            fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/main.rs")).unwrap();
+        let need_event = source
+            .find("state.record_pet_event(\"need\", \"need queue\"")
+            .unwrap();
+        let first_save = source[need_event..]
+            .find("state.save(path)")
+            .map(|offset| need_event + offset)
+            .unwrap();
+        let feed_call = source.find("let feed = harness.feed_one(&need);").unwrap();
+        let feed_save = source[feed_call..]
+            .find("harness.state.save(path)")
+            .map(|offset| feed_call + offset)
+            .unwrap();
+
+        assert!(need_event < first_save);
+        assert!(first_save < feed_call);
+        assert!(feed_call < feed_save);
     }
 
     #[test]
@@ -22276,7 +23988,7 @@ mod tests {
             );
         }
 
-        let (report, mut state) = run_queued_needs(state, 2).unwrap();
+        let (report, mut state) = run_queued_needs_with_observer_state(state, 2, None).unwrap();
 
         assert_eq!(report.requested, 2);
         assert_eq!(report.ran, 2);
@@ -22288,7 +24000,38 @@ mod tests {
             .reports
             .iter()
             .all(|item| item.feed.status == Status::Satisfied));
+        assert_eq!(
+            report.next,
+            vec!["octopus needs run --workers 1".to_string()]
+        );
         assert_eq!(state.memory.recall("memory", 10).len(), 2);
+    }
+
+    #[test]
+    fn need_run_batch_non_field_completion_next_actions_do_not_show_fields() {
+        let mut state = HarnessState::default();
+        for query in ["alpha memory", "beta memory"] {
+            state.queue_need_suggestion(
+                GoalNeedSuggestion {
+                    kind: NeedKind::Remember,
+                    query: query.to_string(),
+                },
+                "test",
+                "batch",
+                "memory batch",
+            );
+        }
+
+        let (report, state) = run_queued_needs_with_observer_state(state, 2, None).unwrap();
+
+        assert_eq!(report.remaining_pending, 0);
+        assert_eq!(state.pending_need_queue_count(), 0);
+        assert!(report.reports.iter().all(|item| item.field.is_none()));
+        assert_eq!(report.next, vec!["octopus status".to_string()]);
+        assert!(!report
+            .next
+            .iter()
+            .any(|action| action.contains("fields summary")));
     }
 
     #[test]
@@ -22306,7 +24049,8 @@ mod tests {
             );
         }
 
-        let (report, state) = run_queued_need_indices(state, &[2, 3]).unwrap();
+        let (report, state) =
+            run_queued_need_indices_with_observer_state(state, &[2, 3], None).unwrap();
 
         assert_eq!(report.requested, 2);
         assert_eq!(report.ran, 2);
@@ -22317,6 +24061,10 @@ mod tests {
         assert_eq!(state.need_queue[0].status, NeedQueueStatus::Pending);
         assert_eq!(state.need_queue[1].status, NeedQueueStatus::Taken);
         assert_eq!(state.need_queue[2].status, NeedQueueStatus::Taken);
+        assert_eq!(
+            report.next,
+            vec!["octopus needs run --workers 1".to_string()]
+        );
     }
 
     #[test]
@@ -22358,14 +24106,24 @@ mod tests {
 
     struct CwdGuard {
         original: std::path::PathBuf,
+        _lock: MutexGuard<'static, ()>,
     }
 
     impl CwdGuard {
         fn new() -> Self {
+            let lock = cwd_test_lock()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             Self {
                 original: std::env::current_dir().unwrap(),
+                _lock: lock,
             }
         }
+    }
+
+    fn cwd_test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
     }
 
     impl Drop for CwdGuard {
@@ -25082,7 +26840,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         ));
         assert!(usage().contains("explore [--save] [prompt]"));
         assert!(usage().contains(
-            "needs [run [index|latest|all|--workers n]|take|drop|script [path]|session [--live] [prompt]]"
+            "needs [run [index|latest|--workers 1..8]|take|drop|script [path]|session [--live] [prompt]]"
         ));
         assert!(usage().contains("repair [query]"));
         assert!(usage().contains("repair apply [query]"));
@@ -25354,18 +27112,40 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .iter()
             .find(|capability| capability.id == "field_parallel_pool")
             .unwrap();
+        let field_harness_capability = product
+            .capabilities
+            .iter()
+            .find(|capability| capability.id == "field_mini_task_harness")
+            .unwrap();
         let doctor = doctor_report(&state, state_path).unwrap();
 
         assert!(tentacle_capability.evidence.contains("manifests"));
         assert!(!tentacle_capability.evidence.contains("1 manifests"));
         assert_eq!(runtime_capability.status, "ready");
         assert_eq!(field_capability.status, "ready");
+        assert_eq!(field_harness_capability.status, "ready");
         assert!(field_capability.evidence.contains("peer slots"));
+        assert!(field_harness_capability
+            .evidence
+            .contains("checked_count=24"));
+        assert!(field_harness_capability
+            .evidence
+            .contains("executed_count=24"));
+        assert!(field_harness_capability
+            .evidence
+            .contains("missing_count=0"));
+        assert!(field_harness_capability
+            .evidence
+            .contains("invalid_count=0"));
         assert_eq!(product.field_pool.field_count, 8);
+        assert_eq!(product.field_pool.field_slot_count, 8);
+        assert_eq!(product.field_pool.latest_worker_slot_count, 0);
+        assert_eq!(product.field_pool.latest_activity, "none");
+        assert!(product.field_pool.active_slot_reason.contains("selected"));
         assert!(product.field_pool.fields.contains(&"math".to_string()));
         assert!(product.field_pool.fields.contains(&"robotics".to_string()));
-        assert!(product.field_pool.policy.contains("peer field slots"));
-        assert!(product.field_pool.worker_slots.contains("fields stay peer"));
+        assert_eq!(product.field_pool.policy, parallel_field_pool_policy());
+        assert_eq!(product.field_pool.worker_slots, parallel_worker_policy());
         assert!(doctor.manifest_count > 1);
         assert!(!doctor
             .broken_manifests
@@ -25378,6 +27158,129 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn product_report_distinguishes_field_slots_from_worker_slots() {
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-product-field-slots-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let mut state = HarnessState::default();
+        state
+            .start_parallel_evolution("eight peer field objectives", 2)
+            .unwrap();
+        let report = product_report(&state, &dir.join(".octopus/state.json")).unwrap();
+
+        assert_eq!(report.field_pool.field_slot_count, 8);
+        assert_eq!(report.field_pool.latest_worker_slot_count, 2);
+        assert_ne!(report.field_pool.latest_activity, "none");
+        assert!(report.field_pool.latest_activity.contains('@'));
+        assert!(report.field_pool.latest_activity.contains(" worker="));
+        assert!(report
+            .field_pool
+            .active_slot_reason
+            .contains("field status and recent-run fairness"));
+        assert_ne!(
+            report.field_pool.field_slot_count,
+            report.field_pool.latest_worker_slot_count
+        );
+        assert!(report.capabilities.iter().any(|item| {
+            item.id == "field_parallel_pool"
+                && item.evidence.contains("latest_worker_slots=2")
+                && item.evidence.contains("latest_activity=")
+        }));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn product_report_field_pool_line_names_worker_execution_slots() {
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-product-field-line-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let mut state = HarnessState::default();
+        state
+            .start_parallel_evolution("eight peer field objectives", 3)
+            .unwrap();
+        let report = product_report(&state, &dir.join(".octopus/state.json")).unwrap();
+
+        let en = product_field_pool_line(&report.field_pool, Language::En);
+        let zh = product_field_pool_line(&report.field_pool, Language::Zh);
+
+        assert!(en.contains("8 peer slots"));
+        assert!(en.contains("fields="));
+        assert!(en.contains("missing_required=none"));
+        assert!(en.contains("latest_worker_slots=3"));
+        assert!(en.contains("latest_activity="));
+        assert!(en.contains("reason="));
+        assert!(en.contains("workers=workers are execution slots"));
+        assert!(zh.contains("8 个并列领域槽"));
+        assert!(zh.contains("缺失必需领域=none"));
+        assert!(zh.contains("最新 worker 执行槽数=3"));
+        assert!(zh.contains("最新活动="));
+        assert!(zh.contains("原因="));
+        assert!(zh.contains("worker策略=workers are execution slots"));
+        for field in REQUIRED_PEER_FIELD_IDS {
+            assert!(en.contains(field));
+        }
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn product_field_pool_ready_requires_named_peer_fields() {
+        let report = ProductFieldPoolReport {
+            policy: parallel_field_pool_policy().to_string(),
+            field_count: 8,
+            field_slot_count: 8,
+            latest_worker_slot_count: 0,
+            latest_activity: "none".to_string(),
+            fields: vec![
+                "alpha".to_string(),
+                "beta".to_string(),
+                "gamma".to_string(),
+                "delta".to_string(),
+                "epsilon".to_string(),
+                "zeta".to_string(),
+                "eta".to_string(),
+                "theta".to_string(),
+            ],
+            completed_fields: 0,
+            active_slot_field: None,
+            active_slot_reason: "selected".to_string(),
+            worker_slots: parallel_worker_policy().to_string(),
+            next: "octopus fields summary".to_string(),
+        };
+
+        assert!(!product_field_pool_ready(&report));
+        assert_eq!(
+            product_field_pool_missing_required_fields(&report),
+            REQUIRED_PEER_FIELD_IDS
+                .iter()
+                .map(|id| (*id).to_string())
+                .collect::<Vec<_>>()
+        );
+        assert!(product_field_pool_line(&report, Language::En).contains("missing_required=math"));
+
+        let report = ProductFieldPoolReport {
+            fields: REQUIRED_PEER_FIELD_IDS
+                .iter()
+                .map(|id| (*id).to_string())
+                .collect(),
+            ..report
+        };
+        assert!(product_field_pool_ready(&report));
+        assert!(product_field_pool_line(&report, Language::En).contains("missing_required=none"));
     }
 
     #[test]
@@ -25510,7 +27413,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         fs::create_dir_all(&dir).unwrap();
         std::env::set_current_dir(&dir).unwrap();
         let root = materialize_bundled_tentacles_root().unwrap();
-        let payload = r#"{"schema_version":"octopus-tool-call-v1","need":{"kind":"verify","query":"Run math mini task sample","context":{"field_pack":"math","field_mini_task":"math-mini-1","field_expected_feed":"Derivative 3x^2 + 2 with a numeric check near 14."}},"tool":{"id":"run_field_mini_task"},"tentacle":{"id":"field-mini-task"}}"#;
+        let payload = r#"{"schema_version":"octopus-tool-call-v1","need":{"kind":"verify","query":"Run math mini task","context":{"field_pack":"math","field_mini_task":"math-mini-1","field_expected_feed":"Derivative 3x^2 + 2 with a numeric check near 14."}},"tool":{"id":"run_field_mini_task"},"tentacle":{"id":"field-mini-task"}}"#;
 
         let mut child =
             std::process::Command::new(root.join("field-mini-task/tools/run_field_mini_task.sh"))
@@ -25778,6 +27681,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
 
         let record_path = dir.join(".octopus/local-app-run.json");
         let record = fs::read_to_string(&record_path).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&record).unwrap();
+        let next = value["next"].as_array().unwrap();
         assert!(record.contains("\"ready\": true"));
         assert!(record.contains("\"seed_tentacles\""));
         assert!(record.contains("\"/app.html\""));
@@ -25791,6 +27696,9 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("\"web_demo\""));
         assert!(record.contains("\"web_try_app\""));
         assert!(record.contains("browser-tentacle Feed demo present"));
+        assert!(next[0].as_str().unwrap().contains("first-run"));
+        assert!(next[1].as_str().unwrap().contains("start --open"));
+        assert!(next[2].as_str().unwrap().contains("preflight"));
         let loaded = HarnessState::load(&state).unwrap();
         let preflight = preflight_report(&loaded, Path::new(&state), false).unwrap();
         assert!(preflight
@@ -25936,8 +27844,18 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(app_text.contains("Draw Octopus"));
         assert!(app_text.contains("clean brain only returns a Need"));
         assert!(app_text.contains("browserTentaclePlan"));
+        assert!(app_text.contains("hasPendingNeed ? \"need\""));
+        assert!(app_text.contains(r#"goalStatus(goal) === "blocked""#));
+        assert!(app_text.contains("queuedText || \"Pending Need\""));
+        assert!(app_text.contains("queued.need.query, queuedContext"));
+        assert!(app_text.contains("queuedNeedContext"));
+        assert!(app_text.contains("context.field_pack"));
+        assert!(app_text.contains("context.field_mini_task"));
+        assert!(!app_text.contains(r#"goal.status === "Blocked""#));
         assert!(app_text.contains("Endpoint or /v1 base URL"));
         assert!(app_text.contains("chatCompletionsEndpoint"));
+        assert!(app_text.contains("modelRequestTimeoutMs"));
+        assert!(app_text.contains("AbortError"));
         assert!(app_text.contains("Ready. Latest Feed is visible."));
         assert!(app_text.contains("octopus.app.goal"));
         assert!(app_text.contains("octopus.app.model"));
@@ -28754,24 +30672,6 @@ JSON
             "--state".to_string(),
             "state.json".to_string(),
             "--json".to_string(),
-            "brain".to_string(),
-            "--goal".to_string(),
-            "--session".to_string(),
-            "make this repo easier".to_string()
-        ]));
-        assert!(bridge_command_allowed(&[
-            "--state".to_string(),
-            "state.json".to_string(),
-            "--json".to_string(),
-            "brain".to_string(),
-            "--goal".to_string(),
-            "--save".to_string(),
-            "make this repo easier".to_string()
-        ]));
-        assert!(bridge_command_allowed(&[
-            "--state".to_string(),
-            "state.json".to_string(),
-            "--json".to_string(),
             "first-run".to_string(),
             "--live".to_string(),
             "make this repo easier".to_string()
@@ -28831,6 +30731,43 @@ JSON
             "--state".to_string(),
             "state.json".to_string(),
             "--json".to_string(),
+            "needs".to_string(),
+            "run".to_string(),
+            "latest".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "feedback".to_string(),
+            "latest".to_string(),
+            "partial".to_string(),
+            "needs sharper evidence".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "fields".to_string(),
+            "score".to_string(),
+            "latest".to_string(),
+            "satisfied".to_string(),
+            "verifier_pass".to_string(),
+            "field verifier passed".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "brain".to_string(),
+            "--goal".to_string(),
+            "--save".to_string(),
+            "make this repo easier".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
             "brain".to_string(),
             "--agenda".to_string(),
             "--save".to_string(),
@@ -28870,9 +30807,37 @@ JSON
         assert!(!bridge_command_allowed(&[
             "--json".to_string(),
             "provider".to_string(),
+            "matrix".to_string(),
+            "run".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--json".to_string(),
+            "provider".to_string(),
             "check".to_string(),
             "OCTOPUS_LLM".to_string(),
             "custom message".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "oauth".to_string(),
+            "codex".to_string(),
+            "repo".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "install".to_string(),
+            "swe-agent".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "check".to_string(),
+            "swe-agent".to_string()
         ]));
         assert!(!bridge_command_allowed(&[
             "--state".to_string(),
@@ -28900,6 +30865,19 @@ JSON
             "record".to_string(),
             "append".to_string()
         ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "update".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "update".to_string(),
+            "--run".to_string()
+        ]));
         let denied = run_bridge_command(&[
             "--state".to_string(),
             "state.json".to_string(),
@@ -28918,7 +30896,18 @@ JSON
         assert!(denied
             .suggested_args
             .iter()
-            .any(|args| args.iter().any(|arg| arg == "--goal")));
+            .any(|args| args.iter().any(|arg| arg == "chat" || arg == "goal")));
+        assert!(denied
+            .suggested_args
+            .iter()
+            .any(|args| args.iter().any(|arg| arg == "first-run")));
+        let bridge_gate = crate::app_bridge::goal_surface_preflight_check(Path::new("state.json"));
+        assert_eq!(bridge_gate.id, "bridge_goal_surface");
+        assert_eq!(bridge_gate.status, "pass");
+        assert!(bridge_gate.evidence.contains("allowed_goal_writes=3/3"));
+        assert!(bridge_gate
+            .evidence
+            .contains("denied_internal_writes=13/13"));
         assert_eq!(
             http_content_length("POST /api/run HTTP/1.1\r\nContent-Length: 42\r\n").unwrap(),
             42
@@ -29686,6 +31675,62 @@ JSON
     }
 
     #[test]
+    fn pet_auto_state_prefers_pending_need_over_stale_event() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let state_path = Path::new("state.json");
+        let mut state = HarnessState::default();
+        state.install_manifest(root, "swe-agent").unwrap();
+        state.record_pet_event("memory", "memory", "old memory beat", Status::Satisfied);
+        state.queue_need_suggestion(
+            GoalNeedSuggestion {
+                kind: NeedKind::Verify,
+                query: "current pending Need".to_string(),
+            },
+            "test",
+            "prompt",
+            "summary",
+        );
+
+        let report = pet_report_for_state(&state, state_path, "auto").unwrap();
+
+        assert_eq!(report.state, "need");
+        assert!(report.target.contains("need=current%20pending%20Need"));
+    }
+
+    #[test]
+    fn desktop_pet_window_count_uses_only_active_parallel_workers() {
+        let swift = fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join("desktop/pet/OctopusDesktopPet.swift"),
+        )
+        .unwrap();
+
+        assert!(swift.contains(
+            "let activeRunWorkerCount = runHasActiveWorker ? workerCount(from: latestRun) : nil"
+        ));
+        assert!(swift.contains(
+            "snapshot.workers = observerWindowCount(runWorkers: activeRunWorkerCount, config: config)"
+        ));
+        assert!(swift.contains("active_slot_reason"));
+        assert!(swift.contains("reason:"));
+        assert!(swift.contains("freshTimestamp(int(worker[\"updated_at_secs\"]) ?? 0)"));
+        assert!(swift.contains("let goal = text(worker[\"goal\"])"));
+        assert!(
+            swift.contains("text(slot[\"latest_worker_status\"]) ?? text(slot[\"latest_status\"])")
+        );
+        assert!(
+            swift.contains("text(slot[\"latest_mini_task\"]) ?? text(slot[\"next_mini_task\"])")
+        );
+        assert!(swift.contains("text(slot[\"latest_worker_id\"]).map"));
+        assert!(!swift.contains(
+            "snapshot.workers = observerWindowCount(runWorkers: workerCount(from: latestRun), config: config)"
+        ));
+    }
+
+    #[test]
     fn cli_status_and_doctor_commands_run() {
         let _env = env_guard();
         let path =
@@ -29816,6 +31861,11 @@ JSON
             .iter()
             .any(|item| item.id == "harness_self_repair"));
         assert!(report
+            .capabilities
+            .iter()
+            .any(|item| item.id == "native_desktop_pet"
+                && item.evidence.contains("desktop_pet_source")));
+        assert!(report
             .gaps
             .iter()
             .any(|item| item.id == "provider_feedback"));
@@ -29847,6 +31897,26 @@ JSON
             .any(|item| item.id == "field_parallel_pool"
                 && item.status == "pass"
                 && item.required));
+        assert!(preflight.checks.iter().any(|item| {
+            item.id == "field_mini_task_harness"
+                && item.status == "pass"
+                && item.required
+                && item.evidence.contains("checked_count=24")
+                && item.evidence.contains("executed_count=24")
+                && item.evidence.contains("missing_count=0")
+                && item.evidence.contains("invalid_count=0")
+        }));
+        let desktop_pet_source = preflight
+            .checks
+            .iter()
+            .find(|item| item.id == "desktop_pet_source")
+            .unwrap();
+        assert_eq!(desktop_pet_source.required, cfg!(target_os = "macos"));
+        if cfg!(target_os = "macos") && command_ready("swiftc") {
+            assert_eq!(desktop_pet_source.status, "pass");
+        } else if !cfg!(target_os = "macos") {
+            assert_eq!(desktop_pet_source.status, "skipped");
+        }
         assert!(preflight
             .checks
             .iter()
@@ -29865,8 +31935,12 @@ JSON
             .any(|item| item.contains("preflight --live")));
         let script = fs::read_to_string(&script_path).unwrap();
         assert!(script.contains("octopus --state \"$STATE\" first-run"));
+        assert!(script.contains("octopus --state \"$STATE\" evolve parallel --workers 2"));
+        assert!(script.contains("preflight math and search field adaptation"));
         assert!(script.contains("octopus --state \"$STATE\" fields summary"));
+        assert!(script.contains("octopus --state \"$STATE\" status"));
         assert!(script.contains("OCTOPUS_PREFLIGHT_LIVE"));
+        assert!(script.contains("octopus --state \"$STATE\" check field-mini-task 2"));
         let record = fs::read_to_string(&record_path).unwrap();
         assert!(record.contains("# Real-Machine Record"));
         assert!(record.contains("Package version"));
@@ -29877,10 +31951,27 @@ JSON
         assert!(record.contains("/install.sh"));
         assert!(record.contains("Download artifacts"));
         assert!(record.contains("Field pool"));
+        assert!(record.contains("latest_activity"));
+        assert!(record.contains("worker="));
+        assert!(record.contains("missing_required=none"));
+        assert!(record.contains("parallel_run"));
+        assert!(record.contains("requested_worker_slots="));
+        assert!(record.contains("active_worker_slots="));
+        assert!(record.contains("candidate_pool="));
+        assert!(record.contains("Field mini task harness"));
+        assert!(record.contains("checked_count=24"));
+        assert!(record.contains("executed_count=24"));
+        assert!(record.contains("missing_count=0"));
+        assert!(record.contains("invalid_count=0"));
+        assert!(record.contains("octopus status"));
+        assert!(record.contains("Desktop pet source"));
         assert!(record.contains("bridge_goal_surface"));
+        assert!(record.contains("desktop_pet_source"));
         assert!(record.contains("provider matrix"));
         assert!(record.contains("provider matrix run"));
         assert!(record.contains("provider matrix check"));
+        assert!(record.contains("evolve parallel --workers 2"));
+        assert!(record.contains("preflight math and search field adaptation"));
         assert!(record.contains("fields summary"));
         assert!(record.contains("benchmark record"));
         assert!(record.contains("benchmark check"));
@@ -29902,12 +31993,86 @@ JSON
             .replace("- Download artifacts:", "- Download artifacts: pass")
             .replace("- Core loop:", "- Core loop: pass")
             .replace("- Product bridge:", "- Product bridge: pass")
-            .replace("- Field pool:", "- Field pool: pass")
+            .replace(
+                "- Field pool:",
+                "- Field pool: pass latest_activity=math:math-mini-1:Partial@123",
+            )
+            .replace(
+                "- Field mini task harness:",
+                "- Field mini task harness: pass checked_count=24 executed_count=24",
+            )
+            .replace("- Desktop pet source:", "- Desktop pet source: pass")
             .replace("- Start/app:", "- Start/app: pass")
             .replace("- Live provider:", "- Live provider: pass")
             .replace("- Benchmark evidence:", "- Benchmark evidence: pass")
             .replace("- PR dry run:", "- PR dry run: pass")
             .replace("- Pass or fail:", "- Pass or fail: pass");
+        fs::write(&record_path, &filled).unwrap();
+        let audit = check_preflight_record(&record_path).unwrap();
+        assert!(!audit.passed);
+        assert!(audit
+            .checks
+            .iter()
+            .any(|item| item.id == "field_pool_worker_identity" && item.status == "fail"));
+        let filled = filled.replace(
+            "- Field pool: pass latest_activity=math:math-mini-1:Partial@123",
+            "- Field pool: pass latest_activity=math:math-mini-1:Partial@123 worker=worker-1",
+        );
+        fs::write(&record_path, &filled).unwrap();
+        let audit = check_preflight_record(&record_path).unwrap();
+        assert!(!audit.passed);
+        assert!(audit
+            .checks
+            .iter()
+            .any(|item| item.id == "field_pool_named_fields" && item.status == "fail"));
+        let filled = filled.replace(
+            "- Field pool: pass latest_activity=math:math-mini-1:Partial@123 worker=worker-1",
+            "- Field pool: pass fields=math,search,code,swe,research,computer-use,ib,robotics missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1",
+        );
+        fs::write(&record_path, &filled).unwrap();
+        let audit = check_preflight_record(&record_path).unwrap();
+        assert!(!audit.passed);
+        assert!(audit
+            .checks
+            .iter()
+            .any(|item| item.id == "field_pool_parallel_run" && item.status == "fail"));
+        let filled = filled.replace(
+            "- Field pool: pass fields=math,search,code,swe,research,computer-use,ib,robotics missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1",
+            "- Field pool: pass fields=math,search,code,swe,research,computer-use,ib,robotics missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1 parallel_run=#1 requested_worker_slots=2 active_worker_slots=2 candidate_pool=code,robotics",
+        );
+        fs::write(&record_path, &filled).unwrap();
+        let audit = check_preflight_record(&record_path).unwrap();
+        assert!(!audit.passed);
+        assert!(audit
+            .checks
+            .iter()
+            .any(|item| item.id == "field_pool_parallel_run" && item.status == "fail"));
+        let filled = filled.replace(
+            "- Field pool: pass fields=math,search,code,swe,research,computer-use,ib,robotics missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1 parallel_run=#1 requested_worker_slots=2 active_worker_slots=2 candidate_pool=code,robotics",
+            "- Field pool: pass fields=math,search,code,swe,research,computer-use,ib,robotics missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1 parallel_run=#1 requested_worker_slots=2 active_worker_slots=2 candidate_pool=math,search",
+        );
+        fs::write(&record_path, &filled).unwrap();
+        let audit = check_preflight_record(&record_path).unwrap();
+        assert!(!audit.passed);
+        assert!(audit
+            .checks
+            .iter()
+            .any(|item| item.id == "field_mini_task_harness_record" && item.status == "fail"));
+        let filled = filled.replace(
+            "- Field mini task harness: pass checked_count=24 executed_count=24",
+            "- Field mini task harness: pass checked_count=24 executed_count=24 status=ok",
+        );
+        fs::write(&record_path, &filled).unwrap();
+        let audit = check_preflight_record(&record_path).unwrap();
+        assert!(!audit.passed);
+        assert!(audit
+            .checks
+            .iter()
+            .any(|item| item.id == "field_mini_task_harness_record" && item.status == "fail"));
+        let filled = filled.replace(
+            "- Field mini task harness: pass checked_count=24 executed_count=24 status=ok",
+            "- Field mini task harness: pass checked_count=24 executed_count=24 missing_count=0 invalid_count=0 status=ok",
+        );
         fs::write(&record_path, filled).unwrap();
         let audit = check_preflight_record(&record_path).unwrap();
         assert!(audit.passed);
@@ -30043,6 +32208,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
         let content = fs::read_to_string(&state_path).unwrap();
         assert!(content.contains("chat llm refined"));
         assert!(content.contains("observe: inspect docs"));
+        assert!(content.contains("\"need_queue\""));
+        assert!(content.contains("\"source\": \"goal_chat\""));
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert_eq!(restored.pending_need_queue_count(), 1);
+        assert_eq!(restored.need_queue[0].need.kind, NeedKind::Observe);
+        assert_eq!(restored.need_queue[0].need.query, "inspect docs");
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -32714,5 +34885,39 @@ JSON
         assert!(content.contains("github:dangoZhang/Octopus"));
         assert!(content.contains("pull_request:write"));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn self_iteration_plan_prints_structured_next_action() {
+        let source = include_str!("main.rs");
+
+        assert!(source.contains("println!(\"next: {}\", plan.next_action)"));
+        assert!(source.contains("println!(\"steps: {}\", plan.steps.join(\" -> \"))"));
+        assert!(source.contains("println!(\"下一步: {}\", plan.next_action)"));
+        assert!(source.contains("println!(\"步骤: {}\", plan.steps.join(\" -> \"))"));
+    }
+
+    #[test]
+    fn self_iteration_next_action_preserves_state_path() {
+        let state = Path::new("/tmp/octopus self/state.json");
+
+        assert_eq!(
+            super::stateful_octopus_command("octopus oauth github dangoZhang/Octopus", state),
+            "octopus --state '/tmp/octopus self/state.json' oauth github dangoZhang/Octopus"
+        );
+        assert_eq!(
+            super::stateful_octopus_command(
+                "OCTOPUS_PR_DRY_RUN=1 octopus self-iterate pr dangoZhang/Octopus 'improve usability'",
+                state
+            ),
+            "OCTOPUS_PR_DRY_RUN=1 octopus --state '/tmp/octopus self/state.json' self-iterate pr dangoZhang/Octopus 'improve usability'"
+        );
+        assert_eq!(
+            super::stateful_octopus_command(
+                "octopus --state existing.json oauth github dangoZhang/Octopus",
+                state
+            ),
+            "octopus --state existing.json oauth github dangoZhang/Octopus"
+        );
     }
 }

@@ -239,8 +239,8 @@
           <h2>2. Install and launch</h2>
           <pre><code>curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
 octopus --version
-octopus start --open</code></pre>
-          <p class="lead">The app opens at <code>http://127.0.0.1:8765/app.html</code>. The local product path includes app, pet, tutorial, recipes, download manifest, and installer checks.</p>
+octopus start --check</code></pre>
+          <p class="lead"><code>start --check</code> prepares state, seed tentacles, heartbeats, app evidence, and returns to the shell. Use <code>octopus start --open</code> when you want the browser app.</p>
         </div>
       </section>
 
@@ -249,7 +249,8 @@ octopus start --open</code></pre>
           <h2>3. Run the first clean loop</h2>
           <pre><code>octopus first-run "make this repo easier to use"
 octopus chat "prefer one small evidence-backed improvement"
-octopus pet</code></pre>
+octopus pet desktop
+octopus start --open</code></pre>
           <div class="grid">
             <article class="card"><h3>Goal</h3><p>User input changes the objective.</p></article>
             <article class="card"><h3>Need</h3><p>The main loop asks a worker for the next useful result.</p></article>
@@ -261,12 +262,14 @@ octopus pet</code></pre>
       <section>
         <div class="shell">
           <h2>4. Connect a model</h2>
-          <pre><code>octopus provider save codex
-source .octopus/llm.env
-octopus provider check</code></pre>
-          <pre><code>octopus provider save openai
-source .octopus/llm.env
-export OPENAI_API_KEY=...
+          <pre><code>codex login
+export OCTOPUS_LLM_BACKEND=codex
+export OCTOPUS_LLM_CODEX_COMMAND=codex
+octopus provider status</code></pre>
+          <pre><code>export OCTOPUS_LLM_BACKEND=openai-compatible
+export OCTOPUS_LLM_MODEL=gpt-4.1-mini
+export OCTOPUS_LLM_BASE_URL=https://api.openai.com/v1
+export OCTOPUS_LLM_API_KEY=&lt;api-key&gt;
 octopus provider check</code></pre>
           <p class="lead"><code>provider check</code> verifies the configured endpoint, model, and authentication before live use.</p>
         </div>
@@ -274,7 +277,16 @@ octopus provider check</code></pre>
 
       <section>
         <div class="shell">
-          <h2>5. Find the editable tool workflows</h2>
+          <h2>5. Preview field evolution</h2>
+          <pre><code>octopus evolve parallel --workers 1 --open "advance the eight peer field objectives toward v0.2.0"
+octopus fields summary</code></pre>
+          <p class="lead">This opens one worker slot from the peer field pool, runs the editable field harness, records Feed plus verifier signal, and keeps the Octopus pet as a state observer.</p>
+        </div>
+      </section>
+
+      <section>
+        <div class="shell">
+          <h2>6. Find the editable tool workflows</h2>
           <div class="grid">
             <article class="card"><h3><code>tentacles/</code></h3><p>Editable workflows for repo, browser, repair, and script tasks.</p></article>
             <article class="card"><h3><code>crates/octopus-core/</code></h3><p>Runtime, state, local server, and release checks.</p></article>

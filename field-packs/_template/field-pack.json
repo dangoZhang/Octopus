@@ -2,6 +2,7 @@
   "id": "template",
   "version": "0.1.x",
   "description": "Describe one task field without binding it to a fixed tool flow.",
+  "aliases": ["template", "example field"],
   "task_schema": {
     "inputs": ["goal", "context", "constraints"],
     "outputs": ["feed", "artifact", "verifier_result"],

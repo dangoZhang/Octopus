@@ -1,11 +1,12 @@
 # Version Plan
 
-Current version: `0.1.1`.
+Current version: `0.1.8`.
 
-Cadence from this plan forward:
+Cadence:
 
-- 8 product commits: add capability, improve reliability, or polish UX.
-- 1 cleanup/version commit: scan for uncomfortable product edges, remove stale wording, update docs, then bump patch version by `0.0.1`.
+- 8 landed product commits make one patch version.
+- Each patch version should include capability work plus a small cleanup/version pass.
+- If the cadence drifts, the next cleanup/version commit catches the package version up to the completed 8-commit groups since the last release tag.
 
 Release checklist:
 
@@ -13,7 +14,7 @@ Release checklist:
 - `docs/product-gap.md` records current shape, filled gaps, and next fill.
 - CI stays green for Rust, manifests, tentacle runtime checks, pet page, and install path.
 - `octopus preflight --live` is the release-readiness summary before every `0.1.0+` tag.
-- Release evidence records the field pool with `fields summary` and a filled `Field pool` result.
+- Release evidence records the field pool with `fields summary`, the desktop pet compiler gate with `desktop_pet_source`, and filled `Field pool` / `Desktop pet source` results.
 - Pages deploys `index.html`, `app.html`, `pet.html`, quickstart, architecture, references, and self-iteration docs.
 - Version changes land together in `crates/octopus-core/Cargo.toml` and `Cargo.lock`.
 - `0.0.24` must complete `docs/core-audit.md`: full source audit, redundant development residue removal, misaligned fallback removal, and core/harness boundary cleanup.
@@ -23,8 +24,9 @@ Release checklist:
 Real-machine test gate for `0.1.0` and later tags:
 
 - Install from GitHub with `cargo install --git ... --force`.
-- Run `octopus --version`, `doctor`, `first-run`, `chat`, `goal refine`, `brain --goal --save`, `pet harness`, and `preflight` on a clean machine.
-- Run `octopus fields summary` and fill the `Field pool` result in the real-machine record.
+- Run `octopus --version`, `doctor`, `first-run`, `chat`, `goal refine`, `pet harness`, and `preflight` on a clean machine.
+- Run `octopus evolve parallel --workers 2 "preflight math and search field adaptation"`, `octopus fields summary`, and `octopus status`; verify `desktop_pet_source` in preflight; fill the `Field pool` result with the eight named fields, `missing_required=none`, `latest_activity` including `worker=`, and `parallel_run` including `requested_worker_slots=`, `active_worker_slots=`, and a `candidate_pool` containing `math` and `search`.
+- Run `octopus check field-mini-task 2` and fill the `Field mini task harness` result with `checked_count=24`, `executed_count=24`, `missing_count=0`, `invalid_count=0`, and `status=ok`.
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
@@ -46,17 +48,20 @@ Last release correction: `0.1.0` on 2026-06-28. Scope: recorded GitHub-installed
 
 `0.1.x` patch train after release: build the field-adaptation foundation in small usable steps.
 
-- `0.1.x`: field packs, trace field IDs, one native read-only desktop pet, sampled active-field Need -> Feed -> verifier step from parallel field goals.
-- `0.1.x`: generic `field-mini-task` code-as-harness surface so sampled field tasks create repairable trajectories before domain behavior is evolved.
+- `0.1.x`: field packs, trace field IDs, one native read-only desktop pet, peer-field worker slots that run Need -> Feed -> verifier from the parallel Goal pool.
+- `0.1.x`: generic `field-mini-task` code-as-harness surface so peer-field worker tasks create repairable trajectories before domain behavior is evolved.
 - `0.1.x`: field trajectory summaries, failed-run reuse, reviewable harness patches. Current state has `octopus fields summary` reporting all eight first-pass mini tasks as satisfied.
-- `0.1.x`: define harder mini tasks per field and keep the same sampled parallel pool. Current state has three satisfied mini-task layers in all eight packs after real trace repair cycles.
-- `0.1.1`: repair self-evolution cleanup: scored patch draft/review/apply/verify/learning/strategy evidence is reviewable, and repair effectiveness labels share one helper.
-- `0.1.1`: repair effectiveness rollup gives heartbeat one reviewable Feed across repair sources, with failure-dominated rollups able to queue the next self-repair Need.
-- `0.1.1`: repair outcomes now remember repair-effectiveness-rollup usage, so later rollups can score whether the rollup guidance helped.
-- `0.1.1`: rollup guidance effectiveness is now a first-class repair artifact and heartbeat Feed field.
-- `0.1.1`: rollup guidance adaptation is now a reviewable Feed that can repair unreliable rollup guidance before it keeps driving heartbeat.
-- `0.1.1`: repair queue brief is now a reviewable heartbeat artifact that explains which harness evidence queued the next self-repair Need.
-- `0.1.1`: repair queue brief effectiveness is now a scored repair Feed artifact, so heartbeat can reuse or avoid queue sources from reviewed outcomes.
-- `0.1.1`: repair queue brief adaptation is now a heartbeat Feed that can repair unreliable queue source selection.
+- `0.1.x`: define harder mini tasks per field and keep the same parallel field pool. Current state has three satisfied mini-task layers in all eight packs after real trace repair cycles.
+- `0.1.1`-`0.1.8`: repair self-evolution cleanup: scored patch draft/review/apply/verify/learning/strategy evidence is reviewable, and repair effectiveness labels share one helper.
+- `0.1.1`-`0.1.8`: repair effectiveness rollup gives heartbeat one reviewable Feed across repair sources, with failure-dominated rollups able to queue the next self-repair Need.
+- `0.1.1`-`0.1.8`: repair outcomes now remember repair-effectiveness-rollup usage, so later rollups can score whether the rollup guidance helped.
+- `0.1.1`-`0.1.8`: rollup guidance effectiveness is now a first-class repair artifact and heartbeat Feed field.
+- `0.1.1`-`0.1.8`: rollup guidance adaptation is now a reviewable Feed that can repair unreliable rollup guidance before it keeps driving heartbeat.
+- `0.1.1`-`0.1.8`: repair queue brief is now a reviewable heartbeat artifact that explains which harness evidence queued the next self-repair Need.
+- `0.1.1`-`0.1.8`: repair queue brief effectiveness is now a scored repair Feed artifact, so heartbeat can reuse or avoid queue sources from reviewed outcomes.
+- `0.1.1`-`0.1.8`: repair queue brief adaptation is now a heartbeat Feed that can repair unreliable queue source selection.
+- `0.1.8`: field-pack task evolution guards now include the eight pack files plus `field-packs/index.json`, and LLM-generated field-pack patches are prompted and tested as declared multi-file target patches.
+- `0.1.8`: completed peer-field layers now point to executable `evolve recommend field-mini-task` next actions with the active state path, so Octopus can recommend the next harder layer instead of stopping at prose.
+- `0.1.8`: native desktop pet observation and self-iteration next actions keep worker/Need state scoped, state-path aware, and read-only.
 - `0.1.x`: keep the eight fields as peer slots; add depth inside each field without turning the field list into a sequence.
 - `0.2.0`: Octopus can run, score, repair, and rerun tasks across math, search, code, SWE, research, computer-use, IB work, and robotics with the concrete tentacle code primarily iterated by Octopus.
