@@ -8851,6 +8851,7 @@ fn repair_score_report(
         .find(|trace| trace.index == trace_index)
         .cloned();
     let outcome = state.record_repair_outcome(Some(trace_index), status, summary)?;
+    let should_continue_repair = matches!(outcome.status, Status::Failed | Status::Partial);
     let evolution = mirror_repair_score_to_evolution_outcome(state, trace.as_ref(), &outcome);
     let journal = write_repair_score_journal(cwd, trace.as_ref(), &outcome)?;
     let mut next = vec![
@@ -8885,6 +8886,8 @@ fn repair_score_report(
         apply_artifact = followup.apply_artifact;
         evolution_artifact = followup.evolution_artifact;
         recommendation_error = followup.recommendation_error;
+    } else if should_continue_repair {
+        next.insert(0, "octopus repair continue .".to_string());
     }
     Ok(RepairScoreReport {
         outcome,
@@ -16967,8 +16970,8 @@ mod tests {
         parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
         preflight_report, prepare_bridge_state, product_report, provider_coverage_ready,
         provider_env_report, provider_status_report, real_machine_record_status_from_parts,
-        repair_continue_report, repair_report, resolve_tentacle_manifest_root, run,
-        run_bridge_command, run_provider_matrix_record, save_provider_env_report_with_key,
+        repair_continue_report, repair_report, repair_score_report, resolve_tentacle_manifest_root,
+        run, run_bridge_command, run_provider_matrix_record, save_provider_env_report_with_key,
         shell_arg, skill_reports, start_check_requested, starter_report, tentacles_root_ready,
         update_report, usage, write_benchmark_record, write_pet_image_report,
         write_provider_matrix_record, Language,
@@ -24919,6 +24922,50 @@ JSON
                     .unwrap_or(false)
             });
         assert!(decision_effective_found);
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn repair_score_partial_without_evolution_suggests_continue() {
+        let _env = env_guard();
+        let workspace = std::env::temp_dir().join(format!(
+            "octopus-repair-score-continue-next-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&workspace);
+        fs::create_dir_all(&workspace).unwrap();
+        let mut state = HarnessState::default();
+        let mut feed = Feed::satisfied(
+            &Need::new(NeedKind::Verify, "repair still needs iteration"),
+            "repair still needs iteration",
+            "harness-repair-agent",
+        );
+        feed.metadata
+            .insert("tentacle".to_string(), "harness-repair-agent".to_string());
+        feed.metadata
+            .insert("tool".to_string(), "repair_session".to_string());
+        state.record_feed_trace_from_feed(&feed);
+
+        let report = repair_score_report(
+            &mut state,
+            "latest",
+            Status::Partial,
+            "repair still needs iteration".to_string(),
+            &workspace,
+        )
+        .unwrap();
+
+        assert!(report.evolution.is_none());
+        assert_eq!(report.outcome.status, Status::Partial);
+        assert_eq!(
+            report.next.first().map(String::as_str),
+            Some("octopus repair continue .")
+        );
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command == "octopus repair ."));
+
         let _ = fs::remove_dir_all(workspace);
     }
 
