@@ -213,6 +213,7 @@ if outcome_status is None:
 
 session = load_json(session_path)
 action_trace = action_trace_summary(workspace, session_path, session)
+draft = session.get("draft") if isinstance(session.get("draft"), dict) else {}
 record = {
     "schema_version": "octopus-harness-repair-outcome-v1",
     "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -222,7 +223,9 @@ record = {
     "candidate": str(session.get("candidate") or "none"),
     "source": str(session.get("source") or "none"),
     "next_need": str(session.get("next_need") or ""),
-    "draft_status": str((session.get("draft") or {}).get("status") or "unknown"),
+    "draft_status": str(draft.get("status") or "unknown"),
+    "draft_prefix": str(draft.get("prefix") or ""),
+    "draft_model": str(draft.get("model") or ""),
     "action_trace_json": action_trace["json"],
     "action_trace_status": action_trace["status"],
     "action_trace_stage_count": action_trace["stage_count"],
@@ -269,6 +272,8 @@ outcome_md.write_text(
         f"target: `{record['target_tentacle']}`",
         f"candidate: `{record['candidate']}`",
         f"draft_status: `{record['draft_status']}`",
+        f"draft_prefix: `{record['draft_prefix'] or 'none'}`",
+        f"draft_model: `{record['draft_model'] or 'none'}`",
         f"action_trace_json: `{record['action_trace_json'] or 'missing'}`",
         f"action_trace_status: `{record['action_trace_status']}`",
         f"action_trace_stages: `{record['action_trace_stage_count'] or 'unknown'}`",
@@ -299,6 +304,9 @@ metadata = {
     "outcome_status": outcome_status,
     "target_tentacle": record["target_tentacle"],
     "candidate": record["candidate"],
+    "draft_status": record["draft_status"],
+    "draft_prefix": record["draft_prefix"],
+    "draft_model": record["draft_model"],
     "action_trace_json": record["action_trace_json"],
     "action_trace_status": record["action_trace_status"],
     "action_trace_stage_count": record["action_trace_stage_count"],

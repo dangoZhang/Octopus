@@ -205,6 +205,44 @@ def repair_draft_metadata(root, value):
     return metadata
 
 
+def repair_draft_effectiveness_metadata(root, value, json_value=""):
+    path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
+    metadata = {
+        "repair_draft_effectiveness": rel(path, root) if path else "",
+        "repair_draft_effectiveness_json": rel(json_path, root) if json_path else "",
+        "repair_draft_effectiveness_used_count": "",
+        "repair_draft_effectiveness_satisfied_count": "",
+        "repair_draft_effectiveness_partial_count": "",
+        "repair_draft_effectiveness_failed_count": "",
+        "repair_draft_effectiveness_success_rate": "",
+        "repair_draft_effectiveness_failure_rate": "",
+        "repair_draft_effectiveness_top_reuse": "",
+        "repair_draft_effectiveness_top_avoid": "",
+        "repair_draft_effectiveness_preview": "",
+    }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        metadata.update({
+            "repair_draft_effectiveness_used_count": str(data.get("used_count") or 0),
+            "repair_draft_effectiveness_satisfied_count": str(data.get("satisfied_count") or 0),
+            "repair_draft_effectiveness_partial_count": str(data.get("partial_count") or 0),
+            "repair_draft_effectiveness_failed_count": str(data.get("failed_count") or 0),
+            "repair_draft_effectiveness_success_rate": str(data.get("success_rate") or "0.00"),
+            "repair_draft_effectiveness_failure_rate": str(data.get("failure_rate") or "0.00"),
+            "repair_draft_effectiveness_top_reuse": compact(data.get("top_reuse") or "", 320),
+            "repair_draft_effectiveness_top_avoid": compact(data.get("top_avoid") or "", 320),
+            "repair_draft_effectiveness_preview": compact(json.dumps(data, sort_keys=True), 700),
+        })
+    if path and path.exists() and not metadata["repair_draft_effectiveness_preview"]:
+        metadata["repair_draft_effectiveness_preview"] = compact(path.read_text(encoding="utf-8", errors="replace"), 700)
+    return metadata
+
+
 def repair_recall_metadata(root, value):
     path = resolve_artifact(root, value)
     metadata = {
@@ -719,6 +757,8 @@ if latest_repair_plan:
     repair_lessons_json = str(inputs.get("repair_lessons_json") or "")
     repair_lesson_effectiveness = str(inputs.get("repair_lesson_effectiveness") or "")
     repair_lesson_effectiveness_json = str(inputs.get("repair_lesson_effectiveness_json") or "")
+    repair_draft_effectiveness = str(inputs.get("repair_draft_effectiveness") or "")
+    repair_draft_effectiveness_json = str(inputs.get("repair_draft_effectiveness_json") or "")
     repair_decision = str(inputs.get("repair_decision") or "")
     repair_decision_json = str(inputs.get("repair_decision_json") or "")
     harness_adaptation_effectiveness = str(inputs.get("harness_adaptation_effectiveness") or "")
@@ -741,6 +781,11 @@ if latest_repair_plan:
         root,
         repair_lesson_effectiveness,
         repair_lesson_effectiveness_json,
+    )
+    draft_effectiveness_metadata = repair_draft_effectiveness_metadata(
+        root,
+        repair_draft_effectiveness,
+        repair_draft_effectiveness_json,
     )
     adaptation_effectiveness_metadata = harness_adaptation_effectiveness_metadata(
         root,
@@ -817,6 +862,8 @@ if latest_repair_plan:
     lesson_avoid = lessons_metadata.get("repair_lessons_avoid_count", "")
     effectiveness_used = effectiveness_metadata.get("repair_lesson_effectiveness_used_count", "")
     effectiveness_success = effectiveness_metadata.get("repair_lesson_effectiveness_success_rate", "")
+    draft_effectiveness_used = draft_effectiveness_metadata.get("repair_draft_effectiveness_used_count", "")
+    draft_effectiveness_success = draft_effectiveness_metadata.get("repair_draft_effectiveness_success_rate", "")
     decision_kind = decision_metadata.get("repair_decision_kind", "")
     decision_focus = decision_metadata.get("repair_decision_focus", "")
     decision_next_kind = decision_metadata.get("repair_decision_next_need_kind", "")
@@ -939,6 +986,7 @@ if latest_repair_plan:
             f"reason={recall_top_reason or 'none'}; "
             f"lessons={lesson_count or '0'} reuse={lesson_reuse or '0'} avoid={lesson_avoid or '0'}; "
             f"effectiveness={effectiveness_used or '0'} success_rate={effectiveness_success or '0.00'}; "
+            f"draft_effectiveness={draft_effectiveness_used or '0'} success_rate={draft_effectiveness_success or '0.00'}; "
             f"decision={decision_kind or 'none'} focus={decision_focus or 'none'}; "
             f"environment_profile={environment_profile_status or 'none'} mode={environment_profile_mode or 'none'} "
             f"capabilities={environment_profile_capabilities or 'none'} constraints={environment_profile_constraints or 'none'}; "
@@ -962,6 +1010,8 @@ if latest_repair_plan:
         "repair_lessons_json": repair_lessons_json,
         "repair_lesson_effectiveness": repair_lesson_effectiveness,
         "repair_lesson_effectiveness_json": repair_lesson_effectiveness_json,
+        "repair_draft_effectiveness": repair_draft_effectiveness,
+        "repair_draft_effectiveness_json": repair_draft_effectiveness_json,
         "repair_decision": repair_decision,
         "repair_decision_json": repair_decision_json,
         "harness_adaptation_effectiveness": harness_adaptation_effectiveness,
@@ -998,6 +1048,7 @@ if latest_repair_plan:
     repair_metadata.update(recall_metadata)
     repair_metadata.update(lessons_metadata)
     repair_metadata.update(effectiveness_metadata)
+    repair_metadata.update(draft_effectiveness_metadata)
     repair_metadata.update(adaptation_effectiveness_metadata)
     repair_metadata.update(environment_profile_metadata)
     repair_metadata.update(environment_drift_metadata)
