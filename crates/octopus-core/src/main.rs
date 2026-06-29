@@ -571,6 +571,11 @@ enum NeedRunRequest {
 struct RepairPlanReport {
     path: String,
     review: String,
+    field_trajectory: String,
+    field_trajectory_field: String,
+    field_trajectory_mini_task: String,
+    field_trajectory_verifier_status: String,
+    field_trajectory_verifier_error: String,
     status: String,
     schema: String,
     session: String,
@@ -3708,6 +3713,9 @@ fn print_repair_report(report: &RepairReport, language: Language) {
             if let Some(plan) = &report.repair_plan {
                 println!("repair_plan: {}", plan.path);
                 print_optional_line("review", &plan.review);
+                print_optional_line("field_trajectory", &plan.field_trajectory);
+                print_optional_line("field_target", &repair_plan_field_label(plan));
+                print_optional_line("field_verifier", &repair_plan_field_verifier(plan));
                 println!("plan_status: {}", plan.status);
                 println!("target: {}/{}", plan.target_tentacle, plan.target_tool);
                 print_optional_line("check", &plan.check_command);
@@ -3737,6 +3745,9 @@ fn print_repair_report(report: &RepairReport, language: Language) {
             if let Some(plan) = &report.repair_plan {
                 println!("修复计划: {}", plan.path);
                 print_optional_line("审阅", &plan.review);
+                print_optional_line("领域轨迹", &plan.field_trajectory);
+                print_optional_line("领域目标", &repair_plan_field_label(plan));
+                print_optional_line("领域验证", &repair_plan_field_verifier(plan));
                 println!("计划状态: {}", plan.status);
                 println!("目标: {}/{}", plan.target_tentacle, plan.target_tool);
                 print_optional_line("检查", &plan.check_command);
@@ -3761,6 +3772,30 @@ fn print_repair_report(report: &RepairReport, language: Language) {
 fn print_optional_line(label: &str, value: &str) {
     if !value.trim().is_empty() {
         println!("{label}: {value}");
+    }
+}
+
+fn repair_plan_field_label(plan: &RepairPlanReport) -> String {
+    match (
+        plan.field_trajectory_field.trim(),
+        plan.field_trajectory_mini_task.trim(),
+    ) {
+        ("", "") => String::new(),
+        (field, "") => field.to_string(),
+        ("", mini_task) => mini_task.to_string(),
+        (field, mini_task) => format!("{field}/{mini_task}"),
+    }
+}
+
+fn repair_plan_field_verifier(plan: &RepairPlanReport) -> String {
+    match (
+        plan.field_trajectory_verifier_status.trim(),
+        plan.field_trajectory_verifier_error.trim(),
+    ) {
+        ("", "") => String::new(),
+        (status, "") => status.to_string(),
+        ("", error) => error.to_string(),
+        (status, error) => format!("{status} {error}"),
     }
 }
 
@@ -8209,6 +8244,9 @@ fn repair_report(
         if !plan.review.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.review)));
         }
+        if !plan.field_trajectory.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.field_trajectory)));
+        }
         for command in [
             &plan.check_command,
             &plan.grant_command,
@@ -8343,6 +8381,17 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
     Some(RepairPlanReport {
         path,
         review: metadata_value(metadata, "review"),
+        field_trajectory: metadata_value(metadata, "field_trajectory"),
+        field_trajectory_field: metadata_value(metadata, "field_trajectory_field"),
+        field_trajectory_mini_task: metadata_value(metadata, "field_trajectory_mini_task"),
+        field_trajectory_verifier_status: metadata_value(
+            metadata,
+            "field_trajectory_verifier_status",
+        ),
+        field_trajectory_verifier_error: metadata_value(
+            metadata,
+            "field_trajectory_verifier_error",
+        ),
         status: metadata_value(metadata, "repair_plan_status"),
         schema: metadata_value(metadata, "repair_plan_schema"),
         session: metadata_value(metadata, "repair_plan_session"),
@@ -20174,6 +20223,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let plan = report.repair_plan.expect("repair plan report");
         assert!(plan.path.ends_with("REPAIR_PLAN.json"));
         assert!(plan.review.ends_with("REVIEW.md"));
+        assert!(plan.field_trajectory.ends_with("FIELD_TRAJECTORY.md"));
         assert_eq!(plan.status, "review_required");
         assert_eq!(plan.target_tool, "repair_session");
         assert!(plan.grant_command.contains("harness:write"));
@@ -20183,6 +20233,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("REVIEW.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("FIELD_TRAJECTORY.md")));
         assert!(report
             .next
             .iter()

@@ -846,6 +846,13 @@ repair_plan = build_action_plan(
     repair_plan_json,
 )
 repair_plan["inputs"]["field_trajectory"] = rel(field_trajectory_md, workspace)
+repair_plan["field_trajectory_target"] = {
+    "field": field_trajectory["field"],
+    "mini_task": field_trajectory["mini_task"],
+    "session": field_trajectory["session"],
+    "verifier_status": field_trajectory["verifier_status"],
+    "verifier_error": field_trajectory["verifier_error"],
+}
 repair_plan["review_boundary"] = "Review FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
 repair_plan_json.write_text(
     json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",

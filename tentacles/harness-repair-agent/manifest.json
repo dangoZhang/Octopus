@@ -115,6 +115,7 @@
       "Write REVIEW.md as the user-facing repair review bundle for each session.",
       "Keep REPAIR_PLAN commands reviewable and grant-bound before any harness write.",
       "Let heartbeat_repair read the latest REPAIR_PLAN before older evolution artifacts.",
+      "Expose FIELD_TRAJECTORY as repair-plan Feed metadata before grant, apply, or score.",
       "Require explicit harness:write grants before apply artifacts.",
       "Keep clean-brain context limited to Goal, Mem, Need, and Feed."
     ]

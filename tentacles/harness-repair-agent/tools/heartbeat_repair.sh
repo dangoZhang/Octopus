@@ -68,6 +68,61 @@ def rel(path, root):
         return str(path)
 
 
+def resolve_artifact(root, value):
+    value = str(value or "").strip()
+    if not value:
+        return None
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = root / path
+    try:
+        resolved = path.resolve()
+        resolved.relative_to(root)
+    except Exception:
+        return None
+    return resolved
+
+
+def clean_markdown_value(value):
+    text = str(value or "").strip()
+    if text.startswith("`") and text.endswith("`") and len(text) >= 2:
+        text = text[1:-1].strip()
+    return "" if text in {"none", "missing", "not provided"} else text
+
+
+def field_trajectory_metadata(root, value, target):
+    path = resolve_artifact(root, value)
+    metadata = {
+        "field_trajectory_field": "",
+        "field_trajectory_mini_task": "",
+        "field_trajectory_verifier_status": "",
+        "field_trajectory_verifier_error": "",
+        "field_trajectory_preview": "",
+    }
+    if isinstance(target, dict):
+        metadata.update({
+            "field_trajectory_field": clean_markdown_value(target.get("field")),
+            "field_trajectory_mini_task": clean_markdown_value(target.get("mini_task")),
+            "field_trajectory_verifier_status": clean_markdown_value(target.get("verifier_status")),
+            "field_trajectory_verifier_error": clean_markdown_value(target.get("verifier_error")),
+        })
+    if not path or not path.exists():
+        return metadata
+    text = path.read_text(encoding="utf-8", errors="replace")
+    metadata["field_trajectory_preview"] = compact(text, 600)
+    for line in text.splitlines():
+        key, _, raw = line.partition(":")
+        if not raw:
+            continue
+        key = key.strip()
+        value = clean_markdown_value(raw)
+        if key == "field" and not metadata["field_trajectory_field"]:
+            metadata["field_trajectory_field"] = value
+        elif key == "mini_task" and not metadata["field_trajectory_mini_task"]:
+            metadata["field_trajectory_mini_task"] = value
+    return metadata
+
+
 def as_list(value):
     if isinstance(value, list):
         return [str(item) for item in value if str(item).strip()]
@@ -133,12 +188,26 @@ if latest_repair_plan:
     target_tentacle = str(repair_plan.get("target_tentacle") or "unknown")
     target_tool = str(repair_plan.get("target_tool") or "unknown")
     candidate = str(repair_plan.get("candidate") or "none")
+    field_trajectory = str(inputs.get("field_trajectory") or "")
+    field_metadata = field_trajectory_metadata(
+        root,
+        field_trajectory,
+        repair_plan.get("field_trajectory_target") or {},
+    )
+    field_label = "/".join(
+        item for item in [
+            field_metadata.get("field_trajectory_field", ""),
+            field_metadata.get("field_trajectory_mini_task", ""),
+        ]
+        if item
+    )
     status = "satisfied"
     next_need = "review latest repair action plan"
     output = (
         f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
         f"status={plan_status}; target={target_tentacle}/{target_tool}; "
-        f"next={next_need_kind} {next_need_query}; review before grant/apply/score"
+        f"next={next_need_kind} {next_need_query}; "
+        f"field={field_label or 'none'}; review before grant/apply/score"
     )
     repair_metadata = {
         "repair_plan": rel(latest_repair_plan, root),
@@ -146,7 +215,7 @@ if latest_repair_plan:
         "repair_plan_schema": str(repair_plan.get("schema_version") or ""),
         "repair_plan_session": str(repair_plan.get("session") or ""),
         "review": str(inputs.get("review") or ""),
-        "field_trajectory": str(inputs.get("field_trajectory") or ""),
+        "field_trajectory": field_trajectory,
         "target_tentacle": target_tentacle,
         "target_tool": target_tool,
         "candidate": candidate,
@@ -157,6 +226,7 @@ if latest_repair_plan:
         "score_command": command_value(commands, "score"),
         "suggested_commands": " && ".join(suggested),
     }
+    repair_metadata.update(field_metadata)
 elif not tentacles:
     status = "partial"
     next_need = "run beat after failed check or scored Feed"

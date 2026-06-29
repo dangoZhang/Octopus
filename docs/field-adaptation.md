@@ -97,6 +97,7 @@ Need 稳定，实现可替换。相同 Need 可以路由到不同触手组合。
 - [x] 从 Field Pack 注入 mini task 和 expected Feed 到 Need/Feed trace。
 - [x] 加入 `field-mini-task` 触手基座：field mini task 先进入可进化执行面，失败后再触发 harness repair。
 - [x] `repair_session` 读取最新 field trajectory，写入 `FIELD_TRAJECTORY.md`，并把修复目标对准失败触手。
+- [x] `heartbeat_repair` 会把 `FIELD_TRAJECTORY.md`、field、mini task、verifier 状态暴露到 repair plan Feed 和下一步 review 命令。
 - [x] `evolve recommend field-mini-task` 能从 math field trace 生成可审查的 runtime patch draft；临时应用后可返回 `verifier_status=satisfied`。
 - [x] 授权后 `evolve apply field-mini-task 03-runtime-code` 已把 math runtime patch 应用到 live harness，复跑后 `math-mini-1` 变为 `satisfied`，并记录 evolution outcome。
 - [x] search 失败轨迹能生成 field-specific runtime patch draft；授权应用后 `search-mini-1` 自动复跑为 `satisfied`。
