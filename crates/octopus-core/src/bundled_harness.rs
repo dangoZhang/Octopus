@@ -139,6 +139,10 @@ const BUNDLED_TENTACLE_FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../../tentacles/field-mini-task/repair-templates/math/math-mini-3.pyfrag"),
     ),
     (
+        "field-mini-task/repair-templates/math/math-mini-4.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/math/math-mini-4.pyfrag"),
+    ),
+    (
         "field-mini-task/repair-templates/research/research-mini-1.pyfrag",
         include_bytes!("../../../tentacles/field-mini-task/repair-templates/research/research-mini-1.pyfrag"),
     ),
@@ -175,6 +179,10 @@ const BUNDLED_TENTACLE_FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../../tentacles/field-mini-task/repair-templates/search/search-mini-3.pyfrag"),
     ),
     (
+        "field-mini-task/repair-templates/search/search-mini-4.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/search/search-mini-4.pyfrag"),
+    ),
+    (
         "field-mini-task/repair-templates/swe/swe-mini-1.pyfrag",
         include_bytes!("../../../tentacles/field-mini-task/repair-templates/swe/swe-mini-1.pyfrag"),
     ),
@@ -185,6 +193,10 @@ const BUNDLED_TENTACLE_FILES: &[(&str, &[u8])] = &[
     (
         "field-mini-task/repair-templates/swe/swe-mini-3.pyfrag",
         include_bytes!("../../../tentacles/field-mini-task/repair-templates/swe/swe-mini-3.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/write/write-mini-1.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/write/write-mini-1.pyfrag"),
     ),
     (
         "json-feed/manifest.json",
@@ -292,6 +304,10 @@ const BUNDLED_FIELD_PACK_FILES: &[(&str, &[u8])] = &[
     (
         "field-packs/robotics/field-pack.json",
         include_bytes!("../../../field-packs/robotics/field-pack.json"),
+    ),
+    (
+        "field-packs/write/field-pack.json",
+        include_bytes!("../../../field-packs/write/field-pack.json"),
     ),
 ];
 

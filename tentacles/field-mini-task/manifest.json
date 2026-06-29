@@ -7,8 +7,8 @@
   "brain": {
     "kind": "llm",
     "model": null,
-    "prompt": "Read the field mini task Need, available tool metadata, expected Feed, and permission boundary. Execute only what the current harness can honestly verify. If the field behavior is missing, preserve the trajectory and ask harness evolution to improve the editable field implementation.",
-    "feedback_contract": "Return compact Feed with field, mini task, evidence artifact paths, verifier status, and the next useful Need. Never fake a pass."
+    "prompt": "Read the field mini task Need, available tool metadata, expected Feed, and permission boundary. Keep clean-brain context to Goal, Mem, Need, and Feed only. Execute Need -> Tool -> Action -> Tool -> Action -> Feed entirely inside the tentacle harness. Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata. Return satisfied only with live or artifact-backed verifier evidence under .octopus/field-mini-task/. If task resolution is ambiguous or evidence is missing, preserve the trajectory and return partial with explicit gap metadata for harness evolution.",
+    "feedback_contract": "Return compact Feed with field, mini task, evidence artifact paths, verifier status, and the next useful Need. Preserve or resolve field_pack, field_mini_task, and field_expected_feed in metadata. Include gap metadata whenever status is partial or evidence is missing. Keep all tool traces and command outputs inside tentacle context. Never fake a pass."
   },
   "skills": [
     {
@@ -27,7 +27,7 @@
       "id": "run_field_mini_task",
       "description": "Record and attempt a field mini task through an editable octopus-json-v1 runtime.",
       "input": "octopus-json-v1 tool call with field_pack, field_mini_task, and field_expected_feed in Need context",
-      "output": "JSON Feed with trajectory artifacts, field metadata, and the next harness evolution Need",
+      "output": "JSON Feed with trajectory artifacts, preserved field metadata, artifact-backed verifier evidence for satisfied status, and the next harness evolution Need",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/run_field_mini_task.sh",
@@ -74,10 +74,11 @@
       },
       {
         "id": "field_pack_tasks",
-        "description": "Editable peer-field mini task definitions, expected Feed, and domain aliases.",
+        "description": "Editable peer-field mini task definitions, expected Feed, domain aliases, and matching repair templates.",
         "targets": [
           "field-packs/*/field-pack.json",
-          "field-packs/index.json"
+          "field-packs/index.json",
+          "repair-templates/*/*.pyfrag"
         ]
       },
       {
@@ -95,10 +96,11 @@
       "python3 tools/check_repair_templates.py"
     ],
     "constraints": [
-      "Do not mark a field mini task satisfied without verifier evidence.",
+      "Do not mark a field mini task satisfied without live or artifact-backed verifier evidence; return partial with gap metadata when evidence is missing.",
       "Keep trajectory artifacts under .octopus/field-mini-task/ for harness evolution.",
       "Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata.",
-      "Keep each repair template standalone with an if field/mini_task guard; check_repair_templates.py must compile and execute every template.",
+      "Keep each repair template standalone with an if field/mini_task guard; check_repair_templates.py must compile and execute every template and expose satisfied_count/partial_count honestly.",
+      "When adding or changing a field-pack mini task, update the matching repair-templates/<field>/<mini-task>.pyfrag in the same candidate.",
       "Concrete domain behavior should evolve in this harness, not in the clean brain."
     ]
   }

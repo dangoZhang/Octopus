@@ -90,6 +90,32 @@ pub(crate) fn record_field_value(content: &str, label: &str) -> Option<String> {
     })
 }
 
+fn set_record_field_value(content: &str, label: &str, value: &str) -> String {
+    let prefix = format!("- {label}:");
+    let replacement = format!("- {label}: {value}");
+    let mut replaced = false;
+    let lines = content
+        .lines()
+        .map(|line| {
+            if line.trim_start().starts_with(&prefix) {
+                replaced = true;
+                replacement.clone()
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>();
+    if replaced {
+        let mut output = lines.join("\n");
+        if content.ends_with('\n') {
+            output.push('\n');
+        }
+        output
+    } else {
+        format!("{content}\n{replacement}\n")
+    }
+}
+
 pub(crate) fn record_pass_decision_ready(value: &str) -> bool {
     let normalized = value.trim().to_ascii_lowercase();
     normalized == "pass"
@@ -104,6 +130,8 @@ struct FieldMiniTaskTemplateSummary {
     status: String,
     checked_count: Option<u64>,
     executed_count: Option<u64>,
+    satisfied_count: Option<u64>,
+    partial_count: Option<u64>,
     missing_count: Option<usize>,
     invalid_count: Option<usize>,
 }
@@ -129,7 +157,7 @@ pub(crate) fn field_mini_task_template_evidence(check_satisfied: bool, stdout: &
         .as_ref()
         .is_some_and(|summary| summary.ready(check_satisfied));
     format!(
-        "check_status={}, status={}, checked_count={}, executed_count={}, missing_count={}, invalid_count={}, template_ready={}",
+        "check_status={}, status={}, checked_count={}, executed_count={}, satisfied_count={}, partial_count={}, missing_count={}, invalid_count={}, template_ready={}",
         if check_satisfied { "satisfied" } else { "failed" },
         summary
             .as_ref()
@@ -137,6 +165,8 @@ pub(crate) fn field_mini_task_template_evidence(check_satisfied: bool, stdout: &
             .unwrap_or("unknown"),
         optional_u64(summary.as_ref().and_then(|item| item.checked_count)),
         optional_u64(summary.as_ref().and_then(|item| item.executed_count)),
+        optional_u64(summary.as_ref().and_then(|item| item.satisfied_count)),
+        optional_u64(summary.as_ref().and_then(|item| item.partial_count)),
         optional_usize(summary.as_ref().and_then(|item| item.missing_count)),
         optional_usize(summary.as_ref().and_then(|item| item.invalid_count)),
         ready
@@ -156,6 +186,12 @@ fn field_mini_task_template_summary(stdout: &str) -> Option<FieldMiniTaskTemplat
             .and_then(serde_json::Value::as_u64),
         executed_count: value
             .get("executed_count")
+            .and_then(serde_json::Value::as_u64),
+        satisfied_count: value
+            .get("satisfied_count")
+            .and_then(serde_json::Value::as_u64),
+        partial_count: value
+            .get("partial_count")
             .and_then(serde_json::Value::as_u64),
         missing_count: value
             .get("missing")
@@ -383,8 +419,15 @@ pub(crate) fn write_benchmark_record(
     let version = version.into();
     let cases = benchmark_cases();
     let head_for_record = current_head.as_deref().unwrap_or("unknown");
-    let mut content = format!(
-        "# Benchmark Evidence\n\n\
+    if output_path.exists() {
+        let content = fs::read_to_string(output_path).map_err(|error| error.to_string())?;
+        let content =
+            set_record_field_value(&content, "Git commit", &format!("`{head_for_record}`"));
+        let content = set_record_field_value(&content, "Package version", &format!("`{version}`"));
+        fs::write(output_path, content).map_err(|error| error.to_string())?;
+    } else {
+        let mut content = format!(
+            "# Benchmark Evidence\n\n\
 Record the smallest SWE/Claw/Wild evidence before `0.1.0`.\n\n\
 ## Machine\n\n\
 - Date:\n\
@@ -394,12 +437,12 @@ Record the smallest SWE/Claw/Wild evidence before `0.1.0`.\n\n\
 - Git commit: `{head}`\n\
 - Package version: `{version}`\n\n\
 ## Cases\n\n",
-        head = head_for_record,
-        version = version
-    );
-    for case in &cases {
-        content.push_str(&format!(
-            "### {title}\n\n\
+            head = head_for_record,
+            version = version
+        );
+        for case in &cases {
+            content.push_str(&format!(
+                "### {title}\n\n\
 - Id: {id}\n\
 - Suite: {suite}\n\
 - Target: {target}\n\
@@ -409,14 +452,15 @@ Record the smallest SWE/Claw/Wild evidence before `0.1.0`.\n\n\
 - Output summary:\n\
 - Artifact path:\n\
 - Notes: {command_hint}\n\n",
-            title = case.title,
-            id = case.id,
-            suite = case.suite,
-            target = case.target,
-            command_hint = case.command_hint
-        ));
+                title = case.title,
+                id = case.id,
+                suite = case.suite,
+                target = case.target,
+                command_hint = case.command_hint
+            ));
+        }
+        fs::write(output_path, content).map_err(|error| error.to_string())?;
     }
-    fs::write(output_path, content).map_err(|error| error.to_string())?;
     Ok(BenchmarkRecordReport {
         path: output_path.to_string_lossy().to_string(),
         version,
@@ -600,23 +644,60 @@ fn benchmark_case_section<'a>(content: &'a str, case: &BenchmarkCase) -> Option<
 
 #[cfg(test)]
 mod tests {
-    use super::{field_mini_task_template_evidence, field_mini_task_template_result_ready};
+    use super::{
+        field_mini_task_template_evidence, field_mini_task_template_result_ready,
+        write_benchmark_record,
+    };
+    use std::fs;
 
     #[test]
     fn field_mini_task_template_evidence_requires_full_clean_coverage() {
         let ok =
-            r#"{"status":"ok","checked_count":24,"executed_count":24,"missing":[],"invalid":[]}"#;
+            r#"{"status":"ok","checked_count":25,"executed_count":25,"missing":[],"invalid":[]}"#;
         assert!(field_mini_task_template_result_ready(true, ok));
         let evidence = field_mini_task_template_evidence(true, ok);
-        assert!(evidence.contains("checked_count=24"));
-        assert!(evidence.contains("executed_count=24"));
+        assert!(evidence.contains("checked_count=25"));
+        assert!(evidence.contains("executed_count=25"));
         assert!(evidence.contains("missing_count=0"));
         assert!(evidence.contains("invalid_count=0"));
         assert!(evidence.contains("template_ready=true"));
 
-        let missing = r#"{"status":"ok","checked_count":24,"executed_count":24,"missing":["math"],"invalid":[]}"#;
+        let missing = r#"{"status":"ok","checked_count":25,"executed_count":25,"missing":["math"],"invalid":[]}"#;
         assert!(!field_mini_task_template_result_ready(true, missing));
         assert!(field_mini_task_template_evidence(true, missing).contains("missing_count=1"));
         assert!(!field_mini_task_template_result_ready(false, ok));
+    }
+
+    #[test]
+    fn benchmark_record_refreshes_head_without_erasing_results() {
+        let dir =
+            std::env::temp_dir().join(format!("octopus-benchmark-record-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("benchmark-evidence.md");
+
+        write_benchmark_record(&path, "0.1.0", Some("oldhead".to_string()), |value| {
+            value.to_string()
+        })
+        .unwrap();
+        let filled = fs::read_to_string(&path)
+            .unwrap()
+            .replace("- Date:", "- Date: 2026-06-30")
+            .replace("- Pass or fail:", "- Pass or fail: pass")
+            .replace("- Output summary:", "- Output summary: kept evidence");
+        fs::write(&path, filled).unwrap();
+
+        write_benchmark_record(&path, "0.2.0", Some("newhead".to_string()), |value| {
+            value.to_string()
+        })
+        .unwrap();
+        let refreshed = fs::read_to_string(&path).unwrap();
+
+        assert!(refreshed.contains("`newhead`"));
+        assert!(refreshed.contains("- Package version: `0.2.0`"));
+        assert!(refreshed.contains("- Pass or fail: pass"));
+        assert!(refreshed.contains("- Output summary: kept evidence"));
+
+        let _ = fs::remove_dir_all(dir);
     }
 }

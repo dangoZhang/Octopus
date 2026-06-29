@@ -6,23 +6,22 @@ use octopus_core::{
     default_permissions, default_tentacle_profiles, embedded_profile_registry_json,
     feed_tentacle_with_llm_factory, inspect_tentacle_manifests, load_tentacle_manifests,
     parallel_field_pool_policy, parallel_worker_policy, plan_tentacle_evolution_apply,
-    propose_tentacle_evolution_with_client, propose_tentacle_evolution_with_state,
-    recommend_tentacle_evolution_apply, scaffold_tentacle, think_tentacle_with_llm_factory,
-    write_harness_beat_evolution_artifacts, write_tentacle_apply_artifacts,
-    write_tentacle_evolution_artifacts, AdaptReport, BrainDeliberationDraft,
-    BrainDeliberationReport, BrainDeliberationSaveReport, BrainExploreDraft, BrainExploreReport,
-    BrainGoalReport, BrainGoalSaveReport, BrainPromptReport, BrainReflectionDraft,
-    BrainReflectionReport, BrainReflectionSaveReport, BrainSynthesisDraft, BrainSynthesisInput,
-    BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant, ChatClient, ChatClientFactory,
-    ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord, CodexCliChatClient,
-    CodexCliConfig, ContextReport, EnvironmentReport, EvolutionApplyArtifact, EvolutionApplyPlan,
-    EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed, FeedFeedbackOutcome,
-    FeedTraceRecord, Feedback, FieldPackReport, FieldPackSelection, FieldPoolStatusReport,
-    FieldTrajectoryReport, FieldTrajectorySummary, FieldVerifierResult, Goal, GoalChat,
-    GoalNeedSuggestion, GoalRefinement, Harness, HarnessBeatEvolution, HarnessLearningSummary,
-    HarnessState, HeartBeat, HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need,
-    NeedKind, NeedQueueItem, NeedQueueReport, NeedQueueSaveReport, NeedQueueStatus,
-    NeedQueueTakeReport, OpenAiCompatibleChatClient, OpenAiCompatibleConfig,
+    propose_tentacle_evolution_with_client, recommend_tentacle_evolution_apply, scaffold_tentacle,
+    think_tentacle_with_llm_factory, write_harness_beat_evolution_artifacts_with_client,
+    write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts, AdaptReport,
+    BrainDeliberationDraft, BrainDeliberationReport, BrainDeliberationSaveReport,
+    BrainExploreDraft, BrainExploreReport, BrainGoalReport, BrainGoalSaveReport, BrainPromptReport,
+    BrainReflectionDraft, BrainReflectionReport, BrainReflectionSaveReport, BrainSynthesisDraft,
+    BrainSynthesisInput, BrainSynthesisReport, BrainSynthesisSaveReport, CapabilityGrant,
+    ChatClient, ChatClientFactory, ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord,
+    CodexCliChatClient, CodexCliConfig, ContextReport, EnvironmentReport, EvolutionApplyArtifact,
+    EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed,
+    FeedFeedbackOutcome, FeedTraceRecord, Feedback, FieldPackReport, FieldPackSelection,
+    FieldPoolStatusReport, FieldTrajectoryReport, FieldTrajectorySummary, FieldVerifierResult,
+    Goal, GoalChat, GoalNeedSuggestion, GoalRefinement, Harness, HarnessBeatEvolution,
+    HarnessLearningSummary, HarnessState, HeartBeat, HeartbeatReport, InstalledTentacle,
+    LoadedTentacleManifest, Need, NeedKind, NeedQueueItem, NeedQueueReport, NeedQueueSaveReport,
+    NeedQueueStatus, NeedQueueTakeReport, OpenAiCompatibleChatClient, OpenAiCompatibleConfig,
     OpenAiCompatibleTuning, ParallelEvolutionRun, PetEvent, RepairOutcome, RouteReport,
     SelfIterationPlan, StarterFeedbackInput, StarterFeedbackRecord, StarterFeedbackStatus, Status,
     StatusReport, TentacleEvolutionProposal, TentacleManifestReport, TentacleProfile,
@@ -36,7 +35,9 @@ use std::io::{Read, Write};
 use std::panic;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 mod app_bridge;
 mod bundled_harness;
@@ -484,6 +485,11 @@ struct ProviderMatrixTarget {
     purpose: String,
     enabled_env: String,
     check_token: String,
+    planning_tentacle: String,
+    planning_need_kind: NeedKind,
+    planning_need_query: String,
+    evolution_tentacle: String,
+    evolution_objective: String,
     commands: Vec<String>,
 }
 
@@ -1657,12 +1663,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             repair_installed_seed_sources(&mut loaded)?;
             let mut harness = Harness::with_state(loaded);
-            let chat = if chat_llm_enabled() {
-                let mut client = chat_llm_client()?;
-                harness.chat_with_client(message, &mut client)?
-            } else {
-                harness.chat(message)
-            };
+            let mut client = chat_llm_client()?;
+            let chat = harness.chat_with_client(message, &mut client)?;
             harness
                 .state
                 .save(&state)
@@ -2437,12 +2439,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     }
                 }
             } else if reflect {
-                let report = if live || clean_brain_llm_enabled() {
-                    let mut client = clean_brain_reflect_llm_client()?;
-                    loaded.clean_brain_reflect_with_client(prompt.clone(), 6, &mut client)?
-                } else {
-                    loaded.clean_brain_reflect(prompt.clone(), 6)
-                };
+                let mut client = clean_brain_reflect_llm_client()?;
+                let report =
+                    loaded.clean_brain_reflect_with_client(prompt.clone(), 6, &mut client)?;
                 if save {
                     let saved = loaded.queue_reflection_report(&report);
                     loaded.save(&state).map_err(|error| error.to_string())?;
@@ -2464,12 +2463,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     print_brain_reflection(&report, language);
                 }
             } else if align {
-                let report = if live || clean_brain_llm_enabled() {
-                    let mut client = clean_brain_align_llm_client()?;
-                    loaded.clean_brain_align_with_client(prompt.clone(), 6, &mut client)?
-                } else {
-                    loaded.clean_brain_align(prompt.clone(), 6)
-                };
+                let mut client = clean_brain_align_llm_client()?;
+                let report =
+                    loaded.clean_brain_align_with_client(prompt.clone(), 6, &mut client)?;
                 if save {
                     let saved = loaded.queue_reflection_report(&report);
                     loaded.save(&state).map_err(|error| error.to_string())?;
@@ -2491,12 +2487,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     print_brain_reflection(&report, language);
                 }
             } else if memory {
-                let report = if live || clean_brain_llm_enabled() {
-                    let mut client = clean_brain_memory_llm_client()?;
-                    loaded.clean_brain_memory_with_client(prompt.clone(), 6, &mut client)?
-                } else {
-                    loaded.clean_brain_memory(prompt.clone(), 6)
-                };
+                let mut client = clean_brain_memory_llm_client()?;
+                let report =
+                    loaded.clean_brain_memory_with_client(prompt.clone(), 6, &mut client)?;
                 if save {
                     let saved = loaded.queue_exploration_report(&report);
                     loaded.save(&state).map_err(|error| error.to_string())?;
@@ -2518,12 +2511,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     print_brain_memory(&report, language);
                 }
             } else if brief {
-                let report = if live || clean_brain_llm_enabled() {
-                    let mut client = clean_brain_brief_llm_client()?;
-                    loaded.clean_brain_brief_with_client(prompt.clone(), 6, &mut client)?
-                } else {
-                    loaded.clean_brain_brief(prompt.clone(), 6)
-                };
+                let mut client = clean_brain_brief_llm_client()?;
+                let report =
+                    loaded.clean_brain_brief_with_client(prompt.clone(), 6, &mut client)?;
                 if save {
                     let saved = loaded.queue_exploration_report(&report);
                     loaded.save(&state).map_err(|error| error.to_string())?;
@@ -2545,12 +2535,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     print_brain_explore(&report, language);
                 }
             } else if intent {
-                let report = if live || clean_brain_llm_enabled() {
-                    let mut client = clean_brain_intent_llm_client()?;
-                    loaded.clean_brain_intent_with_client(prompt.clone(), 6, &mut client)?
-                } else {
-                    loaded.clean_brain_intent(prompt.clone(), 6)
-                };
+                let mut client = clean_brain_intent_llm_client()?;
+                let report =
+                    loaded.clean_brain_intent_with_client(prompt.clone(), 6, &mut client)?;
                 if save {
                     let saved = loaded.queue_exploration_report(&report);
                     loaded.save(&state).map_err(|error| error.to_string())?;
@@ -2572,12 +2559,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     print_brain_explore(&report, language);
                 }
             } else if let Some(kind) = focus_kind {
-                let report = if live || clean_brain_llm_enabled() {
-                    let mut client = clean_brain_explore_llm_client()?;
-                    loaded.clean_brain_focus_with_client(kind, prompt.clone(), 6, &mut client)?
-                } else {
-                    loaded.clean_brain_focus(kind, prompt.clone(), 6)
-                };
+                let mut client = clean_brain_explore_llm_client()?;
+                let report =
+                    loaded.clean_brain_focus_with_client(kind, prompt.clone(), 6, &mut client)?;
                 if save {
                     let saved = loaded.queue_exploration_report(&report);
                     loaded.save(&state).map_err(|error| error.to_string())?;
@@ -2599,12 +2583,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     print_brain_explore(&report, language);
                 }
             } else if clarify {
-                let report = if live || clean_brain_llm_enabled() {
-                    let mut client = clean_brain_clarify_llm_client()?;
-                    loaded.clean_brain_clarify_with_client(prompt.clone(), 6, &mut client)?
-                } else {
-                    loaded.clean_brain_clarify(prompt.clone(), 6)
-                };
+                let mut client = clean_brain_clarify_llm_client()?;
+                let report =
+                    loaded.clean_brain_clarify_with_client(prompt.clone(), 6, &mut client)?;
                 if save {
                     let saved = loaded.queue_deliberation_report(&report);
                     loaded.save(&state).map_err(|error| error.to_string())?;
@@ -2626,12 +2607,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     print_brain_clarification(&report, language);
                 }
             } else if agenda {
-                let report = if live || clean_brain_llm_enabled() {
-                    let mut client = clean_brain_agenda_llm_client()?;
-                    loaded.clean_brain_agenda_with_client(prompt.clone(), 6, &mut client)?
-                } else {
-                    loaded.clean_brain_agenda(prompt.clone(), 6)
-                };
+                let mut client = clean_brain_agenda_llm_client()?;
+                let report =
+                    loaded.clean_brain_agenda_with_client(prompt.clone(), 6, &mut client)?;
                 if save {
                     let saved = loaded.queue_deliberation_report(&report);
                     loaded.save(&state).map_err(|error| error.to_string())?;
@@ -2653,12 +2631,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     print_brain_agenda(&report, language);
                 }
             } else if scout {
-                let report = if live || clean_brain_llm_enabled() {
-                    let mut client = clean_brain_scout_llm_client()?;
-                    loaded.clean_brain_scout_with_client(prompt.clone(), 6, &mut client)?
-                } else {
-                    loaded.clean_brain_scout(prompt.clone(), 6)
-                };
+                let mut client = clean_brain_scout_llm_client()?;
+                let report =
+                    loaded.clean_brain_scout_with_client(prompt.clone(), 6, &mut client)?;
                 if save {
                     let saved = loaded.queue_deliberation_report(&report);
                     loaded.save(&state).map_err(|error| error.to_string())?;
@@ -2680,12 +2655,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     print_brain_deliberation(&report, language);
                 }
             } else if deliberate {
-                let report = if live || clean_brain_llm_enabled() {
-                    let mut client = clean_brain_deliberate_llm_client()?;
-                    loaded.clean_brain_deliberate_with_client(prompt.clone(), 6, &mut client)?
-                } else {
-                    loaded.clean_brain_deliberate(prompt.clone(), 6)
-                };
+                let mut client = clean_brain_deliberate_llm_client()?;
+                let report =
+                    loaded.clean_brain_deliberate_with_client(prompt.clone(), 6, &mut client)?;
                 if save {
                     let saved = loaded.queue_deliberation_report(&report);
                     loaded.save(&state).map_err(|error| error.to_string())?;
@@ -2707,12 +2679,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     print_brain_deliberation(&report, language);
                 }
             } else if refine_goal {
-                let report = if live || clean_brain_llm_enabled() {
-                    let mut client = clean_brain_goal_llm_client()?;
-                    loaded.clean_brain_goal_with_client(prompt.clone(), 6, &mut client)?
-                } else {
-                    loaded.clean_brain_goal(prompt.clone(), 6)
-                };
+                let mut client = clean_brain_goal_llm_client()?;
+                let report = loaded.clean_brain_goal_with_client(prompt.clone(), 6, &mut client)?;
                 if save {
                     let saved = loaded.queue_goal_report(&report);
                     loaded.save(&state).map_err(|error| error.to_string())?;
@@ -2784,12 +2752,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let prompt = prompt
                 .or_else(|| loaded.goal.as_ref().map(|goal| goal.objective.clone()))
                 .unwrap_or_else(|| "next useful Need".to_string());
-            let report = if clean_brain_llm_enabled() {
-                let mut client = clean_brain_explore_llm_client()?;
-                loaded.clean_brain_explore_with_client(prompt.clone(), 6, &mut client)?
-            } else {
-                loaded.clean_brain_explore(prompt.clone(), 6)
-            };
+            let mut client = clean_brain_explore_llm_client()?;
+            let report = loaded.clean_brain_explore_with_client(prompt.clone(), 6, &mut client)?;
             if save {
                 let saved = loaded.queue_exploration_report(&report);
                 loaded.save(&state).map_err(|error| error.to_string())?;
@@ -3460,7 +3424,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let mut report = loaded.beat(memory_keep);
             let cwd = env::current_dir().map_err(|error| error.to_string())?;
             let evolution =
-                write_harness_beat_evolution_artifacts_with_bundled_fallback(&cwd, &loaded)?;
+                write_harness_beat_evolution_artifacts_with_bundled_manifest(&cwd, &loaded)?;
             if let Some(evolution) = &evolution {
                 attach_harness_beat_evolution(&mut report, evolution);
                 loaded.record_pet_event(
@@ -3693,10 +3657,22 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     .map(|values| values.join(" "))
                     .unwrap_or_else(|| "apply evolution candidate".to_string());
                 let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-                let proposal = propose_evolution_for_cli(tentacle_id, &objective, &loaded)?;
                 let cwd = env::current_dir().map_err(|error| error.to_string())?;
-                let artifact = write_tentacle_evolution_artifacts(&cwd, &proposal)?;
-                let plan = plan_tentacle_evolution_apply(&proposal, &loaded, candidate_id)?;
+                let (plan, evolution_artifact) = if let Some(proposal) =
+                    maybe_load_evolution_proposal_artifact(&cwd, tentacle_id, candidate_id)?
+                {
+                    let plan = plan_tentacle_evolution_apply(&proposal, &loaded, candidate_id)?;
+                    (plan, None)
+                } else if let Some(plan) =
+                    maybe_load_evolution_apply_plan_artifact(&cwd, tentacle_id, candidate_id)?
+                {
+                    (plan, None)
+                } else {
+                    let proposal = propose_evolution_for_cli(tentacle_id, &objective, &loaded)?;
+                    let artifact = write_tentacle_evolution_artifacts(&cwd, &proposal)?;
+                    let plan = plan_tentacle_evolution_apply(&proposal, &loaded, candidate_id)?;
+                    (plan, Some(artifact))
+                };
                 let apply_artifact = write_tentacle_apply_artifacts(&cwd, &plan)?;
                 let live_apply = apply_authorized_suggested_patch(&cwd, &plan, &apply_artifact);
                 if json {
@@ -3706,7 +3682,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                             "apply": plan,
                             "apply_artifact": apply_artifact,
                             "live_apply": live_apply,
-                            "evolution_artifact": artifact,
+                            "evolution_artifact": evolution_artifact,
                         }))
                         .map_err(|error| error.to_string())?
                     );
@@ -3940,7 +3916,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let reports = if let Some(root) = rest.get(1).map(PathBuf::from) {
                 inspect_tentacle_manifests(&root).map_err(|error| error.to_string())?
             } else {
-                inspect_tentacle_manifests_with_bundled_seed_fallback(&default_tentacles_root())?
+                inspect_tentacle_manifests_with_bundled_seed_overlay(&default_tentacles_root())?
             };
             if json {
                 println!(
@@ -3972,7 +3948,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .unwrap_or_else(default_tentacles_root);
             let cwd = env::current_dir().map_err(|error| error.to_string())?;
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            let report = adapt_environment_with_bundled_seed_fallback(&mut loaded, cwd, root);
+            let report = adapt_environment_with_bundled_seed_overlay(&mut loaded, cwd, root);
             loaded.save(&state).map_err(|error| error.to_string())?;
             if json {
                 println!(
@@ -3992,12 +3968,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let profile_metadata = default_tentacle_profiles()
                 .into_iter()
                 .find(|candidate| candidate.id == profile.as_str());
-            let manifest_lookup = find_tentacle_manifest_with_bundled_fallback(&root, profile)?;
+            let manifest_lookup = find_tentacle_manifest_with_bundled_seed_overlay(&root, profile)?;
             let manifest_metadata = manifest_lookup.as_ref().map(|(loaded, _)| loaded.clone());
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             let profile_installed = loaded.install_profile(profile).is_ok();
             let manifest_installed =
-                install_manifest_with_bundled_fallback(&mut loaded, &root, profile).ok();
+                install_manifest_with_bundled_seed_overlay(&mut loaded, &root, profile).ok();
             if !profile_installed && manifest_installed.is_none() {
                 return Err(format!("unknown profile or tentacle manifest: {profile}"));
             }
@@ -8288,7 +8264,7 @@ fn print_pet_report(report: &PetReport, language: Language) {
     match language {
         Language::En => {
             println!("Octopus pet");
-            println!("pixel: {}", report.fallback);
+            println!("pixel: {}", report.chat_badge);
             println!("state: {}", report.state);
             println!("summary: {}", report.summary);
             if let Some(source) = &report.event_source {
@@ -8302,7 +8278,7 @@ fn print_pet_report(report: &PetReport, language: Language) {
         }
         Language::Zh => {
             println!("章鱼桌宠");
-            println!("像素: {}", report.fallback);
+            println!("像素: {}", report.chat_badge);
             println!("状态: {}", report.state);
             println!("摘要: {}", report.summary);
             if let Some(source) = &report.event_source {
@@ -8322,7 +8298,7 @@ fn print_pet_image_report(report: &PetImageReport, language: Language) {
         Language::En => {
             println!("Octopus pet image");
             println!("state: {}", report.pet.state);
-            println!("pixel: {}", report.pet.fallback);
+            println!("pixel: {}", report.pet.chat_badge);
             println!("format: {}", report.format);
             println!("path: {}", report.image_path);
             println!("url: {}", report.image_url);
@@ -8331,7 +8307,7 @@ fn print_pet_image_report(report: &PetImageReport, language: Language) {
         Language::Zh => {
             println!("章鱼桌宠图片");
             println!("状态: {}", report.pet.state);
-            println!("像素: {}", report.pet.fallback);
+            println!("像素: {}", report.pet.chat_badge);
             println!("格式: {}", report.format);
             println!("路径: {}", report.image_path);
             println!("地址: {}", report.image_url);
@@ -8412,7 +8388,7 @@ fn provider_profiles() -> Vec<ProviderProfile> {
                 .to_string(),
             backend: "codex".to_string(),
             base_url: "codex-cli".to_string(),
-            model: "".to_string(),
+            model: "gpt-5.3-codex-spark".to_string(),
             key_env: "".to_string(),
             notes: vec![
                 "Run `codex login` once, then `octopus provider check` can use that OAuth session."
@@ -8748,37 +8724,7 @@ Use this as current-head evidence for `0.0.18` provider validation.
 "#
         );
         for target in &targets {
-            content.push_str(&format!(
-                r#"### {kind}: {id}
-
-- Profile: `{profile}`
-- Prefix: `{prefix}`
-- Enable: `{enabled_env}=1`
-- Env file: `{env_path}`
-- Purpose: {purpose}
-
-```bash
-{commands}
-```
-
-Results:
-
-- Provider check:
-- Clean brain:
-- Tentacle planning:
-- Harness evolution:
-- Notes:
-
-"#,
-                kind = target.kind,
-                id = target.id,
-                profile = target.profile,
-                prefix = target.prefix,
-                enabled_env = target.enabled_env,
-                env_path = target.env_path,
-                purpose = target.purpose,
-                commands = target.commands.join("\n")
-            ));
+            content.push_str(&render_provider_matrix_target_block(target, None));
         }
         content.push_str(
             r#"## Decision
@@ -8787,6 +8733,13 @@ Results:
 - Follow-up:
 "#,
         );
+        fs::write(output_path, content).map_err(|error| error.to_string())?;
+    } else {
+        let head = current_head.as_deref().unwrap_or("unknown");
+        let content = fs::read_to_string(output_path).map_err(|error| error.to_string())?;
+        let content = set_record_field_value(&content, "Git commit", &format!("`{head}`"));
+        let content = set_record_field_value(&content, "Package version", &format!("`{version}`"));
+        let content = refresh_provider_matrix_target_blocks(&content, &targets);
         fs::write(output_path, content).map_err(|error| error.to_string())?;
     }
     Ok(ProviderMatrixReport {
@@ -8885,8 +8838,10 @@ fn run_provider_matrix_record(
     );
     let decision = if provider_matrix_results_pass(&results) {
         "pass"
+    } else if !results.iter().any(|result| result.enabled) {
+        "fail: no provider target enabled"
     } else {
-        "fail: one or more provider targets are skipped or failing"
+        "fail: one or more enabled provider targets failed"
     };
     content = set_record_field_value_owned(content, "Pass or fail", decision);
     fs::write(path, content).map_err(|error| error.to_string())?;
@@ -8940,55 +8895,60 @@ fn run_provider_matrix_target(
         };
     }
     let _guard = guard.expect("checked provider matrix env guard");
-    let provider_check = match provider_check_report(
-        &target.prefix,
-        &format!("Reply only {}", target.check_token),
-    ) {
-        Ok(report) => provider_matrix_pass(&report.content),
-        Err(error) => provider_matrix_fail(error),
-    };
-    let clean_brain = match provider_client(&target.prefix).and_then(|(_, _, _, _, mut client)| {
-        state
-            .clone()
-            .clean_brain_goal_with_client(
-                "tighten the current objective".to_string(),
-                6,
-                &mut client,
+    let prefix = target.prefix.clone();
+    let check_token = target.check_token.clone();
+    let provider_check = provider_matrix_run_step("provider check", move || {
+        provider_check_report(&prefix, &format!("Reply only {check_token}"))
+            .map(|report| report.content)
+    });
+    let prefix = target.prefix.clone();
+    let mut state_for_brain = state.clone();
+    let clean_brain = provider_matrix_run_step("clean brain", move || {
+        provider_client(&prefix).and_then(|(_, _, _, _, mut client)| {
+            state_for_brain
+                .clean_brain_goal_with_client(
+                    "tighten the current objective".to_string(),
+                    6,
+                    &mut client,
+                )
+                .map(|report| format!("{} needs", report.needs.len()))
+        })
+    });
+    let prefix = target.prefix.clone();
+    let planning_tentacle = target.planning_tentacle.clone();
+    let planning_need_kind = target.planning_need_kind.clone();
+    let planning_need_query = target.planning_need_query.clone();
+    let grants = state.grants.clone();
+    let tentacle_planning = provider_matrix_run_step("tentacle planning", move || {
+        provider_client_factory(&prefix).and_then(|factory| {
+            let root = resolve_tentacle_manifest_root(&planning_tentacle)?;
+            think_tentacle_with_llm_factory(
+                root,
+                &planning_tentacle,
+                &Need::new(planning_need_kind, planning_need_query),
+                Some(factory),
+                &grants,
             )
-            .map(|report| format!("{} needs", report.needs.len()))
-    }) {
-        Ok(summary) => provider_matrix_pass(&summary),
-        Err(error) => provider_matrix_fail(error),
-    };
-    let tentacle_planning = match provider_client_factory(&target.prefix).and_then(|factory| {
-        let root = resolve_tentacle_manifest_root("swe-agent")?;
-        think_tentacle_with_llm_factory(
-            root,
-            "swe-agent",
-            &Need::new(NeedKind::Observe, "README.md"),
-            Some(factory),
-            &state.grants,
-        )
-        .map(|plan| format!("{} actions", plan.actions.len()))
-    }) {
-        Ok(summary) => provider_matrix_pass(&summary),
-        Err(error) => provider_matrix_fail(error),
-    };
-    let harness_evolution =
-        match provider_client(&target.prefix).and_then(|(_, _, _, _, mut client)| {
-            let root = resolve_tentacle_manifest_root("swe-agent")?;
+            .map(|plan| format!("{} actions", plan.actions.len()))
+        })
+    });
+    let prefix = target.prefix.clone();
+    let evolution_tentacle = target.evolution_tentacle.clone();
+    let evolution_objective = target.evolution_objective.clone();
+    let state_for_evolution = state.clone();
+    let harness_evolution = provider_matrix_run_step("harness evolution", move || {
+        provider_client(&prefix).and_then(|(_, _, _, _, mut client)| {
+            let root = resolve_tentacle_manifest_root(&evolution_tentacle)?;
             propose_tentacle_evolution_with_client(
                 root,
-                "swe-agent",
-                "improve Feed evidence",
-                state,
+                &evolution_tentacle,
+                &evolution_objective,
+                &state_for_evolution,
                 &mut client,
             )
             .map(|proposal| format!("{} candidates", proposal.patch_candidates.len()))
-        }) {
-            Ok(summary) => provider_matrix_pass(&summary),
-            Err(error) => provider_matrix_fail(error),
-        };
+        })
+    });
     ProviderMatrixRunTargetReport {
         id: target.id.clone(),
         enabled: true,
@@ -9043,29 +9003,45 @@ fn provider_matrix_coverage_result(
     results: &[ProviderMatrixRunTargetReport],
     field: impl Fn(&ProviderMatrixRunTargetReport) -> &String,
 ) -> String {
+    let enabled = results.iter().filter(|result| result.enabled).count();
+    if enabled == 0 {
+        return format!(
+            "fail: 0/0 enabled targets passed; {} skipped",
+            results.len()
+        );
+    }
     if results
         .iter()
+        .filter(|result| result.enabled)
         .all(|result| provider_matrix_result_ready(field(result)))
     {
-        "pass".to_string()
+        let skipped = results.len().saturating_sub(enabled);
+        if skipped == 0 {
+            format!("pass: {enabled}/{enabled} enabled targets passed")
+        } else {
+            format!("pass: {enabled}/{enabled} enabled targets passed; {skipped} skipped")
+        }
     } else {
         let passed = results
             .iter()
+            .filter(|result| result.enabled)
             .filter(|result| provider_matrix_result_ready(field(result)))
             .count();
-        format!("fail: {passed}/{} targets passed", results.len())
+        format!("fail: {passed}/{enabled} enabled targets passed")
     }
 }
 
 fn provider_matrix_results_pass(results: &[ProviderMatrixRunTargetReport]) -> bool {
-    !results.is_empty()
-        && results.iter().all(|result| {
-            result.enabled
-                && provider_matrix_result_ready(&result.provider_check)
-                && provider_matrix_result_ready(&result.clean_brain)
-                && provider_matrix_result_ready(&result.tentacle_planning)
-                && provider_matrix_result_ready(&result.harness_evolution)
-        })
+    results.iter().any(|result| result.enabled)
+        && results
+            .iter()
+            .filter(|result| result.enabled)
+            .all(|result| {
+                provider_matrix_result_ready(&result.provider_check)
+                    && provider_matrix_result_ready(&result.clean_brain)
+                    && provider_matrix_result_ready(&result.tentacle_planning)
+                    && provider_matrix_result_ready(&result.harness_evolution)
+            })
 }
 
 fn provider_matrix_pass(summary: &str) -> String {
@@ -9086,6 +9062,36 @@ fn provider_matrix_fail(summary: impl AsRef<str>) -> String {
     }
 }
 
+fn provider_matrix_run_step<F>(label: &'static str, run: F) -> String
+where
+    F: FnOnce() -> Result<String, String> + Send + 'static,
+{
+    let timeout = provider_matrix_step_timeout();
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = tx.send(run());
+    });
+    match rx.recv_timeout(timeout) {
+        Ok(Ok(summary)) => provider_matrix_pass(&summary),
+        Ok(Err(error)) => provider_matrix_fail(error),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            provider_matrix_fail(format!("{label} timed out after {}s", timeout.as_secs()))
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            provider_matrix_fail(format!("{label} worker disconnected"))
+        }
+    }
+}
+
+fn provider_matrix_step_timeout() -> Duration {
+    env::var("OCTOPUS_PROVIDER_MATRIX_STEP_TIMEOUT")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|seconds| *seconds > 0)
+        .map(Duration::from_secs)
+        .unwrap_or_else(|| Duration::from_secs(90))
+}
+
 fn provider_matrix_skipped(target: &ProviderMatrixTarget) -> String {
     format!("skipped: set {}=1 to run", target.enabled_env)
 }
@@ -9103,6 +9109,11 @@ fn provider_matrix_one_line(value: &str) -> String {
 fn provider_matrix_result_ready(value: &str) -> bool {
     let value = value.trim().to_ascii_lowercase();
     value == "pass" || value.starts_with("pass:") || value.starts_with("passed")
+}
+
+fn provider_matrix_result_skipped(value: &str) -> bool {
+    let value = value.trim().to_ascii_lowercase();
+    value == "skipped" || value.starts_with("skipped:")
 }
 
 fn set_provider_matrix_target_field(
@@ -9170,6 +9181,89 @@ fn set_record_field_value(content: &str, label: &str, value: &str) -> String {
     }
 }
 
+fn refresh_provider_matrix_target_blocks(
+    content: &str,
+    targets: &[ProviderMatrixTarget],
+) -> String {
+    let Some(targets_start) = content.find("\n## Targets") else {
+        let mut refreshed = content.trim_end().to_string();
+        refreshed.push_str("\n\n## Targets\n\n");
+        for target in targets {
+            refreshed.push_str(&render_provider_matrix_target_block(target, None));
+        }
+        refreshed.push_str("## Decision\n\n- Pass or fail:\n- Follow-up:\n");
+        return refreshed;
+    };
+    let before = &content[..targets_start];
+    let decision_start = content[targets_start..]
+        .find("\n## Decision")
+        .map(|index| targets_start + index);
+    let after = decision_start
+        .map(|index| &content[index..])
+        .unwrap_or("\n## Decision\n\n- Pass or fail:\n- Follow-up:\n");
+    let mut target_blocks = String::from("\n## Targets\n\n");
+    for target in targets {
+        let existing = provider_matrix_target_section(content, target);
+        target_blocks.push_str(&render_provider_matrix_target_block(target, existing));
+    }
+    format!("{before}{target_blocks}{}", after.trim_start_matches('\n'))
+}
+
+fn render_provider_matrix_target_block(
+    target: &ProviderMatrixTarget,
+    existing: Option<&str>,
+) -> String {
+    let field = |label: &str| {
+        existing
+            .and_then(|section| record_field_value_in(section, label))
+            .unwrap_or_default()
+    };
+    format!(
+        r#"### {kind}: {id}
+
+- Profile: `{profile}`
+- Prefix: `{prefix}`
+- Enable: `{enabled_env}=1`
+- Env file: `{env_path}`
+- Purpose: {purpose}
+
+```bash
+{commands}
+```
+
+Results:
+
+- Provider check:{provider_check}
+- Clean brain:{clean_brain}
+- Tentacle planning:{tentacle_planning}
+- Harness evolution:{harness_evolution}
+- Notes:{notes}
+
+"#,
+        kind = target.kind,
+        id = target.id,
+        profile = target.profile,
+        prefix = target.prefix,
+        enabled_env = target.enabled_env,
+        env_path = target.env_path,
+        purpose = target.purpose,
+        commands = target.commands.join("\n"),
+        provider_check = provider_matrix_render_field_suffix(&field("Provider check")),
+        clean_brain = provider_matrix_render_field_suffix(&field("Clean brain")),
+        tentacle_planning = provider_matrix_render_field_suffix(&field("Tentacle planning")),
+        harness_evolution = provider_matrix_render_field_suffix(&field("Harness evolution")),
+        notes = provider_matrix_render_field_suffix(&field("Notes")),
+    )
+}
+
+fn provider_matrix_render_field_suffix(value: &str) -> String {
+    if value.trim().is_empty() {
+        String::new()
+    } else {
+        format!(" {}", value.trim())
+    }
+}
+
 fn check_provider_matrix_record(path: &Path) -> Result<ProviderMatrixCheckReport, String> {
     let current_head = git_short_head();
     let content = fs::read_to_string(path).unwrap_or_default();
@@ -9205,12 +9299,35 @@ fn check_provider_matrix_record(path: &Path) -> Result<ProviderMatrixCheckReport
         .iter()
         .filter_map(|target| {
             let section = provider_matrix_target_section(&content, target)?;
-            let issues = target_result_fields
+            let values = target_result_fields
                 .iter()
-                .filter_map(|field| match record_field_value_in(section, field) {
-                    Some(value) if provider_matrix_result_ready(&value) => None,
-                    Some(value) => Some(format!("{field} not pass ({value})")),
-                    None => Some(format!("{field} missing")),
+                .map(|field| (*field, record_field_value_in(section, field)))
+                .collect::<Vec<_>>();
+            let missing = values
+                .iter()
+                .filter_map(|(field, value)| value.is_none().then(|| format!("{field} missing")))
+                .collect::<Vec<_>>();
+            if !missing.is_empty() {
+                return Some(format!("{} {}", target.id, missing.join(", ")));
+            }
+            let values = values
+                .iter()
+                .filter_map(|(field, value)| value.as_ref().map(|value| (*field, value)))
+                .collect::<Vec<_>>();
+            if values
+                .iter()
+                .all(|(_, value)| provider_matrix_result_skipped(value))
+            {
+                return None;
+            }
+            let issues = values
+                .iter()
+                .filter_map(|(field, value)| {
+                    if provider_matrix_result_ready(value) {
+                        None
+                    } else {
+                        Some(format!("{field} not pass ({value})"))
+                    }
                 })
                 .collect::<Vec<_>>();
             (!issues.is_empty()).then(|| format!("{} {}", target.id, issues.join(", ")))
@@ -9273,7 +9390,8 @@ fn check_provider_matrix_record(path: &Path) -> Result<ProviderMatrixCheckReport
             target_issues.is_empty(),
             true,
             if target_issues.is_empty() {
-                "all provider target results passed".to_string()
+                "configured provider target results passed; skipped targets are unconfigured"
+                    .to_string()
             } else {
                 target_issues.join("; ")
             },
@@ -9396,20 +9514,48 @@ fn provider_matrix_targets() -> Vec<ProviderMatrixTarget> {
     .into_iter()
     .map(|(id, kind, profile, prefix, env_path, purpose, token)| {
         let env_arg = shell_arg(env_path);
+        let (
+            planning_tentacle,
+            planning_need_kind,
+            planning_need_query,
+            evolution_tentacle,
+            evolution_objective,
+        ) = if id == "local-openai-compatible" {
+            (
+                "json-feed",
+                NeedKind::Verify,
+                "local provider readiness",
+                "json-feed",
+                "improve compact JSON Feed evidence",
+            )
+        } else {
+            (
+                "swe-agent",
+                NeedKind::Observe,
+                "README.md",
+                "swe-agent",
+                "improve Feed evidence",
+            )
+        };
         let goal = format!(
             "{} OCTOPUS_BRAIN_LLM=1 OCTOPUS_BRAIN_GOAL_LLM_PREFIX={} octopus brain --goal --live \"tighten the current objective\"",
             env_assignment(prefix),
             prefix
         );
         let think = format!(
-            "{} OCTOPUS_LLM_MANIFEST=1 OCTOPUS_MANIFEST_LLM_PREFIX={} octopus think swe-agent observe README.md",
+            "{} OCTOPUS_LLM_MANIFEST=1 OCTOPUS_MANIFEST_LLM_PREFIX={} octopus think {} {} {}",
             env_assignment(prefix),
-            prefix
+            prefix,
+            planning_tentacle,
+            need_label(&planning_need_kind),
+            shell_arg(planning_need_query)
         );
         let evolve = format!(
-            "{} OCTOPUS_LLM_EVOLVE=1 OCTOPUS_EVOLVE_LLM_PREFIX={} octopus evolve swe-agent \"improve Feed evidence\"",
+            "{} OCTOPUS_LLM_EVOLVE=1 OCTOPUS_EVOLVE_LLM_PREFIX={} octopus evolve {} {}",
             env_assignment(prefix),
-            prefix
+            prefix,
+            evolution_tentacle,
+            shell_arg(evolution_objective)
         );
         ProviderMatrixTarget {
             id: id.to_string(),
@@ -9420,6 +9566,11 @@ fn provider_matrix_targets() -> Vec<ProviderMatrixTarget> {
             purpose: purpose.to_string(),
             enabled_env: token.to_string(),
             check_token: token.to_string(),
+            planning_tentacle: planning_tentacle.to_string(),
+            planning_need_kind,
+            planning_need_query: planning_need_query.to_string(),
+            evolution_tentacle: evolution_tentacle.to_string(),
+            evolution_objective: evolution_objective.to_string(),
             commands: vec![
                 format!("octopus provider save {profile} {prefix} {env_arg}"),
                 format!("export {token}=1"),
@@ -10236,7 +10387,7 @@ fn init_workspace(state_path: PathBuf, tentacles_root: PathBuf) -> Result<InitRe
     let state_existed = state_path.exists();
     let cwd = env::current_dir().map_err(|error| error.to_string())?;
     let mut state = HarnessState::load(&state_path).map_err(|error| error.to_string())?;
-    let adapt = adapt_environment_with_bundled_seed_fallback(&mut state, cwd, tentacles_root);
+    let adapt = adapt_environment_with_bundled_seed_overlay(&mut state, cwd, tentacles_root);
     state.save(&state_path).map_err(|error| error.to_string())?;
     let files = init_files(&state_path)?;
     let state_arg = shell_arg(&state_path.to_string_lossy());
@@ -10283,7 +10434,7 @@ fn bootstrap_workspace(
     let cwd = env::current_dir().map_err(|error| error.to_string())?;
     let mut state = HarnessState::load(&state_path).map_err(|error| error.to_string())?;
     let files = init_files(&state_path)?;
-    let adapt = adapt_environment_with_bundled_seed_fallback(
+    let adapt = adapt_environment_with_bundled_seed_overlay(
         &mut state,
         cwd.clone(),
         tentacles_root.clone(),
@@ -10300,7 +10451,7 @@ fn bootstrap_workspace(
             .iter()
             .any(|tentacle| tentacle.id == *tentacle_id);
         let _ = state.install_profile(tentacle_id);
-        match install_manifest_with_bundled_fallback(&mut state, &tentacles_root, tentacle_id) {
+        match install_manifest_with_bundled_seed_overlay(&mut state, &tentacles_root, tentacle_id) {
             Ok(tentacle) if !was_installed => installed_tentacles.push(tentacle.id),
             Ok(_) => {}
             Err(error) => skipped_tentacles.push(format!("{tentacle_id}: {error}")),
@@ -10721,7 +10872,7 @@ const BUNDLED_SEED_TENTACLE_IDS: &[&str] = &[
 
 fn skill_reports(state: &HarnessState, root: PathBuf) -> Result<Vec<SkillReport>, String> {
     let mut reports = Vec::new();
-    let manifests = load_tentacle_manifests_with_bundled_seed_fallback(&root)?;
+    let manifests = load_tentacle_manifests_with_bundled_seed_overlay(&root)?;
     let manifest_ids = manifests
         .iter()
         .map(|loaded| loaded.manifest.id.as_str())
@@ -10821,7 +10972,7 @@ fn skill_reports(state: &HarnessState, root: PathBuf) -> Result<Vec<SkillReport>
     Ok(reports)
 }
 
-fn load_tentacle_manifests_with_bundled_seed_fallback(
+fn load_tentacle_manifests_with_bundled_seed_overlay(
     root: &Path,
 ) -> Result<Vec<LoadedTentacleManifest>, String> {
     let mut manifests = load_tentacle_manifests(root).map_err(|error| error.to_string())?;
@@ -10857,7 +11008,7 @@ fn load_tentacle_manifests_with_bundled_seed_fallback(
     Ok(manifests)
 }
 
-fn install_manifest_with_bundled_fallback(
+fn install_manifest_with_bundled_seed_overlay(
     state: &mut HarnessState,
     root: &Path,
     tentacle_id: &str,
@@ -10883,7 +11034,7 @@ fn install_manifest_with_bundled_fallback(
     ))
 }
 
-fn adapt_environment_with_bundled_seed_fallback(
+fn adapt_environment_with_bundled_seed_overlay(
     state: &mut HarnessState,
     cwd: PathBuf,
     root: PathBuf,
@@ -10895,7 +11046,7 @@ fn adapt_environment_with_bundled_seed_fallback(
             .installed_tentacles
             .iter()
             .any(|tentacle| tentacle.id == profile);
-        match install_manifest_with_bundled_fallback(state, &root, &profile) {
+        match install_manifest_with_bundled_seed_overlay(state, &root, &profile) {
             Ok(tentacle) => {
                 if !was_installed {
                     report.installed_tentacles.push(tentacle.id);
@@ -10911,7 +11062,7 @@ fn adapt_environment_with_bundled_seed_fallback(
     report
 }
 
-fn inspect_tentacle_manifests_with_bundled_seed_fallback(
+fn inspect_tentacle_manifests_with_bundled_seed_overlay(
     root: &Path,
 ) -> Result<Vec<TentacleManifestReport>, String> {
     let mut reports = inspect_tentacle_manifests(root).map_err(|error| error.to_string())?;
@@ -14359,7 +14510,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
     let cwd = env::current_dir().map_err(|error| error.to_string())?;
     let environment = EnvironmentReport::detect(&cwd);
     let manifests =
-        inspect_tentacle_manifests_with_bundled_seed_fallback(&default_tentacles_root())?;
+        inspect_tentacle_manifests_with_bundled_seed_overlay(&default_tentacles_root())?;
     let provider = provider_status_report();
     let provider_matrix = check_provider_matrix_record(Path::new(DEFAULT_PROVIDER_MATRIX_PATH))?;
     let profile_registry = profile_registry_report(state_path);
@@ -14913,7 +15064,9 @@ fn product_field_pool_report(
         .fields
         .iter()
         .filter(|field| {
-            field.mini_task_count > 0 && field.satisfied_mini_task_count == field.mini_task_count
+            field.mini_task_count > 0
+                && field.satisfied_mini_task_count == field.mini_task_count
+                && !field.needs_repair
         })
         .count();
     ProductFieldPoolReport {
@@ -15359,7 +15512,7 @@ fn preflight_report(
 
     Ok(PreflightReport {
         version: env!("CARGO_PKG_VERSION").to_string(),
-        target: "0.1.0".to_string(),
+        target: "0.2.0".to_string(),
         state_path: state_path.to_string_lossy().to_string(),
         live,
         release_ready,
@@ -15511,9 +15664,9 @@ Append the completed result to `docs/real-machine-test.md` after the run.
 - Core loop:
 - Product bridge:
 
-Field pool result should include the eight named peer fields, `missing_required=none`, latest worker slots, `latest_activity` with `worker=`, and `parallel_run` with `requested_worker_slots=`, `active_worker_slots=`, and `candidate_pool=` containing `math` and `search` from `octopus status` or `octopus report`.
+Field pool result should include the required v0.2 peer fields, `missing_required=none`, latest worker slots, `latest_activity` with `worker=`, and `parallel_run` with `requested_worker_slots=`, `active_worker_slots=`, and `candidate_pool=` containing `math` and `search` from `octopus status` or `octopus report`.
 - Field pool:
-Field mini task harness result should include `checked_count=24`, `executed_count=24`, `missing_count=0`, `invalid_count=0`, and `status=ok` from `octopus check field-mini-task 2`.
+Field mini task harness result should include `checked_count=...`, `executed_count=...`, `satisfied_count=...`, `partial_count=...`, `missing_count=0`, `invalid_count=0`, and `status=ok` from `octopus check field-mini-task 2`.
 - Field mini task harness:
 - Desktop pet source:
 - Start/app:
@@ -15598,8 +15751,10 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
         .is_some_and(field_pool_parallel_run_record_ready);
     let field_mini_task_value = record_field_value(&content, "Field mini task harness");
     let field_mini_task_record_ready = field_mini_task_value.as_deref().is_some_and(|value| {
-        value.contains("checked_count=24")
-            && value.contains("executed_count=24")
+        value.contains("checked_count=")
+            && value.contains("executed_count=")
+            && value.contains("satisfied_count=")
+            && value.contains("partial_count=")
             && value.contains("missing_count=0")
             && value.contains("invalid_count=0")
             && value.contains("status=ok")
@@ -15676,7 +15831,7 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
             true,
             field_mini_task_value
                 .unwrap_or_else(|| "missing Field mini task harness result".to_string()),
-            "fill Field mini task harness with checked_count=24 executed_count=24 missing_count=0 invalid_count=0 status=ok",
+            "fill Field mini task harness with checked_count=... executed_count=... satisfied_count=... partial_count=... missing_count=0 invalid_count=0 status=ok",
         ),
         preflight_check(
             "pass_decision",
@@ -16042,8 +16197,8 @@ fn print_local_app_run_report(report: &app_bridge::LocalAppRunReport, language: 
                 report.api_policy.status, report.api_policy.evidence
             );
             println!(
-                "web_demo: {} ({})",
-                report.web_demo.status, report.web_demo.evidence
+                "app_surface: {} ({})",
+                report.app_surface.status, report.app_surface.evidence
             );
             println!("next: {}", join_or_none(&report.next));
         }
@@ -16073,8 +16228,8 @@ fn print_local_app_run_report(report: &app_bridge::LocalAppRunReport, language: 
                 report.api_policy.status, report.api_policy.evidence
             );
             println!(
-                "网页试用: {} ({})",
-                report.web_demo.status, report.web_demo.evidence
+                "App界面: {} ({})",
+                report.app_surface.status, report.app_surface.evidence
             );
             println!("下一步: {}", join_or_none(&report.next));
         }
@@ -17481,8 +17636,8 @@ fn print_field_trajectory_report(report: &FieldTrajectoryReport, language: Langu
 
 fn field_trajectory_policy_line(language: Language) -> &'static str {
     match language {
-        Language::En => "pool_policy: eight peer field slots; workers are execution capacity only",
-        Language::Zh => "领域池策略: 8 个并列领域槽；workers 只表示执行容量",
+        Language::En => "pool_policy: peer field slots; workers are execution capacity only",
+        Language::Zh => "领域池策略: 并列领域槽；workers 只表示执行容量",
     }
 }
 
@@ -17805,7 +17960,7 @@ fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorRepo
     let cwd = env::current_dir().map_err(|error| error.to_string())?;
     let environment = EnvironmentReport::detect(&cwd);
     let manifests =
-        inspect_tentacle_manifests_with_bundled_seed_fallback(&default_tentacles_root())?;
+        inspect_tentacle_manifests_with_bundled_seed_overlay(&default_tentacles_root())?;
     let broken_manifests = manifests
         .iter()
         .filter(|manifest| !manifest.missing_entrypoints.is_empty())
@@ -18131,9 +18286,9 @@ fn field_pool_latest_activity_line(report: &FieldPoolStatusReport) -> String {
         .or(slot.next_mini_task.as_deref())
         .unwrap_or("done");
     let status = slot
-        .latest_worker_status
+        .latest_status
         .as_ref()
-        .or(slot.latest_status.as_ref())
+        .or(slot.latest_worker_status.as_ref())
         .map(|status| format!("{status:?}"))
         .unwrap_or_else(|| "unknown".to_string());
     let worker = slot
@@ -18466,6 +18621,92 @@ fn print_evolution_apply_plan(
     }
 }
 
+fn maybe_load_evolution_apply_plan_artifact(
+    cwd: &Path,
+    tentacle_id: &str,
+    candidate_id: &str,
+) -> Result<Option<EvolutionApplyPlan>, String> {
+    let stem = candidate_id.replace('/', "-");
+    let path = cwd
+        .join(".octopus")
+        .join("evolution")
+        .join(tentacle_id)
+        .join("apply")
+        .join(format!("{stem}.json"));
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = fs::read_to_string(&path).map_err(|error| {
+        format!(
+            "apply artifact read failed {}: {error}",
+            path.to_string_lossy()
+        )
+    })?;
+    let plan = serde_json::from_str::<EvolutionApplyPlan>(&content).map_err(|error| {
+        format!(
+            "apply artifact parse failed {}: {error}",
+            path.to_string_lossy()
+        )
+    })?;
+    if plan.tentacle_id != tentacle_id {
+        return Err(format!(
+            "apply artifact tentacle mismatch: expected {tentacle_id}, got {}",
+            plan.tentacle_id
+        ));
+    }
+    if plan.candidate_id != candidate_id {
+        return Err(format!(
+            "apply artifact candidate mismatch: expected {candidate_id}, got {}",
+            plan.candidate_id
+        ));
+    }
+    Ok(Some(plan))
+}
+
+fn maybe_load_evolution_proposal_artifact(
+    cwd: &Path,
+    tentacle_id: &str,
+    candidate_id: &str,
+) -> Result<Option<TentacleEvolutionProposal>, String> {
+    let path = cwd
+        .join(".octopus")
+        .join("evolution")
+        .join(tentacle_id)
+        .join("proposal.json");
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = fs::read_to_string(&path).map_err(|error| {
+        format!(
+            "evolution proposal read failed {}: {error}",
+            path.to_string_lossy()
+        )
+    })?;
+    let proposal =
+        serde_json::from_str::<TentacleEvolutionProposal>(&content).map_err(|error| {
+            format!(
+                "evolution proposal parse failed {}: {error}",
+                path.to_string_lossy()
+            )
+        })?;
+    if proposal.tentacle_id != tentacle_id {
+        return Err(format!(
+            "evolution proposal tentacle mismatch: expected {tentacle_id}, got {}",
+            proposal.tentacle_id
+        ));
+    }
+    let candidate_present = proposal.patch_candidates.iter().any(|candidate| {
+        candidate.id == candidate_id
+            || candidate.surface_id == candidate_id
+            || candidate.id.replace('-', "_") == candidate_id
+            || candidate.surface_id.replace('_', "-") == candidate_id
+    });
+    if !candidate_present {
+        return Ok(None);
+    }
+    Ok(Some(proposal))
+}
+
 fn apply_authorized_suggested_patch(
     cwd: &Path,
     plan: &EvolutionApplyPlan,
@@ -18501,25 +18742,51 @@ fn apply_authorized_suggested_patch(
             stderr: String::new(),
         };
     };
-    let command_text = format!("git apply {}", shell_arg(patch_path));
+    let command_text = format!(
+        "git apply --recount --unidiff-zero {}",
+        shell_arg(patch_path)
+    );
     let output = Command::new("git")
         .arg("apply")
+        .arg("--recount")
+        .arg("--unidiff-zero")
         .arg(patch_path)
         .current_dir(cwd)
         .output();
     match output {
-        Ok(output) => EvolutionLiveApplyReport {
-            applied: output.status.success(),
-            status: if output.status.success() {
+        Ok(output) => {
+            let mut applied = output.status.success();
+            let mut status = if applied {
                 "applied".to_string()
             } else {
                 "failed".to_string()
-            },
-            command: Some(command_text),
-            patch_path: Some(patch_path.to_string()),
-            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-        },
+            };
+            if !applied {
+                let reverse_check = Command::new("git")
+                    .arg("apply")
+                    .arg("--reverse")
+                    .arg("--check")
+                    .arg("--recount")
+                    .arg(patch_path)
+                    .current_dir(cwd)
+                    .output();
+                if reverse_check
+                    .as_ref()
+                    .is_ok_and(|reverse| reverse.status.success())
+                {
+                    applied = true;
+                    status = "already_applied".to_string();
+                }
+            }
+            EvolutionLiveApplyReport {
+                applied,
+                status,
+                command: Some(command_text),
+                patch_path: Some(patch_path.to_string()),
+                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+            }
+        }
         Err(error) => EvolutionLiveApplyReport {
             applied: false,
             status: "failed_to_start".to_string(),
@@ -19365,10 +19632,14 @@ fn update_report(run_update: bool) -> UpdateReport {
     }
 }
 
-fn write_harness_beat_evolution_artifacts_with_bundled_fallback(
+fn write_harness_beat_evolution_artifacts_with_bundled_manifest(
     cwd: &Path,
     state: &HarnessState,
 ) -> Result<Option<HarnessBeatEvolution>, String> {
+    if !evolve_llm_enabled() {
+        return Ok(None);
+    }
+    let (_, _, _, _, mut client) = provider_client(&evolve_llm_prefix())?;
     let root = default_tentacles_root();
     let broken_local_seed =
         harness_beat_next_tentacle_id(state)
@@ -19380,7 +19651,9 @@ fn write_harness_beat_evolution_artifacts_with_bundled_fallback(
                         .unwrap_or(false)
             });
     if !broken_local_seed {
-        if let Some(evolution) = write_harness_beat_evolution_artifacts(&root, cwd, state)? {
+        if let Some(evolution) =
+            write_harness_beat_evolution_artifacts_with_client(&root, cwd, state, &mut client)?
+        {
             return Ok(Some(evolution));
         }
     }
@@ -19388,7 +19661,7 @@ fn write_harness_beat_evolution_artifacts_with_bundled_fallback(
     if bundled_root == root {
         return Ok(None);
     }
-    write_harness_beat_evolution_artifacts(bundled_root, cwd, state)
+    write_harness_beat_evolution_artifacts_with_client(bundled_root, cwd, state, &mut client)
 }
 
 fn harness_beat_next_tentacle_id(state: &HarnessState) -> Option<String> {
@@ -19427,7 +19700,8 @@ fn status_needs_harness_evolution(status: &Status) -> bool {
 
 fn check_report(tentacle_id: &str, selected: Option<usize>) -> Result<CheckReport, String> {
     let root = default_tentacles_root();
-    if let Some((loaded, root)) = find_tentacle_manifest_with_bundled_fallback(&root, tentacle_id)?
+    if let Some((loaded, root)) =
+        find_tentacle_manifest_with_bundled_seed_overlay(&root, tentacle_id)?
     {
         let cwd = Path::new(&loaded.path)
             .parent()
@@ -19474,7 +19748,7 @@ fn check_report(tentacle_id: &str, selected: Option<usize>) -> Result<CheckRepor
     })
 }
 
-fn find_tentacle_manifest_with_bundled_fallback(
+fn find_tentacle_manifest_with_bundled_seed_overlay(
     root: &Path,
     tentacle_id: &str,
 ) -> Result<Option<(LoadedTentacleManifest, PathBuf)>, String> {
@@ -19538,7 +19812,7 @@ fn manifest_missing_entrypoints(root: &Path, tentacle_id: &str) -> Result<Vec<St
 
 fn resolve_tentacle_manifest_root(tentacle_id: &str) -> Result<PathBuf, String> {
     let root = default_tentacles_root();
-    find_tentacle_manifest_with_bundled_fallback(&root, tentacle_id)?
+    find_tentacle_manifest_with_bundled_seed_overlay(&root, tentacle_id)?
         .map(|(_, root)| root)
         .ok_or_else(|| format!("unknown tentacle manifest: {tentacle_id}"))
 }
@@ -19892,7 +20166,7 @@ fn repair_installed_seed_sources(state: &mut HarnessState) -> Result<usize, Stri
     let root = default_tentacles_root();
     let mut repaired = 0;
     for tentacle_id in broken {
-        if install_manifest_with_bundled_fallback(state, &root, &tentacle_id).is_ok() {
+        if install_manifest_with_bundled_seed_overlay(state, &root, &tentacle_id).is_ok() {
             repaired += 1;
         }
     }
@@ -19915,7 +20189,11 @@ fn propose_evolution_for_cli(
             &mut client,
         );
     }
-    propose_tentacle_evolution_with_state(root, tentacle_id, objective, state)
+    let _ = (root, state);
+    Err(
+        "harness evolution requires an LLM planner; set an evolve provider before running evolve"
+            .to_string(),
+    )
 }
 
 fn evolution_score_report(
@@ -22789,30 +23067,31 @@ fn parse_status(value: &str) -> Result<Status, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        adapt_environment_with_bundled_seed_fallback, app_open_command, append_preflight_record,
+        adapt_environment_with_bundled_seed_overlay, app_open_command, append_preflight_record,
         bridge_command_allowed, bridge_command_name, bridge_static, bridge_static_asset,
         check_benchmark_record, check_preflight_record, check_provider_matrix_record, check_report,
-        command_ready, default_first_run_objective, default_tentacles_root,
+        command_ready, default_field_pack_ids, default_first_run_objective, default_tentacles_root,
         default_tentacles_root_for, doctor_report, download_artifacts_preflight_check,
         download_report, ensure_field_mini_task_tentacle,
         ensure_field_mini_task_tentacle_from_root, field_hint_from_queue_item, field_hint_ids,
         field_mini_task_context, field_pool_parallel_run_record_ready, field_pool_status_line,
         field_trajectory_policy_line, field_trajectory_worker_slot_line, first_run_report,
-        git_short_head, http_content_length, inspect_tentacle_manifests_with_bundled_seed_fallback,
+        git_short_head, http_content_length, inspect_tentacle_manifests_with_bundled_seed_overlay,
         install_report, is_broken_pipe_panic, localize_summary, materialize_bundled_tentacles_root,
         need_queue_line, parallel_run_status_line, parallel_worker_slot_line,
         parse_bridge_env_overlay, parse_first_run_args, parse_start_check_addr,
         parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
         preflight_report, prepare_bridge_state, product_field_pool_line,
         product_field_pool_missing_required_fields, product_field_pool_ready, product_report,
-        provider_coverage_ready, provider_env_report, provider_status_report,
-        real_machine_record_status_from_parts, render_field_trajectory_summary_line,
-        repair_continue_report, repair_patch_apply_report, repair_patch_verify_report,
-        repair_report, repair_score_report, resolve_tentacle_manifest_root, run,
-        run_bridge_command, run_provider_matrix_record, save_provider_env_report_with_key,
-        shell_arg, skill_reports, start_check_requested, starter_report, tentacles_root_ready,
-        update_report, usage, write_benchmark_record, write_pet_image_report,
-        write_provider_matrix_record, Language, ProductFieldPoolReport, REQUIRED_PEER_FIELD_IDS,
+        provider_coverage_ready, provider_env_report, provider_matrix_targets,
+        provider_status_report, real_machine_record_status_from_parts,
+        render_field_trajectory_summary_line, repair_continue_report, repair_patch_apply_report,
+        repair_patch_verify_report, repair_report, repair_score_report,
+        resolve_tentacle_manifest_root, run, run_bridge_command, run_provider_matrix_record,
+        save_provider_env_report_with_key, set_provider_matrix_target_field, shell_arg,
+        skill_reports, start_check_requested, starter_report, tentacles_root_ready, update_report,
+        usage, write_benchmark_record, write_pet_image_report, write_provider_matrix_record,
+        Language, ProductFieldPoolReport, REQUIRED_PEER_FIELD_IDS,
     };
     use super::{
         empty_parallel_evolution_batch_report, next_need_run_worker_count,
@@ -22923,9 +23202,9 @@ mod tests {
         let en = field_trajectory_policy_line(Language::En);
         let zh = field_trajectory_policy_line(Language::Zh);
 
-        assert!(en.contains("eight peer field slots"));
+        assert!(en.contains("peer field slots"));
         assert!(en.contains("workers are execution capacity only"));
-        assert!(zh.contains("8 个并列领域槽"));
+        assert!(zh.contains("并列领域槽"));
         assert!(zh.contains("workers 只表示执行容量"));
         assert!(!en.contains("sampled"));
         assert!(!zh.contains("抽样"));
@@ -22934,7 +23213,7 @@ mod tests {
     #[test]
     fn field_summary_worker_line_exposes_latest_worker_slots() {
         let report = FieldTrajectoryReport {
-            field_count: 8,
+            field_count: default_field_pack_ids().len(),
             latest_worker_slot_count: 2,
             trace_count: 0,
             verifier_result_count: 0,
@@ -22980,7 +23259,7 @@ mod tests {
         assert!(app.contains("latest_updated_at_secs"));
         assert!(app.contains("slot.latest_worker_id || \"\""));
         assert!(app.contains("slot.latest_mini_task || slot.next_mini_task"));
-        assert!(app.contains("slot.latest_worker_status || slot.latest_status"));
+        assert!(app.contains("slot.latest_status || slot.latest_worker_status"));
         assert!(app.contains("Last activity="));
     }
 
@@ -23043,7 +23322,7 @@ mod tests {
     fn status_field_pool_line_exposes_latest_activity() {
         let mut state = HarnessState::default();
         let run = state
-            .start_parallel_evolution("eight peer field objectives", 1)
+            .start_parallel_evolution("peer field objectives", 1)
             .unwrap();
         let worker = run.workers[0].clone();
         let pool = state.status_report().field_pool.expect("field pool status");
@@ -23309,7 +23588,7 @@ mod tests {
             },
             context: BTreeMap::new(),
             source: "field evolution".to_string(),
-            prompt: "eight parallel field objectives".to_string(),
+            prompt: "peer field objectives".to_string(),
             summary: "field: ib; mini task: ib-mini-1; expected Feed: Checked table math, assumptions, and a non-advisory memo line.".to_string(),
             status: NeedQueueStatus::Pending,
         };
@@ -23370,7 +23649,7 @@ mod tests {
                 ),
             ]),
             source: "field evolution".to_string(),
-            prompt: "eight peer field objectives".to_string(),
+            prompt: "peer field objectives".to_string(),
             summary: "selected from the peer field pool".to_string(),
             status: NeedQueueStatus::Pending,
         };
@@ -23392,7 +23671,7 @@ mod tests {
             },
             context: BTreeMap::new(),
             source: "field evolution".to_string(),
-            prompt: "eight parallel field objectives".to_string(),
+            prompt: "peer field objectives".to_string(),
             summary: "field: research; mini task: research-mini-1; expected Feed: A short synthesis with source coverage and uncertainty.".to_string(),
             status: NeedQueueStatus::Pending,
         };
@@ -23415,7 +23694,7 @@ mod tests {
             },
             context: BTreeMap::new(),
             source: "field evolution".to_string(),
-            prompt: "eight parallel field objectives".to_string(),
+            prompt: "peer field objectives".to_string(),
             summary: "selected from the peer field pool".to_string(),
             status: NeedQueueStatus::Pending,
         };
@@ -23457,6 +23736,7 @@ mod tests {
                 "computer-use".to_string(),
                 "ib".to_string(),
                 "robotics".to_string(),
+                "write".to_string(),
             ]
         );
     }
@@ -23471,7 +23751,7 @@ mod tests {
             },
             context: BTreeMap::new(),
             source: "field evolution".to_string(),
-            prompt: "eight parallel field objectives".to_string(),
+            prompt: "peer field objectives".to_string(),
             summary: "field: robotics; mini task: robotics-mini-2; expected Feed: route plan"
                 .to_string(),
             status: NeedQueueStatus::Pending,
@@ -23484,7 +23764,7 @@ mod tests {
     }
 
     #[test]
-    fn field_mini_task_context_does_not_fallback_to_first_task() {
+    fn field_mini_task_context_does_not_select_first_task_without_field_data() {
         let item = NeedQueueItem {
             index: 6,
             need: GoalNeedSuggestion {
@@ -23494,7 +23774,7 @@ mod tests {
             },
             context: BTreeMap::new(),
             source: "field evolution".to_string(),
-            prompt: "eight parallel field objectives".to_string(),
+            prompt: "peer field objectives".to_string(),
             summary: "selected from the peer field pool".to_string(),
             status: NeedQueueStatus::Pending,
         };
@@ -23772,7 +24052,7 @@ mod tests {
                 ),
             ]),
             "field evolution",
-            "eight peer field objectives",
+            "peer field objectives",
             "field: math; mini task: math-mini-1; expected Feed: derivative plus numeric check",
         );
 
@@ -26400,7 +26680,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-beat-installed-broken-fallback-{}",
+            "octopus-beat-installed-broken-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -26492,7 +26772,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let workspace = std::env::temp_dir().join(format!(
-            "octopus-beat-evolution-fallback-{}",
+            "octopus-beat-evolution-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&workspace);
@@ -26547,7 +26827,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let workspace = std::env::temp_dir().join(format!(
-            "octopus-beat-evolution-broken-local-fallback-{}",
+            "octopus-beat-evolution-broken-local-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&workspace);
@@ -26665,7 +26945,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir =
-            std::env::temp_dir().join(format!("octopus-starter-fallback-{}", std::process::id()));
+            std::env::temp_dir().join(format!("octopus-starter-overlay-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let project_tentacle = dir.join("tentacles").join("bash-only");
         fs::create_dir_all(&project_tentacle).unwrap();
@@ -27001,7 +27281,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir =
-            std::env::temp_dir().join(format!("octopus-bootstrap-fallback-{}", std::process::id()));
+            std::env::temp_dir().join(format!("octopus-bootstrap-overlay-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         create_partial_bash_only_tentacles(&dir);
@@ -27039,7 +27319,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir =
-            std::env::temp_dir().join(format!("octopus-adapt-fallback-{}", std::process::id()));
+            std::env::temp_dir().join(format!("octopus-adapt-overlay-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(dir.join(".git")).unwrap();
         fs::write(dir.join("README.md"), "sample").unwrap();
@@ -27049,9 +27329,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let mut state = HarnessState::default();
 
         let report =
-            adapt_environment_with_bundled_seed_fallback(&mut state, dir.clone(), root.clone());
-        let manifest_reports =
-            inspect_tentacle_manifests_with_bundled_seed_fallback(&root).unwrap();
+            adapt_environment_with_bundled_seed_overlay(&mut state, dir.clone(), root.clone());
+        let manifest_reports = inspect_tentacle_manifests_with_bundled_seed_overlay(&root).unwrap();
         let manifest_ids = manifest_reports
             .iter()
             .map(|report| report.id.as_str())
@@ -27059,7 +27338,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let bash_report = manifest_reports
             .iter()
             .find(|report| report.id == "bash-only")
-            .expect("bash-only should be visible through bundled fallback");
+            .expect("bash-only should be visible through bundled overlay");
         let installed = state
             .installed_tentacles
             .iter()
@@ -27088,7 +27367,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir =
-            std::env::temp_dir().join(format!("octopus-report-fallback-{}", std::process::id()));
+            std::env::temp_dir().join(format!("octopus-report-overlay-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         create_partial_bash_only_tentacles(&dir);
@@ -27125,20 +27404,24 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(field_capability.status, "ready");
         assert_eq!(field_harness_capability.status, "ready");
         assert!(field_capability.evidence.contains("peer slots"));
+        assert!(field_harness_capability.evidence.contains("checked_count="));
         assert!(field_harness_capability
             .evidence
-            .contains("checked_count=24"));
-        assert!(field_harness_capability
-            .evidence
-            .contains("executed_count=24"));
+            .contains("executed_count="));
         assert!(field_harness_capability
             .evidence
             .contains("missing_count=0"));
         assert!(field_harness_capability
             .evidence
             .contains("invalid_count=0"));
-        assert_eq!(product.field_pool.field_count, 8);
-        assert_eq!(product.field_pool.field_slot_count, 8);
+        assert_eq!(
+            product.field_pool.field_count,
+            default_field_pack_ids().len()
+        );
+        assert_eq!(
+            product.field_pool.field_slot_count,
+            default_field_pack_ids().len()
+        );
         assert_eq!(product.field_pool.latest_worker_slot_count, 0);
         assert_eq!(product.field_pool.latest_activity, "none");
         assert!(product.field_pool.active_slot_reason.contains("selected"));
@@ -27172,11 +27455,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         std::env::set_current_dir(&dir).unwrap();
         let mut state = HarnessState::default();
         state
-            .start_parallel_evolution("eight peer field objectives", 2)
+            .start_parallel_evolution("peer field objectives", 2)
             .unwrap();
         let report = product_report(&state, &dir.join(".octopus/state.json")).unwrap();
 
-        assert_eq!(report.field_pool.field_slot_count, 8);
+        assert_eq!(
+            report.field_pool.field_slot_count,
+            default_field_pack_ids().len()
+        );
         assert_eq!(report.field_pool.latest_worker_slot_count, 2);
         assert_ne!(report.field_pool.latest_activity, "none");
         assert!(report.field_pool.latest_activity.contains('@'));
@@ -27209,21 +27495,21 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         std::env::set_current_dir(&dir).unwrap();
         let mut state = HarnessState::default();
         state
-            .start_parallel_evolution("eight peer field objectives", 3)
+            .start_parallel_evolution("peer field objectives", 3)
             .unwrap();
         let report = product_report(&state, &dir.join(".octopus/state.json")).unwrap();
 
         let en = product_field_pool_line(&report.field_pool, Language::En);
         let zh = product_field_pool_line(&report.field_pool, Language::Zh);
 
-        assert!(en.contains("8 peer slots"));
+        assert!(en.contains("peer slots"));
         assert!(en.contains("fields="));
         assert!(en.contains("missing_required=none"));
         assert!(en.contains("latest_worker_slots=3"));
         assert!(en.contains("latest_activity="));
         assert!(en.contains("reason="));
         assert!(en.contains("workers=workers are execution slots"));
-        assert!(zh.contains("8 个并列领域槽"));
+        assert!(zh.contains("个并列领域槽"));
         assert!(zh.contains("缺失必需领域=none"));
         assert!(zh.contains("最新 worker 执行槽数=3"));
         assert!(zh.contains("最新活动="));
@@ -27241,8 +27527,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     fn product_field_pool_ready_requires_named_peer_fields() {
         let report = ProductFieldPoolReport {
             policy: parallel_field_pool_policy().to_string(),
-            field_count: 8,
-            field_slot_count: 8,
+            field_count: REQUIRED_PEER_FIELD_IDS.len(),
+            field_slot_count: REQUIRED_PEER_FIELD_IDS.len(),
             latest_worker_slot_count: 0,
             latest_activity: "none".to_string(),
             fields: vec![
@@ -27288,7 +27574,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-report-installed-broken-fallback-{}",
+            "octopus-report-installed-broken-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -27470,8 +27756,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             String::from_utf8_lossy(&output.stderr)
         );
         assert_eq!(value["status"], "ok");
-        assert_eq!(value["checked_count"], 24);
-        assert_eq!(value["executed_count"], 24);
+        assert_eq!(value["checked_count"], 27);
+        assert_eq!(value["executed_count"], 27);
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
@@ -27502,7 +27788,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-field-installed-broken-fallback-{}",
+            "octopus-field-installed-broken-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -27531,12 +27817,15 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn needs_run_reinstalls_field_mini_task_when_installed_source_is_incomplete() {
+        use std::os::unix::fs::PermissionsExt;
+
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-needs-run-field-installed-broken-fallback-{}",
+            "octopus-needs-run-field-installed-broken-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -27559,6 +27848,31 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "math-mini-1",
         );
         state.save(&state_path).unwrap();
+        let curl = dir.join("fake-curl.sh");
+        fs::write(
+            &curl,
+            "#!/bin/sh\nprintf '%s' '{\"choices\":[{\"message\":{\"content\":\"{\\\"calls\\\":[{\\\"tool\\\":\\\"run_field_mini_task\\\",\\\"reason\\\":\\\"execute field mini task\\\"}],\\\"summary\\\":\\\"planned field task\\\"}\"}}]}'\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+        let old_manifest = std::env::var("OCTOPUS_LLM_MANIFEST").ok();
+        let old_prefix = std::env::var("OCTOPUS_MANIFEST_LLM_PREFIX").ok();
+        let old_model = std::env::var("OCTOPUS_MANIFEST_FIELD_TEST_MODEL").ok();
+        let old_base_url = std::env::var("OCTOPUS_MANIFEST_FIELD_TEST_BASE_URL").ok();
+        let old_curl = std::env::var("OCTOPUS_MANIFEST_FIELD_TEST_CURL").ok();
+        std::env::set_var("OCTOPUS_LLM_MANIFEST", "1");
+        std::env::set_var("OCTOPUS_MANIFEST_LLM_PREFIX", "OCTOPUS_MANIFEST_FIELD_TEST");
+        std::env::set_var("OCTOPUS_MANIFEST_FIELD_TEST_MODEL", "test-model");
+        std::env::set_var(
+            "OCTOPUS_MANIFEST_FIELD_TEST_BASE_URL",
+            "https://llm.example/v1",
+        );
+        std::env::set_var(
+            "OCTOPUS_MANIFEST_FIELD_TEST_CURL",
+            curl.to_string_lossy().to_string(),
+        );
 
         run(vec![
             "--state".to_string(),
@@ -27581,16 +27895,21 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(trace.tentacle.as_deref(), Some("field-mini-task"));
         assert_eq!(trace.status, Status::Satisfied);
 
+        restore_env("OCTOPUS_LLM_MANIFEST", old_manifest);
+        restore_env("OCTOPUS_MANIFEST_LLM_PREFIX", old_prefix);
+        restore_env("OCTOPUS_MANIFEST_FIELD_TEST_MODEL", old_model);
+        restore_env("OCTOPUS_MANIFEST_FIELD_TEST_BASE_URL", old_base_url);
+        restore_env("OCTOPUS_MANIFEST_FIELD_TEST_CURL", old_curl);
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
-    fn parallel_evolution_field_seed_falls_back_to_bundled_root() {
+    fn parallel_evolution_field_seed_uses_bundled_root_overlay() {
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir =
-            std::env::temp_dir().join(format!("octopus-field-fallback-{}", std::process::id()));
+            std::env::temp_dir().join(format!("octopus-field-overlay-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let project_tentacle = dir.join("tentacles").join("bash-only");
         fs::create_dir_all(&project_tentacle).unwrap();
@@ -27693,9 +28012,9 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("\"/recipes.html\""));
         assert!(record.contains("\"/download.json\""));
         assert!(record.contains("\"/install.sh\""));
-        assert!(record.contains("\"web_demo\""));
-        assert!(record.contains("\"web_try_app\""));
-        assert!(record.contains("browser-tentacle Feed demo present"));
+        assert!(record.contains("\"app_surface\""));
+        assert!(record.contains("\"local_app_surface\""));
+        assert!(record.contains("local Goal/Need/Feed app surface present"));
         assert!(next[0].as_str().unwrap().contains("first-run"));
         assert!(next[1].as_str().unwrap().contains("start --open"));
         assert!(next[2].as_str().unwrap().contains("preflight"));
@@ -27715,7 +28034,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-start-check-fallback-{}",
+            "octopus-start-check-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -27755,7 +28074,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     }
 
     #[test]
-    fn bridge_static_has_embedded_app_fallback() {
+    fn bridge_static_has_embedded_app_assets() {
         let (content_type, app) = bridge_static("/app.html").unwrap();
         let (_, index) = bridge_static("/").unwrap();
         let (_, demo) = bridge_static("/demo.html").unwrap();
@@ -27839,11 +28158,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(app_text.contains("Current Feed"));
         assert!(app_text.contains("Latest Feed"));
         assert!(app_text.contains("Local Octopus"));
-        assert!(app_text.contains(r#"id="apiKey""#));
-        assert!(app_text.contains("Hello World"));
-        assert!(app_text.contains("Draw Octopus"));
-        assert!(app_text.contains("clean brain only returns a Need"));
-        assert!(app_text.contains("browserTentaclePlan"));
+        assert!(app_text.contains(r#"id="goal""#));
+        assert!(app_text.contains(r#"id="send""#));
+        assert!(app_text.contains(r#"id="pixelPet""#));
+        assert!(!app_text.contains("clean brain only returns a Need"));
         assert!(app_text.contains("hasPendingNeed ? \"need\""));
         assert!(app_text.contains(r#"goalStatus(goal) === "blocked""#));
         assert!(app_text.contains("queuedText || \"Pending Need\""));
@@ -27852,17 +28170,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(app_text.contains("context.field_pack"));
         assert!(app_text.contains("context.field_mini_task"));
         assert!(!app_text.contains(r#"goal.status === "Blocked""#));
-        assert!(app_text.contains("Endpoint or /v1 base URL"));
-        assert!(app_text.contains("chatCompletionsEndpoint"));
-        assert!(app_text.contains("modelRequestTimeoutMs"));
-        assert!(app_text.contains("AbortError"));
         assert!(app_text.contains("Ready. Latest Feed is visible."));
         assert!(app_text.contains("octopus.app.goal"));
-        assert!(app_text.contains("octopus.app.model"));
-        assert!(app_text.contains("octopus.app.endpoint"));
-        assert!(app_text.contains(r#"queryValue("demo")"#));
-        assert!(!app_text.contains("octopus.app.apiKey"));
-        assert!(!app_text.contains(r#"localStorage.setItem("apiKey""#));
+        assert!(!app_text.contains("octopus.app.model"));
+        assert!(!app_text.contains("octopus.app.endpoint"));
+        assert!(!app_text.contains(r#"queryValue("demo")"#));
         assert!(
             app_text.contains(r#"<button class="primary" type="button" id="send">Send</button>"#)
         );
@@ -27944,7 +28256,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir =
-            std::env::temp_dir().join(format!("octopus-repair-fallback-{}", std::process::id()));
+            std::env::temp_dir().join(format!("octopus-repair-overlay-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         create_partial_bash_only_tentacles(&dir);
@@ -27986,7 +28298,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-repair-broken-local-fallback-{}",
+            "octopus-repair-broken-local-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -30140,6 +30452,9 @@ JSON
         assert!(codex.shell.contains("export OCTOPUS_CODEX_BACKEND='codex'"));
         assert!(codex
             .shell
+            .contains("export OCTOPUS_CODEX_MODEL='gpt-5.3-codex-spark'"));
+        assert!(codex
+            .shell
             .contains("export OCTOPUS_CODEX_CODEX_COMMAND=codex"));
         assert!(litellm
             .shell
@@ -30496,6 +30811,7 @@ JSON
         assert!(content.contains("octopus brain --goal --live"));
         assert!(content.contains("OCTOPUS_LLM_MANIFEST=1"));
         assert!(content.contains("OCTOPUS_LLM_EVOLVE=1"));
+        assert!(content.contains("octopus think json-feed verify 'local provider readiness'"));
         let audit = check_provider_matrix_record(&path).unwrap();
         assert!(!audit.passed);
 
@@ -30516,6 +30832,23 @@ JSON
         assert!(audit.passed);
         let third = write_provider_matrix_record(&path).unwrap();
         assert!(third.env_files.iter().all(|item| item.status == "exists"));
+        let audit = check_provider_matrix_record(&path).unwrap();
+        assert!(audit.passed);
+        fs::write("CHANGE.md", "new head\n").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "CHANGE.md"])
+            .status()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "new head"])
+            .status()
+            .unwrap();
+        let refreshed = write_provider_matrix_record(&path).unwrap();
+        let refreshed_content = fs::read_to_string(&path).unwrap();
+        assert!(refreshed_content
+            .contains(&format!("`{}`", refreshed.current_head.as_deref().unwrap())));
+        assert!(refreshed_content
+            .contains("octopus evolve json-feed 'improve compact JSON Feed evidence'"));
         let audit = check_provider_matrix_record(&path).unwrap();
         assert!(audit.passed);
 
@@ -30550,8 +30883,90 @@ JSON
         assert!(!report.audit.passed);
         assert!(content.contains("- Provider check: skipped: set OCTOPUS_CODEX_OK=1 to run"));
         assert!(content.contains("- Clean brain: skipped: set OCTOPUS_CODEX_OK=1 to run"));
-        assert!(content.contains("- Goal chat: fail: 0/4 targets passed"));
-        assert!(content.contains("- Pass or fail: fail: one or more provider targets"));
+        assert!(content.contains("- Goal chat: fail: 0/0 enabled targets passed; 4 skipped"));
+        assert!(content.contains("- Pass or fail: fail: no provider target enabled"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn provider_matrix_accepts_one_live_target_and_unconfigured_skips() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-provider-matrix-one-live-{}",
+            std::process::id()
+        ));
+        let path = dir.join("provider-matrix.md");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .status()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "octopus@example.invalid"])
+            .status()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Octopus Test"])
+            .status()
+            .unwrap();
+        fs::write("README.md", "octopus\n").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "README.md"])
+            .status()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "init"])
+            .status()
+            .unwrap();
+
+        write_provider_matrix_record(&path).unwrap();
+        let targets = provider_matrix_targets();
+        let mut content = fs::read_to_string(&path)
+            .unwrap()
+            .replace("- Date:", "- Date: 2026-06-28")
+            .replace("- Tester:", "- Tester: local tester")
+            .replace("- Machine:", "- Machine: local machine")
+            .replace("- OS:", "- OS: local os")
+            .replace("- Shell:", "- Shell: zsh")
+            .replace(
+                "- Goal chat:",
+                "- Goal chat: pass: 1/1 enabled targets passed; 3 skipped",
+            )
+            .replace(
+                "- Clean brain:",
+                "- Clean brain: pass: 1/1 enabled targets passed; 3 skipped",
+            )
+            .replace(
+                "- Tentacle planning:",
+                "- Tentacle planning: pass: 1/1 enabled targets passed; 3 skipped",
+            )
+            .replace(
+                "- Harness evolution:",
+                "- Harness evolution: pass: 1/1 enabled targets passed; 3 skipped",
+            )
+            .replace("- Pass or fail:", "- Pass or fail: pass");
+        for target in &targets {
+            for field in [
+                "Provider check",
+                "Clean brain",
+                "Tentacle planning",
+                "Harness evolution",
+            ] {
+                let value = if target.id == "codex-oauth" {
+                    "pass".to_string()
+                } else {
+                    format!("skipped: set {}=1 to run", target.enabled_env)
+                };
+                content = set_provider_matrix_target_field(content, target, field, &value).unwrap();
+            }
+        }
+        fs::write(&path, content).unwrap();
+        let audit = check_provider_matrix_record(&path).unwrap();
+        assert!(audit.passed);
 
         let _ = fs::remove_dir_all(dir);
     }
@@ -30945,11 +31360,11 @@ JSON
     }
 
     #[test]
-    fn check_report_falls_back_to_bundled_field_mini_task() {
+    fn check_report_uses_bundled_field_mini_task_overlay() {
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir =
-            std::env::temp_dir().join(format!("octopus-check-fallback-{}", std::process::id()));
+            std::env::temp_dir().join(format!("octopus-check-overlay-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let project_tentacle = dir.join("tentacles").join("bash-only");
         fs::create_dir_all(&project_tentacle).unwrap();
@@ -30982,7 +31397,7 @@ JSON
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-check-broken-local-fallback-{}",
+            "octopus-check-broken-local-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -31006,11 +31421,11 @@ JSON
     }
 
     #[test]
-    fn direct_tentacle_resolver_falls_back_to_bundled_seed() {
+    fn direct_tentacle_resolver_uses_bundled_seed_overlay() {
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir =
-            std::env::temp_dir().join(format!("octopus-resolve-fallback-{}", std::process::id()));
+            std::env::temp_dir().join(format!("octopus-resolve-overlay-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let project_tentacle = dir.join("tentacles").join("bash-only");
         fs::create_dir_all(&project_tentacle).unwrap();
@@ -31037,7 +31452,7 @@ JSON
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-resolve-broken-local-fallback-{}",
+            "octopus-resolve-broken-local-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -31054,12 +31469,15 @@ JSON
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
-    fn cli_think_falls_back_when_local_seed_manifest_is_incomplete() {
+    fn cli_think_uses_bundled_seed_overlay_when_local_seed_manifest_is_incomplete() {
+        use std::os::unix::fs::PermissionsExt;
+
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-think-broken-local-fallback-{}",
+            "octopus-think-broken-local-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -31067,6 +31485,31 @@ JSON
         create_partial_bash_only_tentacles(&dir);
         std::env::set_current_dir(&dir).unwrap();
         let state_path = dir.join(".octopus/state.json");
+        let curl = dir.join("fake-curl.sh");
+        fs::write(
+            &curl,
+            "#!/bin/sh\nprintf '%s' '{\"choices\":[{\"message\":{\"content\":\"{\\\"calls\\\":[{\\\"tool\\\":\\\"write_and_run\\\",\\\"reason\\\":\\\"execute requested shell\\\"}],\\\"summary\\\":\\\"planned bash execution\\\"}\"}}]}'\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+        let old_manifest = std::env::var("OCTOPUS_LLM_MANIFEST").ok();
+        let old_prefix = std::env::var("OCTOPUS_MANIFEST_LLM_PREFIX").ok();
+        let old_model = std::env::var("OCTOPUS_MANIFEST_THINK_TEST_MODEL").ok();
+        let old_base_url = std::env::var("OCTOPUS_MANIFEST_THINK_TEST_BASE_URL").ok();
+        let old_curl = std::env::var("OCTOPUS_MANIFEST_THINK_TEST_CURL").ok();
+        std::env::set_var("OCTOPUS_LLM_MANIFEST", "1");
+        std::env::set_var("OCTOPUS_MANIFEST_LLM_PREFIX", "OCTOPUS_MANIFEST_THINK_TEST");
+        std::env::set_var("OCTOPUS_MANIFEST_THINK_TEST_MODEL", "test-model");
+        std::env::set_var(
+            "OCTOPUS_MANIFEST_THINK_TEST_BASE_URL",
+            "https://llm.example/v1",
+        );
+        std::env::set_var(
+            "OCTOPUS_MANIFEST_THINK_TEST_CURL",
+            curl.to_string_lossy().to_string(),
+        );
 
         run(vec![
             "--state".to_string(),
@@ -31079,16 +31522,21 @@ JSON
         ])
         .unwrap();
 
+        restore_env("OCTOPUS_LLM_MANIFEST", old_manifest);
+        restore_env("OCTOPUS_MANIFEST_LLM_PREFIX", old_prefix);
+        restore_env("OCTOPUS_MANIFEST_THINK_TEST_MODEL", old_model);
+        restore_env("OCTOPUS_MANIFEST_THINK_TEST_BASE_URL", old_base_url);
+        restore_env("OCTOPUS_MANIFEST_THINK_TEST_CURL", old_curl);
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
-    fn cli_probe_falls_back_when_local_seed_manifest_is_incomplete() {
+    fn cli_probe_uses_bundled_seed_overlay_when_local_seed_manifest_is_incomplete() {
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-probe-broken-local-fallback-{}",
+            "octopus-probe-broken-local-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -31114,7 +31562,7 @@ JSON
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir =
-            std::env::temp_dir().join(format!("octopus-install-fallback-{}", std::process::id()));
+            std::env::temp_dir().join(format!("octopus-install-overlay-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let project_tentacle = dir.join("tentacles").join("bash-only");
         fs::create_dir_all(&project_tentacle).unwrap();
@@ -31150,11 +31598,11 @@ JSON
     }
 
     #[test]
-    fn cli_install_falls_back_when_local_seed_manifest_is_incomplete() {
+    fn cli_install_uses_bundled_seed_overlay_when_local_seed_manifest_is_incomplete() {
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-install-broken-local-fallback-{}",
+            "octopus-install-broken-local-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -31189,7 +31637,7 @@ JSON
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-evolve-recommend-fallback-{}",
+            "octopus-evolve-recommend-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -31237,7 +31685,7 @@ JSON
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-evolve-recommend-broken-local-fallback-{}",
+            "octopus-evolve-recommend-broken-local-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -31278,7 +31726,7 @@ JSON
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-evolve-apply-broken-local-fallback-{}",
+            "octopus-evolve-apply-broken-local-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -31330,7 +31778,7 @@ JSON
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-evolve-score-broken-local-fallback-{}",
+            "octopus-evolve-score-broken-local-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -31471,7 +31919,7 @@ JSON
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir =
-            std::env::temp_dir().join(format!("octopus-cli-init-fallback-{}", std::process::id()));
+            std::env::temp_dir().join(format!("octopus-cli-init-overlay-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         create_partial_bash_only_tentacles(&dir);
@@ -31540,7 +31988,7 @@ JSON
         let report = pet_report("route").unwrap();
 
         assert_eq!(report.state, "harness");
-        assert_eq!(report.fallback, "🟦");
+        assert_eq!(report.chat_badge, "🟦");
         assert!(report.target.starts_with("file://"));
         assert!(report.target.contains("docs/pet.html?state=harness"));
         assert!(report.exists);
@@ -31659,7 +32107,7 @@ JSON
         let report = pet_report_for_state(&state, state_path, "auto").unwrap();
 
         assert_eq!(report.state, "success");
-        assert_eq!(report.fallback, "🟩");
+        assert_eq!(report.chat_badge, "🟩");
         assert_eq!(report.event_source.as_deref(), Some("swe-agent"));
         assert_eq!(
             report.event_summary.as_deref(),
@@ -31719,7 +32167,7 @@ JSON
         assert!(swift.contains("freshTimestamp(int(worker[\"updated_at_secs\"]) ?? 0)"));
         assert!(swift.contains("let goal = text(worker[\"goal\"])"));
         assert!(
-            swift.contains("text(slot[\"latest_worker_status\"]) ?? text(slot[\"latest_status\"])")
+            swift.contains("text(slot[\"latest_status\"]) ?? text(slot[\"latest_worker_status\"])")
         );
         assert!(
             swift.contains("text(slot[\"latest_mini_task\"]) ?? text(slot[\"next_mini_task\"])")
@@ -31901,8 +32349,8 @@ JSON
             item.id == "field_mini_task_harness"
                 && item.status == "pass"
                 && item.required
-                && item.evidence.contains("checked_count=24")
-                && item.evidence.contains("executed_count=24")
+                && item.evidence.contains("checked_count=")
+                && item.evidence.contains("executed_count=")
                 && item.evidence.contains("missing_count=0")
                 && item.evidence.contains("invalid_count=0")
         }));
@@ -31959,8 +32407,8 @@ JSON
         assert!(record.contains("active_worker_slots="));
         assert!(record.contains("candidate_pool="));
         assert!(record.contains("Field mini task harness"));
-        assert!(record.contains("checked_count=24"));
-        assert!(record.contains("executed_count=24"));
+        assert!(record.contains("checked_count="));
+        assert!(record.contains("executed_count="));
         assert!(record.contains("missing_count=0"));
         assert!(record.contains("invalid_count=0"));
         assert!(record.contains("octopus status"));
@@ -31999,7 +32447,7 @@ JSON
             )
             .replace(
                 "- Field mini task harness:",
-                "- Field mini task harness: pass checked_count=24 executed_count=24",
+                "- Field mini task harness: pass checked_count=27 executed_count=27",
             )
             .replace("- Desktop pet source:", "- Desktop pet source: pass")
             .replace("- Start/app:", "- Start/app: pass")
@@ -32027,7 +32475,7 @@ JSON
             .any(|item| item.id == "field_pool_named_fields" && item.status == "fail"));
         let filled = filled.replace(
             "- Field pool: pass latest_activity=math:math-mini-1:Partial@123 worker=worker-1",
-            "- Field pool: pass fields=math,search,code,swe,research,computer-use,ib,robotics missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1",
+            "- Field pool: pass fields=math,search,code,swe,research,computer-use,ib,robotics,write missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1",
         );
         fs::write(&record_path, &filled).unwrap();
         let audit = check_preflight_record(&record_path).unwrap();
@@ -32037,8 +32485,8 @@ JSON
             .iter()
             .any(|item| item.id == "field_pool_parallel_run" && item.status == "fail"));
         let filled = filled.replace(
-            "- Field pool: pass fields=math,search,code,swe,research,computer-use,ib,robotics missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1",
-            "- Field pool: pass fields=math,search,code,swe,research,computer-use,ib,robotics missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1 parallel_run=#1 requested_worker_slots=2 active_worker_slots=2 candidate_pool=code,robotics",
+            "- Field pool: pass fields=math,search,code,swe,research,computer-use,ib,robotics,write missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1",
+            "- Field pool: pass fields=math,search,code,swe,research,computer-use,ib,robotics,write missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1 parallel_run=#1 requested_worker_slots=2 active_worker_slots=2 candidate_pool=code,robotics",
         );
         fs::write(&record_path, &filled).unwrap();
         let audit = check_preflight_record(&record_path).unwrap();
@@ -32048,8 +32496,8 @@ JSON
             .iter()
             .any(|item| item.id == "field_pool_parallel_run" && item.status == "fail"));
         let filled = filled.replace(
-            "- Field pool: pass fields=math,search,code,swe,research,computer-use,ib,robotics missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1 parallel_run=#1 requested_worker_slots=2 active_worker_slots=2 candidate_pool=code,robotics",
-            "- Field pool: pass fields=math,search,code,swe,research,computer-use,ib,robotics missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1 parallel_run=#1 requested_worker_slots=2 active_worker_slots=2 candidate_pool=math,search",
+            "- Field pool: pass fields=math,search,code,swe,research,computer-use,ib,robotics,write missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1 parallel_run=#1 requested_worker_slots=2 active_worker_slots=2 candidate_pool=code,robotics",
+            "- Field pool: pass fields=math,search,code,swe,research,computer-use,ib,robotics,write missing_required=none latest_activity=math:math-mini-1:Partial@123 worker=worker-1 parallel_run=#1 requested_worker_slots=2 active_worker_slots=2 candidate_pool=math,search",
         );
         fs::write(&record_path, &filled).unwrap();
         let audit = check_preflight_record(&record_path).unwrap();
@@ -32059,8 +32507,8 @@ JSON
             .iter()
             .any(|item| item.id == "field_mini_task_harness_record" && item.status == "fail"));
         let filled = filled.replace(
-            "- Field mini task harness: pass checked_count=24 executed_count=24",
-            "- Field mini task harness: pass checked_count=24 executed_count=24 status=ok",
+            "- Field mini task harness: pass checked_count=27 executed_count=27",
+            "- Field mini task harness: pass checked_count=27 executed_count=27 status=ok",
         );
         fs::write(&record_path, &filled).unwrap();
         let audit = check_preflight_record(&record_path).unwrap();
@@ -32070,8 +32518,8 @@ JSON
             .iter()
             .any(|item| item.id == "field_mini_task_harness_record" && item.status == "fail"));
         let filled = filled.replace(
-            "- Field mini task harness: pass checked_count=24 executed_count=24 status=ok",
-            "- Field mini task harness: pass checked_count=24 executed_count=24 missing_count=0 invalid_count=0 status=ok",
+            "- Field mini task harness: pass checked_count=27 executed_count=27 status=ok",
+            "- Field mini task harness: pass checked_count=27 executed_count=27 satisfied_count=27 partial_count=0 missing_count=0 invalid_count=0 status=ok",
         );
         fs::write(&record_path, filled).unwrap();
         let audit = check_preflight_record(&record_path).unwrap();
@@ -32209,9 +32657,9 @@ printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build Octopus\"
         assert!(content.contains("chat llm refined"));
         assert!(content.contains("observe: inspect docs"));
         assert!(content.contains("\"need_queue\""));
-        assert!(content.contains("\"source\": \"goal_chat\""));
         let restored = HarnessState::load(&state_path).unwrap();
         assert_eq!(restored.pending_need_queue_count(), 1);
+        assert_eq!(restored.need_queue[0].source, "goal chat");
         assert_eq!(restored.need_queue[0].need.kind, NeedKind::Observe);
         assert_eq!(restored.need_queue[0].need.query, "inspect docs");
         let _ = fs::remove_dir_all(dir);
@@ -33055,9 +33503,10 @@ JSON
         assert!(fs::read_to_string(&apply_plan)
             .unwrap()
             .contains("authorized: true"));
-        let patch = fs::read_to_string(apply_patch).unwrap();
-        assert!(patch.contains("diff --git"));
-        assert!(patch.contains("Octopus evolution candidate 03-runtime-code"));
+        assert!(fs::read_to_string(&apply_plan)
+            .unwrap()
+            .contains("needs_suggested_patch"));
+        assert!(!apply_patch.exists());
 
         run(vec![
             "--state".to_string(),
@@ -33342,7 +33791,7 @@ JSON
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-need-installed-broken-fallback-{}",
+            "octopus-need-installed-broken-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -34769,41 +35218,35 @@ JSON
         let state = path.to_string_lossy().to_string();
         let _ = fs::remove_file(&path);
 
-        run(vec![
+        let error = run(vec![
             "--state".to_string(),
             state.clone(),
             "chat".to_string(),
             "build".to_string(),
             "octopus".to_string(),
         ])
-        .unwrap();
-        run(vec![
-            "--state".to_string(),
-            state.clone(),
-            "chat".to_string(),
-            "make".to_string(),
-            "tools".to_string(),
-            "think".to_string(),
-        ])
-        .unwrap();
-        run(vec!["--state".to_string(), state, "goal".to_string()]).unwrap();
+        .unwrap_err();
 
-        let content = fs::read_to_string(&path).unwrap();
-        assert!(content.contains("\"objective\": \"build octopus\""));
-        assert!(content.contains("make tools think"));
-        assert!(content.contains("goal_turns"));
+        assert!(error.contains("OCTOPUS_LLM_MODEL is required for provider chat"));
         restore_env("OCTOPUS_CHAT_LLM", old_chat);
         let _ = fs::remove_file(path);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_chat_repairs_broken_installed_seed_source() {
+        use std::os::unix::fs::PermissionsExt;
+
         let _env = env_guard();
         let _cwd = CwdGuard::new();
         let old_chat = std::env::var("OCTOPUS_CHAT_LLM").ok();
-        std::env::remove_var("OCTOPUS_CHAT_LLM");
+        let old_prefix = std::env::var("OCTOPUS_CHAT_LLM_PREFIX").ok();
+        let old_model = std::env::var("OCTOPUS_CHAT_REPAIR_TEST_MODEL").ok();
+        let old_base_url = std::env::var("OCTOPUS_CHAT_REPAIR_TEST_BASE_URL").ok();
+        let old_api_key = std::env::var("OCTOPUS_CHAT_REPAIR_TEST_API_KEY").ok();
+        let old_curl = std::env::var("OCTOPUS_CHAT_REPAIR_TEST_CURL").ok();
         let dir = std::env::temp_dir().join(format!(
-            "octopus-chat-installed-broken-fallback-{}",
+            "octopus-chat-installed-broken-overlay-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -34817,6 +35260,29 @@ JSON
             .installed_tentacles
             .push(broken_installed_bash_only(&dir));
         state.save(&state_path).unwrap();
+        let curl = dir.join("fake-curl.sh");
+        fs::write(
+            &curl,
+            r#"#!/bin/sh
+printf '%s' '{"choices":[{"message":{"content":"{\"objective\":\"build octopus\",\"constraints\":[],\"summary\":\"chat llm repaired seed\",\"needs\":[]}"}}]}'
+"#,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+        std::env::set_var("OCTOPUS_CHAT_LLM", "1");
+        std::env::set_var("OCTOPUS_CHAT_LLM_PREFIX", "OCTOPUS_CHAT_REPAIR_TEST");
+        std::env::set_var("OCTOPUS_CHAT_REPAIR_TEST_MODEL", "test-model");
+        std::env::set_var(
+            "OCTOPUS_CHAT_REPAIR_TEST_BASE_URL",
+            "https://llm.example/v1",
+        );
+        std::env::remove_var("OCTOPUS_CHAT_REPAIR_TEST_API_KEY");
+        std::env::set_var(
+            "OCTOPUS_CHAT_REPAIR_TEST_CURL",
+            curl.to_string_lossy().to_string(),
+        );
 
         run(vec![
             "--state".to_string(),
@@ -34837,6 +35303,11 @@ JSON
         assert_eq!(restored.goal.as_ref().unwrap().objective, "build octopus");
 
         restore_env("OCTOPUS_CHAT_LLM", old_chat);
+        restore_env("OCTOPUS_CHAT_LLM_PREFIX", old_prefix);
+        restore_env("OCTOPUS_CHAT_REPAIR_TEST_MODEL", old_model);
+        restore_env("OCTOPUS_CHAT_REPAIR_TEST_BASE_URL", old_base_url);
+        restore_env("OCTOPUS_CHAT_REPAIR_TEST_API_KEY", old_api_key);
+        restore_env("OCTOPUS_CHAT_REPAIR_TEST_CURL", old_curl);
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
     }

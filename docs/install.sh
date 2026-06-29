@@ -23,6 +23,7 @@ elif [ -n "${HOME:-}" ] && [ -x "$HOME/.cargo/bin/$binary" ]; then
 fi
 
 printf '\n%s\n' "Octopus installed."
+printf '%s\n' "Release status: v0.2.0. The old v0.1.0 release artifacts were removed."
 if [ -n "$bin_path" ]; then
   "$bin_path" --version
 else

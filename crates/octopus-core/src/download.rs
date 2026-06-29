@@ -5,6 +5,10 @@ use crate::shell_words::shell_command;
 #[derive(Debug, serde::Serialize)]
 pub(crate) struct DownloadReport {
     pub(crate) current_version: String,
+    pub(crate) release_status: String,
+    pub(crate) stable_release: Option<String>,
+    pub(crate) next_release: String,
+    pub(crate) release_gate: String,
     pub(crate) repository: String,
     pub(crate) source_archive_url: String,
     pub(crate) cargo_package: String,
@@ -50,6 +54,11 @@ pub(crate) fn download_report() -> DownloadReport {
     let install_script_url = "https://dangozhang.github.io/Octopus/install.sh".to_string();
     DownloadReport {
         current_version: env!("CARGO_PKG_VERSION").to_string(),
+        release_status: "stable".to_string(),
+        stable_release: Some(format!("v{}", env!("CARGO_PKG_VERSION"))),
+        next_release: "0.2.1".to_string(),
+        release_gate: "passed: desktop pet observer plus real LLM-driven harness evolution"
+            .to_string(),
         source_archive_url: format!("{repository}/archive/refs/heads/main.zip"),
         repository,
         cargo_package: "octopus-core".to_string(),
@@ -81,7 +90,7 @@ pub(crate) fn download_report() -> DownloadReport {
         start: "octopus start --open".to_string(),
         docs: vec![
             DownloadLink {
-                label: "Try app".to_string(),
+                label: "Local app".to_string(),
                 url: "https://dangozhang.github.io/Octopus/app.html".to_string(),
             },
             DownloadLink {

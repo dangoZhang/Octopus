@@ -268,7 +268,7 @@
         letter-spacing: 0;
       }
 
-      .fallback {
+      .chat-badge {
         margin: 12px 0 0;
         font-size: 28px;
       }
@@ -444,7 +444,7 @@
 
         <section class="state" aria-live="polite">
           <h1 id="state-title">Heartbeat</h1>
-          <div class="fallback" id="fallback" aria-label="chat fallback">🟩 🐙</div>
+          <div class="chat-badge" id="chat-badge" aria-label="chat badge">🟩 🐙</div>
           <p class="label" id="state-label">Kernel and chat loop are alive.</p>
           <div class="legend">
             <span>Read-only preview. The native desktop pet watches `.octopus/state.json`.</span>
@@ -491,11 +491,11 @@
       const goalText = document.querySelector("#goal-text");
       const title = document.querySelector("#state-title");
       const label = document.querySelector("#state-label");
-      const fallback = document.querySelector("#fallback");
+      const chatBadge = document.querySelector("#chat-badge");
       const query = new URLSearchParams(window.location.search);
 
-      function queryText(name, fallbackText = "") {
-        return query.get(name) || fallbackText;
+      function queryText(name, defaultText = "") {
+        return query.get(name) || defaultText;
       }
 
       function workerCount() {
@@ -566,7 +566,7 @@
         document.documentElement.style.setProperty("--accent", state[2]);
         title.textContent = state[0];
         label.textContent = state[1];
-        fallback.textContent = `${state[5]} 🐙`;
+        chatBadge.textContent = `${state[5]} 🐙`;
         drawFleet(workerCount(), state[4]);
         updateWorkPanels(name);
       }

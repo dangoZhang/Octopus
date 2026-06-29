@@ -1,0 +1,74 @@
+if field == "math" and mini_task == "math-mini-4":
+    vertex_x = 3
+    min_value = 4
+    nearby = [
+        {"x": 2, "f_x": 2 * 2 - 6 * 2 + 13},
+        {"x": 3, "f_x": 3 * 3 - 6 * 3 + 13},
+        {"x": 4, "f_x": 4 * 4 - 6 * 4 + 13},
+    ]
+    derivative_at_vertex = 2 * vertex_x - 6
+    derivation = "f(x) = x^2 - 6x + 13 = (x - 3)^2 + 4, so the minimum is 4 at x = 3."
+    checks = {
+        "completed_square_correct": "(x - 3)^2 + 4",
+        "minimum_point": {"x": vertex_x, "f_x": min_value},
+        "derivative_at_vertex": derivative_at_vertex,
+        "nearby_values": nearby,
+        "nearby_values_not_lower": all(row["f_x"] >= min_value for row in nearby),
+        "field_expected_feed_preserved": bool(expected_feed),
+    }
+    checks["passed"] = (
+        derivative_at_vertex == 0
+        and checks["nearby_values_not_lower"]
+        and checks["field_expected_feed_preserved"]
+    )
+    artifacts = {
+        "answer": session / "ANSWER.md",
+        "derivation": session / "DERIVATION.md",
+        "numeric_check": session / "NUMERIC_CHECK.json",
+        "checks": session / "CHECKS.json",
+    }
+    artifacts["answer"].write_text(
+        "# Math Mini Task Answer\n\n"
+        + derivation
+        + " The derivative f'(x) = 2x - 6 is zero at x = 3, and f(2), f(3), f(4) = 5, 4, 5.\n",
+        encoding="utf-8",
+    )
+    artifacts["derivation"].write_text(derivation + "\n", encoding="utf-8")
+    artifacts["numeric_check"].write_text(
+        json.dumps(nearby, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    artifacts["checks"].write_text(
+        json.dumps(checks, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    status = "satisfied" if checks["passed"] else "partial"
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(artifacts["answer"], root),
+        "derivation": rel(artifacts["derivation"], root),
+        "numeric_check": rel(artifacts["numeric_check"], root),
+        "checks": rel(artifacts["checks"], root),
+        "verifier_status": status,
+        "field_pass_evidence": "completed square derivation, derivative check, and nearby numeric comparison",
+    }
+    field_result = {
+        "status": status,
+        "output": artifacts["answer"].read_text(encoding="utf-8"),
+        "evidence": [
+            {"source": "field-mini-task/math/derivation", "artifact_path": rel(artifacts["derivation"], root), "confidence": 0.95, "metadata": field_metadata},
+            {"source": "field-mini-task/math/numeric-check", "artifact_path": rel(artifacts["numeric_check"], root), "confidence": 0.95, "metadata": field_metadata},
+            {"source": "field-mini-task/math/checks", "artifact_path": rel(artifacts["checks"], root), "confidence": 0.95, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Octopus 产品教学</title>
-    <meta name="description" content="从浏览器试用到本地启动 Octopus。" />
+    <meta name="description" content="安装并本地启动 Octopus。" />
     <style>
       :root {
         color-scheme: light;
@@ -308,7 +308,7 @@
         <div class="brand">Octopus 章鱼</div>
         <div class="links">
           <a href="./">首页</a>
-          <a href="../app.html">网页试用</a>
+          <a href="../app.html">本地 App</a>
           <a href="./quickstart.md">安装</a>
           <a href="../tutorial.html">English</a>
           <a class="button" href="https://github.com/dangoZhang/Octopus">GitHub</a>
@@ -322,7 +322,7 @@
           <h1>先看需求，再看触手怎么做。</h1>
           <p class="lead">Octopus 让主脑只表达认知需求。触手带着自己的提示词、工具描述、运行代码和权限去执行，再把压缩后的 Feed 交回大脑。</p>
           <div class="hero-actions">
-            <a class="button primary" href="../app.html">打开网页试用</a>
+            <a class="button primary" href="../app.html">打开本地 App</a>
             <a class="button" href="#local">本地启动</a>
           </div>
         </div>
@@ -342,19 +342,19 @@
 
       <section>
         <div class="shell">
-          <h2>网页试用</h2>
+          <h2>本地 App</h2>
           <div class="steps">
             <article class="card">
-              <h3>1. 填入模型 key</h3>
-              <p>打开 App，填 API key，选择 OpenAI-compatible endpoint，或直接填一个 <code>/v1</code> base URL。</p>
+              <h3>1. 启动 Octopus</h3>
+              <p>先在本机启动 Octopus，再打开 App。页面展示真实 Goal、Need、Feed 和桌宠状态。</p>
             </article>
             <article class="card">
-              <h3>2. 发起一个目标</h3>
-              <p>点击 Hello World 或 Draw Octopus。页面会先展示主脑生成的 Need，再进入执行。</p>
+              <h3>2. 修改 Goal</h3>
+              <p>页面只写入 Goal。模型和 provider 设置留在本地运行环境，不写进 Need 文本。</p>
             </article>
             <article class="card">
               <h3>3. 查看 Feed</h3>
-              <p>浏览器触手读取 Need，规划动作，写出结果，再把简短 Feed 返回页面。整个流程不依赖本地 bridge。</p>
+              <p>主脑产生 Need，模型驱动的触手进入环境执行、检查，再返回压缩 Feed。</p>
             </article>
           </div>
         </div>
@@ -383,7 +383,7 @@ octopus start --open</code></pre>
 octopus chat "make setup clearer"
 octopus preflight</code></pre>
           <p>App 页面只让用户改 Goal。Need、路由、provider、repair、harness evolution 都留在 agent 内部，并通过当前 Need、当前 Feed、章鱼颜色和 Output 展示。</p>
-          <pre><code>octopus evolve parallel --workers 1 --open "advance the eight peer field objectives toward v0.2.0"
+          <pre><code>octopus evolve parallel --workers 1 --open "advance the peer field objectives toward v0.2.0"
 octopus fields summary</code></pre>
           <p>这个入口会从八个并列领域里打开一个 worker 槽位，让可编辑的 <code>field-mini-task</code> harness 进入 Need -&gt; Feed 链路，并留下 verifier signal 给后续自进化。</p>
         </div>
@@ -411,7 +411,7 @@ octopus fields summary</code></pre>
     </main>
 
     <footer>
-      <div class="shell"><a href="../app.html">网页试用</a> · <a href="./recipes.html">使用场景</a> · <a href="./quickstart.md">快速开始</a> · <a href="./architecture.md">架构说明</a></div>
+      <div class="shell"><a href="../app.html">本地 App</a> · <a href="./recipes.html">使用场景</a> · <a href="./quickstart.md">快速开始</a> · <a href="./architecture.md">架构说明</a></div>
     </footer>
   </body>
 </html>

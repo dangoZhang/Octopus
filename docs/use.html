@@ -243,8 +243,8 @@
       <section class="hero">
         <div class="shell">
           <h1>Use Octopus in five minutes.</h1>
-          <p class="lead">Start the whole local product, give the brain a Goal, let tentacles supply Feed, then watch Doctor, Preflight, routes, and the pixel Octopus show what happened.</p>
-          <p class="lead"><a href="./demo.html">Watch the v0.1.0 live demo</a>, read the <a href="./docs.html">docs tutorial</a>, or try <a href="./app.html?demo=hello">Hello World</a> and <a href="./app.html?demo=octopus">Draw Octopus</a> in the browser before installing.</p>
+          <p class="lead">Install Octopus, run one Goal, open the local Goal/Need/Feed app, then use Doctor, Preflight, routes, and the pixel Octopus as evidence.</p>
+          <p class="lead">Read the <a href="./docs.html">docs tutorial</a> or follow the steps below.</p>
         </div>
       </section>
 
@@ -253,10 +253,10 @@
           <h2>One local product path</h2>
           <div class="steps">
             <article class="step">
-              <h3>1. Install and launch</h3>
+              <h3>1. Install</h3>
               <pre><code>cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
-octopus start --check</code></pre>
-              <p>The check prepares state, editable seed tentacles, the registry, three beats, and app evidence, then returns to the shell.</p>
+octopus --version</code></pre>
+              <p>The binary includes the runtime, seed tentacles, local app, and state observer.</p>
             </article>
             <article class="step">
               <h3>2. Give it a Goal</h3>
@@ -264,19 +264,23 @@ octopus start --check</code></pre>
               <p>The brain writes a Goal and one clean Need. A tentacle chooses how to observe, acts, returns compact Feed, and records feedback.</p>
             </article>
             <article class="step">
-              <h3>3. Keep steering by Goal</h3>
+              <h3>3. Open the local app</h3>
+              <pre><code>octopus start --open</code></pre>
+              <p>The app reads local state and shows Goal, Need, Feed, Output, and pet status.</p>
+            </article>
+            <article class="step">
+              <h3>4. Keep steering by Goal</h3>
               <pre><code>octopus chat "make setup clearer"
 octopus goal refine "prefer small reviewable changes"</code></pre>
               <p>User input stays on Goal. Tool choice, repair, provider routing, and harness changes stay agent-internal or observable.</p>
             </article>
             <article class="step">
-              <h3>4. Read the evidence</h3>
+              <h3>5. Read the evidence</h3>
               <pre><code>octopus doctor
 octopus report
 octopus preflight
-octopus pet desktop
-octopus start --open</code></pre>
-              <p>Doctor shows readiness. Report shows capability and gaps. Preflight shows blockers. The native pet and app show state after the first loop exists.</p>
+octopus pet desktop</code></pre>
+              <p>Doctor shows readiness. Report shows capability and gaps. Preflight shows blockers. The native pet shows state after the first loop exists.</p>
             </article>
           </div>
         </div>

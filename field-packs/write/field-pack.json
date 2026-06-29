@@ -1,0 +1,30 @@
+{
+  "id": "write",
+  "version": "0.1.x",
+  "description": "Draft, revise, and verify concise written outputs from explicit source notes.",
+  "aliases": ["write", "writing", "draft", "copy", "prose"],
+  "task_schema": {
+    "inputs": ["audience", "source notes", "constraints"],
+    "outputs": ["draft", "claim-source map", "quality checks"],
+    "constraints": ["separate claims from unsupported guesses", "preserve requested tone and length", "do not invent evidence"]
+  },
+  "capability_hints": ["read_notes", "draft", "revise", "check_claims", "summarize"],
+  "permission_boundary": {
+    "safe": ["write local drafts", "revise supplied text", "produce local review notes"],
+    "requires_grant": ["publish externally", "send messages", "edit user files"],
+    "blocked_by_default": ["impersonation", "fabricated citations", "sensitive personal disclosure"]
+  },
+  "verifier": {
+    "method": "claim-source map plus style and constraint checks",
+    "pass_signal": "draft uses only supplied notes, names unsupported gaps, and satisfies the requested style constraints",
+    "error_categories": ["unsupported_claim", "tone_mismatch", "missing_constraint", "overlong_draft"]
+  },
+  "trajectory_labels": ["source_notes", "draft", "claim_map", "checks", "feed"],
+  "mini_tasks": [
+    {
+      "id": "write-mini-1",
+      "goal": "Turn three source notes about Octopus into a short product paragraph and verify every claim against the notes.",
+      "expected_feed": "A concise paragraph, claim-source map, unsupported-gap list, style checks, and artifact-backed verifier evidence."
+    }
+  ]
+}

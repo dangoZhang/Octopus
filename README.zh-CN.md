@@ -2,7 +2,7 @@
 
 让主模型专注目标，让本地触手处理工具过程。
 
-[安装](#快速安装和启动) · [产品 Demo](https://dangozhang.github.io/Octopus/demo.html) · [网页教程](https://dangozhang.github.io/Octopus/docs.html) · [试用 App](https://dangozhang.github.io/Octopus/app.html?demo=hello) · [English](README.md)
+[安装](#快速安装和启动) · [本地 App](https://dangozhang.github.io/Octopus/app.html) · [网页教程](https://dangozhang.github.io/Octopus/docs.html) · [English](README.md)
 
 章鱼把控制分散在身体里。中枢给出方向，腕足在离环境最近的地方完成大量感知和调整。
 
@@ -41,30 +41,27 @@ Heartbeat -> run data -> memory and harness updates
 
 ## 快速安装和启动
 
+当前状态：`v0.2.0`。旧的 `v0.1.0` release 产物已删除；这是第一条可用公开版本线，已带桌宠观察和真实 harness 进化证据。
+
 ```bash
 curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
 octopus --version
-octopus start --check
 ```
 
-跑第一次本地闭环：
+跑第一次本地 Goal/Need/Feed 闭环，并打开 App：
 
 ```bash
 octopus first-run "make this repo easier to use"
-octopus chat "prefer one small evidence-backed improvement"
-octopus pet desktop
 octopus start --open
 ```
 
-你应该看到 `.octopus/state.json`、一段 Feed summary、一个观察真实状态的原生桌面章鱼，以及本地 app：`http://127.0.0.1:8765/app.html`。`start --open` 会持续运行本地 app server；只需要证据时用 `start --check`。
+你应该看到 `.octopus/state.json`、一段 Feed summary，以及本地 Goal/Need/Feed app：`http://127.0.0.1:8765/app.html`。`start --open` 会持续运行本地 app server；只需要证据时用 `start --check`。
 
 直接从 GitHub 安装：
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
-octopus start --check
 octopus first-run "make this repo easier to use"
-octopus pet desktop
 octopus start --open
 ```
 

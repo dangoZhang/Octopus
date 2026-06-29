@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Octopus Recipes</title>
-    <meta name="description" content="Goal-first Octopus usage recipes for browser, local repo, model, and release evidence." />
+    <meta name="description" content="Goal-first Octopus usage recipes for local app, local repo, model, and release evidence." />
     <style>
       :root {
         color-scheme: light;
@@ -235,7 +235,7 @@
         <div class="links">
           <a href="./">Home</a>
           <a href="./tutorial.html">Tutorial</a>
-          <a href="./app.html">Try app</a>
+          <a href="./quickstart.html">Install</a>
           <a href="./about.html">About</a>
           <a class="button" href="https://github.com/dangoZhang/Octopus">GitHub</a>
         </div>
@@ -246,27 +246,27 @@
       <section class="hero shell">
         <div>
           <h1>Goal-first recipes.</h1>
-          <p class="lead">These are the first tasks Octopus should make easy: try the clean-brain loop in a browser, run the full local product, connect a model, and collect evidence without turning internal harness controls into the user path.</p>
+          <p class="lead">These are the first tasks Octopus should make easy: install it, run one local Goal, open the Goal/Need/Feed app, connect a model, and collect evidence.</p>
         </div>
       </section>
 
       <section>
         <div class="shell recipes">
           <article class="recipe">
-            <div class="tag">Browser</div>
-            <h3>Generate Hello World</h3>
-            <p>Use the hosted app when you want to see the idea without installing anything. The page shows the Need first, then the browser tentacle Feed.</p>
-            <pre><code>Open docs/app.html
-Paste an API key
-Click Hello World or Draw Octopus</code></pre>
+            <div class="tag">Local App</div>
+            <h3>Observe a real run</h3>
+            <p>Start Octopus locally, open the app, and watch the current Goal, Need, Feed, and pixel pet state from the real state file.</p>
+            <pre><code>octopus first-run "make this repo easier to use"
+octopus start --open
+Watch Goal, Need, and Feed update</code></pre>
           </article>
 
           <article class="recipe">
             <div class="tag">Local Repo</div>
             <h3>Start the whole product in a repository</h3>
             <p>Run this from the project you want Octopus to inhabit. The user steers Goal; the agent handles Need, routing, Feed, memory, and harness signals.</p>
-            <pre><code>octopus start --open
-octopus first-run "make this repo easier to use"
+            <pre><code>octopus first-run "make this repo easier to use"
+octopus start --open
 octopus chat "make setup clearer"</code></pre>
           </article>
 

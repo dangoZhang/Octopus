@@ -81,11 +81,11 @@ Need, Feed, route choice, provider routing, repair, and harness evolution are in
 Run one worker slot from the peer field pool and watch the same Need -> Feed path:
 
 ```bash
-octopus evolve parallel --workers 1 --open "advance the eight peer field objectives toward v0.2.0"
+octopus evolve parallel --workers 1 --open "advance the peer field objectives toward v0.2.0"
 octopus fields summary
 ```
 
-The eight fields stay in one peer pool. `--workers 1` opens one execution slot; larger values open more concurrent slots from the same pool. Each slot writes its own field Need, runs the editable `field-mini-task` harness, records Feed plus verifier signal, and leaves the pet as an observer.
+The required v0.2 fields and expansion packs stay in one peer pool. `--workers 1` opens one execution slot; larger values open more concurrent slots from the same pool. Each slot writes its own field Need, runs the editable `field-mini-task` harness, records Feed plus verifier signal, and leaves the pet as an observer.
 
 ## Optional Model Backends
 
@@ -171,4 +171,4 @@ octopus --state "$tmp/state.json" preflight record check "$tmp/real-machine-reco
 octopus --state "$tmp/state.json" preflight record append "$tmp/real-machine-record.md" docs/real-machine-test.md
 ```
 
-`0.1.0` passed the original release gate recorded in `docs/real-machine-test.md`. Current `0.1.x` tags need the same local loop plus field-pool result, live provider, benchmark evidence, GitHub OAuth/PR path, and real-machine record before release.
+The old `0.1.0` release artifact was removed. `v0.2.0` is the first usable public line: local loop, desktop pet observer, field-pool result, live provider, benchmark evidence, GitHub OAuth/PR path, real harness-evolution evidence, and a real-machine record are part of the gate.

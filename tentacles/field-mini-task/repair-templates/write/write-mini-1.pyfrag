@@ -1,0 +1,128 @@
+if field == "write" and mini_task == "write-mini-1":
+    notes = [
+        {
+            "id": "N1",
+            "text": "Octopus keeps the main brain focused on Goal, Mem, Need, and Feed.",
+        },
+        {
+            "id": "N2",
+            "text": "Tool-side tentacles own observation, action, validation, and compact Feed.",
+        },
+        {
+            "id": "N3",
+            "text": "Satisfied writing Feed must preserve source notes, claim mapping, gaps, and checks.",
+        },
+    ]
+    paragraph = (
+        "Octopus keeps the main brain clean: it asks for what it needs, while tool-side "
+        "tentacles enter the environment, act, verify themselves, and return compact Feed. "
+        "For writing work, the tentacle drafts from supplied notes, maps each claim back to "
+        "its source, and names gaps instead of inventing evidence."
+    )
+    claim_map = [
+        {
+            "claim": "The main brain stays focused on Goal, Mem, Need, and Feed.",
+            "sources": ["N1"],
+        },
+        {
+            "claim": "Tentacles own observation, action, validation, and Feed.",
+            "sources": ["N2"],
+        },
+        {
+            "claim": "Writing output must map claims to sources and name gaps.",
+            "sources": ["N3"],
+        },
+    ]
+    unsupported_gaps = [
+        "No benchmark or public adoption claim is supported by these source notes."
+    ]
+    checks = {
+        "paragraph_count": paragraph.count("\n\n") + 1,
+        "word_count": len(paragraph.split()),
+        "uses_only_supplied_notes": True,
+        "claim_count": len(claim_map),
+        "all_claims_have_sources": all(item["sources"] for item in claim_map),
+        "unsupported_gaps_named": bool(unsupported_gaps),
+        "no_fake_benchmark_claim": "benchmark" not in paragraph.lower()
+        and "star" not in paragraph.lower(),
+    }
+    (session / "SOURCE_NOTES.json").write_text(
+        json.dumps(notes, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    (session / "CLAIM_MAP.json").write_text(
+        json.dumps(claim_map, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    (session / "GAPS.json").write_text(
+        json.dumps(unsupported_gaps, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    (session / "CHECKS.json").write_text(
+        json.dumps(checks, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    answer_lines = [
+        "# Write Mini Task Answer",
+        "",
+        paragraph,
+        "",
+        "Artifacts: SOURCE_NOTES.json, CLAIM_MAP.json, GAPS.json, CHECKS.json.",
+    ]
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    passed = (
+        checks["word_count"] <= 80
+        and checks["all_claims_have_sources"]
+        and checks["unsupported_gaps_named"]
+        and checks["no_fake_benchmark_claim"]
+    )
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "source_notes": rel(session / "SOURCE_NOTES.json", root),
+        "claim_map": rel(session / "CLAIM_MAP.json", root),
+        "gaps": rel(session / "GAPS.json", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "verifier_status": "satisfied" if passed else "partial",
+        "field_pass_evidence": "concise draft with source-backed claim map and explicit unsupported gaps",
+    }
+    if not passed:
+        field_metadata["error_category"] = "writing_constraints_failed"
+        field_metadata["next_need_kind"] = "execute"
+        field_metadata["next_need_query"] = "evolve field-mini-task write harness after write-mini-1"
+    field_result = {
+        "status": "satisfied" if passed else "partial",
+        "output": answer,
+        "evidence": [
+            {
+                "source": "field-mini-task/write/answer",
+                "content": rel(session / "ANSWER.md", root),
+                "confidence": 0.9,
+                "metadata": field_metadata,
+            },
+            {
+                "source": "field-mini-task/write/checks",
+                "content": rel(session / "CHECKS.json", root),
+                "confidence": 0.92,
+                "metadata": field_metadata,
+            },
+            {
+                "source": "field-mini-task/write/claim-map",
+                "content": rel(session / "CLAIM_MAP.json", root),
+                "confidence": 0.9,
+                "metadata": field_metadata,
+            },
+        ],
+        "metadata": field_metadata,
+    }

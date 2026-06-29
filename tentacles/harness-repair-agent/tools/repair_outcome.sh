@@ -57,15 +57,15 @@ def newest_session(root):
     return max(sessions, key=lambda path: path.stat().st_mtime)
 
 
-def resolve_session_artifact(workspace, session_path, value, fallback_name):
+def resolve_session_artifact(workspace, session_path, value, default_name):
     if value:
         path = Path(str(value)).expanduser()
         if not path.is_absolute():
             path = workspace / path
         if path.exists():
             return path
-    fallback = session_path.parent / fallback_name
-    return fallback if fallback.exists() else None
+    default_artifact = session_path.parent / default_name
+    return default_artifact if default_artifact.exists() else None
 
 
 def action_trace_summary(workspace, session_path, session):

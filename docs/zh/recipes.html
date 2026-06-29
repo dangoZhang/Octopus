@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Octopus 使用场景</title>
-    <meta name="description" content="Octopus 的 Goal-first 使用场景：网页试用、本地仓库、模型接入、发布证据。" />
+    <meta name="description" content="Octopus 的 Goal-first 使用场景：本地 App、本地仓库、模型接入、发布证据。" />
     <style>
       :root {
         color-scheme: light;
@@ -235,7 +235,6 @@
         <div class="links">
           <a href="./">首页</a>
           <a href="./tutorial.html">产品教学</a>
-          <a href="../app.html">网页试用</a>
           <a href="./quickstart.md">安装</a>
           <a href="../recipes.html">English</a>
           <a class="button" href="https://github.com/dangoZhang/Octopus">GitHub</a>
@@ -247,27 +246,27 @@
       <section class="hero shell">
         <div>
           <h1>从 Goal 开始，让触手执行。</h1>
-          <p class="lead">这些是 Octopus 现在最应该顺手的任务：网页端看清 Need/Feed，本地仓库跑完整产品，接入模型，收集发布证据。用户只改 Goal，内部 harness 自己供给执行。</p>
+          <p class="lead">这些是 Octopus 现在最应该顺手的任务：安装后跑一个本地 Goal，打开 Goal/Need/Feed App，在本地仓库继续使用，接入模型，收集发布证据。</p>
         </div>
       </section>
 
       <section>
         <div class="shell recipes">
           <article class="recipe">
-            <div class="tag">Browser</div>
-            <h3>生成 Hello World</h3>
-            <p>不安装也能看核心差异。页面先显示干净大脑生成的 Need，再由浏览器触手执行并返回 Feed。</p>
-            <pre><code>打开 docs/app.html
-填入 API key
-点击 Hello World 或 Draw Octopus</code></pre>
+            <div class="tag">本地 App</div>
+            <h3>观察一次真实运行</h3>
+            <p>启动本地 Octopus，打开 App，从真实状态文件观察当前 Goal、Need、Feed 和桌宠状态。</p>
+            <pre><code>octopus first-run "make this repo easier to use"
+octopus start --open
+观察 Goal、Need 和 Feed 更新</code></pre>
           </article>
 
           <article class="recipe">
             <div class="tag">Local Repo</div>
             <h3>在仓库里启动完整产品</h3>
             <p>在目标项目目录运行。用户继续调整 Goal；Need、路由、Feed、记忆和 harness 信号由 agent 处理。</p>
-            <pre><code>octopus start --open
-octopus first-run "make this repo easier to use"
+            <pre><code>octopus first-run "make this repo easier to use"
+octopus start --open
 octopus chat "make setup clearer"</code></pre>
           </article>
 

@@ -10,7 +10,7 @@ pub(crate) struct PetReport {
     pub(crate) color: String,
     pub(crate) head_color: String,
     pub(crate) motion: String,
-    pub(crate) fallback: String,
+    pub(crate) chat_badge: String,
     pub(crate) event_source: Option<String>,
     pub(crate) event_summary: Option<String>,
     pub(crate) path: String,
@@ -43,7 +43,7 @@ const OCTOPUS_PIXEL_ROWS: [&str; 12] = [
 ];
 
 pub(crate) fn pet_report(state: &str, path: &Path) -> Result<PetReport, String> {
-    let (state, title, summary, color, head_color, motion, fallback) = pet_state_info(state)?;
+    let (state, title, summary, color, head_color, motion, chat_badge) = pet_state_info(state)?;
     let path_text = path.to_string_lossy().to_string();
     let target = format!("{}?state={state}", file_url(path));
     Ok(PetReport {
@@ -53,7 +53,7 @@ pub(crate) fn pet_report(state: &str, path: &Path) -> Result<PetReport, String> 
         color: color.to_string(),
         head_color: head_color.to_string(),
         motion: motion.to_string(),
-        fallback: fallback.to_string(),
+        chat_badge: chat_badge.to_string(),
         event_source: None,
         event_summary: None,
         target,

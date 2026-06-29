@@ -242,15 +242,6 @@ pub struct NeedQueueTakeReport {
 }
 
 impl GoalRefinement {
-    pub fn local() -> Self {
-        Self {
-            objective: None,
-            constraints: Vec::new(),
-            summary: None,
-            needs: Vec::new(),
-        }
-    }
-
     fn source(&self) -> String {
         if self.objective.is_some()
             || self.summary.is_some()
@@ -436,7 +427,7 @@ pub struct ParallelEvolutionRun {
 }
 
 pub fn parallel_field_pool_policy() -> &'static str {
-    "eight peer field slots; workers only open execution capacity"
+    "peer field slots; workers only open execution capacity"
 }
 
 fn default_parallel_field_pool_policy() -> String {
@@ -855,6 +846,7 @@ impl Need {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Evidence {
     pub source: String,
+    #[serde(default)]
     pub content: String,
     pub confidence: f32,
     pub metadata: BTreeMap<String, String>,
@@ -1321,30 +1313,6 @@ pub struct Plan {
 
 pub trait Planner {
     fn plan(&mut self, need: &Need, tools: &[ToolSpec]) -> Plan;
-}
-
-#[derive(Default)]
-pub struct RulePlanner;
-
-impl Planner for RulePlanner {
-    fn plan(&mut self, need: &Need, tools: &[ToolSpec]) -> Plan {
-        let calls = tools
-            .first()
-            .map(|tool| {
-                vec![ToolCall {
-                    tool: tool.name.clone(),
-                    reason: format!("{} can feed {}", tool.name, kind_key(&need.kind)),
-                    payload: BTreeMap::from([("query".to_string(), need.query.clone())]),
-                }]
-            })
-            .unwrap_or_default();
-        let summary = if calls.is_empty() {
-            "no matching tool".to_string()
-        } else {
-            "selected first matching tool".to_string()
-        };
-        Plan { calls, summary }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1853,6 +1821,8 @@ impl CodexCliChatClient {
             .arg("exec")
             .arg("--ephemeral")
             .arg("--skip-git-repo-check")
+            .arg("--disable")
+            .arg("image_generation")
             .arg("--sandbox")
             .arg("read-only")
             .arg("--output-last-message")
@@ -1973,7 +1943,7 @@ where
             ),
         ];
         match self.client.chat(&messages) {
-            Ok(response) => match serde_json::from_str::<Plan>(&response.content) {
+            Ok(response) => match plan_from_llm_content(&response.content) {
                 Ok(plan) if !plan.calls.is_empty() => plan,
                 Ok(_) => Plan {
                     calls: Vec::new(),
@@ -1990,6 +1960,51 @@ where
             },
         }
     }
+}
+
+fn plan_from_llm_content(content: &str) -> Result<Plan, String> {
+    serde_json::from_str::<Plan>(content)
+        .or_else(|direct_error| {
+            extract_first_json_object(content)
+                .ok_or_else(|| direct_error.to_string())
+                .and_then(|json| {
+                    serde_json::from_str::<Plan>(json)
+                        .map_err(|extract_error| extract_error.to_string())
+                })
+        })
+        .map_err(|error| format!("invalid Plan JSON: {error}"))
+}
+
+fn extract_first_json_object(content: &str) -> Option<&str> {
+    let start = content.find('{')?;
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (offset, ch) in content[start..].char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '{' => depth += 1,
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    let end = start + offset + ch.len_utf8();
+                    return Some(&content[start..end]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn goal_refinement_from_chat<C>(
@@ -2875,23 +2890,6 @@ impl HarnessState {
         }
     }
 
-    pub fn clean_brain_explore(
-        &self,
-        prompt: impl Into<String>,
-        limit: usize,
-    ) -> BrainExploreReport {
-        let prompt = prompt.into();
-        let brain = self.context_report(None, limit).brain;
-        let needs = local_brain_explore_needs(&brain, &prompt);
-        self.brain_explore_report(
-            brain,
-            prompt,
-            "local",
-            "local clean-brain exploration",
-            needs,
-        )
-    }
-
     pub fn clean_brain_explore_with_client<C>(
         &self,
         prompt: impl Into<String>,
@@ -2916,14 +2914,6 @@ impl HarnessState {
         let prompt = prompt.into();
         let brain = self.context_report(None, limit).brain;
         self.brain_explore_report(brain, prompt, "external_chat", draft.summary, draft.needs)
-    }
-
-    pub fn clean_brain_brief(&self, prompt: impl Into<String>, limit: usize) -> BrainExploreReport {
-        let prompt = prompt.into();
-        let brain = self.context_report(None, limit).brain;
-        let needs = local_brain_brief_needs(&brain, &prompt);
-        let summary = format!("clean-brain brief for {}", clean_focus(&brain, &prompt));
-        self.brain_brief_report(brain, prompt, "local_brief", summary, needs)
     }
 
     pub fn clean_brain_brief_with_client<C>(
@@ -2952,21 +2942,6 @@ impl HarnessState {
         self.brain_brief_report(brain, prompt, "external_brief", draft.summary, draft.needs)
     }
 
-    pub fn clean_brain_intent(
-        &self,
-        prompt: impl Into<String>,
-        limit: usize,
-    ) -> BrainExploreReport {
-        let prompt = prompt.into();
-        let brain = self.context_report(None, limit).brain;
-        let needs = local_brain_intent_needs(&brain, &prompt);
-        let summary = format!(
-            "clean-brain intent map for {}",
-            clean_focus(&brain, &prompt)
-        );
-        self.brain_intent_report(brain, prompt, "local_intent", summary, needs)
-    }
-
     pub fn clean_brain_intent_with_client<C>(
         &self,
         prompt: impl Into<String>,
@@ -2991,30 +2966,6 @@ impl HarnessState {
         let prompt = prompt.into();
         let brain = self.context_report(None, limit).brain;
         self.brain_intent_report(brain, prompt, "external_intent", draft.summary, draft.needs)
-    }
-
-    pub fn clean_brain_focus(
-        &self,
-        kind: NeedKind,
-        prompt: impl Into<String>,
-        limit: usize,
-    ) -> BrainExploreReport {
-        let prompt = prompt.into();
-        let brain = self.context_report(None, limit).brain;
-        let needs = local_brain_focus_needs(&brain, &kind, &prompt);
-        let summary = format!(
-            "clean-brain {} focus for {}",
-            kind_key(&kind),
-            clean_focus(&brain, &prompt)
-        );
-        self.brain_focus_report(
-            brain,
-            prompt,
-            &kind,
-            &format!("local_focus_{}", kind_key(&kind)),
-            summary,
-            needs,
-        )
     }
 
     pub fn clean_brain_focus_with_client<C>(
@@ -3059,21 +3010,6 @@ impl HarnessState {
         )
     }
 
-    pub fn clean_brain_memory(
-        &self,
-        prompt: impl Into<String>,
-        limit: usize,
-    ) -> BrainExploreReport {
-        let prompt = prompt.into();
-        let brain = self.context_report(None, limit).brain;
-        let needs = local_brain_memory_needs(&brain, &prompt);
-        let summary = format!(
-            "clean-brain memory focus for {}",
-            clean_focus(&brain, &prompt)
-        );
-        self.brain_memory_report(brain, prompt, "local_memory", summary, needs)
-    }
-
     pub fn clean_brain_memory_with_client<C>(
         &self,
         prompt: impl Into<String>,
@@ -3098,17 +3034,6 @@ impl HarnessState {
         let prompt = prompt.into();
         let brain = self.context_report(None, limit).brain;
         self.brain_memory_report(brain, prompt, "external_memory", draft.summary, draft.needs)
-    }
-
-    pub fn clean_brain_clarify(
-        &self,
-        prompt: impl Into<String>,
-        limit: usize,
-    ) -> BrainDeliberationReport {
-        let prompt = prompt.into();
-        let brain = self.context_report(None, limit).brain;
-        let draft = local_brain_clarification(&brain, &prompt);
-        self.brain_clarification_report(brain, prompt, "local_clarify", draft)
     }
 
     pub fn clean_brain_clarify_with_client<C>(
@@ -3137,17 +3062,6 @@ impl HarnessState {
         self.brain_clarification_report(brain, prompt, "external_clarify", draft)
     }
 
-    pub fn clean_brain_agenda(
-        &self,
-        prompt: impl Into<String>,
-        limit: usize,
-    ) -> BrainDeliberationReport {
-        let prompt = prompt.into();
-        let brain = self.context_report(None, limit).brain;
-        let draft = local_brain_agenda(&brain, &prompt);
-        self.brain_agenda_report(brain, prompt, "local_agenda", draft)
-    }
-
     pub fn clean_brain_agenda_with_client<C>(
         &self,
         prompt: impl Into<String>,
@@ -3172,17 +3086,6 @@ impl HarnessState {
         let prompt = prompt.into();
         let brain = self.context_report(None, limit).brain;
         self.brain_agenda_report(brain, prompt, "external_agenda", draft)
-    }
-
-    pub fn clean_brain_scout(
-        &self,
-        prompt: impl Into<String>,
-        limit: usize,
-    ) -> BrainDeliberationReport {
-        let prompt = prompt.into();
-        let brain = self.context_report(None, limit).brain;
-        let draft = local_brain_scout(&brain, &prompt);
-        self.brain_scout_report(brain, prompt, "local_scout", draft)
     }
 
     pub fn clean_brain_scout_with_client<C>(
@@ -3211,17 +3114,6 @@ impl HarnessState {
         self.brain_scout_report(brain, prompt, "external_scout", draft)
     }
 
-    pub fn clean_brain_deliberate(
-        &self,
-        prompt: impl Into<String>,
-        limit: usize,
-    ) -> BrainDeliberationReport {
-        let prompt = prompt.into();
-        let brain = self.context_report(None, limit).brain;
-        let draft = local_brain_deliberation(&brain, &prompt);
-        self.brain_deliberation_report(brain, prompt, "local", draft)
-    }
-
     pub fn clean_brain_deliberate_with_client<C>(
         &self,
         prompt: impl Into<String>,
@@ -3248,17 +3140,6 @@ impl HarnessState {
         self.brain_deliberation_report(brain, prompt, "external_deliberation", draft)
     }
 
-    pub fn clean_brain_reflect(
-        &self,
-        prompt: impl Into<String>,
-        limit: usize,
-    ) -> BrainReflectionReport {
-        let prompt = prompt.into();
-        let brain = self.context_report(None, limit).brain;
-        let draft = local_brain_reflection(&brain, &prompt);
-        self.brain_reflection_report(brain, prompt, "local", draft)
-    }
-
     pub fn clean_brain_reflect_with_client<C>(
         &self,
         prompt: impl Into<String>,
@@ -3283,17 +3164,6 @@ impl HarnessState {
         let prompt = prompt.into();
         let brain = self.context_report(None, limit).brain;
         self.brain_reflection_report(brain, prompt, "external_reflection", draft)
-    }
-
-    pub fn clean_brain_align(
-        &self,
-        prompt: impl Into<String>,
-        limit: usize,
-    ) -> BrainReflectionReport {
-        let prompt = prompt.into();
-        let brain = self.context_report(None, limit).brain;
-        let draft = local_brain_alignment(&brain, &prompt);
-        self.brain_alignment_report(brain, prompt, "local_align", draft)
     }
 
     pub fn clean_brain_align_with_client<C>(
@@ -3426,29 +3296,6 @@ impl HarnessState {
         }
         let rewrite = brain_rewrite_from_chat(&brain, &prompt, &draft, &raw_audit, client)?;
         Ok(self.brain_explore_report(brain, prompt, "llm_rewrite", rewrite.summary, rewrite.needs))
-    }
-
-    pub fn clean_brain_goal(&mut self, prompt: impl Into<String>, limit: usize) -> BrainGoalReport {
-        let prompt = prompt.into();
-        let brain = self.context_report(None, limit).brain;
-        let refinement = if self.goal.is_some() {
-            GoalRefinement {
-                objective: None,
-                constraints: clean_optional(Some(&prompt))
-                    .map(|value| vec![value.to_string()])
-                    .unwrap_or_default(),
-                summary: Some("goal refined locally".to_string()),
-                needs: local_brain_explore_needs(&brain, &prompt),
-            }
-        } else {
-            GoalRefinement {
-                objective: clean_optional(Some(&prompt)).map(str::to_string),
-                constraints: Vec::new(),
-                summary: Some("goal set locally".to_string()),
-                needs: local_brain_explore_needs(&brain, &prompt),
-            }
-        };
-        self.apply_clean_brain_goal(brain, prompt, "local", refinement)
     }
 
     pub fn clean_brain_goal_with_client<C>(
@@ -4448,9 +4295,7 @@ impl HarnessState {
         } else if self.has_active_parallel_field_goal() {
             format!(
                 "octopus{state_args} evolve parallel --workers 1 {}",
-                shell_arg(
-                    "eight parallel field objectives; open one worker slot from the peer field pool"
-                )
+                shell_arg("peer field objectives; open one worker slot from the peer field pool")
             )
         } else if harness_learning.source != "none" {
             harness_learning.next_action.clone()
@@ -4650,14 +4495,14 @@ impl HarnessState {
                 format!(
                     "octopus{state_args} evolve parallel --workers 1 {}",
                     shell_arg(
-                        "eight parallel field objectives; open one harder-task worker slot from the peer field pool"
+                        "peer field objectives; open one harder-task worker slot from the peer field pool"
                     )
                 )
             } else {
                 format!(
                     "octopus{state_args} evolve parallel --workers 1 {}",
                     shell_arg(
-                        "eight parallel field objectives; open one worker slot from the peer field pool"
+                        "peer field objectives; open one worker slot from the peer field pool"
                     )
                 )
             };
@@ -4730,7 +4575,8 @@ impl HarnessState {
                     && pack.mini_tasks.iter().all(|task| {
                         self.field_mini_task_status(&pack.id, &task.id) == Some(Status::Satisfied)
                     })
-            });
+            })
+            && summaries.iter().all(|summary| !summary.needs_repair);
         let active_slot_reason = if all_pack_tasks_satisfied {
             "all peer field tasks satisfied; add a harder mini task layer".to_string()
         } else if let Some(field) = &active_slot_field {
@@ -4800,7 +4646,8 @@ impl HarnessState {
                 FieldPoolSlotReport {
                     field: summary.field.clone(),
                     completed: summary.mini_task_count > 0
-                        && summary.satisfied_mini_task_count == summary.mini_task_count,
+                        && summary.satisfied_mini_task_count == summary.mini_task_count
+                        && !summary.needs_repair,
                     mini_task_count: summary.mini_task_count,
                     satisfied_mini_task_count: summary.satisfied_mini_task_count,
                     next_mini_task: summary.next_mini_task.clone(),
@@ -4809,10 +4656,11 @@ impl HarnessState {
                         .and_then(|worker| worker.mini_task.clone())
                         .or_else(|| summary.latest_mini_task.clone()),
                     latest_worker_status: latest_worker.map(|worker| worker.status.clone()),
-                    latest_status: latest_worker
-                        .map(|worker| worker.status.clone())
-                        .or_else(|| summary.latest_verifier_status.clone())
-                        .or_else(|| summary.latest_trace_status.clone()),
+                    latest_status: summary
+                        .latest_verifier_status
+                        .clone()
+                        .or_else(|| summary.latest_trace_status.clone())
+                        .or_else(|| latest_worker.map(|worker| worker.status.clone())),
                     latest_parallel_run_index: summary.latest_parallel_run_index,
                     latest_updated_at_secs: latest_worker
                         .map(|worker| worker.updated_at_secs)
@@ -5204,7 +5052,7 @@ impl HarnessState {
         self.goal.as_ref().is_some_and(|goal| {
             let objective = goal.objective.to_ascii_lowercase();
             objective.contains("parallel field")
-                || objective.contains("eight parallel")
+                || objective.contains("peer field")
                 || fields_mentioned_in_text(&objective).len() > 1
         })
     }
@@ -5380,15 +5228,21 @@ impl HarnessState {
                 }
             })
             .collect::<Vec<_>>();
-        let summary = format!(
-            "field evolution run #{run_index}: {} active peer field slot(s): {}",
-            workers.len(),
-            workers
-                .iter()
-                .map(|worker| worker.field.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
+        let summary = if workers.is_empty() {
+            format!(
+                "field evolution run #{run_index}: 0 active peer field slot(s); add a harder mini task layer"
+            )
+        } else {
+            format!(
+                "field evolution run #{run_index}: {} active peer field slot(s): {}",
+                workers.len(),
+                workers
+                    .iter()
+                    .map(|worker| worker.field.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
         let mut run = ParallelEvolutionRun {
             index: run_index,
             objective,
@@ -6081,8 +5935,7 @@ impl Harness {
             .filter(|option| option.supported)
             .map(|option| option.tentacle.clone())
             .collect::<Vec<_>>();
-        let selected = field_mini_task_route(need, &supported_names)
-            .or_else(|| self.state.routes.choose(need, &supported_names));
+        let selected = self.state.routes.choose(need, &supported_names);
         if let Some(decision) = &selected {
             for option in &mut options {
                 option.selected = option.tentacle == decision.tentacle;
@@ -6219,8 +6072,10 @@ impl Harness {
             .iter()
             .map(|(_, name)| name.clone())
             .collect::<Vec<_>>();
-        let decision = field_mini_task_route(&need, &names)
-            .or_else(|| self.state.routes.choose(&need, &names))
+        let decision = self
+            .state
+            .routes
+            .choose(&need, &names)
             .expect("candidates exist");
         let index = candidates
             .iter()
@@ -6245,11 +6100,6 @@ impl Harness {
     pub fn feed(&mut self, needs: &[Need]) -> Feedback {
         let feeds = needs.iter().map(|need| self.feed_one(need)).collect();
         Feedback::from_feeds(feeds)
-    }
-
-    pub fn chat(&mut self, message: impl Into<String>) -> GoalChat {
-        let message = message.into();
-        self.chat_with_refinement(message, GoalRefinement::local())
     }
 
     pub fn chat_with_client<C>(
@@ -6529,6 +6379,24 @@ struct ManifestToolPlan {
     calls: Vec<ManifestToolCall>,
 }
 
+fn manifest_tool_calls_from_plan(plan: &Plan, tools: &[InstalledToolRef]) -> Vec<ManifestToolCall> {
+    plan.calls
+        .iter()
+        .filter_map(|call| {
+            tools
+                .iter()
+                .find(|tool| tool.id == call.tool)
+                .cloned()
+                .map(|tool| ManifestToolCall {
+                    tool,
+                    reason: call.reason.clone(),
+                    payload: call.payload.clone(),
+                })
+        })
+        .take(MAX_TENTACLE_ACTIONS)
+        .collect()
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TentacleToolCandidate {
     pub id: String,
@@ -6624,8 +6492,41 @@ impl ManifestTentacle {
 
     fn plan_tool(&mut self, need: &Need) -> Option<ManifestToolPlan> {
         let tools = self.available_tools(need);
+        if let Some(plan) = self.structured_field_mini_task_plan(need, &tools) {
+            return Some(plan);
+        }
         self.llm_plan_tool(need, &tools)
-            .or_else(|| self.rule_plan_tool(need, &tools))
+    }
+
+    fn structured_field_mini_task_plan(
+        &self,
+        need: &Need,
+        tools: &[InstalledToolRef],
+    ) -> Option<ManifestToolPlan> {
+        if self.installed.id != "field-mini-task" {
+            return None;
+        }
+        let field = need.context.get("field_pack")?;
+        let mini_task = need.context.get("field_mini_task")?;
+        if field.trim().is_empty() || mini_task.trim().is_empty() {
+            return None;
+        }
+        let tool = tools
+            .iter()
+            .find(|tool| tool.id == "run_field_mini_task")
+            .cloned()?;
+        let calls = vec![ManifestToolCall {
+            tool: tool.clone(),
+            reason: format!("run structured field mini task {field}/{mini_task}"),
+            payload: BTreeMap::new(),
+        }];
+        Some(ManifestToolPlan {
+            tool,
+            reason: format!("structured Need selected field mini task {field}/{mini_task}"),
+            candidates: tools.iter().map(|tool| tool.id.clone()).collect(),
+            source: "structured-need".to_string(),
+            calls,
+        })
     }
 
     fn thinking_plan(&mut self, need: &Need) -> Option<TentacleThinkingPlan> {
@@ -6659,140 +6560,12 @@ impl ManifestTentacle {
         })
     }
 
-    fn available_tools(&self, need: &Need) -> Vec<InstalledToolRef> {
-        if self.route_id == "field-mini-task" && !has_field_mini_task_context(need) {
-            return Vec::new();
-        }
-        if self.route_id == "computer-use-agent"
-            && need.kind == NeedKind::Observe
-            && !is_desktop_observe(&need.query)
-        {
-            return Vec::new();
-        }
-        if self.route_id == "computer-use-agent"
-            && need.kind == NeedKind::Execute
-            && !is_desktop_execute(&need.query)
-        {
-            return Vec::new();
-        }
-        if self.route_id == "visual"
-            && need.kind == NeedKind::Observe
-            && !is_visual_observe(&need.query)
-        {
-            return Vec::new();
-        }
+    fn available_tools(&self, _need: &Need) -> Vec<InstalledToolRef> {
         self.tools
             .iter()
             .filter(|tool| self.can_feed_tool(tool))
             .cloned()
             .collect()
-    }
-
-    fn rule_plan_tool(&self, need: &Need, tools: &[InstalledToolRef]) -> Option<ManifestToolPlan> {
-        let preferred = match need.kind {
-            NeedKind::Observe
-                if self.route_id == "computer-use-agent" && is_clipboard_query(&need.query) =>
-            {
-                ["clipboard_read", "window_status", "describe_screen", "mcp"].as_slice()
-            }
-            NeedKind::Observe
-                if self.route_id == "computer-use-agent" && is_browser_observe(&need.query) =>
-            {
-                [
-                    "browser_status",
-                    "window_status",
-                    "describe_screen",
-                    "screenshot",
-                    "mcp",
-                ]
-                .as_slice()
-            }
-            NeedKind::Observe if self.route_id == "harness-repair-agent" => {
-                ["diagnose_harness", "adapter_probe", "heartbeat_repair"].as_slice()
-            }
-            NeedKind::Observe
-                if self.route_id == "repo-maintainer"
-                    && is_codex_maintenance_query(&need.query) =>
-            {
-                ["codex_status", "inspect_repo", "github_status"].as_slice()
-            }
-            NeedKind::Observe => [
-                "inspect_repo",
-                "window_status",
-                "describe_screen",
-                "browser_status",
-                "clipboard_read",
-                "status_pet",
-                "screenshot",
-                "read",
-                "mcp",
-            ]
-            .as_slice(),
-            NeedKind::Verify if self.route_id == "harness-repair-agent" => {
-                if is_repair_outcome_query(&need.query) {
-                    [
-                        "repair_outcome",
-                        "heartbeat_repair",
-                        "diagnose_harness",
-                        "adapter_probe",
-                    ]
-                    .as_slice()
-                } else {
-                    ["heartbeat_repair", "diagnose_harness", "adapter_probe"].as_slice()
-                }
-            }
-            NeedKind::Verify
-                if self.route_id == "repo-maintainer"
-                    && is_codex_maintenance_query(&need.query) =>
-            {
-                ["codex_status", "github_status", "inspect_repo"].as_slice()
-            }
-            NeedKind::Verify | NeedKind::Reproduce => [
-                "run_tests",
-                "github_status",
-                "inspect_repo",
-                "read",
-                "write_and_run",
-                "bash",
-                "mcp",
-            ]
-            .as_slice(),
-            NeedKind::Compare => ["inspect_repo", "read"].as_slice(),
-            NeedKind::Execute
-                if self.route_id == "computer-use-agent" && is_clipboard_query(&need.query) =>
-            {
-                ["clipboard_write", "bash", "mcp", "open_url"].as_slice()
-            }
-            NeedKind::Execute if self.route_id == "harness-repair-agent" => {
-                ["repair_session", "heartbeat_repair", "adapter_probe"].as_slice()
-            }
-            NeedKind::Execute
-                if self.route_id == "repo-maintainer"
-                    && is_codex_maintenance_query(&need.query) =>
-            {
-                ["codex_maintain", "draft_pr", "patch_queue", "publish_pr"].as_slice()
-            }
-            NeedKind::Execute => ["write_and_run", "bash", "mcp", "open_url"].as_slice(),
-            _ => [].as_slice(),
-        };
-        let candidates = tools.iter().map(|tool| tool.id.clone()).collect::<Vec<_>>();
-        let tool = preferred
-            .iter()
-            .find_map(|id| tools.iter().find(|tool| tool.id == *id))
-            .or_else(|| tools.first())
-            .cloned()?;
-        let reason = manifest_plan_reason(need, &tool);
-        Some(ManifestToolPlan {
-            tool: tool.clone(),
-            reason,
-            candidates,
-            source: "rule".to_string(),
-            calls: vec![ManifestToolCall {
-                tool,
-                reason: "rule selected primary tool".to_string(),
-                payload: BTreeMap::new(),
-            }],
-        })
     }
 
     fn llm_plan_tool(
@@ -6820,44 +6593,59 @@ impl ManifestTentacle {
             })
             .collect::<Vec<_>>()
             .join("\n");
+        let need_context =
+            serde_json::to_string(&need.context).unwrap_or_else(|_| "{}".to_string());
         let mut client = (factory)().ok()?;
-        let response = client
-            .chat(&[
-                ChatMessage::new(
-                    ChatRole::System,
-                    format!(
-                        "You are the '{}' Octopus tentacle brain. {}\nReturn only JSON: {{\"calls\":[{{\"tool\":\"id\",\"reason\":\"short\",\"payload\":{{\"query\":\"optional per-action input\"}}}}],\"summary\":\"short\"}}",
-                        self.route_id, self.installed.brain_prompt
-                    ),
+        let mut messages = vec![
+            ChatMessage::new(
+                ChatRole::System,
+                format!(
+                    "You are the '{}' Octopus tentacle brain. {}\nReturn only JSON: {{\"calls\":[{{\"tool\":\"id\",\"reason\":\"short\",\"payload\":{{\"query\":\"optional per-action input\"}}}}],\"summary\":\"short\"}}",
+                    self.route_id, self.installed.brain_prompt
                 ),
-                ChatMessage::new(
-                    ChatRole::User,
-                    format!(
-                        "Need: {}: {}\nAvailable tools:\n{}",
-                        kind_key(&need.kind),
-                        need.query,
-                        tool_sheet
-                    ),
+            ),
+            ChatMessage::new(
+                ChatRole::User,
+                format!(
+                    "Need: {}: {}\nNeed context JSON: {}\nAvailable tools:\n{}",
+                    kind_key(&need.kind),
+                    need.query,
+                    need_context,
+                    tool_sheet
                 ),
-            ])
-            .ok()?;
-        let plan = serde_json::from_str::<Plan>(&response.content).ok()?;
-        let calls = plan
-            .calls
-            .iter()
-            .filter_map(|call| {
-                tools
-                    .iter()
-                    .find(|tool| tool.id == call.tool)
-                    .cloned()
-                    .map(|tool| ManifestToolCall {
-                        tool,
-                        reason: call.reason.clone(),
-                        payload: call.payload.clone(),
-                    })
-            })
-            .take(MAX_TENTACLE_ACTIONS)
-            .collect::<Vec<_>>();
+            ),
+        ];
+        let response = client.chat(&messages).ok()?;
+        let mut plan = plan_from_llm_content(&response.content).unwrap_or_else(|error| Plan {
+            calls: Vec::new(),
+            summary: error,
+        });
+        let mut calls = manifest_tool_calls_from_plan(&plan, tools);
+        let mut source = "llm".to_string();
+        if calls.is_empty() {
+            messages.push(ChatMessage::new(ChatRole::Assistant, response.content));
+            messages.push(ChatMessage::new(
+                ChatRole::User,
+                format!(
+                    "The previous response did not select a valid tool from [{}]. Return only valid Plan JSON with at least one call.",
+                    tools
+                        .iter()
+                        .map(|tool| tool.id.as_str())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ),
+            ));
+            if let Ok(retry_response) = client.chat(&messages) {
+                if let Ok(retry_plan) = plan_from_llm_content(&retry_response.content) {
+                    let retry_calls = manifest_tool_calls_from_plan(&retry_plan, tools);
+                    if !retry_calls.is_empty() {
+                        plan = retry_plan;
+                        calls = retry_calls;
+                        source = "llm-retry".to_string();
+                    }
+                }
+            }
+        }
         let first = calls.first()?;
         let tool = first.tool.clone();
         let candidates = tools.iter().map(|tool| tool.id.clone()).collect::<Vec<_>>();
@@ -6902,7 +6690,7 @@ impl ManifestTentacle {
             tool,
             reason,
             candidates,
-            source: "llm".to_string(),
+            source,
             calls,
         })
     }
@@ -6926,18 +6714,14 @@ impl ManifestTentacle {
             || self.tool_path(tool).exists()
     }
 
-    fn run_tool(
-        &self,
-        tool: &InstalledToolRef,
-        need: &Need,
-        query_override: Option<&str>,
-    ) -> ToolResult {
+    fn run_tool(&self, call: &ManifestToolCall, need: &Need) -> ToolResult {
+        let tool = &call.tool;
         let active_grant = match self.authorize_tool(tool) {
             Ok(grant) => grant.map(|grant| grant.id.clone()),
             Err(result) => return result,
         };
         let mut action_need = need.clone();
-        if let Some(query) = clean_optional(query_override) {
+        if let Some(query) = tool_call_query(call) {
             action_need.query = query.to_string();
         }
         let path = self.tool_path(tool);
@@ -6974,38 +6758,15 @@ impl ManifestTentacle {
             Ok(command) => command,
             Err(error) => return ToolResult::failed(error),
         };
+        let stdin_input = tool_stdin_input(call, &action_need.query);
         if uses_json_contract {
             command.stdin(Stdio::piped());
         } else {
-            match tool.id.as_str() {
-                "inspect_repo" | "run_tests" | "github_status" => {
-                    command.arg(default_tool_query(&action_need.query));
-                }
-                "read" => {
-                    for arg in read_args(&action_need.query) {
-                        command.arg(arg);
-                    }
-                }
-                "write_and_run" => {
-                    command.arg(".");
-                    command.stdin(Stdio::piped());
-                }
-                "bash" => {
-                    command.arg(".");
-                    command.stdin(Stdio::piped());
-                }
-                "mcp" => {
-                    for arg in mcp_args(&action_need.query) {
-                        command.arg(arg);
-                    }
-                }
-                "clipboard_read" => {}
-                "clipboard_write" => {
-                    command.arg(default_tool_query(&action_need.query));
-                }
-                _ => {
-                    command.arg(default_tool_query(&action_need.query));
-                }
+            for arg in tool_argv(call, tool, &action_need.query) {
+                command.arg(arg);
+            }
+            if stdin_input.is_some() {
+                command.stdin(Stdio::piped());
             }
         }
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -7025,9 +6786,9 @@ impl ManifestTentacle {
                     return ToolResult::failed(format!("{} stdin failed: {error}", tool.id));
                 }
             }
-        } else if tool.id == "write_and_run" || tool.id == "bash" {
+        } else if let Some(input) = stdin_input {
             if let Some(mut stdin) = child.stdin.take() {
-                if let Err(error) = stdin.write_all(action_need.query.as_bytes()) {
+                if let Err(error) = stdin.write_all(input.as_bytes()) {
                     return ToolResult::failed(format!("{} stdin failed: {error}", tool.id));
                 }
             }
@@ -7217,6 +6978,78 @@ fn tool_call_query(call: &ManifestToolCall) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn tool_stdin_input(call: &ManifestToolCall, default_query: &str) -> Option<String> {
+    for key in ["stdin", "script", "patch", "content", "body"] {
+        if let Some(value) = call
+            .payload
+            .get(key)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+        {
+            return Some(value);
+        }
+    }
+    if tool_declares_stdin(&call.tool) {
+        Some(default_tool_query(default_query))
+    } else {
+        None
+    }
+}
+
+fn tool_argv(call: &ManifestToolCall, tool: &InstalledToolRef, default_query: &str) -> Vec<String> {
+    for key in ["argv", "args"] {
+        if let Some(value) = call.payload.get(key) {
+            let args = split_tool_args(value);
+            if !args.is_empty() {
+                return args;
+            }
+        }
+    }
+    let numbered = (1..=16)
+        .filter_map(|index| {
+            call.payload
+                .get(&format!("arg{index}"))
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .collect::<Vec<_>>();
+    if !numbered.is_empty() {
+        return numbered;
+    }
+    if tool_declares_stdin(tool) || tool_declares_no_input(tool) {
+        return Vec::new();
+    }
+    tool_call_query(call)
+        .map(|query| split_tool_args(&query))
+        .unwrap_or_else(|| split_tool_args(default_query))
+}
+
+fn tool_declares_stdin(tool: &InstalledToolRef) -> bool {
+    tool.input.to_ascii_lowercase().contains("stdin")
+}
+
+fn tool_declares_no_input(tool: &InstalledToolRef) -> bool {
+    matches!(
+        tool.input.trim().to_ascii_lowercase().as_str(),
+        "none" | "no input"
+    )
+}
+
+fn split_tool_args(value: &str) -> Vec<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Vec::new();
+    }
+    if let Ok(args) = serde_json::from_str::<Vec<String>>(value) {
+        return args
+            .into_iter()
+            .map(|arg| arg.trim().to_string())
+            .filter(|arg| !arg.is_empty())
+            .collect();
+    }
+    value.split_whitespace().map(str::to_string).collect()
+}
+
 fn action_results_status(results: &[(ManifestToolCall, ToolResult)]) -> Status {
     if results.is_empty() {
         return Status::Failed;
@@ -7289,13 +7122,18 @@ impl Tentacle for ManifestTentacle {
     }
 
     fn supports(&self, need: &Need) -> bool {
-        self.installed
+        if !self
+            .installed
             .needs
             .iter()
             .any(|need_key| need_key == kind_key(&need.kind))
-            && self
-                .rule_plan_tool(need, &self.available_tools(need))
-                .is_some()
+        {
+            return false;
+        }
+        let tools = self.available_tools(need);
+        !tools.is_empty()
+            && (self.llm_factory.is_some()
+                || self.structured_field_mini_task_plan(need, &tools).is_some())
     }
 
     fn feed(&mut self, need: &Need) -> Feed {
@@ -7305,8 +7143,7 @@ impl Tentacle for ManifestTentacle {
         let tool = plan.tool.clone();
         let mut action_results = Vec::new();
         for call in plan.calls.iter().take(MAX_TENTACLE_ACTIONS) {
-            let query = tool_call_query(call);
-            let result = self.run_tool(&call.tool, need, query.as_deref());
+            let result = self.run_tool(call, need);
             let should_continue = result.status == Status::Satisfied;
             action_results.push((call.clone(), result));
             if !should_continue {
@@ -7606,7 +7443,7 @@ pub struct EvolutionPatchDraft {
 }
 
 fn default_evolution_generator() -> String {
-    "local".to_string()
+    "llm_required".to_string()
 }
 
 #[derive(Debug, Deserialize)]
@@ -7831,33 +7668,6 @@ pub fn inspect_tentacle_manifests(
         .collect())
 }
 
-pub fn propose_tentacle_evolution(
-    root: impl AsRef<Path>,
-    tentacle_id: &str,
-    objective: &str,
-) -> Result<TentacleEvolutionProposal, String> {
-    propose_tentacle_evolution_with_outcomes(root, tentacle_id, objective, &[])
-}
-
-pub fn propose_tentacle_evolution_with_state(
-    root: impl AsRef<Path>,
-    tentacle_id: &str,
-    objective: &str,
-    state: &HarnessState,
-) -> Result<TentacleEvolutionProposal, String> {
-    let outcomes = state.recent_evolution_outcomes(tentacle_id, 5);
-    let feed_traces = state.recent_feed_traces_for_tentacle(tentacle_id, 8);
-    let check_history = state.recent_check_history_for_tentacle(tentacle_id, 8);
-    propose_tentacle_evolution_with_feedback(
-        root,
-        tentacle_id,
-        objective,
-        &outcomes,
-        &feed_traces,
-        &check_history,
-    )
-}
-
 pub fn propose_tentacle_evolution_with_client<C>(
     root: impl AsRef<Path>,
     tentacle_id: &str,
@@ -7868,7 +7678,7 @@ pub fn propose_tentacle_evolution_with_client<C>(
 where
     C: ChatClient,
 {
-    let mut proposal = propose_tentacle_evolution_with_state(root, tentacle_id, objective, state)?;
+    let mut proposal = tentacle_evolution_context(root, tentacle_id, objective, state)?;
     let plan = llm_evolution_plan(&proposal, client)?;
     proposal.generator = "llm".to_string();
     proposal.planner_summary = plan.summary;
@@ -7882,11 +7692,6 @@ where
 struct ParsedLlmEvolutionPlan {
     summary: String,
     candidates: Vec<EvolutionPatchCandidate>,
-}
-
-struct EvolutionCandidateFeedback<'a> {
-    feed_traces: &'a [FeedTraceRecord],
-    check_history: &'a [CheckHistoryRecord],
 }
 
 fn llm_evolution_plan<C>(
@@ -7906,8 +7711,10 @@ where
     let response = client.chat(&messages)?;
     let content = extract_json_object(&response.content)
         .ok_or_else(|| "evolution LLM response did not contain a JSON object".to_string())?;
-    let parsed = serde_json::from_str::<LlmEvolutionResponse>(content)
+    let parsed_value = serde_json::from_str::<serde_json::Value>(content)
         .map_err(|error| format!("invalid evolution LLM JSON: {error}"))?;
+    let parsed = serde_json::from_value::<LlmEvolutionResponse>(parsed_value)
+        .map_err(|error| format!("invalid evolution LLM JSON shape: {error}"))?;
     let candidates = parsed
         .candidates
         .into_iter()
@@ -7916,12 +7723,11 @@ where
     if candidates.is_empty() {
         return Err("evolution LLM returned no candidates".to_string());
     }
+    if parsed.summary.trim().is_empty() {
+        return Err("evolution LLM response missing summary".to_string());
+    }
     Ok(ParsedLlmEvolutionPlan {
-        summary: if parsed.summary.trim().is_empty() {
-            "LLM-generated harness evolution candidates".to_string()
-        } else {
-            parsed.summary
-        },
+        summary: parsed.summary,
         candidates,
     })
 }
@@ -7941,10 +7747,16 @@ fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Result<String, 
         "recent_feed_traces": proposal.recent_feed_traces,
         "recent_check_history": proposal.recent_check_history,
         "files": proposal.files,
+        "target_file_contents": evolution_target_file_contexts(proposal),
         "context_policy": {
             "clean_brain": ["Goal", "Mem", "Need", "Feed"],
             "tentacle_brain": ["Need", "Tool", "Action", "Tool", "Action", "Feed"],
             "harness_evolution": "modify prompt, metadata, runtime code, or policy without moving tool burden into the clean brain"
+        },
+        "patch_requirements": {
+            "format": "suggested_patch must be a complete git unified diff that starts with diff --git, includes --- and +++ file headers, includes @@ -line,count +line,count @@ hunk headers, and can be applied by git apply. Do not return apply_patch, *** Begin Patch, or prose-only patches.",
+            "field_pack_tasks": "suggested_patch is required for this surface. Patch only the named field-pack JSON files that the objective actually needs. Do not patch kernel Rust or runtime code from this surface.",
+            "runtime_code": "suggested_patch is preferred when the objective names an executable harness gap. Patch declared harness targets only."
         },
         "return_schema": {
             "summary": "short reason for the selected harness changes",
@@ -7956,15 +7768,57 @@ fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Result<String, 
                     "rationale": "why this improves Need-to-Feed",
                     "change_plan": ["concrete harness edit step"],
                     "checks": ["command to verify"],
-                    "suggested_patch": "optional unified diff for declared target files only; omit if uncertain"
+                    "suggested_patch": "complete git unified diff for declared target files only; must start with diff --git and include ---/+++ plus @@ -line,count +line,count @@ hunk headers; required for field_pack_tasks"
                 }
             ]
         }
     });
     let payload = serde_json::to_string_pretty(&payload).map_err(|error| error.to_string())?;
     Ok(format!(
-        "Generate code-as-harness evolution candidates from this JSON. Keep the clean brain out of tool details and preserve the declared context policy. Return only a JSON object matching return_schema.\n{payload}"
+        "Generate code-as-harness evolution candidates from this JSON. Keep the clean brain out of tool details and preserve the declared context policy. Return only a JSON object matching return_schema. Any suggested_patch must be a complete git unified diff that starts with diff --git, includes --- and +++ file headers, includes @@ -line,count +line,count @@ hunk headers, and applies with git apply; never return apply_patch or *** Begin Patch format.\n{payload}"
     ))
+}
+
+fn evolution_target_file_contexts(proposal: &TentacleEvolutionProposal) -> Vec<serde_json::Value> {
+    let mut paths = Vec::new();
+    let manifest_dir = Path::new(&proposal.manifest_path)
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("tentacles").join(&proposal.tentacle_id));
+    for file in &proposal.files {
+        push_unique_limited(&mut paths, file.path.clone(), 64);
+        for path in evolution_target_files(&file.path) {
+            push_unique_limited(&mut paths, path, 64);
+        }
+        for path in &file.target_files {
+            push_unique_limited(&mut paths, path.clone(), 64);
+        }
+    }
+    for surface in &proposal.surfaces {
+        for target in &surface.targets {
+            let file = evolution_file_target(&manifest_dir, target, &proposal.objective);
+            push_unique_limited(&mut paths, file.path, 64);
+            for path in file.target_files {
+                push_unique_limited(&mut paths, path, 64);
+            }
+        }
+    }
+    for candidate in &proposal.patch_candidates {
+        for path in &candidate.target_files {
+            push_unique_limited(&mut paths, path.clone(), 64);
+        }
+    }
+    paths
+        .into_iter()
+        .filter_map(|path| {
+            let content = fs::read_to_string(&path).ok()?;
+            Some(serde_json::json!({
+                "path": path,
+                "content": short_text(&content, 6000),
+                "truncated": content.len() > 6000
+            }))
+        })
+        .collect()
 }
 
 fn llm_candidate_to_evolution(
@@ -7982,22 +7836,22 @@ fn llm_candidate_to_evolution(
             )
         })?;
     let surface = &proposal.surfaces[surface_index];
-    let checks = if candidate.checks.is_empty() {
-        proposal.checks.clone()
-    } else {
-        candidate.checks
-    };
-    let checks = if checks.is_empty() {
-        vec!["cargo test".to_string()]
-    } else {
-        checks
-    };
-    let change_plan = if candidate.change_plan.is_empty() {
-        evolution_candidate_plan(surface)
-    } else {
-        candidate.change_plan
-    };
-    let target = llm_candidate_target(proposal, surface, &candidate.target);
+    if candidate.title.trim().is_empty() {
+        return Err("evolution LLM candidate missing title".to_string());
+    }
+    if candidate.target.trim().is_empty() {
+        return Err("evolution LLM candidate missing target".to_string());
+    }
+    if candidate.rationale.trim().is_empty() {
+        return Err("evolution LLM candidate missing rationale".to_string());
+    }
+    if candidate.change_plan.is_empty() {
+        return Err("evolution LLM candidate missing change_plan".to_string());
+    }
+    if candidate.checks.is_empty() {
+        return Err("evolution LLM candidate missing checks".to_string());
+    }
+    let target = llm_candidate_target(proposal, surface, &candidate.target)?;
     let manifest_dir = Path::new(&proposal.manifest_path)
         .parent()
         .map(Path::to_path_buf)
@@ -8006,25 +7860,14 @@ fn llm_candidate_to_evolution(
     let mut patch_candidate = EvolutionPatchCandidate {
         id: evolution_candidate_id(surface_index, &surface.id),
         surface_id: surface.id.clone(),
-        title: if candidate.title.trim().is_empty() {
-            evolution_candidate_title(&surface.id, &proposal.tentacle_id)
-        } else {
-            candidate.title
-        },
+        title: candidate.title,
         target,
         target_files,
-        rationale: if candidate.rationale.trim().is_empty() {
-            format!(
-                "advance {} through {}",
-                proposal.objective, surface.description
-            )
-        } else {
-            candidate.rationale
-        },
+        rationale: candidate.rationale,
         feedback: Vec::new(),
         suggested_patch: clean_suggested_patch(candidate.suggested_patch),
-        change_plan,
-        checks,
+        change_plan: candidate.change_plan,
+        checks: candidate.checks,
         draft: evolution_patch_draft(surface_index, surface),
     };
     patch_candidate.feedback =
@@ -8036,45 +7879,51 @@ fn llm_candidate_target(
     proposal: &TentacleEvolutionProposal,
     surface: &EvolutionSurface,
     target: &str,
-) -> String {
+) -> Result<String, String> {
     let manifest_dir = Path::new(&proposal.manifest_path)
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("tentacles").join(&proposal.tentacle_id));
     let target = target.trim();
     if let Some(target) = field_pack_evolution_target(target) {
-        return target;
+        return Ok(target);
     }
     if target.is_empty() || target.contains("..") {
-        return evolution_candidate_target(&manifest_dir, surface);
+        return Err(format!(
+            "evolution LLM candidate target is invalid for surface {}",
+            surface.id
+        ));
     }
     if target.starts_with("brain.")
         || target.starts_with("tools[]")
         || target.starts_with("evolution.")
     {
-        return format!(
+        return Ok(format!(
             "{}#{}",
             manifest_dir.join("manifest.json").to_string_lossy(),
             target
-        );
+        ));
     }
     if let Some(suffix) = target.strip_prefix("manifest.json") {
-        return format!(
+        return Ok(format!(
             "{}{}",
             manifest_dir.join("manifest.json").to_string_lossy(),
             suffix
-        );
+        ));
     }
     let path = Path::new(target);
     if path.is_absolute() {
         let manifest_dir_text = manifest_dir.to_string_lossy();
         return if target.starts_with(manifest_dir_text.as_ref()) {
-            target.to_string()
+            Ok(target.to_string())
         } else {
-            evolution_candidate_target(&manifest_dir, surface)
+            Err(
+                "evolution LLM candidate target must stay inside declared harness targets"
+                    .to_string(),
+            )
         };
     }
-    manifest_dir.join(target).to_string_lossy().to_string()
+    Ok(manifest_dir.join(target).to_string_lossy().to_string())
 }
 
 fn extract_json_object(value: &str) -> Option<&str> {
@@ -8083,29 +7932,11 @@ fn extract_json_object(value: &str) -> Option<&str> {
     (start <= end).then_some(&value[start..=end])
 }
 
-fn propose_tentacle_evolution_with_outcomes(
+fn tentacle_evolution_context(
     root: impl AsRef<Path>,
     tentacle_id: &str,
     objective: &str,
-    previous_outcomes: &[EvolutionOutcome],
-) -> Result<TentacleEvolutionProposal, String> {
-    propose_tentacle_evolution_with_feedback(
-        root,
-        tentacle_id,
-        objective,
-        previous_outcomes,
-        &[],
-        &[],
-    )
-}
-
-fn propose_tentacle_evolution_with_feedback(
-    root: impl AsRef<Path>,
-    tentacle_id: &str,
-    objective: &str,
-    previous_outcomes: &[EvolutionOutcome],
-    recent_feed_traces: &[FeedTraceRecord],
-    recent_check_history: &[CheckHistoryRecord],
+    state: &HarnessState,
 ) -> Result<TentacleEvolutionProposal, String> {
     let root = root.as_ref();
     let loaded = load_tentacle_manifests(root)
@@ -8113,11 +7944,10 @@ fn propose_tentacle_evolution_with_feedback(
         .into_iter()
         .find(|loaded| loaded.manifest.id == tentacle_id)
         .ok_or_else(|| format!("unknown manifest: {tentacle_id}"))?;
-    let objective = if objective.trim().is_empty() {
-        "improve feed quality while keeping the clean brain tool-free"
-    } else {
-        objective.trim()
-    };
+    let objective = objective.trim();
+    if objective.is_empty() {
+        return Err("evolution objective cannot be empty".to_string());
+    }
     let manifest_dir = Path::new(&loaded.path)
         .parent()
         .map(Path::to_path_buf)
@@ -8129,22 +7959,13 @@ fn propose_tentacle_evolution_with_feedback(
         .iter()
         .map(|target| evolution_file_target(&manifest_dir, target, objective))
         .collect::<Vec<_>>();
-    let patch_candidates = evolution_patch_candidates(
-        &manifest_dir,
-        &loaded.manifest.id,
-        objective,
-        &loaded.manifest.evolution.surfaces,
-        &loaded.manifest.evolution.checks,
-        &loaded.manifest.tools,
-        EvolutionCandidateFeedback {
-            feed_traces: recent_feed_traces,
-            check_history: recent_check_history,
-        },
-    );
+    let previous_outcomes = state.recent_evolution_outcomes(tentacle_id, 5);
+    let recent_feed_traces = state.recent_feed_traces_for_tentacle(tentacle_id, 8);
+    let recent_check_history = state.recent_check_history_for_tentacle(tentacle_id, 8);
     let mut next_steps = vec![
-        "review PROPOSAL.md".to_string(),
-        "review PATCH_CANDIDATES.md".to_string(),
-        "edit only listed harness files".to_string(),
+        "run the configured LLM harness planner".to_string(),
+        "review LLM-generated harness candidates".to_string(),
+        "apply only provider-supplied patches for declared harness targets".to_string(),
     ];
     next_steps.extend(
         loaded
@@ -8167,8 +7988,8 @@ fn propose_tentacle_evolution_with_feedback(
         tentacle_id: loaded.manifest.id,
         tentacle_name: loaded.manifest.name,
         objective: objective.to_string(),
-        generator: "local".to_string(),
-        planner_summary: "local harness surface planner".to_string(),
+        generator: "llm_required".to_string(),
+        planner_summary: "awaiting LLM harness planner".to_string(),
         manifest_path: loaded.path,
         brain_kind: loaded.manifest.brain.kind,
         current_brain_prompt: loaded.manifest.brain.prompt,
@@ -8180,7 +8001,7 @@ fn propose_tentacle_evolution_with_feedback(
         recent_feed_traces: recent_feed_traces.to_vec(),
         recent_check_history: recent_check_history.to_vec(),
         files,
-        patch_candidates,
+        patch_candidates: Vec::new(),
         next_steps,
     })
 }
@@ -8251,13 +8072,22 @@ pub fn plan_tentacle_evolution_apply(
             .any(|permission| permission == "harness:write")
     });
     let active_grant = grant.map(|grant| grant.id.clone());
-    let status = if authorized {
+    let needs_suggested_patch = candidate.suggested_patch.is_none();
+    let status = if authorized && needs_suggested_patch {
+        "needs_suggested_patch"
+    } else if authorized {
         "ready_for_authorized_patch"
     } else {
         "needs_authorization"
     };
     let mut next_steps = vec![format!("review {}", candidate.draft.path)];
-    if authorized {
+    if authorized && needs_suggested_patch {
+        next_steps.push(
+            "rerun evolution with an LLM planner that returns a suggested_patch or choose a concrete target"
+                .to_string(),
+        );
+        next_steps.push("do not apply a review-note patch as harness evolution".to_string());
+    } else if authorized {
         next_steps.push("turn the draft into a narrow harness patch".to_string());
         next_steps.extend(candidate.checks.iter().map(|check| format!("run: {check}")));
     } else {
@@ -8326,23 +8156,6 @@ fn recommend_tentacle_evolution_apply_with_preference(
                 apply,
             });
         }
-    }
-    if let Some(candidate) = harder_layer_field_pack_candidate(proposal) {
-        let apply = plan_tentacle_evolution_apply(proposal, state, &candidate.id)?;
-        return Ok(EvolutionRecommendation {
-            tentacle_id: proposal.tentacle_id.clone(),
-            objective: proposal.objective.clone(),
-            candidate_id: candidate.id.clone(),
-            candidate_title: candidate.title.clone(),
-            surface_id: candidate.surface_id.clone(),
-            outcome_count: 0,
-            feed_trace_count: 0,
-            check_history_count: 0,
-            recommendation_score: 0.25,
-            reason: "selected field-pack task definitions for the next harder mini task layer"
-                .to_string(),
-            apply,
-        });
     }
     let Some(scored) = proposal
         .patch_candidates
@@ -8415,12 +8228,15 @@ pub fn write_tentacle_apply_artifacts(
     let plan_path = directory.join(format!("{stem}.md"));
     let patch_file_path = directory.join(format!("{stem}.patch"));
     let patch_path = if plan.authorized {
-        fs::write(
-            &patch_file_path,
-            render_authorized_apply_patch(plan, &directory),
-        )
-        .map_err(|error| error.to_string())?;
-        Some(patch_file_path)
+        if let Some(patch) = authorized_apply_patch(plan) {
+            fs::write(&patch_file_path, patch).map_err(|error| error.to_string())?;
+            Some(patch_file_path)
+        } else {
+            if patch_file_path.exists() {
+                fs::remove_file(&patch_file_path).map_err(|error| error.to_string())?;
+            }
+            None
+        }
     } else {
         if patch_file_path.exists() {
             fs::remove_file(&patch_file_path).map_err(|error| error.to_string())?;
@@ -8442,27 +8258,34 @@ pub fn write_tentacle_apply_artifacts(
     })
 }
 
-pub fn write_harness_beat_evolution_artifacts(
+pub fn write_harness_beat_evolution_artifacts_with_client<C>(
     tentacles_root: impl AsRef<Path>,
     workspace_root: impl AsRef<Path>,
     state: &HarnessState,
-) -> Result<Option<HarnessBeatEvolution>, String> {
+    client: &mut C,
+) -> Result<Option<HarnessBeatEvolution>, String>
+where
+    C: ChatClient,
+{
     let tentacles_root = tentacles_root.as_ref();
     let workspace_root = workspace_root.as_ref();
     for record in state
         .check_history
         .iter()
         .rev()
-        .filter(|record| evolution_actionable_check_status(&record.status))
+        .filter(|record| evolution_actionable_status(&record.status))
     {
         let objective = check_history_evolution_objective(record);
-        let Ok(proposal) = propose_tentacle_evolution_with_state(
+        let proposal = match propose_tentacle_evolution_with_client(
             tentacles_root,
             &record.tentacle_id,
             &objective,
             state,
-        ) else {
-            continue;
+            client,
+        ) {
+            Ok(proposal) => proposal,
+            Err(error) if error.starts_with("unknown manifest:") => continue,
+            Err(error) => return Err(error),
         };
         return harness_beat_evolution_from_proposal(
             workspace_root,
@@ -8480,16 +8303,22 @@ pub fn write_harness_beat_evolution_artifacts(
         .feed_traces
         .iter()
         .rev()
-        .filter(|trace| evolution_actionable_feed_trace_status(&trace.status))
+        .filter(|trace| evolution_actionable_status(&trace.status))
     {
         let Some(tentacle_id) = trace.tentacle.as_deref() else {
             continue;
         };
         let objective = feed_trace_evolution_objective(trace);
-        let Ok(proposal) =
-            propose_tentacle_evolution_with_state(tentacles_root, tentacle_id, &objective, state)
-        else {
-            continue;
+        let proposal = match propose_tentacle_evolution_with_client(
+            tentacles_root,
+            tentacle_id,
+            &objective,
+            state,
+            client,
+        ) {
+            Ok(proposal) => proposal,
+            Err(error) if error.starts_with("unknown manifest:") => continue,
+            Err(error) => return Err(error),
         };
         return harness_beat_evolution_from_proposal(
             workspace_root,
@@ -8507,14 +8336,20 @@ pub fn write_harness_beat_evolution_artifacts(
         .repair_outcomes
         .iter()
         .rev()
-        .filter(|outcome| evolution_actionable_repair_outcome_status(&outcome.status))
+        .filter(|outcome| evolution_actionable_status(&outcome.status))
     {
         let tentacle_id = repair_outcome_evolution_tentacle(outcome);
         let objective = repair_outcome_evolution_objective(outcome);
-        let Ok(proposal) =
-            propose_tentacle_evolution_with_state(tentacles_root, tentacle_id, &objective, state)
-        else {
-            continue;
+        let proposal = match propose_tentacle_evolution_with_client(
+            tentacles_root,
+            tentacle_id,
+            &objective,
+            state,
+            client,
+        ) {
+            Ok(proposal) => proposal,
+            Err(error) if error.starts_with("unknown manifest:") => continue,
+            Err(error) => return Err(error),
         };
         return harness_beat_evolution_from_proposal(
             workspace_root,
@@ -8578,90 +8413,20 @@ fn harness_beat_evolution_from_proposal(
     })
 }
 
-pub fn render_tentacle_apply_plan(plan: &EvolutionApplyPlan) -> String {
-    let mut markdown = String::new();
-    markdown.push_str(&format!(
-        "# Evolution Apply Plan: {}\n\n",
-        plan.candidate_id
-    ));
-    markdown.push_str(&format!("tentacle: `{}`\n", plan.tentacle_id));
-    markdown.push_str(&format!("objective: {}\n", plan.objective));
-    markdown.push_str(&format!("status: `{}`\n", plan.status));
-    markdown.push_str(&format!("authorized: {}\n", plan.authorized));
-    markdown.push_str(&format!("required_grant: `{}`\n", plan.required_grant));
-    if let Some(grant) = &plan.active_grant {
-        markdown.push_str(&format!("active_grant: `{grant}`\n"));
-    }
-    markdown.push_str(&format!("target: `{}`\n", plan.target));
-    if !plan.target_files.is_empty() {
-        markdown.push_str(&format!(
-            "target_files: `{}`\n",
-            plan.target_files.join("`, `")
-        ));
-    }
-    markdown.push_str(&format!("draft: `{}`\n\n", plan.draft_path));
-    if plan.authorized {
-        markdown.push_str(&format!("patch: `{}.patch`\n\n", plan.candidate_id));
-    }
-    if !plan.feedback.is_empty() {
-        markdown.push_str("feedback focus:\n");
-        for feedback in &plan.feedback {
-            markdown.push_str(&format!("- {}\n", evolution_feedback_line(feedback)));
-        }
-        markdown.push('\n');
-    }
-    if let Some(patch) = &plan.suggested_patch {
-        markdown.push_str("suggested patch draft:\n");
-        markdown.push_str("```diff\n");
-        markdown.push_str(patch.trim());
-        markdown.push_str("\n```\n\n");
-    }
-    markdown.push_str("guardrails:\n");
-    for guardrail in &plan.guardrails {
-        markdown.push_str(&format!("- {guardrail}\n"));
-    }
-    markdown.push_str("\nchecks:\n");
-    for check in &plan.checks {
-        markdown.push_str(&format!("- `{check}`\n"));
-    }
-    markdown.push_str("\nnext steps:\n");
-    for step in &plan.next_steps {
-        markdown.push_str(&format!("- {step}\n"));
-    }
-    markdown
-}
-
-fn evolution_actionable_check_status(status: &Status) -> bool {
+fn evolution_actionable_status(status: &Status) -> bool {
     matches!(status, Status::Failed | Status::Partial)
-}
-
-fn evolution_actionable_feed_trace_status(status: &Status) -> bool {
-    matches!(status, Status::Failed | Status::Partial)
-}
-
-fn evolution_actionable_repair_outcome_status(status: &Status) -> bool {
-    matches!(status, Status::Failed | Status::Partial)
-}
-
-fn repair_outcome_metadata_value(value: Option<&String>, candidate: bool) -> Option<String> {
-    let value = value?.trim();
-    if value.is_empty() {
-        return None;
-    }
-    let lower = value.to_ascii_lowercase();
-    if matches!(lower.as_str(), "unknown" | "none") || (candidate && lower == "recommended") {
-        return None;
-    }
-    Some(value.to_string())
 }
 
 fn check_history_evolution_detail(record: &CheckHistoryRecord) -> String {
-    if !record.stderr.trim().is_empty() {
-        record.stderr.clone()
-    } else if !record.stdout.trim().is_empty() {
-        record.stdout.clone()
+    if record.stderr.trim().is_empty() {
+        record
+            .stdout
+            .trim()
+            .is_empty()
+            .then(|| record.command.clone())
+            .unwrap_or_else(|| record.stdout.clone())
     } else {
-        record.command.clone()
+        record.stderr.clone()
     }
 }
 
@@ -8709,23 +8474,84 @@ fn repair_outcome_evolution_objective(outcome: &RepairOutcome) -> String {
     )
 }
 
-pub fn render_authorized_apply_patch(plan: &EvolutionApplyPlan, apply_dir: &Path) -> String {
+pub fn render_tentacle_apply_plan(plan: &EvolutionApplyPlan) -> String {
+    let mut markdown = String::new();
+    markdown.push_str(&format!(
+        "# Evolution Apply Plan: {}\n\n",
+        plan.candidate_id
+    ));
+    markdown.push_str(&format!("tentacle: `{}`\n", plan.tentacle_id));
+    markdown.push_str(&format!("objective: {}\n", plan.objective));
+    markdown.push_str(&format!("status: `{}`\n", plan.status));
+    markdown.push_str(&format!("authorized: {}\n", plan.authorized));
+    markdown.push_str(&format!("required_grant: `{}`\n", plan.required_grant));
+    if let Some(grant) = &plan.active_grant {
+        markdown.push_str(&format!("active_grant: `{grant}`\n"));
+    }
+    markdown.push_str(&format!("target: `{}`\n", plan.target));
+    if !plan.target_files.is_empty() {
+        markdown.push_str(&format!(
+            "target_files: `{}`\n",
+            plan.target_files.join("`, `")
+        ));
+    }
+    markdown.push_str(&format!("draft: `{}`\n\n", plan.draft_path));
+    if plan.authorized && authorized_apply_patch(plan).is_some() {
+        markdown.push_str(&format!("patch: `{}.patch`\n\n", plan.candidate_id));
+    }
+    if !plan.feedback.is_empty() {
+        markdown.push_str("feedback focus:\n");
+        for feedback in &plan.feedback {
+            markdown.push_str(&format!("- {}\n", evolution_feedback_line(feedback)));
+        }
+        markdown.push('\n');
+    }
+    if let Some(patch) = &plan.suggested_patch {
+        markdown.push_str("suggested patch draft:\n");
+        markdown.push_str("```diff\n");
+        markdown.push_str(patch.trim());
+        markdown.push_str("\n```\n\n");
+    }
+    markdown.push_str("guardrails:\n");
+    for guardrail in &plan.guardrails {
+        markdown.push_str(&format!("- {guardrail}\n"));
+    }
+    markdown.push_str("\nchecks:\n");
+    for check in &plan.checks {
+        markdown.push_str(&format!("- `{check}`\n"));
+    }
+    markdown.push_str("\nnext steps:\n");
+    for step in &plan.next_steps {
+        markdown.push_str(&format!("- {step}\n"));
+    }
+    markdown
+}
+
+fn repair_outcome_metadata_value(value: Option<&String>, candidate: bool) -> Option<String> {
+    let value = value?.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let lower = value.to_ascii_lowercase();
+    if matches!(lower.as_str(), "unknown" | "none") || (candidate && lower == "recommended") {
+        return None;
+    }
+    Some(value.to_string())
+}
+
+pub fn render_authorized_apply_patch(plan: &EvolutionApplyPlan, _apply_dir: &Path) -> String {
+    authorized_apply_patch(plan).unwrap_or_default()
+}
+
+fn authorized_apply_patch(plan: &EvolutionApplyPlan) -> Option<String> {
     if let Some(patch) = plan
         .suggested_patch
         .as_deref()
         .and_then(|patch| provider_patch_for_plan(plan, patch))
     {
-        return patch;
+        return Some(patch);
     }
-    let target_path = plan.target.split('#').next().unwrap_or(&plan.target);
-    if !target_path.contains('*') {
-        if let Some(target) = resolve_existing_patch_target(&plan.target) {
-            if let Some(patch) = render_existing_file_patch(plan, &target) {
-                return patch;
-            }
-        }
-    }
-    render_apply_note_patch(plan, apply_dir)
+    None
 }
 
 fn candidate_matches(candidate: &EvolutionPatchCandidate, value: &str) -> bool {
@@ -8733,32 +8559,6 @@ fn candidate_matches(candidate: &EvolutionPatchCandidate, value: &str) -> bool {
         || candidate.surface_id == value
         || candidate.id.replace('-', "_") == value
         || candidate.surface_id.replace('_', "-") == value
-}
-
-fn harder_layer_field_pack_candidate(
-    proposal: &TentacleEvolutionProposal,
-) -> Option<&EvolutionPatchCandidate> {
-    if proposal.tentacle_id != "field-mini-task" {
-        return None;
-    }
-    let objective = proposal.objective.to_ascii_lowercase();
-    let names_harder_layer = objective.contains("harder mini task")
-        || objective.contains("harder task")
-        || objective.contains("next harder")
-        || objective.contains("mini task layer");
-    let names_field_packs = objective.contains("field pack")
-        || objective.contains("field-pack")
-        || objective.contains("field_pack")
-        || objective.contains("peer field")
-        || objective.contains("field-mini-task")
-        || fields_mentioned_in_text(&objective).len() == 1;
-    if !(names_harder_layer && names_field_packs) {
-        return None;
-    }
-    proposal
-        .patch_candidates
-        .iter()
-        .find(|candidate| candidate.surface_id == "field_pack_tasks")
 }
 
 fn evolution_candidate_outcome_score(
@@ -8898,10 +8698,34 @@ fn candidate_matches_feed_trace(
     candidate: &EvolutionPatchCandidate,
     trace: &FeedTraceRecord,
 ) -> bool {
+    if field_mini_task_template_candidate_matches_trace(candidate, trace) {
+        return true;
+    }
     let Some(tool) = trace.tool.as_deref() else {
         return false;
     };
     target_mentions_tool(&candidate.target, tool)
+}
+
+fn field_mini_task_template_candidate_matches_trace(
+    candidate: &EvolutionPatchCandidate,
+    trace: &FeedTraceRecord,
+) -> bool {
+    if candidate.surface_id != "runtime_code" || trace.status == Status::Satisfied {
+        return false;
+    }
+    let Some(field) = trace.metadata.get("field_pack") else {
+        return false;
+    };
+    let Some(mini_task) = trace.metadata.get("field_mini_task") else {
+        return false;
+    };
+    let template = format!("repair-templates/{field}/{mini_task}.pyfrag");
+    candidate.target.contains(&template)
+        || candidate
+            .suggested_patch
+            .as_deref()
+            .is_some_and(|patch| patch.contains(&template))
 }
 
 fn target_mentions_tool(target: &str, tool: &str) -> bool {
@@ -8912,20 +8736,6 @@ fn target_mentions_tool(target: &str, tool: &str) -> bool {
         .file_stem()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name == tool)
-}
-
-fn evolution_candidate_feedback(
-    trace_tool: Option<(&ManifestTool, &FeedTraceRecord)>,
-    check_tool: Option<(&ManifestTool, &CheckHistoryRecord)>,
-) -> Vec<EvolutionPatchFeedback> {
-    let mut feedback = Vec::new();
-    if let Some((tool, record)) = check_tool {
-        feedback.push(feedback_from_check_history(record, Some(tool)));
-    }
-    if let Some((tool, trace)) = trace_tool {
-        feedback.push(feedback_from_feed_trace(trace, Some(tool)));
-    }
-    feedback
 }
 
 fn feedback_from_check_history(
@@ -8961,10 +8771,6 @@ fn feedback_from_feed_trace(
             .map(|tool| tool.implementation.entrypoint.clone())
             .or_else(|| trace.tool.clone()),
     }
-}
-
-fn resolve_existing_patch_target(target: &str) -> Option<PathBuf> {
-    resolve_existing_patch_targets(target).into_iter().next()
 }
 
 fn resolve_existing_patch_targets(target: &str) -> Vec<PathBuf> {
@@ -9011,40 +8817,6 @@ fn resolve_wildcard_targets(value: &str) -> Vec<PathBuf> {
     matches
 }
 
-fn render_existing_file_patch(plan: &EvolutionApplyPlan, target: &Path) -> Option<String> {
-    let content = fs::read_to_string(target).ok()?;
-    let comment = patch_comment_for(target, plan)?;
-    let context = content.lines().take(4).collect::<Vec<_>>();
-    if context.is_empty() {
-        return None;
-    }
-    let insert_at = if context.first().is_some_and(|line| line.starts_with("#!")) {
-        1
-    } else {
-        0
-    };
-    let display = patch_display_path(target);
-    let mut patch = String::new();
-    patch.push_str(&format!("diff --git a/{display} b/{display}\n"));
-    patch.push_str(&format!("--- a/{display}\n"));
-    patch.push_str(&format!("+++ b/{display}\n"));
-    patch.push_str(&format!(
-        "@@ -1,{} +1,{} @@\n",
-        context.len(),
-        context.len() + 1
-    ));
-    for (index, line) in context.iter().enumerate() {
-        if index == insert_at {
-            patch.push_str(&format!("+{comment}\n"));
-        }
-        patch.push_str(&format!(" {line}\n"));
-    }
-    if insert_at >= context.len() {
-        patch.push_str(&format!("+{comment}\n"));
-    }
-    Some(patch)
-}
-
 fn provider_patch_for_plan(plan: &EvolutionApplyPlan, patch: &str) -> Option<String> {
     let paths = diff_paths(patch);
     if paths.is_empty() {
@@ -9060,6 +8832,15 @@ fn provider_patch_for_plan(plan: &EvolutionApplyPlan, patch: &str) -> Option<Str
             .iter()
             .map(|path| patch_display_path(path))
             .collect::<Vec<_>>();
+    }
+    if !plan.target.contains('*') {
+        let target_path = plan.target.split('#').next().unwrap_or(&plan.target);
+        if !target_path.trim().is_empty() {
+            push_unique(
+                &mut allowed_paths,
+                patch_display_path(Path::new(target_path)),
+            );
+        }
     }
     if allowed_paths.is_empty()
         || paths
@@ -9111,62 +8892,35 @@ fn push_unique(values: &mut Vec<String>, value: String) {
     }
 }
 
-fn patch_comment_for(target: &Path, plan: &EvolutionApplyPlan) -> Option<String> {
-    let note = format!(
-        "Octopus evolution candidate {}: {}",
-        plan.candidate_id,
-        one_line(&plan.objective)
-    );
-    let extension = target
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or("");
-    match extension {
-        "sh" | "py" | "rb" | "toml" | "yaml" | "yml" => Some(format!("# {note}")),
-        "js" | "ts" | "rs" | "go" | "java" | "c" | "cpp" | "h" => Some(format!("// {note}")),
-        "md" | "html" => Some(format!("<!-- {note} -->")),
-        _ => None,
-    }
-}
-
-fn render_apply_note_patch(plan: &EvolutionApplyPlan, apply_dir: &Path) -> String {
-    let note_path = apply_dir.join(format!("{}-note.md", plan.candidate_id));
-    let display = patch_display_path(&note_path);
-    let mut lines = vec![
-        format!("# Authorized Evolution Candidate {}", plan.candidate_id),
-        String::new(),
-        format!("tentacle: {}", plan.tentacle_id),
-        format!("target: {}", plan.target),
-        format!("objective: {}", one_line(&plan.objective)),
-        "status: ready_for_authorized_patch".to_string(),
-    ];
-    if !plan.target_files.is_empty() {
-        lines.push(String::new());
-        lines.push("target_files:".to_string());
-        lines.extend(plan.target_files.iter().map(|path| format!("- {path}")));
-    }
-    let mut patch = String::new();
-    patch.push_str(&format!("diff --git a/{display} b/{display}\n"));
-    patch.push_str("new file mode 100644\n");
-    patch.push_str("--- /dev/null\n");
-    patch.push_str(&format!("+++ b/{display}\n"));
-    patch.push_str(&format!("@@ -0,0 +1,{} @@\n", lines.len()));
-    for line in lines {
-        patch.push_str(&format!("+{line}\n"));
-    }
-    patch
-}
-
 fn patch_display_path(path: &Path) -> String {
     let value = path.to_string_lossy().replace('\\', "/");
     for marker in ["tentacles/", "field-packs/", "docs/", ".octopus/"] {
         if let Some(index) = value.find(marker) {
-            return value[index..].to_string();
+            return collapse_repeated_tentacle_prefix(&value[index..]);
         }
     }
-    path.file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_else(|| value)
+    collapse_repeated_tentacle_prefix(
+        &path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| value),
+    )
+}
+
+fn collapse_repeated_tentacle_prefix(value: &str) -> String {
+    let parts = value.split('/').collect::<Vec<_>>();
+    for index in 0..parts.len().saturating_sub(3) {
+        if parts[index] == "tentacles"
+            && parts.get(index + 2) == Some(&"tentacles")
+            && parts.get(index + 1) == parts.get(index + 3)
+        {
+            let mut collapsed = Vec::new();
+            collapsed.extend_from_slice(&parts[..index + 2]);
+            collapsed.extend_from_slice(&parts[index + 4..]);
+            return collapsed.join("/");
+        }
+    }
+    value.to_string()
 }
 
 fn one_line(value: &str) -> String {
@@ -9877,428 +9631,6 @@ fn evolution_file_target(
     }
 }
 
-fn evolution_patch_candidates(
-    manifest_dir: &Path,
-    tentacle_id: &str,
-    objective: &str,
-    surfaces: &[EvolutionSurface],
-    checks: &[String],
-    tools: &[ManifestTool],
-    feedback: EvolutionCandidateFeedback<'_>,
-) -> Vec<EvolutionPatchCandidate> {
-    surfaces
-        .iter()
-        .enumerate()
-        .map(|(index, surface)| {
-            let trace_tool = traced_tool_for_surface(surface, tools, feedback.feed_traces);
-            let check_tool = checked_tool_for_surface(surface, tools, feedback.check_history);
-            let target = evolution_candidate_target_with_feedback(
-                manifest_dir,
-                surface,
-                trace_tool,
-                check_tool,
-            );
-            let target_files = evolution_candidate_target_files(manifest_dir, surface, &target);
-            EvolutionPatchCandidate {
-                id: evolution_candidate_id(index, &surface.id),
-                surface_id: surface.id.clone(),
-                title: evolution_candidate_title(&surface.id, tentacle_id),
-                target: target.clone(),
-                target_files,
-                rationale: evolution_candidate_rationale(
-                    objective, surface, trace_tool, check_tool,
-                ),
-                feedback: evolution_candidate_feedback(trace_tool, check_tool),
-                suggested_patch: local_suggested_patch_for_candidate(
-                    tentacle_id,
-                    surface,
-                    &target,
-                    trace_tool,
-                ),
-                change_plan: evolution_candidate_plan_with_feedback(
-                    surface, trace_tool, check_tool,
-                ),
-                checks: evolution_candidate_checks(checks, surface, trace_tool, check_tool),
-                draft: evolution_patch_draft(index, surface),
-            }
-        })
-        .collect()
-}
-
-fn local_suggested_patch_for_candidate(
-    tentacle_id: &str,
-    surface: &EvolutionSurface,
-    target: &str,
-    trace_tool: Option<(&ManifestTool, &FeedTraceRecord)>,
-) -> Option<String> {
-    let (_, trace) = trace_tool?;
-    if tentacle_id != "field-mini-task" || surface.id != "runtime_code" {
-        return None;
-    }
-    let path = target.split('#').next().unwrap_or(target);
-    let target_path = Path::new(path);
-    let field = trace.metadata.get("field_pack")?.as_str();
-    let mini_task = trace.metadata.get("field_mini_task")?.as_str();
-    let template_target = field_mini_task_template_target(target_path, field, mini_task)?;
-    let template_lines =
-        field_mini_task_external_template_lines(&template_target, field, mini_task)?;
-    render_file_patch(&template_target, &template_lines)
-}
-
-fn field_mini_task_template_target(
-    target_path: &Path,
-    field: &str,
-    mini_task: &str,
-) -> Option<PathBuf> {
-    let template_name = format!("{mini_task}.pyfrag");
-    if target_path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension == "pyfrag")
-    {
-        return Some(target_path.to_path_buf());
-    }
-    let harness_root = target_path.parent().and_then(Path::parent)?;
-    Some(
-        harness_root
-            .join("repair-templates")
-            .join(field)
-            .join(template_name),
-    )
-}
-
-fn field_mini_task_external_template_lines(
-    template_target: &Path,
-    field: &str,
-    mini_task: &str,
-) -> Option<Vec<String>> {
-    let template_name = format!("{mini_task}.pyfrag");
-    let mut candidates = vec![template_target.to_path_buf()];
-    candidates.push(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("repair-templates")
-            .join(field)
-            .join(template_name),
-    );
-    for template_path in candidates {
-        let Ok(content) = fs::read_to_string(template_path) else {
-            continue;
-        };
-        let lines = content.lines().map(str::to_string).collect::<Vec<_>>();
-        if lines.iter().any(|line| !line.trim().is_empty()) {
-            return Some(lines);
-        }
-    }
-    None
-}
-
-fn render_file_patch(target: &Path, replacement: &[String]) -> Option<String> {
-    if replacement.is_empty() {
-        return None;
-    }
-    let display = patch_display_path(target);
-    let mut patch = String::new();
-    patch.push_str(&format!("diff --git a/{display} b/{display}\n"));
-    let existing = fs::read_to_string(target).ok();
-    let old_lines = existing
-        .as_deref()
-        .map(|content| content.lines().map(str::to_string).collect::<Vec<_>>())
-        .unwrap_or_default();
-    if existing.is_none() {
-        patch.push_str("new file mode 100644\n");
-        patch.push_str("--- /dev/null\n");
-        patch.push_str(&format!("+++ b/{display}\n"));
-        patch.push_str(&format!("@@ -0,0 +1,{} @@\n", replacement.len()));
-        for line in replacement {
-            patch.push_str(&format!("+{line}\n"));
-        }
-        return Some(patch);
-    }
-    patch.push_str(&format!("--- a/{display}\n"));
-    patch.push_str(&format!("+++ b/{display}\n"));
-    let old_start = if old_lines.is_empty() { 0 } else { 1 };
-    let new_start = if replacement.is_empty() { 0 } else { 1 };
-    patch.push_str(&format!(
-        "@@ -{},{} +{},{} @@\n",
-        old_start,
-        old_lines.len(),
-        new_start,
-        replacement.len()
-    ));
-    for line in &old_lines {
-        patch.push_str(&format!("-{line}\n"));
-    }
-    for line in replacement {
-        patch.push_str(&format!("+{line}\n"));
-    }
-    Some(patch)
-}
-
-fn traced_tool_for_surface<'a>(
-    surface: &EvolutionSurface,
-    tools: &'a [ManifestTool],
-    recent_feed_traces: &'a [FeedTraceRecord],
-) -> Option<(&'a ManifestTool, &'a FeedTraceRecord)> {
-    if surface.id != "runtime_code" {
-        return None;
-    }
-    recent_feed_traces.iter().rev().find_map(|trace| {
-        let tool_id = trace.tool.as_deref()?;
-        tools
-            .iter()
-            .find(|tool| tool.id == tool_id)
-            .map(|tool| (tool, trace))
-    })
-}
-
-fn checked_tool_for_surface<'a>(
-    surface: &EvolutionSurface,
-    tools: &'a [ManifestTool],
-    recent_check_history: &'a [CheckHistoryRecord],
-) -> Option<(&'a ManifestTool, &'a CheckHistoryRecord)> {
-    if surface.id != "runtime_code" {
-        return None;
-    }
-    recent_check_history
-        .iter()
-        .rev()
-        .filter(|record| record.status == Status::Failed)
-        .find_map(|record| {
-            tools
-                .iter()
-                .find(|tool| check_mentions_entrypoint(record, &tool.implementation.entrypoint))
-                .map(|tool| (tool, record))
-        })
-}
-
-fn check_mentions_entrypoint(record: &CheckHistoryRecord, entrypoint: &str) -> bool {
-    let entrypoint = entrypoint.trim();
-    if entrypoint.is_empty() {
-        return false;
-    }
-    if record.command.contains(entrypoint) {
-        return true;
-    }
-    Path::new(entrypoint)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| record.command.contains(name))
-}
-
-fn evolution_candidate_target_with_feedback(
-    manifest_dir: &Path,
-    surface: &EvolutionSurface,
-    trace_tool: Option<(&ManifestTool, &FeedTraceRecord)>,
-    check_tool: Option<(&ManifestTool, &CheckHistoryRecord)>,
-) -> String {
-    if let Some((tool, trace)) = trace_tool {
-        if let Some(target) = field_mini_task_trace_template_target(manifest_dir, tool, trace) {
-            return target;
-        }
-        if let Some(target) = trace_tool_entrypoint_target(manifest_dir, tool) {
-            return target;
-        }
-    }
-    if let Some((tool, _)) = check_tool {
-        if let Some(target) = trace_tool_entrypoint_target(manifest_dir, tool) {
-            return target;
-        }
-    }
-    evolution_candidate_target(manifest_dir, surface)
-}
-
-fn field_mini_task_trace_template_target(
-    manifest_dir: &Path,
-    tool: &ManifestTool,
-    trace: &FeedTraceRecord,
-) -> Option<String> {
-    if tool.id != "run_field_mini_task" {
-        return None;
-    }
-    let field = trace.metadata.get("field_pack")?.trim();
-    let mini_task = trace.metadata.get("field_mini_task")?.trim();
-    if field.is_empty()
-        || mini_task.is_empty()
-        || field.contains("..")
-        || mini_task.contains("..")
-        || field.contains('/')
-        || mini_task.contains('/')
-    {
-        return None;
-    }
-    Some(
-        manifest_dir
-            .join("repair-templates")
-            .join(field)
-            .join(format!("{mini_task}.pyfrag"))
-            .to_string_lossy()
-            .to_string(),
-    )
-}
-
-fn trace_tool_entrypoint_target(manifest_dir: &Path, tool: &ManifestTool) -> Option<String> {
-    let entrypoint = tool.implementation.entrypoint.trim();
-    if entrypoint.is_empty()
-        || entrypoint.contains("..")
-        || entrypoint.starts_with("http://")
-        || entrypoint.starts_with("https://")
-    {
-        return None;
-    }
-    let path = Path::new(entrypoint);
-    if path.is_absolute() {
-        return path.exists().then(|| path.to_string_lossy().to_string());
-    }
-    Some(manifest_dir.join(path).to_string_lossy().to_string())
-}
-
-fn evolution_candidate_rationale(
-    objective: &str,
-    surface: &EvolutionSurface,
-    trace_tool: Option<(&ManifestTool, &FeedTraceRecord)>,
-    check_tool: Option<(&ManifestTool, &CheckHistoryRecord)>,
-) -> String {
-    let base = format!("advance {objective} through {}", surface.description);
-    let with_trace = if let Some((tool, trace)) = trace_tool {
-        format!(
-            "{base}; recent trace #{} used `{}` for {} `{}` and returned {} evidence items",
-            trace.index,
-            tool.id,
-            kind_key(&trace.need_kind),
-            trace.need_query,
-            trace.evidence_count
-        )
-    } else {
-        base
-    };
-    if let Some((tool, record)) = check_tool {
-        return format!(
-            "{with_trace}; failed check #{} points at `{}` with `{}`",
-            record.index,
-            tool.id,
-            one_line(&record.command)
-        );
-    }
-    with_trace
-}
-
-fn evolution_candidate_plan_with_feedback(
-    surface: &EvolutionSurface,
-    trace_tool: Option<(&ManifestTool, &FeedTraceRecord)>,
-    check_tool: Option<(&ManifestTool, &CheckHistoryRecord)>,
-) -> Vec<String> {
-    let mut plan = evolution_candidate_plan(surface);
-    if let Some((tool, trace)) = trace_tool {
-        let target = if tool.id == "run_field_mini_task" {
-            trace
-                .metadata
-                .get("field_mini_task")
-                .map(|task| format!("repair template `{task}.pyfrag`"))
-                .unwrap_or_else(|| "field-mini-task repair template".to_string())
-        } else {
-            format!("`{}`", tool.implementation.entrypoint)
-        };
-        plan.insert(0, format!("patch {target} from trace #{}", trace.index));
-        plan.insert(
-            1,
-            format!("preserve the observed `{}` Feed contract", tool.id),
-        );
-    }
-    if let Some((tool, record)) = check_tool {
-        plan.insert(
-            0,
-            format!(
-                "repair failing check #{} around `{}` before broad harness edits",
-                record.index, tool.implementation.entrypoint
-            ),
-        );
-    }
-    plan
-}
-
-fn evolution_candidate_checks(
-    checks: &[String],
-    surface: &EvolutionSurface,
-    trace_tool: Option<(&ManifestTool, &FeedTraceRecord)>,
-    check_tool: Option<(&ManifestTool, &CheckHistoryRecord)>,
-) -> Vec<String> {
-    let mut checks = if checks.is_empty() {
-        vec!["cargo test".to_string()]
-    } else {
-        checks.to_vec()
-    };
-    if let Some((_, record)) = check_tool {
-        if !checks.iter().any(|existing| existing == &record.command) {
-            checks.insert(0, record.command.clone());
-        }
-    }
-    if let Some((tool, trace)) = trace_tool {
-        if let Some(check) = traced_tool_check(tool, trace) {
-            if !checks.iter().any(|existing| existing == &check) {
-                checks.insert(0, check);
-            }
-        }
-    }
-    if surface.id == "evolution_policy" && !checks.iter().any(|check| check == "cargo test") {
-        checks.push("cargo test".to_string());
-    }
-    checks
-}
-
-fn traced_tool_check(tool: &ManifestTool, trace: &FeedTraceRecord) -> Option<String> {
-    let entrypoint = tool.implementation.entrypoint.trim();
-    if entrypoint.is_empty()
-        || entrypoint.contains("..")
-        || entrypoint.starts_with("http://")
-        || entrypoint.starts_with("https://")
-    {
-        return None;
-    }
-    if tool.id == "run_field_mini_task" {
-        return traced_field_mini_task_check(entrypoint, trace);
-    }
-    let args = trace
-        .need_query
-        .split_whitespace()
-        .map(shell_arg)
-        .collect::<Vec<_>>();
-    let command = shell_arg(entrypoint);
-    if args.is_empty() {
-        Some(command)
-    } else {
-        Some(format!("{command} {}", args.join(" ")))
-    }
-}
-
-fn traced_field_mini_task_check(entrypoint: &str, trace: &FeedTraceRecord) -> Option<String> {
-    let field = trace.metadata.get("field_pack")?;
-    let mini_task = trace.metadata.get("field_mini_task")?;
-    let mut context = BTreeMap::new();
-    context.insert("field_pack", field.as_str());
-    context.insert("field_mini_task", mini_task.as_str());
-    if let Some(expected_feed) = trace.metadata.get("field_expected_feed") {
-        context.insert("field_expected_feed", expected_feed.as_str());
-    }
-    let payload = serde_json::json!({
-        "schema_version": OCTOPUS_TOOL_CALL_SCHEMA,
-        "need": {
-            "kind": kind_key(&trace.need_kind),
-            "query": trace.need_query,
-            "context": context,
-        },
-        "tool": {"id": "run_field_mini_task"},
-        "tentacle": {"id": "field-mini-task"},
-    });
-    let payload = serde_json::to_string(&payload).ok()?;
-    Some(format!(
-        "{} . <<'JSON' | python3 -m json.tool > /dev/null\n{payload}\nJSON",
-        shell_arg(entrypoint)
-    ))
-}
-
 fn evolution_candidate_id(index: usize, surface_id: &str) -> String {
     format!("{:02}-{}", index + 1, surface_id.replace('_', "-"))
 }
@@ -10311,39 +9643,6 @@ fn evolution_patch_draft(index: usize, surface: &EvolutionSurface) -> EvolutionP
         authorization_required: true,
         apply_hint: "review the draft, create a narrow harness patch, run listed checks, then commit through an explicit grant".to_string(),
     }
-}
-
-fn evolution_candidate_title(surface_id: &str, tentacle_id: &str) -> String {
-    match surface_id {
-        "brain_prompt" => format!("Retune {tentacle_id} tool-side thinking"),
-        "tool_meta" => format!("Tighten {tentacle_id} tool metadata"),
-        "runtime_code" => format!("Improve {tentacle_id} runtime harness code"),
-        "field_pack_tasks" => "Extend peer-field task definitions".to_string(),
-        "evolution_policy" => format!("Strengthen {tentacle_id} evolution policy"),
-        value => format!("Improve {tentacle_id} {value}"),
-    }
-}
-
-fn evolution_candidate_target(manifest_dir: &Path, surface: &EvolutionSurface) -> String {
-    let target = surface
-        .targets
-        .first()
-        .map(String::as_str)
-        .unwrap_or("manifest.json");
-    if let Some(target) = field_pack_evolution_target(target) {
-        return target;
-    }
-    if target.starts_with("brain.")
-        || target.starts_with("tools[]")
-        || target.starts_with("evolution.")
-    {
-        return format!(
-            "{}#{}",
-            manifest_dir.join("manifest.json").to_string_lossy(),
-            target
-        );
-    }
-    manifest_dir.join(target).to_string_lossy().to_string()
 }
 
 fn evolution_target_files(target: &str) -> Vec<String> {
@@ -10384,35 +9683,6 @@ fn evolution_candidate_target_files(
         }
     }
     files
-}
-
-fn evolution_candidate_plan(surface: &EvolutionSurface) -> Vec<String> {
-    match surface.id.as_str() {
-        "brain_prompt" => vec![
-            "rewrite the tentacle prompt around one Need-to-Feed responsibility".to_string(),
-            "keep the feedback contract compact and evidence-first".to_string(),
-        ],
-        "tool_meta" => vec![
-            "make tool inputs and outputs specific enough for tool-side planning".to_string(),
-            "declare octopus-json-v1 when the runtime consumes the full Need envelope".to_string(),
-        ],
-        "runtime_code" => vec![
-            "patch only the runtime adapter needed for this objective".to_string(),
-            "preserve path safety, exit status, and compact evidence output".to_string(),
-        ],
-        "field_pack_tasks" => vec![
-            "add the next harder mini task definitions to the peer field packs".to_string(),
-            "keep expected Feed explicit enough for verifier-driven harness evolution".to_string(),
-        ],
-        "evolution_policy" => vec![
-            "add the smallest check that proves the changed surface works".to_string(),
-            "keep constraints aligned with user-visible safety boundaries".to_string(),
-        ],
-        _ => vec![
-            "inspect the listed targets before editing".to_string(),
-            "return a narrow harness patch with matching checks".to_string(),
-        ],
-    }
 }
 
 fn field_pack_evolution_target(target: &str) -> Option<String> {
@@ -10765,634 +10035,6 @@ fn need_queue_status_key(status: &NeedQueueStatus) -> &'static str {
         NeedQueueStatus::Pending => "pending",
         NeedQueueStatus::Taken => "taken",
         NeedQueueStatus::Dropped => "dropped",
-    }
-}
-
-fn local_brain_explore_needs(brain: &BrainContextReport, prompt: &str) -> Vec<GoalNeedSuggestion> {
-    let focus = clean_focus(brain, prompt);
-    let mut needs = vec![
-        GoalNeedSuggestion {
-            kind: NeedKind::Observe,
-            query: format!("clarify current state for {focus}"),
-        },
-        GoalNeedSuggestion {
-            kind: NeedKind::Verify,
-            query: format!("check whether {focus} is already satisfied"),
-        },
-    ];
-    if brain.mem.is_empty() {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Remember,
-            query: format!("goal focus: {focus}"),
-        });
-    } else {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Recall,
-            query: focus.clone(),
-        });
-    }
-    if !brain.turns.is_empty() {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Compare,
-            query: format!("recent Feed against goal: {focus}"),
-        });
-    }
-    let mut seen = BTreeMap::new();
-    needs
-        .into_iter()
-        .filter(|need| {
-            let key = format!("{}:{}", kind_key(&need.kind), need.query);
-            seen.insert(key, ()).is_none()
-        })
-        .collect()
-}
-
-fn local_brain_brief_needs(brain: &BrainContextReport, prompt: &str) -> Vec<GoalNeedSuggestion> {
-    let focus = clean_focus(brain, prompt);
-    let mut needs = vec![
-        GoalNeedSuggestion {
-            kind: NeedKind::Observe,
-            query: format!("compact current cognitive state for {focus}"),
-        },
-        GoalNeedSuggestion {
-            kind: NeedKind::Verify,
-            query: format!("which claims in the brief are supported for {focus}"),
-        },
-    ];
-    if brain.mem.is_empty() {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Remember,
-            query: format!("brief-worthy durable context for {focus}"),
-        });
-    } else {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Recall,
-            query: format!("memory that should be carried into the brief for {focus}"),
-        });
-    }
-    if let Some(turn) = brain.turns.last() {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Compare,
-            query: format!("latest Feed against the brief for {}", turn.need.query),
-        });
-    }
-    let mut seen = BTreeMap::new();
-    needs
-        .into_iter()
-        .filter(|need| {
-            let key = format!("{}:{}", kind_key(&need.kind), need.query);
-            seen.insert(key, ()).is_none()
-        })
-        .collect()
-}
-
-fn local_brain_intent_needs(brain: &BrainContextReport, prompt: &str) -> Vec<GoalNeedSuggestion> {
-    let focus = clean_focus(brain, prompt);
-    let mut needs = vec![
-        GoalNeedSuggestion {
-            kind: NeedKind::Observe,
-            query: format!("current uncertainty around {focus}"),
-        },
-        GoalNeedSuggestion {
-            kind: NeedKind::Verify,
-            query: format!("whether {focus} satisfies the active goal"),
-        },
-        GoalNeedSuggestion {
-            kind: NeedKind::Compare,
-            query: format!("which next cognitive direction best serves {focus}"),
-        },
-        GoalNeedSuggestion {
-            kind: NeedKind::Execute,
-            query: format!("desired outcome and boundaries for {focus}"),
-        },
-    ];
-    if brain.mem.is_empty() {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Remember,
-            query: format!("durable goal context for {focus}"),
-        });
-    } else {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Recall,
-            query: format!("memory relevant to {focus}"),
-        });
-    }
-    if let Some(turn) = brain.turns.last() {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Reproduce,
-            query: format!("reasoning path from recent Feed for {}", turn.need.query),
-        });
-    }
-    if brain.mem.len() > 5 {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Forget,
-            query: format!("stale memory that no longer serves {focus}"),
-        });
-    }
-    let mut seen = BTreeMap::new();
-    needs
-        .into_iter()
-        .filter(|need| {
-            let key = format!("{}:{}", kind_key(&need.kind), need.query);
-            seen.insert(key, ()).is_none()
-        })
-        .collect()
-}
-
-fn local_brain_focus_needs(
-    brain: &BrainContextReport,
-    kind: &NeedKind,
-    prompt: &str,
-) -> Vec<GoalNeedSuggestion> {
-    let focus = clean_focus(brain, prompt);
-    let query = match kind {
-        NeedKind::Verify => format!("whether {focus} is true enough for the goal"),
-        NeedKind::Reproduce => format!("how {focus} can be reproduced from known context"),
-        NeedKind::Compare => format!("which option best fits {focus}"),
-        NeedKind::Remember => format!("durable context to remember for {focus}"),
-        NeedKind::Forget => format!("stale context to forget around {focus}"),
-        NeedKind::Execute => format!("the intended outcome and constraints for {focus}"),
-        NeedKind::Recall => format!("relevant remembered context for {focus}"),
-        NeedKind::Observe => format!("what is currently known about {focus}"),
-    };
-    vec![GoalNeedSuggestion {
-        kind: kind.clone(),
-        query,
-    }]
-}
-
-fn local_brain_memory_needs(brain: &BrainContextReport, prompt: &str) -> Vec<GoalNeedSuggestion> {
-    let focus = clean_focus(brain, prompt);
-    let mut needs = Vec::new();
-    if let Some(goal) = &brain.goal {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Remember,
-            query: format!("active goal: {}", goal.objective),
-        });
-        for constraint in goal.constraints.iter().take(3) {
-            needs.push(GoalNeedSuggestion {
-                kind: NeedKind::Remember,
-                query: format!("goal constraint: {constraint}"),
-            });
-        }
-    } else {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Verify,
-            query: format!("whether {focus} has a clear durable goal"),
-        });
-    }
-    if brain.mem.is_empty() {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Remember,
-            query: format!("memory focus: {focus}"),
-        });
-    } else {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Recall,
-            query: focus.clone(),
-        });
-    }
-    for turn in brain.turns.iter().rev().take(2) {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Remember,
-            query: format!("Feed for {}: {}", turn.need.query, turn.feed.summary),
-        });
-    }
-    if brain.mem.len() > 5 {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Forget,
-            query: format!("stale context not relevant to {focus}"),
-        });
-    }
-    let mut seen = BTreeMap::new();
-    needs
-        .into_iter()
-        .filter(|need| {
-            let key = format!("{}:{}", kind_key(&need.kind), need.query);
-            seen.insert(key, ()).is_none()
-        })
-        .collect()
-}
-
-fn clean_focus(brain: &BrainContextReport, prompt: &str) -> String {
-    clean_optional(Some(prompt))
-        .map(str::to_string)
-        .or_else(|| brain.goal.as_ref().map(|goal| goal.objective.clone()))
-        .or_else(|| brain.turns.last().map(|turn| turn.need.query.clone()))
-        .unwrap_or_else(|| "current goal".to_string())
-}
-
-fn local_brain_clarification(brain: &BrainContextReport, prompt: &str) -> BrainDeliberationDraft {
-    let focus = clean_focus(brain, prompt);
-    let mut observations = Vec::new();
-    if let Some(goal) = &brain.goal {
-        observations.push(format!("active goal: {}", goal.objective));
-        if goal.constraints.is_empty() {
-            observations.push("no durable goal constraints recorded".to_string());
-        } else {
-            observations.push(format!("goal constraints: {}", goal.constraints.join("; ")));
-        }
-    } else {
-        observations.push("no active goal recorded".to_string());
-    }
-    observations.push(format!("memory records: {}", brain.mem.len()));
-    observations.push(format!("recent Need/Feed turns: {}", brain.turns.len()));
-
-    let mut questions = vec![
-        format!("What outcome would prove {focus} is done?"),
-        format!("Which constraint should Octopus preserve while thinking about {focus}?"),
-    ];
-    if brain.turns.is_empty() {
-        questions.push(format!(
-            "Should Octopus explore, verify, or remember first for {focus}?"
-        ));
-    } else {
-        questions.push(format!(
-            "Which recent Feed should matter most for the next Need about {focus}?"
-        ));
-    }
-
-    let mut needs = vec![GoalNeedSuggestion {
-        kind: NeedKind::Verify,
-        query: format!("success criteria for {focus}"),
-    }];
-    if brain.mem.is_empty() {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Remember,
-            query: format!("human constraints for {focus}"),
-        });
-    } else {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Recall,
-            query: format!("human constraints for {focus}"),
-        });
-    }
-    if !brain.turns.is_empty() {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Compare,
-            query: format!("recent Feed against success criteria for {focus}"),
-        });
-    }
-
-    BrainDeliberationDraft {
-        summary: format!("clarify goal and next Need for {focus}"),
-        observations,
-        questions,
-        options: vec![
-            format!("tighten the Goal for {focus}"),
-            format!("queue one verification Need for {focus}"),
-            format!("remember durable human constraints for {focus}"),
-        ],
-        risks: vec![format!(
-            "unclear success criteria can make Feed satisfy the wrong Need for {focus}"
-        )],
-        needs,
-    }
-}
-
-fn local_brain_agenda(brain: &BrainContextReport, prompt: &str) -> BrainDeliberationDraft {
-    let focus = clean_focus(brain, prompt);
-    let mut observations = Vec::new();
-    if let Some(goal) = &brain.goal {
-        observations.push(format!("goal focus: {}", goal.objective));
-        if !goal.constraints.is_empty() {
-            observations.push(format!("constraints: {}", goal.constraints.join("; ")));
-        }
-    } else {
-        observations.push("goal focus is missing".to_string());
-    }
-    observations.push(format!("memory signals: {}", brain.mem.len()));
-    observations.push(format!("recent Feed signals: {}", brain.turns.len()));
-
-    let mut questions = vec![format!(
-        "Which cognitive Need most reduces uncertainty for {focus}?"
-    )];
-    if brain.goal.is_none() {
-        questions.push(format!("What Goal should anchor the agenda for {focus}?"));
-    }
-    if brain.mem.is_empty() {
-        questions.push(format!(
-            "What durable context should be remembered for {focus}?"
-        ));
-    }
-    if !brain.turns.is_empty() {
-        questions.push(format!(
-            "Which recent Feed changes the next cognitive priority for {focus}?"
-        ));
-    }
-
-    let mut needs = vec![GoalNeedSuggestion {
-        kind: NeedKind::Verify,
-        query: format!("highest-uncertainty claim for {focus}"),
-    }];
-    if brain.goal.is_none() {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Observe,
-            query: format!("human goal for {focus}"),
-        });
-    }
-    if brain.mem.is_empty() {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Remember,
-            query: format!("durable context for {focus}"),
-        });
-    } else {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Recall,
-            query: format!("context relevant to {focus}"),
-        });
-    }
-    if !brain.turns.is_empty() {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Compare,
-            query: format!("recent Feed against agenda for {focus}"),
-        });
-    }
-
-    BrainDeliberationDraft {
-        summary: format!("prioritize clean-brain agenda for {focus}"),
-        observations,
-        questions,
-        options: vec![
-            format!("clarify human success criteria for {focus}"),
-            format!("verify the most uncertain claim for {focus}"),
-            format!("remember or recall context that changes {focus}"),
-        ],
-        risks: vec![format!(
-            "a broad agenda can scatter Needs before evidence converges for {focus}"
-        )],
-        needs,
-    }
-}
-
-fn local_brain_scout(brain: &BrainContextReport, prompt: &str) -> BrainDeliberationDraft {
-    let focus = clean_focus(brain, prompt);
-    let mut observations = vec![
-        format!("scout focus: {focus}"),
-        format!("memory signals: {}", brain.mem.len()),
-        format!("recent Need/Feed signals: {}", brain.turns.len()),
-    ];
-    if let Some(goal) = &brain.goal {
-        observations.push(format!("goal anchor: {}", goal.objective));
-        if !goal.constraints.is_empty() {
-            observations.push(format!("goal constraints: {}", goal.constraints.join("; ")));
-        }
-    } else {
-        observations.push("goal anchor is missing".to_string());
-    }
-    if let Some(turn) = brain.turns.last() {
-        observations.push(format!("last Need: {}", turn.need.query));
-        observations.push(format!("last Feed: {}", turn.feed.summary));
-    }
-
-    let mut questions = vec![
-        format!("Which assumption about {focus} could be wrong?"),
-        format!("Which unknown would most change the next Need for {focus}?"),
-        format!("Which success signal would make {focus} less vague?"),
-    ];
-    if brain.goal.is_none() {
-        questions.push(format!("What human Goal should anchor {focus}?"));
-    }
-    if brain.turns.is_empty() {
-        questions.push(format!("What first observation would map {focus}?"));
-    }
-
-    let mut needs = vec![
-        GoalNeedSuggestion {
-            kind: NeedKind::Observe,
-            query: format!("current cognitive landscape for {focus}"),
-        },
-        GoalNeedSuggestion {
-            kind: NeedKind::Verify,
-            query: format!("most important assumption about {focus}"),
-        },
-        GoalNeedSuggestion {
-            kind: NeedKind::Compare,
-            query: format!("possible directions for {focus}"),
-        },
-    ];
-    if brain.mem.is_empty() {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Remember,
-            query: format!("durable constraints that shape {focus}"),
-        });
-    } else {
-        needs.push(GoalNeedSuggestion {
-            kind: NeedKind::Recall,
-            query: format!("memory relevant to {focus}"),
-        });
-    }
-
-    BrainDeliberationDraft {
-        summary: format!("scout cognitive landscape for {focus}"),
-        observations,
-        questions,
-        options: vec![
-            format!("map assumptions before choosing the next Need for {focus}"),
-            format!("compare candidate directions for {focus}"),
-            format!("verify one success signal for {focus}"),
-        ],
-        risks: vec![
-            format!("the brain may overfit to recent Feed while scouting {focus}"),
-            format!("missing human constraints can make {focus} drift"),
-        ],
-        needs,
-    }
-}
-
-fn local_brain_deliberation(brain: &BrainContextReport, prompt: &str) -> BrainDeliberationDraft {
-    let focus = clean_optional(Some(prompt))
-        .map(str::to_string)
-        .or_else(|| brain.goal.as_ref().map(|goal| goal.objective.clone()))
-        .unwrap_or_else(|| "current goal".to_string());
-    let mut observations = Vec::new();
-    if let Some(goal) = &brain.goal {
-        observations.push(format!("active goal: {}", goal.objective));
-        if !goal.constraints.is_empty() {
-            observations.push(format!("goal constraints: {}", goal.constraints.join("; ")));
-        }
-    } else {
-        observations.push("no explicit goal is set".to_string());
-    }
-    observations.push(format!("memory records available: {}", brain.mem.len()));
-    observations.push(format!(
-        "recent Need/Feed turns available: {}",
-        brain.turns.len()
-    ));
-
-    let mut questions = vec![
-        format!("what evidence would show that {focus} is already satisfied?"),
-        format!("what uncertainty most limits the next Need for {focus}?"),
-    ];
-    if brain.mem.is_empty() {
-        questions.push(format!("what should be remembered about {focus}?"));
-    }
-
-    let mut options = vec![
-        format!("clarify the current state for {focus}"),
-        format!("verify satisfaction evidence for {focus}"),
-    ];
-    if !brain.turns.is_empty() {
-        options.push(format!("compare recent Feed with the goal for {focus}"));
-    }
-
-    let mut risks = Vec::new();
-    if brain.goal.is_none() {
-        risks.push("Need suggestions may drift without an explicit Goal".to_string());
-    }
-    if brain.turns.is_empty() {
-        risks.push("recent Feed evidence is empty".to_string());
-    }
-    if risks.is_empty() {
-        risks.push("next Need may still be too broad without sharper evidence".to_string());
-    }
-
-    BrainDeliberationDraft {
-        summary: format!("clean-brain deliberation for {focus}"),
-        observations,
-        questions,
-        options,
-        risks,
-        needs: local_brain_explore_needs(brain, &focus),
-    }
-}
-
-fn local_brain_reflection(brain: &BrainContextReport, prompt: &str) -> BrainReflectionDraft {
-    let focus = clean_optional(Some(prompt))
-        .map(str::to_string)
-        .or_else(|| brain.goal.as_ref().map(|goal| goal.objective.clone()))
-        .unwrap_or_else(|| "current goal".to_string());
-    let mut evidence = Vec::new();
-    if let Some(goal) = &brain.goal {
-        evidence.push(format!("goal: {}", goal.objective));
-        if !goal.constraints.is_empty() {
-            evidence.push(format!("constraints: {}", goal.constraints.join("; ")));
-        }
-    }
-    if !brain.mem.is_empty() {
-        evidence.push(format!("memory records: {}", brain.mem.len()));
-    }
-    if !brain.turns.is_empty() {
-        evidence.push(format!("recent Need/Feed turns: {}", brain.turns.len()));
-    }
-    if evidence.is_empty() {
-        evidence.push("no Goal, memory, or recent Feed evidence yet".to_string());
-    }
-
-    let mut gaps = Vec::new();
-    if brain.goal.is_none() {
-        gaps.push("explicit Goal is missing".to_string());
-    }
-    if brain.mem.is_empty() {
-        gaps.push("memory has no durable goal context".to_string());
-    }
-    if brain.turns.is_empty() {
-        gaps.push("recent Feed evidence is empty".to_string());
-    }
-    if gaps.is_empty() {
-        gaps.push(format!(
-            "satisfaction evidence for {focus} may still be incomplete"
-        ));
-    }
-
-    let questions = vec![
-        format!("what evidence would prove {focus} is satisfied?"),
-        format!("what uncertainty should shape the next Need for {focus}?"),
-    ];
-    let goal_state = if brain.goal.is_none() || brain.turns.is_empty() {
-        "uncertain".to_string()
-    } else {
-        "partial".to_string()
-    };
-    BrainReflectionDraft {
-        summary: format!("clean-brain reflection for {focus}"),
-        goal_state,
-        evidence,
-        gaps,
-        questions,
-        needs: local_brain_explore_needs(brain, &focus),
-    }
-}
-
-fn local_brain_alignment(brain: &BrainContextReport, prompt: &str) -> BrainReflectionDraft {
-    let focus = clean_optional(Some(prompt))
-        .map(str::to_string)
-        .or_else(|| brain.goal.as_ref().map(|goal| goal.objective.clone()))
-        .unwrap_or_else(|| "current cognitive direction".to_string());
-    let mut evidence = Vec::new();
-    if let Some(goal) = &brain.goal {
-        evidence.push(format!("goal: {}", goal.objective));
-        if !goal.constraints.is_empty() {
-            evidence.push(format!("constraints: {}", goal.constraints.join("; ")));
-        }
-    }
-    if let Some(turn) = brain.turns.last() {
-        evidence.push(format!(
-            "latest Need/Feed: {} -> {}",
-            turn.need.query, turn.feed.summary
-        ));
-    }
-    if !brain.mem.is_empty() {
-        evidence.push(format!("memory records available: {}", brain.mem.len()));
-    }
-    if evidence.is_empty() {
-        evidence.push("no Goal/Mem/Need/Feed evidence for alignment yet".to_string());
-    }
-
-    let mut gaps = Vec::new();
-    if brain.goal.is_none() {
-        gaps.push("alignment cannot be judged without an explicit Goal".to_string());
-    }
-    if brain.turns.is_empty() {
-        gaps.push("no recent Need/Feed turn to compare against the Goal".to_string());
-    }
-    if brain
-        .goal
-        .as_ref()
-        .is_some_and(|goal| goal.constraints.is_empty())
-    {
-        gaps.push("Goal has no durable constraints to check".to_string());
-    }
-    if gaps.is_empty() {
-        gaps.push(format!("alignment evidence for {focus} should be verified"));
-    }
-
-    let questions = vec![
-        format!("which part of {focus} most directly serves the Goal?"),
-        format!("which constraint could {focus} violate?"),
-    ];
-    let goal_state = if brain.goal.is_none() {
-        "uncertain".to_string()
-    } else if brain.turns.is_empty() {
-        "partial".to_string()
-    } else {
-        "aligned".to_string()
-    };
-    let mut needs = local_brain_explore_needs(brain, &focus);
-    needs.push(GoalNeedSuggestion {
-        kind: NeedKind::Verify,
-        query: format!("whether {focus} follows the active Goal and constraints"),
-    });
-    needs.push(GoalNeedSuggestion {
-        kind: NeedKind::Remember,
-        query: format!("alignment signal for {focus}"),
-    });
-    let mut seen = BTreeMap::new();
-    let needs = needs
-        .into_iter()
-        .filter(|need| {
-            let key = format!("{}:{}", kind_key(&need.kind), need.query);
-            seen.insert(key, ()).is_none()
-        })
-        .collect();
-
-    BrainReflectionDraft {
-        summary: format!("clean-brain alignment for {focus}"),
-        goal_state,
-        evidence,
-        gaps,
-        questions,
-        needs,
     }
 }
 
@@ -11814,154 +10456,6 @@ fn active_grant_for_tool<'a>(
     })
 }
 
-fn read_args(query: &str) -> Vec<String> {
-    let mut args = query
-        .split_whitespace()
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-    if args.is_empty() {
-        args.push("README.md".to_string());
-    }
-    args
-}
-
-fn manifest_plan_reason(need: &Need, tool: &InstalledToolRef) -> String {
-    if tool.description.is_empty() {
-        return format!("selected {} for {}", tool.id, kind_key(&need.kind));
-    }
-    format!(
-        "selected {} for {}: {}",
-        tool.id,
-        kind_key(&need.kind),
-        tool.description
-    )
-}
-
-fn is_desktop_observe(query: &str) -> bool {
-    let query = query.to_lowercase();
-    [
-        "screen",
-        "desktop",
-        "window",
-        "browser",
-        "url",
-        "ui",
-        "tab",
-        "chrome",
-        "safari",
-        "firefox",
-        "edge",
-        "brave",
-        "clipboard",
-        "copy",
-        "paste",
-    ]
-    .iter()
-    .any(|word| query.contains(word))
-}
-
-fn is_clipboard_query(query: &str) -> bool {
-    let query = query.to_lowercase();
-    ["clipboard", "copy", "paste"]
-        .iter()
-        .any(|word| query.contains(word))
-}
-
-fn is_repair_outcome_query(query: &str) -> bool {
-    let query = query.to_lowercase();
-    query.starts_with("repair score")
-        || query.starts_with("octopus repair score")
-        || query.contains("repair outcome")
-        || query.contains("score repair outcome")
-}
-
-fn is_browser_observe(query: &str) -> bool {
-    let query = query.to_lowercase();
-    [
-        "browser", "tab", "url", "chrome", "safari", "firefox", "edge", "brave",
-    ]
-    .iter()
-    .any(|word| query.contains(word))
-}
-
-fn is_codex_maintenance_query(query: &str) -> bool {
-    let query = query.to_lowercase();
-    [
-        "codex",
-        "oauth",
-        "awesome-llm",
-        "repo-maintainer",
-        "maintain",
-        "maintenance",
-        "wiki",
-        "维护",
-        "接入",
-    ]
-    .iter()
-    .any(|word| query.contains(word))
-}
-
-fn is_desktop_execute(query: &str) -> bool {
-    let query = query.to_lowercase();
-    [
-        "screen",
-        "desktop",
-        "window",
-        "browser",
-        "url",
-        "ui",
-        "tab",
-        "chrome",
-        "safari",
-        "firefox",
-        "edge",
-        "brave",
-        "open ",
-        "click",
-        "type",
-        "mcp",
-        "screenshot",
-        "clipboard",
-        "copy",
-        "paste",
-    ]
-    .iter()
-    .any(|word| query.contains(word))
-}
-
-fn is_visual_observe(query: &str) -> bool {
-    let query = query.to_lowercase();
-    [
-        "pet",
-        "status",
-        "color",
-        "visual",
-        "heartbeat",
-        "memory",
-        "harness",
-        "blocked",
-        "success",
-    ]
-    .iter()
-    .any(|word| query.contains(word))
-}
-
-fn mcp_args(query: &str) -> Vec<String> {
-    let mut parts = query
-        .split_whitespace()
-        .take(3)
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-    while parts.len() < 3 {
-        parts.push(match parts.len() {
-            0 => "default".to_string(),
-            1 => "call".to_string(),
-            _ => "{}".to_string(),
-        });
-    }
-    parts
-}
-
 fn shell_arg(value: &str) -> String {
     if !value.is_empty()
         && value
@@ -12003,44 +10497,12 @@ fn push_unique_limited(values: &mut Vec<String>, value: String, limit: usize) {
     }
 }
 
-fn field_mini_task_route(need: &Need, names: &[String]) -> Option<RouteDecision> {
-    if !has_field_mini_task_context(need) {
-        return None;
-    }
-    names
-        .iter()
-        .find(|name| name.as_str() == "field-mini-task")
-        .map(|name| RouteDecision {
-            tentacle: name.clone(),
-            score: 1.0,
-            reason: format!("{}:{}=field-mini-task-context", kind_key(&need.kind), name),
-        })
-}
-
-fn has_field_mini_task_context(need: &Need) -> bool {
-    need.context
-        .get("field_mini_task")
-        .is_some_and(|value| !value.trim().is_empty())
-}
-
-fn parallel_field_goal_candidates() -> [&'static str; 8] {
-    [
-        "math",
-        "search",
-        "code",
-        "swe",
-        "research",
-        "computer-use",
-        "ib",
-        "robotics",
-    ]
+fn parallel_field_goal_candidates() -> Vec<String> {
+    default_field_pack_ids()
 }
 
 fn parallel_field_goal_pool(run_index: u64) -> Vec<String> {
-    let mut fields = parallel_field_goal_candidates()
-        .into_iter()
-        .map(String::from)
-        .collect::<Vec<_>>();
+    let mut fields = parallel_field_goal_candidates();
     if !fields.is_empty() {
         let rotation = run_index as usize % fields.len();
         fields.rotate_left(rotation);
@@ -12051,21 +10513,14 @@ fn parallel_field_goal_pool(run_index: u64) -> Vec<String> {
 fn fields_mentioned_in_text(value: &str) -> Vec<String> {
     let text = value.to_ascii_lowercase();
     let mut fields = Vec::new();
-    for (field, aliases) in [
-        ("math", &["math", "mathematical"][..]),
-        ("search", &["search", "retrieval"]),
-        ("code", &["code", "coding"]),
-        ("swe", &["swe", "issue-style", "repo task"]),
-        ("research", &["research", "claim"]),
-        (
-            "computer-use",
-            &["computer-use", "computer use", "desktop", "browser"],
-        ),
-        ("ib", &["ib", "investment banking", "finance-work"]),
-        ("robotics", &["robotics", "simulator", "robot"]),
-    ] {
-        if aliases.iter().any(|alias| text.contains(alias)) {
-            push_unique_limited(&mut fields, field.to_string(), 8);
+    let limit = default_field_pack_ids().len().max(1);
+    for (field, aliases) in default_field_pack_aliases() {
+        if aliases
+            .iter()
+            .chain(std::iter::once(&field))
+            .any(|alias| text.contains(&alias.to_ascii_lowercase()))
+        {
+            push_unique_limited(&mut fields, field, limit);
         }
     }
     fields
@@ -12122,26 +10577,112 @@ fn command_available(command: &str) -> bool {
 mod tests {
     use super::*;
 
-    fn write_field_mini_task_runner_stub(target: &Path) {
-        fs::write(
-            target,
-            r#"field_result = None
-if field_result is not None:
-    print(json.dumps(field_result, ensure_ascii=True))
-    raise SystemExit(0)
-
-next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
-"#,
+    #[test]
+    fn plan_from_llm_content_extracts_fenced_json() {
+        let plan = plan_from_llm_content(
+            "```json\n{\"calls\":[{\"tool\":\"verify\",\"reason\":\"check\",\"payload\":{}}],\"summary\":\"ok\"}\n```",
         )
         .unwrap();
+
+        assert_eq!(plan.calls[0].tool, "verify");
+        assert_eq!(plan.summary, "ok");
     }
 
-    fn assert_field_template_patch(patch: &str, field: &str, mini_task: &str) {
-        let target =
-            format!("b/tentacles/field-mini-task/repair-templates/{field}/{mini_task}.pyfrag");
-        assert!(patch.contains(&target), "{patch}");
-        assert!(!patch.contains("b/tentacles/field-mini-task/tools/run_field_mini_task.sh"));
-        assert!(!patch.contains("Octopus evolution candidate"));
+    #[test]
+    fn tool_result_json_accepts_artifact_only_evidence() {
+        let result = tool_result_from_json(
+            "run_field_mini_task",
+            r#"{
+              "status": "satisfied",
+              "output": "ok",
+              "evidence": [
+                {
+                  "source": "field-mini-task/math/checks",
+                  "artifact_path": ".octopus/field-mini-task/math/CHECKS.json",
+                  "confidence": 0.95,
+                  "metadata": {
+                    "field_pass_evidence": "artifact-backed verifier evidence"
+                  }
+                }
+              ],
+              "metadata": {
+                "verifier_status": "satisfied",
+                "field_pass_evidence": "artifact-backed verifier evidence"
+              }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(result.status, Status::Satisfied);
+        assert_eq!(
+            result
+                .metadata
+                .get("field_pass_evidence")
+                .map(String::as_str),
+            Some("artifact-backed verifier evidence")
+        );
+        assert_eq!(result.evidence[0].content, "");
+    }
+
+    #[test]
+    fn manifest_tentacle_retries_invalid_llm_plan_once() {
+        struct RetryChat {
+            calls: usize,
+        }
+
+        impl ChatClient for RetryChat {
+            fn chat(&mut self, _messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                self.calls += 1;
+                let content = if self.calls == 1 {
+                    "no valid plan".to_string()
+                } else {
+                    r#"{"calls":[{"tool":"artifact","reason":"retry selected tool","payload":{}}],"summary":"retry ok"}"#.to_string()
+                };
+                Ok(ChatResponse {
+                    content,
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
+        let mut state = HarnessState::default();
+        state.installed_tentacles.push(InstalledTentacle {
+            id: "retry-tentacle".to_string(),
+            name: "Retry Tentacle".to_string(),
+            source: "/tmp/retry-tentacle/manifest.json".to_string(),
+            brain_kind: "llm".to_string(),
+            brain_prompt: "Select a tool for the Need.".to_string(),
+            feedback_contract: None,
+            runtime_kinds: vec!["static-html".to_string()],
+            needs: vec!["verify".to_string()],
+            tools: Vec::new(),
+            tool_meta: vec![InstalledTool {
+                id: "artifact".to_string(),
+                description: "Static artifact".to_string(),
+                input: "none".to_string(),
+                output: "artifact path".to_string(),
+                kind: "static-html".to_string(),
+                entrypoint: "/tmp/octopus-retry-artifact.html".to_string(),
+                contract: None,
+                permission: None,
+            }],
+            editable: Vec::new(),
+            evolution_surfaces: Vec::new(),
+        });
+        let factory: ChatClientFactory = Arc::new(|| Ok(Box::new(RetryChat { calls: 0 })));
+        let mut harness = Harness::with_state_and_manifest_llm_factory(state, factory);
+
+        let feed = harness.feed_one(&Need::new(NeedKind::Verify, "claim"));
+
+        assert_eq!(feed.status, Status::Satisfied, "{}", feed.summary);
+        assert_eq!(
+            feed.metadata.get("plan_source"),
+            Some(&"llm-retry".to_string())
+        );
+        assert!(feed
+            .metadata
+            .get("plan")
+            .is_some_and(|plan| plan.contains("retry selected tool")));
     }
 
     #[test]
@@ -12494,53 +11035,6 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
     }
 
     #[test]
-    fn evolution_recommendation_uses_scored_outcomes() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let mut state = HarnessState::default();
-        state.record_evolution_outcome(
-            "swe-agent",
-            "03-runtime-code",
-            Status::Satisfied,
-            "runtime evidence improved",
-        );
-        let proposal =
-            propose_tentacle_evolution_with_state(root, "swe-agent", "improve feed", &state)
-                .unwrap();
-
-        let recommendation = recommend_tentacle_evolution_apply(&proposal, &state).unwrap();
-
-        assert_eq!(recommendation.candidate_id, "03-runtime-code");
-        assert_eq!(recommendation.surface_id, "runtime_code");
-        assert_eq!(recommendation.outcome_count, 1);
-        assert!(recommendation.recommendation_score > 0.0);
-        assert_eq!(recommendation.apply.status, "needs_authorization");
-    }
-
-    #[test]
-    fn evolution_recommendation_avoids_failed_candidates() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let mut state = HarnessState::default();
-        state.record_evolution_outcome(
-            "swe-agent",
-            "03-runtime-code",
-            Status::Failed,
-            "runtime change regressed feed",
-        );
-        let proposal =
-            propose_tentacle_evolution_with_state(root, "swe-agent", "improve feed", &state)
-                .unwrap();
-
-        let recommendation = recommend_tentacle_evolution_apply(&proposal, &state).unwrap();
-
-        assert_ne!(recommendation.candidate_id, "03-runtime-code");
-        assert_eq!(recommendation.recommendation_score, 0.0);
-    }
-
-    #[test]
     fn harness_state_beat_runs_three_hearts() {
         let mut harness = Harness::new();
         harness.feed_one(&Need::new(NeedKind::Remember, "older memory"));
@@ -12687,7 +11181,15 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
             default_permissions("github"),
         );
         let mut harness = Harness::with_state(state);
-        harness.chat("build a clean-brain agent");
+        harness.chat_with_refinement(
+            "build a clean-brain agent",
+            GoalRefinement {
+                objective: Some("build a clean-brain agent".to_string()),
+                constraints: Vec::new(),
+                summary: Some("goal refined by external model".to_string()),
+                needs: Vec::new(),
+            },
+        );
         harness.feed_one(&Need::new(NeedKind::Observe, "."));
         let report = harness.state.status_report();
 
@@ -12704,7 +11206,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
         assert_eq!(report.goal.as_ref().unwrap().turns.len(), 1);
         assert_eq!(
             report.goal.as_ref().unwrap().turns[0].summary,
-            "remembered m1"
+            "goal refined by external model"
         );
         assert_eq!(
             report.active_grants,
@@ -12767,7 +11269,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
             .join("tentacles");
         let mut state = HarnessState {
             goal: Some(Goal::new(
-                "Adapt Octopus tentacles across eight parallel field objectives toward v0.2.0",
+                "Adapt Octopus tentacles across peer field objectives toward v0.2.0",
             )),
             ..HarnessState::default()
         };
@@ -12881,7 +11383,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
 
         let report = state.field_trajectory_report().unwrap();
 
-        assert_eq!(report.field_count, 8);
+        assert_eq!(report.field_count, default_field_pack_ids().len());
         assert!(report.all_first_pass_satisfied);
         assert!(!report.all_pack_tasks_satisfied);
         assert_eq!(report.active_slot_field.as_deref(), Some("math"));
@@ -12890,7 +11392,9 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
             .iter()
             .find(|field| field.field == "math")
             .unwrap();
-        assert_eq!(math.mini_task_count, 3);
+        let catalog = default_field_pack_catalog().unwrap();
+        let math_pack = catalog.packs.iter().find(|pack| pack.id == "math").unwrap();
+        assert_eq!(math.mini_task_count, math_pack.mini_tasks.len());
         assert_eq!(math.satisfied_mini_task_count, 1);
         assert_eq!(math.next_mini_task.as_deref(), Some("math-mini-2"));
         assert!(report
@@ -12904,7 +11408,16 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
 
         state.next_parallel_evolution_run_index = 35;
         let rotated_report = state.field_trajectory_report().unwrap();
-        assert_eq!(rotated_report.active_slot_field.as_deref(), Some("swe"));
+        let active = rotated_report
+            .active_slot_field
+            .as_deref()
+            .expect("active field");
+        let active_summary = rotated_report
+            .fields
+            .iter()
+            .find(|field| field.field == active)
+            .expect("active field summary");
+        assert!(active_summary.next_mini_task.is_some());
     }
 
     #[test]
@@ -12967,7 +11480,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
         )));
 
         state.goal = Some(Goal::new(
-            "Adapt Octopus tentacles across eight parallel field objectives toward v0.2.0",
+            "Adapt Octopus tentacles across peer field objectives toward v0.2.0",
         ));
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
@@ -12983,6 +11496,139 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
             .next_action
             .contains("evolve recommend field-mini-task"));
         assert!(!status.next_action.contains("evolve parallel"));
+    }
+
+    #[test]
+    fn field_trajectory_report_partial_harder_task_overrides_layer_complete() {
+        let mut state = HarnessState::default();
+        let catalog = default_field_pack_catalog().unwrap();
+        for pack in &catalog.packs {
+            for task in &pack.mini_tasks {
+                let trace = state.record_feed_trace_from_feed(&Feed {
+                    need: Need::new(
+                        NeedKind::Verify,
+                        format!("Run {} mini task {}", pack.id, task.id),
+                    ),
+                    status: Status::Satisfied,
+                    evidence: vec![Evidence::new("field-mini-task", "pass evidence")],
+                    summary: format!("{} satisfied", task.id),
+                    metadata: BTreeMap::from([
+                        ("tentacle".to_string(), "field-mini-task".to_string()),
+                        ("tool".to_string(), "run_field_mini_task".to_string()),
+                        ("field_pack".to_string(), pack.id.clone()),
+                        ("field_mini_task".to_string(), task.id.clone()),
+                    ]),
+                });
+                state
+                    .record_field_verifier_result(
+                        trace.index,
+                        Status::Satisfied,
+                        None,
+                        None,
+                        format!("{} verifier passed", task.id),
+                    )
+                    .unwrap();
+            }
+        }
+        let trace = state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Verify, "Run search mini task search-mini-4"),
+            status: Status::Partial,
+            evidence: vec![Evidence::new("field-mini-task", "missing search evidence")],
+            summary: "search mini-4 partial".to_string(),
+            metadata: BTreeMap::from([
+                ("tentacle".to_string(), "field-mini-task".to_string()),
+                ("tool".to_string(), "run_field_mini_task".to_string()),
+                ("field_pack".to_string(), "search".to_string()),
+                ("field_mini_task".to_string(), "search-mini-4".to_string()),
+            ]),
+        });
+        state
+            .record_field_verifier_result(
+                trace.index,
+                Status::Partial,
+                Some("field_mini_task_incomplete".to_string()),
+                None,
+                "search mini-4 still needs explicit pass evidence",
+            )
+            .unwrap();
+
+        let report = state.field_trajectory_report().unwrap();
+
+        assert!(!report.all_pack_tasks_satisfied);
+        assert_eq!(report.active_slot_field.as_deref(), Some("search"));
+        assert!(report.active_slot_reason.contains("search"));
+        let search = report
+            .fields
+            .iter()
+            .find(|field| field.field == "search")
+            .unwrap();
+        assert!(search.needs_repair);
+        assert_eq!(search.latest_mini_task.as_deref(), Some("search-mini-4"));
+        assert!(report
+            .next
+            .iter()
+            .any(|item| item.contains("improve search harness")));
+        let pool = state.field_pool_status_report(None).unwrap();
+        assert_eq!(pool.completed_fields, default_field_pack_ids().len() - 1);
+        assert!(pool
+            .slots
+            .iter()
+            .any(|slot| slot.field == "search" && !slot.completed && slot.needs_repair));
+    }
+
+    #[test]
+    fn field_pool_status_prefers_verifier_over_stale_worker_status() {
+        let mut state = HarnessState::default();
+        let trace = state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Verify, "Run math mini task math-mini-1"),
+            status: Status::Satisfied,
+            evidence: vec![Evidence::new("field-mini-task", "verified math")],
+            summary: "math-mini-1 satisfied".to_string(),
+            metadata: BTreeMap::from([
+                ("tentacle".to_string(), "field-mini-task".to_string()),
+                ("tool".to_string(), "run_field_mini_task".to_string()),
+                ("field_pack".to_string(), "math".to_string()),
+                ("field_mini_task".to_string(), "math-mini-1".to_string()),
+            ]),
+        });
+        let verifier = state
+            .record_field_verifier_result(
+                trace.index,
+                Status::Satisfied,
+                None,
+                None,
+                "math-mini-1 explicit pass evidence",
+            )
+            .unwrap();
+        state.parallel_evolution_runs.push(ParallelEvolutionRun {
+            index: 1,
+            objective: "math field evolution".to_string(),
+            field_pool_size: default_parallel_field_pool_size(),
+            field_pool_policy: default_parallel_field_pool_policy(),
+            candidate_fields: vec!["math".to_string()],
+            requested_worker_count: 1,
+            worker_count: 1,
+            worker_policy: default_parallel_worker_policy(),
+            workers: vec![ParallelEvolutionWorker {
+                id: "octopus-test-1".to_string(),
+                field: "math".to_string(),
+                mini_task: Some("math-mini-1".to_string()),
+                goal: "old worker status".to_string(),
+                updated_at_secs: 1,
+                queued_need_index: None,
+                source_trace_index: Some(trace.index),
+                verifier_result_index: Some(verifier.index),
+                status: Status::Partial,
+                next_action: "octopus fields summary".to_string(),
+            }],
+            summary: "stale worker partial".to_string(),
+        });
+
+        let pool = state.field_pool_status_report(None).unwrap();
+        let math = pool.slots.iter().find(|slot| slot.field == "math").unwrap();
+
+        assert_eq!(math.latest_worker_status, Some(Status::Partial));
+        assert_eq!(math.latest_status, Some(Status::Satisfied));
     }
 
     #[test]
@@ -13070,7 +11716,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
 
         let run = state
             .start_parallel_evolution(
-                "eight parallel field objectives; open one harder-task worker slot from the peer field pool",
+                "peer field objectives; open one harder-task worker slot from the peer field pool",
                 1,
             )
             .unwrap();
@@ -13175,7 +11821,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
     fn parallel_evolution_queues_one_need_per_worker_slot() {
         let mut state = HarnessState::default();
         let run = state
-            .start_parallel_evolution("eight parallel field objectives", 3)
+            .start_parallel_evolution("peer field objectives", 3)
             .unwrap();
 
         assert_eq!(run.worker_count, 3);
@@ -13208,7 +11854,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
     fn parallel_evolution_worker_records_actual_feed_result() {
         let mut state = HarnessState::default();
         let run = state
-            .start_parallel_evolution("eight parallel field objectives", 1)
+            .start_parallel_evolution("peer field objectives", 1)
             .unwrap();
         let queued_need_index = run.workers[0].queued_need_index.unwrap();
         let trace = state.record_feed_trace_from_feed(&Feed {
@@ -13256,7 +11902,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
     fn parallel_evolution_worker_refreshes_failed_target_to_field_mini_task() {
         let mut state = HarnessState::default();
         let run = state
-            .start_parallel_evolution("eight parallel field objectives", 1)
+            .start_parallel_evolution("peer field objectives", 1)
             .unwrap();
         let queued_need_index = run.workers[0].queued_need_index.unwrap();
         let trace = state.record_feed_trace_from_feed(&Feed {
@@ -13310,27 +11956,6 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
     }
 
     #[test]
-    fn chat_refines_goal_outside_brain_state() {
-        let mut harness = Harness::new();
-
-        let first = harness.chat("build a clean-brain agent");
-        let second = harness.chat("make tools think through tentacles");
-
-        let goal = harness.state.goal.as_ref().unwrap();
-        assert_eq!(first.goal.objective, "build a clean-brain agent");
-        assert_eq!(second.goal.constraints.len(), 1);
-        assert_eq!(goal.objective, "build a clean-brain agent");
-        assert_eq!(
-            goal.constraints,
-            vec!["make tools think through tentacles".to_string()]
-        );
-        assert_eq!(harness.state.goal_turns.len(), 2);
-        assert!(harness.state.memory.recall("tentacles", 1)[0]
-            .text
-            .contains("goal update"));
-    }
-
-    #[test]
     fn chat_can_refine_goal_with_llm_without_tools() {
         struct FakeChat;
 
@@ -13365,32 +11990,6 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
             Some("llm")
         );
         assert!(harness.state.routes.score(&NeedKind::Remember, "memory") > 1.0);
-    }
-
-    #[test]
-    fn clean_brain_explore_suggests_needs_without_feed() {
-        let mut state = HarnessState {
-            goal: Some(Goal::new("build a clean brain")),
-            ..HarnessState::default()
-        };
-        state.memory.remember("main brain only expresses Need");
-
-        let report = state.clean_brain_explore("what should the brain ask next", 5);
-
-        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
-        assert_eq!(report.source, "local");
-        assert!(report
-            .needs
-            .iter()
-            .any(|need| need.kind == NeedKind::Observe));
-        assert!(report
-            .needs
-            .iter()
-            .any(|need| need.kind == NeedKind::Verify));
-        assert_eq!(report.audit.status, Status::Satisfied);
-        assert_eq!(report.audit.issue_count, 0);
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
     }
 
     #[test]
@@ -13431,49 +12030,6 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
     }
 
     #[test]
-    fn clean_brain_brief_compacts_context_without_feed() {
-        let mut state = HarnessState {
-            goal: Some(Goal::new("keep latest model context clean")),
-            ..HarnessState::default()
-        };
-        state
-            .memory
-            .remember("brief should carry durable goal context");
-        let need = Need::new(NeedKind::Verify, "goal evidence");
-        state.record_feed_trace_from_feed(&Feed::satisfied(
-            &need,
-            "verified clean boundary",
-            "swe-agent",
-        ));
-
-        let report = state.clean_brain_brief("prepare next model turn", 5);
-        let saved = state.queue_exploration_report(&report);
-
-        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
-        assert_eq!(report.source, "local_brief");
-        assert!(report.summary.contains("clean-brain brief"));
-        assert!(report
-            .needs
-            .iter()
-            .any(|need| need.kind == NeedKind::Observe));
-        assert!(report
-            .needs
-            .iter()
-            .any(|need| need.kind == NeedKind::Verify));
-        assert!(report
-            .needs
-            .iter()
-            .any(|need| need.kind == NeedKind::Recall));
-        assert_eq!(report.audit.status, Status::Satisfied);
-        assert!(report
-            .next
-            .iter()
-            .any(|next| next.contains("brain --brief --save")));
-        assert_eq!(saved.queued.len(), report.audit.clean_needs.len());
-        assert!(state.routes.scores.is_empty());
-    }
-
-    #[test]
     fn clean_brain_brief_with_client_keeps_context_clean() {
         struct FakeChat;
 
@@ -13508,47 +12064,6 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
         assert_eq!(report.summary, "compact cognitive brief");
         assert_eq!(report.needs[0].kind, NeedKind::Verify);
         assert_eq!(report.audit.status, Status::Satisfied);
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-    }
-
-    #[test]
-    fn clean_brain_intent_maps_goal_to_cognitive_needs_without_feed() {
-        let mut state = HarnessState {
-            goal: Some(Goal::new("let strong models choose the next Need")),
-            ..HarnessState::default()
-        };
-        state
-            .memory
-            .remember("intent should stay inside Goal/Mem/Need/Feed");
-
-        let report = state.clean_brain_intent("release model cognition", 5);
-        let saved = state.queue_exploration_report(&report);
-
-        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
-        assert_eq!(report.source, "local_intent");
-        assert!(report
-            .needs
-            .iter()
-            .any(|need| need.kind == NeedKind::Observe));
-        assert!(report
-            .needs
-            .iter()
-            .any(|need| need.kind == NeedKind::Verify));
-        assert!(report
-            .needs
-            .iter()
-            .any(|need| need.kind == NeedKind::Compare));
-        assert!(report
-            .needs
-            .iter()
-            .any(|need| need.kind == NeedKind::Execute));
-        assert_eq!(report.audit.status, Status::Satisfied);
-        assert!(report
-            .next
-            .iter()
-            .any(|next| next.contains("brain --intent --save")));
-        assert_eq!(saved.queued.len(), report.audit.clean_needs.len());
         assert!(state.feed_traces.is_empty());
         assert!(state.routes.scores.is_empty());
     }
@@ -13748,50 +12263,6 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
     }
 
     #[test]
-    fn need_queue_saves_exploration_without_feed() {
-        let mut state = HarnessState {
-            goal: Some(Goal::new("keep main brain clean")),
-            ..HarnessState::default()
-        };
-        let report = state.clean_brain_explore("next cognition", 5);
-
-        let saved = state.queue_exploration_report(&report);
-
-        assert_eq!(saved.queued.len(), report.needs.len());
-        assert_eq!(state.pending_need_queue_count(), report.needs.len());
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-
-        let saved_again = state.queue_exploration_report(&report);
-        assert_eq!(saved_again.queued.len(), report.needs.len());
-        assert_eq!(state.pending_need_queue_count(), report.needs.len());
-    }
-
-    #[test]
-    fn clean_brain_focuses_need_kind_without_feed() {
-        let mut state = HarnessState {
-            goal: Some(Goal::new("choose the next model path")),
-            ..HarnessState::default()
-        };
-        let report = state.clean_brain_focus(NeedKind::Compare, "model path", 5);
-        let saved = state.queue_exploration_report(&report);
-
-        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
-        assert_eq!(report.source, "local_focus_compare");
-        assert_eq!(report.needs.len(), 1);
-        assert_eq!(report.needs[0].kind, NeedKind::Compare);
-        assert_eq!(report.audit.status, Status::Satisfied);
-        assert!(report
-            .next
-            .iter()
-            .any(|next| next.contains("--focus compare")));
-        assert_eq!(saved.queued.len(), 1);
-        assert_eq!(state.pending_need_queue_count(), 1);
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-    }
-
-    #[test]
     fn clean_brain_focus_with_client_keeps_context_clean() {
         struct FakeChat;
 
@@ -13836,7 +12307,17 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
             goal: Some(Goal::new("review Needs before Feed")),
             ..HarnessState::default()
         };
-        let report = state.clean_brain_explore("review next", 5);
+        let report = state.clean_brain_explore_from_draft(
+            "review next",
+            5,
+            BrainExploreDraft {
+                summary: "external model need".to_string(),
+                needs: vec![GoalNeedSuggestion {
+                    kind: NeedKind::Verify,
+                    query: "whether the next Feed supports the Goal".to_string(),
+                }],
+            },
+        );
         let saved = state.queue_exploration_report(&report);
         let index = saved.queued[0].index;
 
@@ -13868,148 +12349,6 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
             .messages
             .iter()
             .all(|message| !message.content.contains("ToolSpec")));
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-    }
-
-    #[test]
-    fn clean_brain_deliberates_without_feed_and_queues_clean_needs() {
-        let mut state = HarnessState {
-            goal: Some(Goal::new("release LLM capacity without tool burden")),
-            ..HarnessState::default()
-        };
-        state.memory.remember("main brain context stays clean");
-
-        let report = state.clean_brain_deliberate("think before next Need", 5);
-
-        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
-        assert_eq!(report.source, "local");
-        assert!(!report.observations.is_empty());
-        assert!(!report.questions.is_empty());
-        assert!(!report.options.is_empty());
-        assert!(!report.risks.is_empty());
-        assert!(report.audit.issue_count == 0);
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-
-        let saved = state.queue_deliberation_report(&report);
-
-        assert_eq!(saved.queued.len(), report.needs.len());
-        assert_eq!(state.pending_need_queue_count(), report.needs.len());
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-    }
-
-    #[test]
-    fn clean_brain_clarifies_human_goal_without_feed() {
-        let mut state = HarnessState {
-            goal: Some(Goal::new("release useful Octopus")),
-            ..HarnessState::default()
-        };
-        state
-            .memory
-            .remember("human goal details should stay durable");
-
-        let report = state.clean_brain_clarify("what should the user clarify?", 5);
-
-        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
-        assert_eq!(report.source, "local_clarify");
-        assert!(report.summary.contains("clarify"));
-        assert!(!report.observations.is_empty());
-        assert!(report
-            .questions
-            .iter()
-            .any(|question| question.contains("outcome")));
-        assert!(!report.options.is_empty());
-        assert!(!report.risks.is_empty());
-        assert_eq!(report.audit.issue_count, 0);
-        assert!(report
-            .next
-            .iter()
-            .any(|next| next.contains("brain --clarify --save")));
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-
-        let saved = state.queue_deliberation_report(&report);
-
-        assert_eq!(saved.queued.len(), report.needs.len());
-        assert_eq!(state.pending_need_queue_count(), report.needs.len());
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-    }
-
-    #[test]
-    fn clean_brain_agenda_prioritizes_needs_without_feed() {
-        let mut state = HarnessState {
-            goal: Some(Goal::new("make Octopus useful for clean-brain work")),
-            ..HarnessState::default()
-        };
-        state
-            .memory
-            .remember("agenda should keep tools outside the brain");
-
-        let report = state.clean_brain_agenda("choose the next cognitive priority", 5);
-
-        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
-        assert_eq!(report.source, "local_agenda");
-        assert!(report.summary.contains("agenda"));
-        assert!(!report.observations.is_empty());
-        assert!(!report.questions.is_empty());
-        assert!(!report.options.is_empty());
-        assert!(!report.risks.is_empty());
-        assert_eq!(report.audit.issue_count, 0);
-        assert!(report
-            .next
-            .iter()
-            .any(|next| next.contains("brain --agenda --save")));
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-
-        let saved = state.queue_deliberation_report(&report);
-
-        assert_eq!(saved.queued.len(), report.needs.len());
-        assert_eq!(state.pending_need_queue_count(), report.needs.len());
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-    }
-
-    #[test]
-    fn clean_brain_scout_maps_cognitive_landscape_without_feed() {
-        let mut state = HarnessState {
-            goal: Some(Goal::new("release more LLM thinking capacity")),
-            ..HarnessState::default()
-        };
-        state
-            .memory
-            .remember("scouting should keep tools outside the brain");
-
-        let report = state.clean_brain_scout("map the next product direction", 5);
-
-        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
-        assert_eq!(report.source, "local_scout");
-        assert!(report.summary.contains("scout"));
-        assert!(report
-            .observations
-            .iter()
-            .any(|item| item.contains("scout focus")));
-        assert!(report
-            .questions
-            .iter()
-            .any(|question| question.contains("assumption")));
-        assert!(!report.options.is_empty());
-        assert!(!report.risks.is_empty());
-        assert_eq!(report.audit.issue_count, 0);
-        assert!(report
-            .next
-            .iter()
-            .any(|next| next.contains("brain --scout --save")));
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-
-        let saved = state.queue_deliberation_report(&report);
-
-        assert_eq!(saved.queued.len(), report.needs.len());
-        assert_eq!(state.pending_need_queue_count(), report.needs.len());
         assert!(state.feed_traces.is_empty());
         assert!(state.routes.scores.is_empty());
     }
@@ -14054,75 +12393,6 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
     }
 
     #[test]
-    fn clean_brain_reflects_on_goal_without_feed() {
-        let mut state = HarnessState {
-            goal: Some(Goal::new("keep the LLM brain focused on Needs")),
-            ..HarnessState::default()
-        };
-        state
-            .memory
-            .remember("brain reflection uses clean context only");
-
-        let report = state.clean_brain_reflect("what evidence is missing?", 5);
-
-        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
-        assert_eq!(report.source, "local");
-        assert!(!report.evidence.is_empty());
-        assert!(!report.gaps.is_empty());
-        assert!(!report.questions.is_empty());
-        assert!(report.audit.issue_count == 0);
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-
-        let saved = state.queue_reflection_report(&report);
-
-        assert_eq!(saved.queued.len(), report.needs.len());
-        assert_eq!(state.pending_need_queue_count(), report.needs.len());
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-    }
-
-    #[test]
-    fn clean_brain_aligns_goal_without_feed() {
-        let mut goal = Goal::new("ship a clean-brain product");
-        goal.refine("keep tools outside the main brain".to_string());
-        let mut state = HarnessState {
-            goal: Some(goal),
-            ..HarnessState::default()
-        };
-        state
-            .memory
-            .remember("alignment should check Goal constraints only");
-
-        let report = state.clean_brain_align("does this still serve the goal?", 5);
-
-        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
-        assert_eq!(report.source, "local_align");
-        assert!(report.summary.contains("alignment"));
-        assert!(!report.evidence.is_empty());
-        assert!(!report.gaps.is_empty());
-        assert!(!report.questions.is_empty());
-        assert!(report
-            .needs
-            .iter()
-            .any(|need| need.kind == NeedKind::Verify));
-        assert_eq!(report.audit.issue_count, 0);
-        assert!(report
-            .next
-            .iter()
-            .any(|next| next.contains("brain --align --save")));
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-
-        let saved = state.queue_reflection_report(&report);
-
-        assert_eq!(saved.queued.len(), report.needs.len());
-        assert_eq!(state.pending_need_queue_count(), report.needs.len());
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-    }
-
-    #[test]
     fn clean_brain_align_with_client_keeps_context_clean() {
         struct FakeChat;
 
@@ -14156,44 +12426,6 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
         assert_eq!(report.source, "llm_align");
         assert_eq!(report.goal_state, "aligned");
         assert_eq!(report.audit.status, Status::Satisfied);
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-    }
-
-    #[test]
-    fn clean_brain_memory_suggests_memory_needs_without_feed() {
-        let mut goal = Goal::new("keep the clean brain focused");
-        goal.refine("remember durable context only".to_string());
-        let mut state = HarnessState {
-            goal: Some(goal),
-            ..HarnessState::default()
-        };
-        state.memory.remember("old clean-brain context");
-
-        let report = state.clean_brain_memory("compress durable context", 5);
-
-        assert_eq!(report.policy, CLEAN_BRAIN_CONTEXT_POLICY);
-        assert_eq!(report.source, "local_memory");
-        assert!(report
-            .needs
-            .iter()
-            .any(|need| matches!(need.kind, NeedKind::Remember)));
-        assert!(report
-            .needs
-            .iter()
-            .any(|need| matches!(need.kind, NeedKind::Recall)));
-        assert_eq!(report.audit.issue_count, 0);
-        assert!(report
-            .next
-            .iter()
-            .any(|next| next.contains("brain --memory --save")));
-        assert!(state.feed_traces.is_empty());
-        assert!(state.routes.scores.is_empty());
-
-        let saved = state.queue_exploration_report(&report);
-
-        assert_eq!(saved.queued.len(), report.needs.len());
-        assert_eq!(state.pending_need_queue_count(), report.needs.len());
         assert!(state.feed_traces.is_empty());
         assert!(state.routes.scores.is_empty());
     }
@@ -14340,6 +12572,17 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
 
     #[test]
     fn planning_tentacle_selects_tool_before_execution() {
+        struct FakeChat;
+
+        impl ChatClient for FakeChat {
+            fn chat(&mut self, _messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                Ok(ChatResponse {
+                    content: r#"{"calls":[{"tool":"verifier","reason":"model chose verifier","payload":{}}],"summary":"planned by model"}"#.to_string(),
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
         let tool = FunctionTool::new(
             "verifier",
             "verifies claims",
@@ -14350,7 +12593,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
         harness.add_tentacle(Box::new(PlanningTentacle::new(
             "research",
             vec![NeedKind::Verify],
-            RulePlanner,
+            ChatPlanner::new(FakeChat),
             vec![Box::new(tool)],
         )));
 
@@ -14393,7 +12636,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
     }
 
     #[test]
-    fn chat_planner_does_not_fallback_to_rule_execution() {
+    fn chat_planner_has_no_hidden_rule_execution() {
         struct BadChat;
 
         impl ChatClient for BadChat {
@@ -14702,6 +12945,46 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn codex_cli_chat_client_disables_image_generation() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir =
+            std::env::temp_dir().join(format!("octopus-codex-text-only-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let args_path = dir.join("args.txt");
+        let codex = dir.join("fake-codex.sh");
+        fs::write(
+            &codex,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$*\" > '{}'\nout=''\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = '--output-last-message' ]; then shift; out=\"$1\"; fi\n  shift || true\ndone\nprintf '%s' 'codex text ok' > \"$out\"\n",
+                args_path.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&codex).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&codex, permissions).unwrap();
+        let mut client = CodexCliChatClient::new(CodexCliConfig {
+            model: Some("codex-model".to_string()),
+            command: codex.to_string_lossy().to_string(),
+            timeout_seconds: 1,
+            retry_count: 0,
+            retry_delay_ms: 1,
+        });
+
+        let response = client
+            .chat(&[ChatMessage::new(ChatRole::User, "hello")])
+            .unwrap();
+
+        let args = fs::read_to_string(&args_path).unwrap();
+        assert_eq!(response.content, "codex text ok");
+        assert!(args.contains("--disable image_generation"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn default_catalog_contains_installable_profiles() {
         let profiles = default_tentacle_profiles();
@@ -15001,571 +13284,6 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
         let _ = fs::remove_dir_all(root);
     }
 
-    #[test]
-    fn tentacle_evolution_proposal_writes_safe_artifacts() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let proposal = propose_tentacle_evolution(
-            &root,
-            "swe-agent",
-            "improve repository observation feed quality",
-        )
-        .unwrap();
-
-        assert_eq!(proposal.tentacle_id, "swe-agent");
-        assert!(proposal.current_brain_prompt.contains("cognitive Need"));
-        assert!(proposal.editable.contains(&"brain.prompt".to_string()));
-        assert!(proposal
-            .surfaces
-            .iter()
-            .any(|surface| surface.id == "runtime_code"));
-        assert!(proposal
-            .patch_candidates
-            .iter()
-            .any(|candidate| candidate.surface_id == "runtime_code"
-                && candidate.title.contains("runtime harness")
-                && candidate.draft.authorization_required));
-        assert!(proposal
-            .files
-            .iter()
-            .any(|file| file.path == "manifest.json#brain.prompt"));
-        assert!(proposal
-            .next_steps
-            .iter()
-            .any(|step| step.contains("cargo test")));
-
-        let workspace = std::env::temp_dir().join(format!("octopus-evolve-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&workspace);
-        let artifact = write_tentacle_evolution_artifacts(&workspace, &proposal).unwrap();
-        let markdown = fs::read_to_string(&artifact.proposal_path).unwrap();
-        let candidates = fs::read_to_string(&artifact.candidates_path).unwrap();
-        let drafts = fs::read_to_string(&artifact.drafts_path).unwrap();
-        let runtime_draft_path = artifact
-            .patch_draft_paths
-            .iter()
-            .find(|path| path.contains("03-runtime-code"))
-            .unwrap();
-        let runtime_draft = fs::read_to_string(runtime_draft_path).unwrap();
-        let json = fs::read_to_string(&artifact.json_path).unwrap();
-
-        assert!(markdown.contains("# Tentacle Evolution: swe-agent"));
-        assert!(markdown.contains("improve repository observation feed quality"));
-        assert!(markdown.contains("## Evolution Surfaces"));
-        assert!(markdown.contains("## Patch Candidates"));
-        assert!(candidates.contains("# Patch Candidates: swe-agent"));
-        assert!(candidates.contains("surface: `runtime_code`"));
-        assert!(drafts.contains("# Patch Drafts: swe-agent"));
-        assert!(runtime_draft.contains("authorization_required: true"));
-        assert!(runtime_draft.contains("diff intent:"));
-        assert!(json.contains("\"tentacle_id\": \"swe-agent\""));
-        assert!(json.contains("\"patch_candidates\""));
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn tentacle_evolution_proposal_carries_previous_outcomes() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let mut state = HarnessState::default();
-        state.record_evolution_outcome(
-            "swe-agent",
-            "03-runtime-code",
-            Status::Satisfied,
-            "patch improved feed evidence",
-        );
-
-        let proposal = propose_tentacle_evolution_with_state(
-            &root,
-            "swe-agent",
-            "improve repository observation feed quality",
-            &state,
-        )
-        .unwrap();
-        let markdown = render_tentacle_evolution_proposal(&proposal);
-
-        assert_eq!(proposal.previous_outcomes.len(), 1);
-        assert!(markdown.contains("Previous Outcomes"));
-        assert!(markdown.contains("patch improved feed evidence"));
-    }
-
-    #[test]
-    fn tentacle_evolution_proposal_carries_recent_feed_traces() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let mut state = HarnessState::default();
-        let feed = Feed {
-            need: Need::new(NeedKind::Observe, "README.md"),
-            status: Status::Satisfied,
-            evidence: vec![Evidence::new("read", "README evidence")],
-            summary: "observed README through read tool".to_string(),
-            metadata: BTreeMap::from([
-                ("tentacle".to_string(), "swe-agent".to_string()),
-                ("tool".to_string(), "read".to_string()),
-                ("plan_source".to_string(), "llm".to_string()),
-            ]),
-        };
-        state.record_feed_trace_from_feed(&feed);
-        let other_feed = Feed {
-            need: Need::new(NeedKind::Observe, "current browser tab"),
-            status: Status::Satisfied,
-            evidence: vec![Evidence::new("browser_status", "tab evidence")],
-            summary: "browser trace".to_string(),
-            metadata: BTreeMap::from([("tentacle".to_string(), "computer-use-agent".to_string())]),
-        };
-        state.record_feed_trace_from_feed(&other_feed);
-
-        let proposal = propose_tentacle_evolution_with_state(
-            &root,
-            "swe-agent",
-            "improve repository observation feed quality",
-            &state,
-        )
-        .unwrap();
-        let markdown = render_tentacle_evolution_proposal(&proposal);
-
-        assert_eq!(proposal.recent_feed_traces.len(), 1);
-        assert_eq!(proposal.recent_feed_traces[0].tool.as_deref(), Some("read"));
-        let runtime_candidate = proposal
-            .patch_candidates
-            .iter()
-            .find(|candidate| candidate.surface_id == "runtime_code")
-            .unwrap();
-        assert!(runtime_candidate.target.ends_with("tools/read.sh"));
-        assert!(runtime_candidate.rationale.contains("trace #1"));
-        assert!(runtime_candidate.change_plan[0].contains("tools/read.sh"));
-        assert!(markdown.contains("Recent Feed Traces"));
-        assert!(markdown.contains("observed README through read tool"));
-        assert!(!markdown.contains("browser trace"));
-    }
-
-    #[test]
-    fn evolution_recommendation_scores_feed_trace_feedback() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let mut state = HarnessState::default();
-        state.record_feed_trace_from_feed(&Feed {
-            need: Need::new(NeedKind::Observe, "README.md"),
-            status: Status::Failed,
-            evidence: vec![Evidence::new("read", "read output omitted evidence")],
-            summary: "read output omitted evidence".to_string(),
-            metadata: BTreeMap::from([
-                ("tentacle".to_string(), "swe-agent".to_string()),
-                ("tool".to_string(), "read".to_string()),
-                ("plan_source".to_string(), "llm".to_string()),
-            ]),
-        });
-
-        let proposal = propose_tentacle_evolution_with_state(
-            &root,
-            "swe-agent",
-            "repair weak observe feed",
-            &state,
-        )
-        .unwrap();
-        let recommendation = recommend_tentacle_evolution_apply(&proposal, &state).unwrap();
-
-        assert_eq!(recommendation.candidate_id, "03-runtime-code");
-        assert_eq!(recommendation.surface_id, "runtime_code");
-        assert_eq!(recommendation.feed_trace_count, 1);
-        assert!(recommendation.reason.contains("Feed trace"));
-        assert!(recommendation.recommendation_score > 0.0);
-    }
-
-    #[test]
-    fn tentacle_evolution_uses_recent_check_history() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let mut state = HarnessState::default();
-        state.record_check_history(CheckHistoryInput {
-            tentacle_id: "swe-agent".to_string(),
-            source_kind: "manifest".to_string(),
-            command_index: Some(1),
-            command: "tools/read.sh README.md 1 2".to_string(),
-            cwd: "tentacles/swe-agent".to_string(),
-            status: Status::Failed,
-            code: Some(1),
-            stdout: String::new(),
-            stderr: "line range failed".to_string(),
-        });
-        state.record_check_history(CheckHistoryInput {
-            tentacle_id: "computer-use-agent".to_string(),
-            source_kind: "manifest".to_string(),
-            command_index: Some(1),
-            command: "tools/window_status.sh".to_string(),
-            cwd: "tentacles/computer-use-agent".to_string(),
-            status: Status::Failed,
-            code: Some(1),
-            stdout: String::new(),
-            stderr: "window unavailable".to_string(),
-        });
-
-        let proposal = propose_tentacle_evolution_with_state(
-            &root,
-            "swe-agent",
-            "repair failing repo check",
-            &state,
-        )
-        .unwrap();
-        let markdown = render_tentacle_evolution_proposal(&proposal);
-        let runtime_candidate = proposal
-            .patch_candidates
-            .iter()
-            .find(|candidate| candidate.surface_id == "runtime_code")
-            .unwrap();
-        let recommendation = recommend_tentacle_evolution_apply(&proposal, &state).unwrap();
-
-        assert_eq!(proposal.recent_check_history.len(), 1);
-        assert_eq!(proposal.recent_check_history[0].command_index, Some(1));
-        assert!(runtime_candidate.target.ends_with("tools/read.sh"));
-        assert!(runtime_candidate.rationale.contains("failed check #1"));
-        assert_eq!(runtime_candidate.feedback.len(), 1);
-        assert_eq!(runtime_candidate.feedback[0].kind, "check_history");
-        assert!(runtime_candidate.feedback[0]
-            .summary
-            .contains("line range failed"));
-        assert!(runtime_candidate.change_plan[0].contains("repair failing check #1"));
-        assert_eq!(recommendation.candidate_id, "03-runtime-code");
-        assert_eq!(recommendation.check_history_count, 1);
-        assert_eq!(recommendation.apply.feedback.len(), 1);
-        assert!(recommendation.recommendation_score > 0.0);
-        assert!(recommendation.reason.contains("check history"));
-        assert!(markdown.contains("Recent Check History"));
-        assert!(markdown.contains("line range failed"));
-        assert!(!markdown.contains("window unavailable"));
-
-        let workspace =
-            std::env::temp_dir().join(format!("octopus-check-draft-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&workspace);
-        let artifact = write_tentacle_evolution_artifacts(&workspace, &proposal).unwrap();
-        let candidates = fs::read_to_string(&artifact.candidates_path).unwrap();
-        let runtime_draft_path = artifact
-            .patch_draft_paths
-            .iter()
-            .find(|path| path.contains("03-runtime-code"))
-            .unwrap();
-        let runtime_draft = fs::read_to_string(runtime_draft_path).unwrap();
-        let apply_artifact =
-            write_tentacle_apply_artifacts(&workspace, &recommendation.apply).unwrap();
-        let apply_plan = fs::read_to_string(&apply_artifact.plan_path).unwrap();
-
-        assert!(candidates.contains("feedback:"));
-        assert!(runtime_draft.contains("feedback focus:"));
-        assert!(runtime_draft.contains("line range failed"));
-        assert!(apply_plan.contains("feedback focus:"));
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn harness_beat_evolution_writes_recommended_apply_plan() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let mut state = HarnessState::default();
-        state.record_check_history(CheckHistoryInput {
-            tentacle_id: "swe-agent".to_string(),
-            source_kind: "manifest".to_string(),
-            command_index: Some(1),
-            command: "tools/read.sh README.md 1 2".to_string(),
-            cwd: "tentacles/swe-agent".to_string(),
-            status: Status::Failed,
-            code: Some(1),
-            stdout: String::new(),
-            stderr: "read output lost line numbers".to_string(),
-        });
-        state.record_check_history(CheckHistoryInput {
-            tentacle_id: "missing-tentacle".to_string(),
-            source_kind: "manifest".to_string(),
-            command_index: Some(1),
-            command: "tools/missing.sh".to_string(),
-            cwd: "tentacles/missing-tentacle".to_string(),
-            status: Status::Failed,
-            code: Some(127),
-            stdout: String::new(),
-            stderr: "stale check".to_string(),
-        });
-
-        let workspace =
-            std::env::temp_dir().join(format!("octopus-harness-beat-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&workspace);
-        let evolution = write_harness_beat_evolution_artifacts(&root, &workspace, &state)
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(evolution.source_check_index, 1);
-        assert_eq!(evolution.tentacle_id, "swe-agent");
-        assert_eq!(evolution.candidate_id, "03-runtime-code");
-        assert_eq!(evolution.status, "needs_authorization");
-        assert!(evolution
-            .objective
-            .contains("read output lost line numbers"));
-        assert!(evolution
-            .next_action
-            .contains("octopus oauth octopus evolve:swe-agent harness:write"));
-        assert!(Path::new(&evolution.proposal_path).exists());
-        assert!(Path::new(&evolution.apply_plan_path).exists());
-        let plan = fs::read_to_string(&evolution.apply_plan_path).unwrap();
-        assert!(plan.contains("feedback focus:"));
-        assert!(plan.contains("read output lost line numbers"));
-        assert!(evolution.apply_plan_preview.contains("feedback focus:"));
-        assert!(evolution
-            .apply_plan_preview
-            .contains("read output lost line numbers"));
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn harness_beat_evolution_can_start_from_failed_feed_trace() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let mut state = HarnessState::default();
-        state.record_feed_trace_from_feed(&Feed {
-            need: Need::new(NeedKind::Observe, "README.md"),
-            status: Status::Failed,
-            evidence: vec![Evidence::new("read", "read feed lost the requested lines")],
-            summary: "read feed lost the requested lines".to_string(),
-            metadata: BTreeMap::from([
-                ("tentacle".to_string(), "swe-agent".to_string()),
-                ("tool".to_string(), "read".to_string()),
-                ("plan_source".to_string(), "llm".to_string()),
-            ]),
-        });
-        state.record_feed_trace_from_feed(&Feed {
-            need: Need::new(NeedKind::Observe, "unknown"),
-            status: Status::Failed,
-            evidence: vec![Evidence::new("missing", "stale missing tentacle")],
-            summary: "stale missing tentacle".to_string(),
-            metadata: BTreeMap::from([("tentacle".to_string(), "missing-tentacle".to_string())]),
-        });
-
-        let workspace =
-            std::env::temp_dir().join(format!("octopus-harness-beat-feed-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&workspace);
-        let evolution = write_harness_beat_evolution_artifacts(&root, &workspace, &state)
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(evolution.source_kind, "feed_trace");
-        assert_eq!(evolution.source_index, 1);
-        assert_eq!(evolution.source_check_index, 0);
-        assert_eq!(evolution.tentacle_id, "swe-agent");
-        assert_eq!(evolution.candidate_id, "03-runtime-code");
-        assert!(evolution
-            .objective
-            .contains("read feed lost the requested lines"));
-        assert!(evolution.reason.contains("Feed trace"));
-        assert!(Path::new(&evolution.proposal_path).exists());
-        assert!(Path::new(&evolution.apply_plan_path).exists());
-        let plan = fs::read_to_string(&evolution.apply_plan_path).unwrap();
-        assert!(plan.contains("feedback focus:"));
-        assert!(plan.contains("read feed lost the requested lines"));
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn harness_beat_evolution_can_start_from_repair_outcome() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let mut state = HarnessState::default();
-        let trace = state.record_feed_trace_from_feed(&Feed {
-            need: Need::new(NeedKind::Observe, "README.md"),
-            status: Status::Satisfied,
-            evidence: vec![Evidence::new("read", "repair session had evidence")],
-            summary: "repair session created".to_string(),
-            metadata: BTreeMap::from([
-                ("tentacle".to_string(), "harness-repair-agent".to_string()),
-                ("tool".to_string(), "repair_session".to_string()),
-                ("plan_source".to_string(), "llm".to_string()),
-                ("target_tentacle".to_string(), "swe-agent".to_string()),
-                ("candidate".to_string(), "03-runtime-code".to_string()),
-            ]),
-        });
-        let outcome = state
-            .record_repair_outcome(
-                Some(trace.index),
-                Status::Partial,
-                "repair draft still misses line-number evidence",
-            )
-            .unwrap();
-        let stale_trace = state.record_feed_trace_from_feed(&Feed {
-            need: Need::new(NeedKind::Observe, "unknown"),
-            status: Status::Satisfied,
-            evidence: vec![Evidence::new("missing", "stale missing tentacle repair")],
-            summary: "stale missing tentacle repair".to_string(),
-            metadata: BTreeMap::from([
-                ("tentacle".to_string(), "missing-tentacle".to_string()),
-                ("tool".to_string(), "missing".to_string()),
-            ]),
-        });
-        state
-            .record_repair_outcome(
-                Some(stale_trace.index),
-                Status::Failed,
-                "stale missing tentacle outcome",
-            )
-            .unwrap();
-
-        let workspace = std::env::temp_dir().join(format!(
-            "octopus-harness-beat-repair-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&workspace);
-        let evolution = write_harness_beat_evolution_artifacts(&root, &workspace, &state)
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(evolution.source_kind, "repair_outcome");
-        assert_eq!(evolution.source_index, outcome.index);
-        assert_eq!(evolution.source_check_index, 0);
-        assert_eq!(evolution.tentacle_id, "swe-agent");
-        assert_eq!(evolution.candidate_id, "03-runtime-code");
-        assert!(evolution
-            .objective
-            .contains("repair draft still misses line-number evidence"));
-        assert!(Path::new(&evolution.proposal_path).exists());
-        assert!(Path::new(&evolution.apply_plan_path).exists());
-        let plan = fs::read_to_string(&evolution.apply_plan_path).unwrap();
-        assert!(plan.contains("repair draft still misses line-number evidence"));
-        assert!(evolution
-            .apply_plan_preview
-            .contains("repair draft still misses line-number evidence"));
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn tentacle_evolution_apply_uses_traced_runtime_tool_target() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let mut state = HarnessState::default();
-        state.record_feed_trace_from_feed(&Feed {
-            need: Need::new(NeedKind::Observe, "README.md"),
-            status: Status::Satisfied,
-            evidence: vec![Evidence::new("read", "README evidence")],
-            summary: "observed README through read tool".to_string(),
-            metadata: BTreeMap::from([
-                ("tentacle".to_string(), "swe-agent".to_string()),
-                ("tool".to_string(), "read".to_string()),
-                ("plan_source".to_string(), "llm".to_string()),
-            ]),
-        });
-        state.grant_oauth(
-            "octopus",
-            "evolve:swe-agent",
-            default_permissions("octopus"),
-        );
-        let proposal = propose_tentacle_evolution_with_state(
-            &root,
-            "swe-agent",
-            "improve repository observation feed quality",
-            &state,
-        )
-        .unwrap();
-        let plan = plan_tentacle_evolution_apply(&proposal, &state, "runtime_code").unwrap();
-
-        assert!(plan.authorized);
-        assert!(plan.target.ends_with("tools/read.sh"));
-
-        let workspace =
-            std::env::temp_dir().join(format!("octopus-traced-apply-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&workspace);
-        let artifact = write_tentacle_apply_artifacts(&workspace, &plan).unwrap();
-        let patch = fs::read_to_string(artifact.patch_path.as_ref().unwrap()).unwrap();
-
-        assert!(patch.contains("b/tentacles/swe-agent/tools/read.sh"));
-        assert!(!patch.contains("b/tentacles/swe-agent/tools/edit.sh"));
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn field_mini_task_evolution_resolves_field_pack_task_targets() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let proposal = propose_tentacle_evolution(
-            &root,
-            "field-mini-task",
-            "add a harder mini task layer to the peer field packs and editable field-mini-task harness",
-        )
-        .unwrap();
-        let candidate = proposal
-            .patch_candidates
-            .iter()
-            .find(|candidate| candidate.surface_id == "field_pack_tasks")
-            .expect("field pack task surface");
-
-        assert_eq!(candidate.title, "Extend peer-field task definitions");
-        assert!(candidate.target.contains("field-packs"));
-        assert!(candidate.target.contains("*"));
-        assert_eq!(candidate.target_files.len(), 9);
-        assert!(candidate
-            .target_files
-            .iter()
-            .any(|path| path.ends_with("field-packs/math/field-pack.json")));
-        assert!(candidate
-            .target_files
-            .iter()
-            .any(|path| path.ends_with("field-packs/robotics/field-pack.json")));
-        assert!(candidate
-            .target_files
-            .iter()
-            .any(|path| path.ends_with("field-packs/index.json")));
-        assert!(!candidate.target_files.iter().any(|path| path.contains('*')));
-        assert!(candidate
-            .change_plan
-            .iter()
-            .any(|step| step.contains("next harder mini task definitions")));
-    }
-
-    #[test]
-    fn harder_layer_recommendation_selects_field_pack_task_surface() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let state = HarnessState::default();
-        let proposal =
-            propose_tentacle_evolution(&root, "field-mini-task", field_harder_layer_objective())
-                .unwrap();
-
-        let recommendation = recommend_tentacle_evolution_apply(&proposal, &state).unwrap();
-
-        assert_eq!(recommendation.surface_id, "field_pack_tasks");
-        assert_eq!(recommendation.candidate_id, "04-field-pack-tasks");
-        assert_eq!(recommendation.apply.target_files.len(), 9);
-        assert!(recommendation
-            .apply
-            .target_files
-            .iter()
-            .any(|path| path.ends_with("field-packs/index.json")));
-        assert!(recommendation.reason.contains("harder mini task layer"));
-    }
-
-    #[test]
-    fn field_specific_harder_layer_recommendation_selects_field_pack_tasks() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let state = HarnessState::default();
-        let proposal = propose_tentacle_evolution(
-            &root,
-            "field-mini-task",
-            "add the next harder math mini task to editable field-mini-task harness",
-        )
-        .unwrap();
-
-        let recommendation = recommend_tentacle_evolution_apply(&proposal, &state).unwrap();
-
-        assert_eq!(recommendation.surface_id, "field_pack_tasks");
-        assert_eq!(recommendation.candidate_id, "04-field-pack-tasks");
-        assert!(recommendation.reason.contains("harder mini task layer"));
-    }
-
     struct EvolutionFakeChat {
         response: String,
         prompt: String,
@@ -15583,6 +13301,63 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
                 metadata: BTreeMap::new(),
             })
         }
+    }
+
+    #[test]
+    fn harness_beat_evolution_uses_llm_planner_for_failed_check() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let workspace =
+            std::env::temp_dir().join(format!("octopus-llm-harness-beat-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&workspace);
+        let mut state = HarnessState::default();
+        state.record_check_history(CheckHistoryInput {
+            tentacle_id: "swe-agent".to_string(),
+            source_kind: "manifest".to_string(),
+            command_index: Some(1),
+            command: "tools/read.sh README.md 1 2".to_string(),
+            cwd: "tentacles/swe-agent".to_string(),
+            status: Status::Failed,
+            code: Some(1),
+            stdout: String::new(),
+            stderr: "read check failed".to_string(),
+        });
+        let mut fake = EvolutionFakeChat {
+            response: r#"{
+              "summary": "repair read harness from failed check",
+              "candidates": [
+                {
+                  "surface_id": "runtime_code",
+                  "title": "Repair read command evidence",
+                  "target": "tools/read.sh",
+                  "rationale": "the failed check points at the read runtime harness",
+                  "change_plan": ["patch read.sh output handling"],
+                  "checks": ["tools/read.sh README.md 1 2"],
+                  "suggested_patch": "diff --git a/tentacles/swe-agent/tools/read.sh b/tentacles/swe-agent/tools/read.sh\n--- a/tentacles/swe-agent/tools/read.sh\n+++ b/tentacles/swe-agent/tools/read.sh\n@@ -1,2 +1,3 @@\n #!/usr/bin/env bash\n+echo checked\n"
+                }
+              ]
+            }"#
+            .to_string(),
+            prompt: String::new(),
+        };
+
+        let evolution = write_harness_beat_evolution_artifacts_with_client(
+            &root, &workspace, &state, &mut fake,
+        )
+        .unwrap()
+        .expect("LLM harness beat evolution");
+
+        assert_eq!(evolution.source_kind, "check_history");
+        assert_eq!(evolution.tentacle_id, "swe-agent");
+        assert_eq!(evolution.candidate_id, "03-runtime-code");
+        assert!(fake.prompt.contains("read check failed"));
+        assert!(Path::new(&evolution.proposal_path).exists());
+        assert!(Path::new(&evolution.apply_plan_path).exists());
+        assert!(evolution
+            .next_action
+            .contains("octopus oauth octopus evolve:swe-agent"));
+        let _ = fs::remove_dir_all(workspace);
     }
 
     #[test]
@@ -15605,7 +13380,7 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
             metadata: BTreeMap::from([
                 ("tentacle".to_string(), "swe-agent".to_string()),
                 ("tool".to_string(), "read".to_string()),
-                ("plan_source".to_string(), "rule".to_string()),
+                ("plan_source".to_string(), "llm".to_string()),
             ]),
         });
         state.record_check_history(CheckHistoryInput {
@@ -15739,7 +13514,10 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
             .iter()
             .find(|candidate| candidate.surface_id == "field_pack_tasks")
             .unwrap();
-        assert_eq!(candidate.target_files.len(), 9);
+        assert_eq!(
+            candidate.target_files.len(),
+            default_field_pack_ids().len() + 1
+        );
         assert!(candidate
             .target_files
             .iter()
@@ -15748,6 +13526,12 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
         assert!(fake
             .prompt
             .contains("field-pack surfaces may use field-packs"));
+        assert!(fake.prompt.contains("target_file_contents"));
+        assert!(fake.prompt.contains("field-packs/math/field-pack.json"));
+        assert!(fake.prompt.contains("math-mini-1"));
+        assert!(fake
+            .prompt
+            .contains("suggested_patch is required for this surface"));
         assert!(!fake.prompt.contains("inside this tentacle"));
         state.grant_oauth(
             "octopus",
@@ -15769,1587 +13553,75 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
     }
 
     #[test]
-    fn math_harder_field_trace_generates_linear_system_patch_draft() {
+    fn apply_artifact_accepts_collapsed_duplicate_tentacle_target_path() {
         let workspace =
-            std::env::temp_dir().join(format!("octopus-math-harder-patch-{}", std::process::id()));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
+            std::env::temp_dir().join(format!("octopus-duplicate-target-{}", std::process::id()));
         let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 19,
-            need_kind: NeedKind::Verify,
-            need_query: "Run math mini task math-mini-2".to_string(),
-            status: Status::Partial,
-            field: Some("math".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved exact linear-system execution before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "math".to_string()),
-                ("field_mini_task".to_string(), "math-mini-2".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Exact solution and substitution checks for both equations.".to_string(),
-                ),
-            ]),
-        };
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "math", "math-mini-2");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn math_third_layer_trace_generates_induction_patch_draft() {
-        let workspace = std::env::temp_dir().join(format!(
-            "octopus-math-induction-patch-{}",
-            std::process::id()
-        ));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 25,
-            need_kind: NeedKind::Verify,
-            need_query: "Run math mini task math-mini-3".to_string(),
-            status: Status::Partial,
-            field: Some("math".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved induction proof execution before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "math".to_string()),
-                ("field_mini_task".to_string(), "math-mini-3".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Base case, induction step, and numeric verification that the sum at n = 10 equals 55.".to_string(),
-                ),
-            ]),
-        };
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "math", "math-mini-3");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn search_field_trace_generates_runtime_patch_draft() {
-        let workspace =
-            std::env::temp_dir().join(format!("octopus-search-patch-{}", std::process::id()));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 7,
-            need_kind: NeedKind::Verify,
-            need_query: "Run search mini task search-mini-1".to_string(),
-            status: Status::Partial,
-            field: Some("search".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved field execution before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "search".to_string()),
-                ("field_mini_task".to_string(), "search-mini-1".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Two links with dates, claim coverage, and unsupported gaps.".to_string(),
-                ),
-            ]),
-        };
-
-        let check = traced_tool_check(&tool, &trace).unwrap();
-        assert!(check.contains("search-mini-1"));
-        assert!(check.contains("field_expected_feed"));
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "search", "search-mini-1");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn search_harder_field_trace_generates_docs_audit_patch_draft() {
-        let workspace = std::env::temp_dir().join(format!(
-            "octopus-search-harder-patch-{}",
-            std::process::id()
-        ));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 16,
-            need_kind: NeedKind::Verify,
-            need_query: "Run search mini task search-mini-2".to_string(),
-            status: Status::Partial,
-            field: Some("search".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved docs audit before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "search".to_string()),
-                ("field_mini_task".to_string(), "search-mini-2".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Three source paths, command snippets, agreement or mismatch notes, and remaining gaps."
-                        .to_string(),
-                ),
-            ]),
-        };
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "search", "search-mini-2");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn search_third_layer_trace_generates_release_claim_patch_draft() {
-        let workspace =
-            std::env::temp_dir().join(format!("octopus-search-third-patch-{}", std::process::id()));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 56,
-            need_kind: NeedKind::Verify,
-            need_query: "Run search mini task search-mini-3".to_string(),
-            status: Status::Partial,
-            field: Some("search".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved release claim comparison before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "search".to_string()),
-                ("field_mini_task".to_string(), "search-mini-3".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Three sources, deduplicated claim table, strongest-source rationale, dates, and unsupported gaps."
-                        .to_string(),
-                ),
-            ]),
-        };
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "search", "search-mini-3");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn code_field_trace_generates_runtime_patch_draft() {
-        let workspace =
-            std::env::temp_dir().join(format!("octopus-code-patch-{}", std::process::id()));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 9,
-            need_kind: NeedKind::Verify,
-            need_query: "Run code mini task code-mini-1".to_string(),
-            status: Status::Partial,
-            field: Some("code".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved code execution before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "code".to_string()),
-                ("field_mini_task".to_string(), "code-mini-1".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "A scoped diff summary and git diff verification.".to_string(),
-                ),
-            ]),
-        };
-
-        let check = traced_tool_check(&tool, &trace).unwrap();
-        assert!(check.contains("code-mini-1"));
-        assert!(check.contains("field_expected_feed"));
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "code", "code-mini-1");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn code_harder_field_trace_generates_refactor_patch_draft() {
-        let workspace =
-            std::env::temp_dir().join(format!("octopus-code-harder-patch-{}", std::process::id()));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 20,
-            need_kind: NeedKind::Verify,
-            need_query: "Run code mini task code-mini-2".to_string(),
-            status: Status::Partial,
-            field: Some("code".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved code refactor execution before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "code".to_string()),
-                ("field_mini_task".to_string(), "code-mini-2".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Behavior-preserving refactor with before and after verification.".to_string(),
-                ),
-            ]),
-        };
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "code", "code-mini-2");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn code_third_layer_trace_generates_template_patch_draft() {
-        let workspace = std::env::temp_dir().join(format!(
-            "octopus-code-parser-guard-patch-{}",
-            std::process::id()
-        ));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 26,
-            need_kind: NeedKind::Verify,
-            need_query: "Run code mini task code-mini-3".to_string(),
-            status: Status::Partial,
-            field: Some("code".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved parser guard execution before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "code".to_string()),
-                ("field_mini_task".to_string(), "code-mini-3".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Guarded condition, changed file path, normal-case check, edge-case check, and scoped diff summary.".to_string(),
-                ),
-            ]),
-        };
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "code", "code-mini-3");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn swe_field_trace_generates_runtime_patch_draft() {
-        let workspace =
-            std::env::temp_dir().join(format!("octopus-swe-patch-{}", std::process::id()));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 10,
-            need_kind: NeedKind::Verify,
-            need_query: "Run swe mini task swe-mini-1".to_string(),
-            status: Status::Partial,
-            field: Some("swe".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved SWE execution before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "swe".to_string()),
-                ("field_mini_task".to_string(), "swe-mini-1".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Root cause, patch summary, and test output.".to_string(),
-                ),
-            ]),
-        };
-
-        let check = traced_tool_check(&tool, &trace).unwrap();
-        assert!(check.contains("swe-mini-1"));
-        assert!(check.contains("field_expected_feed"));
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "swe", "swe-mini-1");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn swe_harder_field_trace_generates_parser_patch_draft() {
-        let workspace =
-            std::env::temp_dir().join(format!("octopus-swe-harder-patch-{}", std::process::id()));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 17,
-            need_kind: NeedKind::Verify,
-            need_query: "Run swe mini task swe-mini-2".to_string(),
-            status: Status::Partial,
-            field: Some("swe".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved parser edge-case execution before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "swe".to_string()),
-                ("field_mini_task".to_string(), "swe-mini-2".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Parser edge-case repro, patch, and regression result.".to_string(),
-                ),
-            ]),
-        };
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "swe", "swe-mini-2");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn swe_third_layer_trace_generates_multifile_patch_draft() {
-        let workspace = std::env::temp_dir().join(format!(
-            "octopus-swe-multifile-patch-{}",
-            std::process::id()
-        ));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 23,
-            need_kind: NeedKind::Verify,
-            need_query: "Run swe mini task swe-mini-3".to_string(),
-            status: Status::Partial,
-            field: Some("swe".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved multi-file SWE execution before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "swe".to_string()),
-                ("field_mini_task".to_string(), "swe-mini-3".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Files inspected, failing contract, root cause, patch summary, and regression check output.".to_string(),
-                ),
-            ]),
-        };
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "swe", "swe-mini-3");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn robotics_field_trace_generates_runtime_patch_draft() {
-        let workspace =
-            std::env::temp_dir().join(format!("octopus-robotics-patch-{}", std::process::id()));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 11,
-            need_kind: NeedKind::Verify,
-            need_query: "Run robotics mini task robotics-mini-1".to_string(),
-            status: Status::Partial,
-            field: Some("robotics".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved robotics execution before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "robotics".to_string()),
-                ("field_mini_task".to_string(), "robotics-mini-1".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Path plan, simulated clearance check, and safety status.".to_string(),
-                ),
-            ]),
-        };
-
-        let check = traced_tool_check(&tool, &trace).unwrap();
-        assert!(check.contains("robotics-mini-1"));
-        assert!(check.contains("field_expected_feed"));
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "robotics", "robotics-mini-1");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn robotics_harder_field_trace_generates_pick_place_patch_draft() {
-        let workspace = std::env::temp_dir().join(format!(
-            "octopus-robotics-harder-patch-{}",
-            std::process::id()
-        ));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 15,
-            need_kind: NeedKind::Verify,
-            need_query: "Run robotics mini task robotics-mini-2".to_string(),
-            status: Status::Partial,
-            field: Some("robotics".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved robotics pick-place execution before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "robotics".to_string()),
-                ("field_mini_task".to_string(), "robotics-mini-2".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Route plan, obstacle clearance checks, stop condition, and no-hardware safety status."
-                        .to_string(),
-                ),
-            ]),
-        };
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "robotics", "robotics-mini-2");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn research_field_trace_generates_runtime_patch_draft() {
-        let workspace =
-            std::env::temp_dir().join(format!("octopus-research-patch-{}", std::process::id()));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 12,
-            need_kind: NeedKind::Verify,
-            need_query: "Run research mini task research-mini-1".to_string(),
-            status: Status::Partial,
-            field: Some("research".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved research execution before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "research".to_string()),
-                ("field_mini_task".to_string(), "research-mini-1".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "A short synthesis with source coverage and uncertainty.".to_string(),
-                ),
-            ]),
-        };
-
-        let check = traced_tool_check(&tool, &trace).unwrap();
-        assert!(check.contains("research-mini-1"));
-        assert!(check.contains("field_expected_feed"));
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "research", "research-mini-1");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn research_harder_field_trace_generates_claim_separation_patch_draft() {
-        let workspace = std::env::temp_dir().join(format!(
-            "octopus-research-harder-patch-{}",
-            std::process::id()
-        ));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 21,
-            need_kind: NeedKind::Verify,
-            need_query: "Run research mini task research-mini-2".to_string(),
-            status: Status::Partial,
-            field: Some("research".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved claim separation before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "research".to_string()),
-                ("field_mini_task".to_string(), "research-mini-2".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Two cited claim mappings, one explicit limitation, and no benchmark overclaim."
-                        .to_string(),
-                ),
-            ]),
-        };
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "research", "research-mini-2");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn research_third_layer_trace_generates_evidence_map_patch_draft() {
-        let workspace = std::env::temp_dir().join(format!(
-            "octopus-research-evidence-map-patch-{}",
-            std::process::id()
-        ));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 27,
-            need_kind: NeedKind::Verify,
-            need_query: "Run research mini task research-mini-3".to_string(),
-            status: Status::Partial,
-            field: Some("research".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved research evidence map before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "research".to_string()),
-                ("field_mini_task".to_string(), "research-mini-3".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Three claim rows with source coverage, inference labels, uncertainty notes, and no fabricated citation.".to_string(),
-                ),
-            ]),
-        };
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "research", "research-mini-3");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn computer_use_field_trace_generates_runtime_patch_draft() {
-        let workspace =
-            std::env::temp_dir().join(format!("octopus-computer-use-patch-{}", std::process::id()));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 13,
-            need_kind: NeedKind::Verify,
-            need_query: "Run computer-use mini task computer-use-mini-1".to_string(),
-            status: Status::Partial,
-            field: Some("computer-use".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved computer-use observation before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "computer-use".to_string()),
-                (
-                    "field_mini_task".to_string(),
-                    "computer-use-mini-1".to_string(),
-                ),
-                (
-                    "field_expected_feed".to_string(),
-                    "Observe a local page and report visible target/checks.".to_string(),
-                ),
-            ]),
-        };
-
-        let check = traced_tool_check(&tool, &trace).unwrap();
-        assert!(check.contains("computer-use-mini-1"));
-        assert!(check.contains("field_expected_feed"));
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "computer-use", "computer-use-mini-1");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn computer_use_harder_field_trace_generates_region_patch_draft() {
-        let workspace = std::env::temp_dir().join(format!(
-            "octopus-computer-use-harder-patch-{}",
-            std::process::id()
-        ));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 14,
-            need_kind: NeedKind::Verify,
-            need_query: "Run computer-use mini task computer-use-mini-2".to_string(),
-            status: Status::Partial,
-            field: Some("computer-use".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved app region observation before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "computer-use".to_string()),
-                (
-                    "field_mini_task".to_string(),
-                    "computer-use-mini-2".to_string(),
-                ),
-                (
-                    "field_expected_feed".to_string(),
-                    "Observed app URL, visible region checklist, and verification status."
-                        .to_string(),
-                ),
-            ]),
-        };
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "computer-use", "computer-use-mini-2");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn computer_use_third_layer_trace_generates_demo_cta_patch_draft() {
-        let workspace = std::env::temp_dir().join(format!(
-            "octopus-computer-use-third-patch-{}",
-            std::process::id()
-        ));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 51,
-            need_kind: NeedKind::Verify,
-            need_query: "Run computer-use mini task computer-use-mini-3".to_string(),
-            status: Status::Partial,
-            field: Some("computer-use".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved demo CTA observation before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "computer-use".to_string()),
-                (
-                    "field_mini_task".to_string(),
-                    "computer-use-mini-3".to_string(),
-                ),
-                (
-                    "field_expected_feed".to_string(),
-                    "Observed URL, primary call-to-action, visible Octopus signal, and verification status without destructive actions."
-                        .to_string(),
-                ),
-            ]),
-        };
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "computer-use", "computer-use-mini-3");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn robotics_third_layer_trace_generates_recovery_patch_draft() {
-        let workspace = std::env::temp_dir().join(format!(
-            "octopus-robotics-third-patch-{}",
-            std::process::id()
-        ));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 54,
-            need_kind: NeedKind::Verify,
-            need_query: "Run robotics mini task robotics-mini-3".to_string(),
-            status: Status::Partial,
-            field: Some("robotics".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved recovery planning before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "robotics".to_string()),
-                (
-                    "field_mini_task".to_string(),
-                    "robotics-mini-3".to_string(),
-                ),
-                (
-                    "field_expected_feed".to_string(),
-                    "Initial route, unexpected-obstacle detection, recovery plan, safety stop condition, and no-hardware status."
-                        .to_string(),
-                ),
-            ]),
-        };
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "robotics", "robotics-mini-3");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn ib_field_trace_generates_runtime_patch_draft() {
-        let workspace =
-            std::env::temp_dir().join(format!("octopus-ib-patch-{}", std::process::id()));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 8,
-            need_kind: NeedKind::Verify,
-            need_query: "Run ib mini task ib-mini-1".to_string(),
-            status: Status::Partial,
-            field: Some("ib".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved IB execution before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "ib".to_string()),
-                ("field_mini_task".to_string(), "ib-mini-1".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Checked table math, assumptions, and a non-advisory memo line.".to_string(),
-                ),
-            ]),
-        };
-
-        let check = traced_tool_check(&tool, &trace).unwrap();
-        assert!(check.contains("ib-mini-1"));
-        assert!(check.contains("field_expected_feed"));
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "ib", "ib-mini-1");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn ib_harder_field_trace_generates_margin_risk_patch_draft() {
-        let workspace =
-            std::env::temp_dir().join(format!("octopus-ib-harder-patch-{}", std::process::id()));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 18,
-            need_kind: NeedKind::Verify,
-            need_query: "Run ib mini task ib-mini-2".to_string(),
-            status: Status::Partial,
-            field: Some("ib".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved IB margin and risk-note execution before verifier pass"
+        let plan = EvolutionApplyPlan {
+            tentacle_id: "field-mini-task".to_string(),
+            candidate_id: "01-brain-prompt".to_string(),
+            objective: "tighten field harness prompt".to_string(),
+            authorized: true,
+            status: "ready_for_authorized_patch".to_string(),
+            required_grant: "octopus:evolve:field-mini-task".to_string(),
+            active_grant: Some("octopus:evolve:field-mini-task".to_string()),
+            target: "/tmp/tentacles/field-mini-task/tentacles/field-mini-task/manifest.json"
                 .to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "ib".to_string()),
-                ("field_mini_task".to_string(), "ib-mini-2".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Checked margin table, stated assumptions, and a non-advisory risk note."
-                        .to_string(),
-                ),
-            ]),
+            target_files: vec![],
+            draft_path: "patches/01-brain-prompt.patch.md".to_string(),
+            checks: vec![],
+            feedback: vec![],
+            suggested_patch: Some(
+                "diff --git a/tentacles/field-mini-task/manifest.json b/tentacles/field-mini-task/manifest.json\n--- a/tentacles/field-mini-task/manifest.json\n+++ b/tentacles/field-mini-task/manifest.json\n@@ -1 +1 @@\n-old\n+new\n"
+                    .to_string(),
+            ),
+            guardrails: vec![],
+            next_steps: vec![],
         };
 
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
+        let artifact = write_tentacle_apply_artifacts(&workspace, &plan).unwrap();
+        let patch = fs::read_to_string(artifact.patch_path.as_ref().unwrap()).unwrap();
 
-        assert_field_template_patch(&patch, "ib", "ib-mini-2");
+        assert!(patch.contains("b/tentacles/field-mini-task/manifest.json"));
         let _ = fs::remove_dir_all(workspace);
     }
 
     #[test]
-    fn ib_third_layer_trace_generates_sensitivity_patch_draft() {
-        let workspace = std::env::temp_dir().join(format!(
-            "octopus-ib-sensitivity-patch-{}",
-            std::process::id()
-        ));
-        let target = workspace
-            .join("tentacles")
-            .join("field-mini-task")
-            .join("tools")
-            .join("run_field_mini_task.sh");
-        let _ = fs::remove_dir_all(&workspace);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        write_field_mini_task_runner_stub(&target);
-        let surface = EvolutionSurface {
-            id: "runtime_code".to_string(),
-            description: "runtime harness code".to_string(),
-            targets: vec!["tools/*".to_string()],
-        };
-        let tool = ManifestTool {
-            id: "run_field_mini_task".to_string(),
-            description: "run field mini task".to_string(),
-            input: "octopus-json-v1".to_string(),
-            output: "Feed".to_string(),
-            permission: None,
-            implementation: ToolImplementation {
-                kind: "shell".to_string(),
-                entrypoint: "tools/run_field_mini_task.sh".to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-            },
-        };
-        let trace = FeedTraceRecord {
-            index: 24,
-            need_kind: NeedKind::Verify,
-            need_query: "Run ib mini task ib-mini-3".to_string(),
-            status: Status::Partial,
-            field: Some("ib".to_string()),
-            tentacle: Some("field-mini-task".to_string()),
-            tool: Some("run_field_mini_task".to_string()),
-            plan_source: Some("rule".to_string()),
-            route: Some("verify:field-mini-task=field-mini-task-context".to_string()),
-            evidence_count: 1,
-            summary: "needs evolved IB sensitivity execution before verifier pass".to_string(),
-            metadata: BTreeMap::from([
-                ("field_pack".to_string(), "ib".to_string()),
-                ("field_mini_task".to_string(), "ib-mini-3".to_string()),
-                (
-                    "field_expected_feed".to_string(),
-                    "Sensitivity table, formula checks, separated assumptions, and a non-advisory diligence question.".to_string(),
-                ),
-            ]),
-        };
-
-        let patch = local_suggested_patch_for_candidate(
-            "field-mini-task",
-            &surface,
-            target.to_str().unwrap(),
-            Some((&tool, &trace)),
-        )
-        .unwrap();
-
-        assert_field_template_patch(&patch, "ib", "ib-mini-3");
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn tentacle_evolution_apply_plan_respects_authorization() {
+    fn llm_evolution_tolerates_duplicate_json_fields() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
             .join("tentacles");
-        let proposal = propose_tentacle_evolution(&root, "swe-agent", "improve repo feed").unwrap();
-        let mut state = HarnessState::default();
+        let state = HarnessState::default();
+        let mut fake = EvolutionFakeChat {
+            response: r#"{
+              "summary": "duplicate keys should not break planning",
+              "candidates": [
+                {
+                  "surface_id": "brain_prompt",
+                  "surface_id": "runtime_code",
+                  "title": "Runtime patch",
+                  "target": "tools/read.sh",
+                  "rationale": "tool-side Feed repair",
+                  "change_plan": ["patch runtime"],
+                  "checks": ["tentacles/swe-agent/tools/read.sh README.md 1 2"]
+                }
+              ]
+            }"#
+            .to_string(),
+            prompt: String::new(),
+        };
 
-        let blocked = plan_tentacle_evolution_apply(&proposal, &state, "runtime_code").unwrap();
-        assert!(!blocked.authorized);
-        assert_eq!(blocked.status, "needs_authorization");
-        assert_eq!(blocked.required_grant, "octopus:evolve:swe-agent");
+        let proposal = propose_tentacle_evolution_with_client(
+            &root,
+            "swe-agent",
+            "repair feed",
+            &state,
+            &mut fake,
+        )
+        .unwrap();
 
-        state.grant_oauth(
-            "octopus",
-            "evolve:swe-agent",
-            default_permissions("octopus"),
-        );
-        let ready = plan_tentacle_evolution_apply(&proposal, &state, "03-runtime-code").unwrap();
-        assert!(ready.authorized);
-        assert_eq!(ready.status, "ready_for_authorized_patch");
-        assert_eq!(
-            ready.active_grant.as_deref(),
-            Some("octopus:evolve:swe-agent")
-        );
-
-        let workspace = std::env::temp_dir().join(format!("octopus-apply-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&workspace);
-        let blocked_artifact = write_tentacle_apply_artifacts(&workspace, &blocked).unwrap();
-        assert!(blocked_artifact.patch_path.is_none());
-        let expected_patch = workspace
-            .join(".octopus")
-            .join("evolution")
-            .join("swe-agent")
-            .join("apply")
-            .join("03-runtime-code.patch");
-        assert!(!expected_patch.exists());
-        let artifact = write_tentacle_apply_artifacts(&workspace, &ready).unwrap();
-        let markdown = fs::read_to_string(&artifact.plan_path).unwrap();
-        let patch_path = artifact.patch_path.as_ref().unwrap();
-        let patch = fs::read_to_string(patch_path).unwrap();
-        let json = fs::read_to_string(&artifact.json_path).unwrap();
-        assert!(markdown.contains("Evolution Apply Plan"));
-        assert!(markdown.contains("authorized: true"));
-        assert!(markdown.contains("patch: `03-runtime-code.patch`"));
-        assert!(patch.contains("diff --git"));
-        assert!(patch.contains("Octopus evolution candidate 03-runtime-code"));
-        assert!(json.contains("\"authorized\": true"));
-        let mut off_target = ready.clone();
-        off_target.suggested_patch = Some(
-            "diff --git a/tentacles/swe-agent/tools/edit.sh b/tentacles/swe-agent/tools/edit.sh\n--- a/tentacles/swe-agent/tools/edit.sh\n+++ b/tentacles/swe-agent/tools/edit.sh\n@@ -1,2 +1,3 @@\n #!/bin/sh\n+# off-target provider draft\n set -eu\n"
-                .to_string(),
-        );
-        let off_target_artifact = write_tentacle_apply_artifacts(&workspace, &off_target).unwrap();
-        let off_target_patch =
-            fs::read_to_string(off_target_artifact.patch_path.as_ref().unwrap()).unwrap();
-        assert!(!off_target_patch.contains("off-target provider draft"));
-        assert!(off_target_patch.contains("Octopus evolution candidate 03-runtime-code"));
-        let blocked_again = write_tentacle_apply_artifacts(&workspace, &blocked).unwrap();
-        assert!(blocked_again.patch_path.is_none());
-        assert!(!expected_patch.exists());
-        let _ = fs::remove_dir_all(workspace);
+        assert_eq!(proposal.generator, "llm");
+        assert_eq!(proposal.patch_candidates[0].surface_id, "runtime_code");
     }
 
     #[test]
@@ -17378,29 +13650,45 @@ print(json.dumps({
         )
         .unwrap();
 
-        let mut tentacle = ManifestTentacle::new(InstalledTentacle {
-            id: "python-json".to_string(),
-            name: "Python JSON".to_string(),
-            source: dir.join("manifest.json").to_string_lossy().to_string(),
-            brain_kind: "llm".to_string(),
-            brain_prompt: "Use the JSON call envelope to feed the clean brain.".to_string(),
-            feedback_contract: Some("Return compact structured feedback.".to_string()),
-            runtime_kinds: vec!["python".to_string()],
-            needs: vec!["observe".to_string()],
-            tools: vec![format!("json_probe:python:{}", script.to_string_lossy())],
-            tool_meta: vec![InstalledTool {
-                id: "json_probe".to_string(),
-                description: "Inspect a Need through a JSON runtime contract.".to_string(),
-                input: "octopus-json-v1 tool call".to_string(),
-                output: "structured feedback".to_string(),
-                kind: "python".to_string(),
-                entrypoint: script.to_string_lossy().to_string(),
-                contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
-                permission: None,
-            }],
-            editable: vec!["tools/tool.py".to_string()],
-            evolution_surfaces: vec!["runtime_code".to_string()],
-        });
+        struct FakeChat;
+
+        impl ChatClient for FakeChat {
+            fn chat(&mut self, _messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                Ok(ChatResponse {
+                    content: r#"{"calls":[{"tool":"json_probe","reason":"inspect via json runtime"}],"summary":"planned json runtime"}"#.to_string(),
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
+        let factory: ChatClientFactory = Arc::new(|| Ok(Box::new(FakeChat)));
+        let mut tentacle = ManifestTentacle::new_with_llm_and_grants(
+            InstalledTentacle {
+                id: "python-json".to_string(),
+                name: "Python JSON".to_string(),
+                source: dir.join("manifest.json").to_string_lossy().to_string(),
+                brain_kind: "llm".to_string(),
+                brain_prompt: "Use the JSON call envelope to feed the clean brain.".to_string(),
+                feedback_contract: Some("Return compact structured feedback.".to_string()),
+                runtime_kinds: vec!["python".to_string()],
+                needs: vec!["observe".to_string()],
+                tools: vec![format!("json_probe:python:{}", script.to_string_lossy())],
+                tool_meta: vec![InstalledTool {
+                    id: "json_probe".to_string(),
+                    description: "Inspect a Need through a JSON runtime contract.".to_string(),
+                    input: "octopus-json-v1 tool call".to_string(),
+                    output: "structured feedback".to_string(),
+                    kind: "python".to_string(),
+                    entrypoint: script.to_string_lossy().to_string(),
+                    contract: Some(OCTOPUS_JSON_CONTRACT.to_string()),
+                    permission: None,
+                }],
+                editable: vec!["tools/tool.py".to_string()],
+                evolution_surfaces: vec!["runtime_code".to_string()],
+            },
+            Some(factory),
+            vec![],
+        );
 
         let feed = tentacle.feed(&Need::new(NeedKind::Observe, "README.md"));
 
@@ -17465,7 +13753,23 @@ print(json.dumps({
                 evolution_surfaces: vec!["tool_meta".to_string(), "runtime_code".to_string()],
             };
 
-            let mut blocked = ManifestTentacle::new(installed.clone());
+            struct GuardedChat;
+
+            impl ChatClient for GuardedChat {
+                fn chat(&mut self, _messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                    Ok(ChatResponse {
+                        content: r#"{"calls":[{"tool":"guarded","reason":"permission gate test"}],"summary":"guarded"}"#.to_string(),
+                        metadata: BTreeMap::new(),
+                    })
+                }
+            }
+
+            let factory: ChatClientFactory = Arc::new(|| Ok(Box::new(GuardedChat)));
+            let mut blocked = ManifestTentacle::new_with_llm_and_grants(
+                installed.clone(),
+                Some(factory.clone()),
+                vec![],
+            );
             let blocked_feed = blocked.feed(&Need::new(NeedKind::Execute, "ok"));
             assert_eq!(blocked_feed.status, Status::Failed);
             assert!(blocked_feed.summary.contains("needs_authorization"));
@@ -17484,8 +13788,11 @@ print(json.dumps({
                 permissions: vec!["tool:execute".to_string()],
                 status: GrantStatus::Active,
             };
-            let mut allowed =
-                ManifestTentacle::new_with_llm_and_grants(installed, None, vec![grant.clone()]);
+            let mut allowed = ManifestTentacle::new_with_llm_and_grants(
+                installed,
+                Some(factory),
+                vec![grant.clone()],
+            );
             let allowed_feed = allowed.feed(&Need::new(NeedKind::Execute, "ok"));
 
             assert_eq!(allowed_feed.status, Status::Satisfied);
@@ -17516,7 +13823,19 @@ print(json.dumps({
             .tool_meta
             .iter()
             .any(|tool| tool.contract.as_deref() == Some(OCTOPUS_JSON_CONTRACT)));
-        let mut harness = Harness::with_state(state);
+        struct JsonFeedChat;
+
+        impl ChatClient for JsonFeedChat {
+            fn chat(&mut self, _messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                Ok(ChatResponse {
+                    content: r#"{"calls":[{"tool":"feed","reason":"run json feed runtime"}],"summary":"planned json feed"}"#.to_string(),
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
+        let factory: ChatClientFactory = Arc::new(|| Ok(Box::new(JsonFeedChat)));
+        let mut harness = Harness::with_state_and_manifest_llm_factory(state, factory);
 
         let feedback = harness.feed(&[Need::new(NeedKind::Observe, "Cargo.toml")]);
 
@@ -17572,7 +13891,19 @@ print(json.dumps({
         state
             .install_manifest(&tentacles_root, "custom_feed")
             .unwrap();
-        let mut harness = Harness::with_state(state);
+        struct ScaffoldChat;
+
+        impl ChatClient for ScaffoldChat {
+            fn chat(&mut self, _messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                Ok(ChatResponse {
+                    content: r#"{"calls":[{"tool":"feed","reason":"run scaffolded feed runtime"}],"summary":"planned scaffolded feed"}"#.to_string(),
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
+        let factory: ChatClientFactory = Arc::new(|| Ok(Box::new(ScaffoldChat)));
+        let mut harness = Harness::with_state_and_manifest_llm_factory(state, factory);
         let feed = harness.feed_one(&Need::new(NeedKind::Observe, "README.md"));
 
         assert_eq!(feed.status, Status::Satisfied);
@@ -17727,6 +14058,35 @@ print(json.dumps({
 
     #[test]
     fn harness_repair_manifest_installs_and_feeds_diagnostics() {
+        struct HarnessRepairChat;
+
+        impl ChatClient for HarnessRepairChat {
+            fn chat(&mut self, messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                let prompt = messages
+                    .iter()
+                    .map(|message| message.content.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let tool = if prompt.contains("Need: observe:") {
+                    "diagnose_harness"
+                } else if prompt.contains("repair outcome") {
+                    "repair_outcome"
+                } else if prompt.contains("Need: execute:") {
+                    "repair_session"
+                } else if prompt.contains("Need: verify:") {
+                    "heartbeat_repair"
+                } else {
+                    "diagnose_harness"
+                };
+                Ok(ChatResponse {
+                    content: format!(
+                        r#"{{"calls":[{{"tool":"{tool}","reason":"repair test planner"}}],"summary":"planned harness repair"}}"#
+                    ),
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
         let mut state = HarnessState::default();
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
@@ -17756,7 +14116,9 @@ print(json.dumps({
         )
         .unwrap();
 
-        let mut tentacle = ManifestTentacle::new(installed);
+        let factory: ChatClientFactory = Arc::new(|| Ok(Box::new(HarnessRepairChat)));
+        let mut tentacle =
+            ManifestTentacle::new_with_llm_and_grants(installed, Some(factory.clone()), vec![]);
         let feed = tentacle.feed(&Need::new(
             NeedKind::Observe,
             workspace.to_string_lossy().to_string(),
@@ -17783,7 +14145,8 @@ print(json.dumps({
         let installed = state
             .install_manifest(&root, "harness-repair-agent")
             .unwrap();
-        let mut tentacle = ManifestTentacle::new(installed);
+        let mut tentacle =
+            ManifestTentacle::new_with_llm_and_grants(installed, Some(factory), vec![]);
         let old_repair_llm = std::env::var("OCTOPUS_REPAIR_LLM").ok();
         std::env::remove_var("OCTOPUS_REPAIR_LLM");
         let feed = tentacle.feed(&Need::new(
@@ -17973,40 +14336,15 @@ print(json.dumps({
     }
 
     #[test]
-    fn think_tentacle_exposes_tool_side_plan_without_execution() {
+    fn think_tentacle_requires_tool_side_llm_plan() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
             .join("tentacles");
         let need = Need::new(NeedKind::Observe, "current browser tab");
 
-        let blocked = think_tentacle(&root, "computer-use-agent", &need, None, &[]).unwrap();
+        let error = think_tentacle(&root, "computer-use-agent", &need, None, &[]).unwrap_err();
 
-        assert_eq!(blocked.tentacle_id, "computer-use-agent");
-        assert_eq!(blocked.selected_tool.id, "browser_status");
-        assert_eq!(blocked.plan_source, "rule");
-        assert!(blocked.selected_tool.authorization_required);
-        assert!(blocked.selected_tool.active_grant.is_none());
-        assert!(blocked
-            .context_policy
-            .contains("Need + Tool + Action + Tool + Action"));
-        assert!(blocked
-            .candidates
-            .iter()
-            .any(|candidate| candidate.id == "browser_status"));
-
-        let grants = vec![CapabilityGrant {
-            id: "octopus:tool:computer-use-agent".to_string(),
-            provider: "octopus".to_string(),
-            scope: "tool:computer-use-agent".to_string(),
-            permissions: vec!["tool:observe".to_string()],
-            status: GrantStatus::Active,
-        }];
-        let active = think_tentacle(&root, "computer-use-agent", &need, None, &grants).unwrap();
-
-        assert_eq!(
-            active.selected_tool.active_grant.as_deref(),
-            Some("octopus:tool:computer-use-agent")
-        );
+        assert!(error.contains("computer-use-agent cannot feed observe"));
     }
 
     #[cfg(unix)]
@@ -18093,7 +14431,7 @@ print(json.dumps({
     }
 
     #[test]
-    fn installed_manifest_tentacle_feeds_observe_need() {
+    fn installed_manifest_tentacle_without_llm_does_not_execute() {
         let repo = fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")).unwrap();
         let mut state = HarnessState::default();
         state
@@ -18106,41 +14444,97 @@ print(json.dumps({
             repo.to_string_lossy().to_string(),
         )]);
 
-        assert_eq!(feedback.status, Status::Satisfied, "{}", feedback.summary);
-        assert!(feedback.summary.contains("== project =="));
-        assert_eq!(
-            feedback.feeds[0].metadata.get("tool"),
-            Some(&"inspect_repo".to_string())
-        );
-        assert!(feedback.feeds[0]
-            .metadata
-            .get("plan")
-            .is_some_and(|plan| plan.contains("selected inspect_repo")));
-        assert!(feedback.feeds[0]
-            .metadata
-            .get("available_tools")
-            .is_some_and(|tools| tools.contains("inspect_repo")));
-        assert!(feedback.feeds[0]
-            .metadata
-            .get("brain_prompt")
-            .is_some_and(|prompt| prompt.contains("select tools from metadata")));
-        assert!(feedback.feeds[0]
-            .metadata
-            .get("context_policy")
-            .is_some_and(|context| context == "Need + Tool + Action + Tool + Action -> Feed"));
-        assert!(feedback.feeds[0].evidence.iter().any(|evidence| {
-            evidence.source == "tentacle_plan"
-                && evidence.metadata.get("tool") == Some(&"inspect_repo".to_string())
-                && evidence.metadata.get("plan_source") == Some(&"rule".to_string())
-        }));
+        assert_eq!(feedback.status, Status::Unsupported);
+        assert!(feedback.summary.contains("no tentacle supports this need"));
+        assert_eq!(feedback.feeds[0].metadata.get("tool"), None);
+        assert_eq!(feedback.feeds[0].metadata.get("plan_source"), None);
         assert_eq!(harness.state.feed_traces.len(), 1);
+        assert_eq!(harness.state.feed_traces[0].tool.as_deref(), None);
         assert_eq!(
-            harness.state.feed_traces[0].tool.as_deref(),
-            Some("inspect_repo")
+            harness.state.routes.score(&NeedKind::Observe, "swe-agent"),
+            1.0
         );
-        assert!(harness.state.routes.score(&NeedKind::Observe, "swe-agent") > 1.0);
     }
 
+    #[test]
+    fn manifest_tentacle_supports_declared_need_with_llm_available() {
+        struct FakeChat;
+
+        impl ChatClient for FakeChat {
+            fn chat(&mut self, _messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                Ok(ChatResponse {
+                    content: r#"{"calls":[],"summary":"unused"}"#.to_string(),
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        let installed = state.install_manifest(&root, "computer-use-agent").unwrap();
+        let factory: ChatClientFactory = Arc::new(|| Ok(Box::new(FakeChat)));
+        let tentacle =
+            ManifestTentacle::new_with_llm_and_grants(installed.clone(), Some(factory), vec![]);
+
+        assert!(tentacle.supports(&Need::new(NeedKind::Observe, ".")));
+        assert!(tentacle.supports(&Need::new(NeedKind::Observe, "describe screen")));
+        assert!(tentacle.supports(&Need::new(NeedKind::Observe, "current window")));
+        assert!(tentacle.supports(&Need::new(NeedKind::Observe, "current browser tab")));
+        assert!(tentacle.supports(&Need::new(NeedKind::Observe, "read clipboard")));
+        assert!(tentacle.supports(&Need::new(NeedKind::Execute, "echo ok")));
+        assert!(tentacle.supports(&Need::new(NeedKind::Execute, "open browser url")));
+        assert!(tentacle.supports(&Need::new(NeedKind::Execute, "copy text to clipboard")));
+    }
+
+    #[test]
+    fn field_mini_task_tentacle_supports_declared_needs_with_llm_available() {
+        struct FakeChat;
+
+        impl ChatClient for FakeChat {
+            fn chat(&mut self, _messages: &[ChatMessage]) -> Result<ChatResponse, String> {
+                Ok(ChatResponse {
+                    content: r#"{"calls":[],"summary":"unused"}"#.to_string(),
+                    metadata: BTreeMap::new(),
+                })
+            }
+        }
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        let installed = state.install_manifest(&root, "field-mini-task").unwrap();
+        let factory: ChatClientFactory = Arc::new(|| Ok(Box::new(FakeChat)));
+        let tentacle =
+            ManifestTentacle::new_with_llm_and_grants(installed.clone(), Some(factory), vec![]);
+        let mut task_need = Need::new(NeedKind::Verify, "Run math mini task math-mini-1");
+        task_need
+            .context
+            .insert("field_pack".to_string(), "math".to_string());
+        task_need
+            .context
+            .insert("field_mini_task".to_string(), "math-mini-1".to_string());
+
+        let mut structured_tentacle = ManifestTentacle::new(installed.clone());
+        let structured_plan = structured_tentacle
+            .plan_tool(&task_need)
+            .expect("structured field mini task plan");
+        assert_eq!(structured_plan.source, "structured-need");
+        assert_eq!(structured_plan.tool.id, "run_field_mini_task");
+        assert!(structured_tentacle.supports(&task_need));
+        assert!(!structured_tentacle.supports(&Need::new(
+            NeedKind::Execute,
+            "evolve recommend field-mini-task"
+        )));
+
+        assert!(tentacle.supports(&Need::new(
+            NeedKind::Execute,
+            "evolve recommend field-mini-task"
+        )));
+        assert!(tentacle.supports(&task_need));
+    }
     #[test]
     fn beat_compacts_feed_trace_journal() {
         let repo = fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")).unwrap();
@@ -18288,99 +14682,5 @@ print(json.dumps({
         assert_eq!(harness.state.feed_traces.len(), 1);
         assert_eq!(harness.state.feed_traces[0].tool.as_deref(), Some("read"));
         let _ = fs::remove_dir_all(fake);
-    }
-
-    #[test]
-    fn computer_use_tentacle_does_not_take_repo_observe_need() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let mut state = HarnessState::default();
-        let installed = state.install_manifest(&root, "computer-use-agent").unwrap();
-        let tentacle = ManifestTentacle::new(installed);
-
-        assert!(!tentacle.supports(&Need::new(NeedKind::Observe, ".")));
-        assert!(tentacle.supports(&Need::new(NeedKind::Observe, "describe screen")));
-        assert!(tentacle.supports(&Need::new(NeedKind::Observe, "current window")));
-        assert!(tentacle.supports(&Need::new(NeedKind::Observe, "current browser tab")));
-        assert!(tentacle.supports(&Need::new(NeedKind::Observe, "read clipboard")));
-        assert!(!tentacle.supports(&Need::new(NeedKind::Execute, "echo ok")));
-        assert!(tentacle.supports(&Need::new(NeedKind::Execute, "open browser url")));
-        assert!(tentacle.supports(&Need::new(NeedKind::Execute, "copy text to clipboard")));
-    }
-
-    #[test]
-    fn field_mini_task_tentacle_requires_mini_task_context() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let mut state = HarnessState::default();
-        let installed = state.install_manifest(&root, "field-mini-task").unwrap();
-        let tentacle = ManifestTentacle::new(installed);
-        let mut task_need = Need::new(NeedKind::Verify, "Run math mini task math-mini-1");
-        task_need
-            .context
-            .insert("field_pack".to_string(), "math".to_string());
-        task_need
-            .context
-            .insert("field_mini_task".to_string(), "math-mini-1".to_string());
-
-        assert!(!tentacle.supports(&Need::new(
-            NeedKind::Execute,
-            "evolve recommend field-mini-task"
-        )));
-        assert!(tentacle.supports(&task_need));
-    }
-
-    #[test]
-    fn computer_use_browser_need_prefers_browser_status() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let mut state = HarnessState::default();
-        let installed = state.install_manifest(&root, "computer-use-agent").unwrap();
-        let mut tentacle = ManifestTentacle::new(installed);
-
-        let plan = tentacle
-            .plan_tool(&Need::new(NeedKind::Observe, "current browser tab"))
-            .expect("browser observe need should plan a tool");
-
-        assert_eq!(plan.tool.id, "browser_status");
-    }
-
-    #[test]
-    fn computer_use_window_need_prefers_window_status() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let mut state = HarnessState::default();
-        let installed = state.install_manifest(&root, "computer-use-agent").unwrap();
-        let mut tentacle = ManifestTentacle::new(installed);
-
-        let plan = tentacle
-            .plan_tool(&Need::new(NeedKind::Observe, "current window"))
-            .expect("window observe need should plan a tool");
-
-        assert_eq!(plan.tool.id, "window_status");
-    }
-
-    #[test]
-    fn computer_use_clipboard_needs_prefer_clipboard_tools() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("tentacles");
-        let mut state = HarnessState::default();
-        let installed = state.install_manifest(&root, "computer-use-agent").unwrap();
-        let mut tentacle = ManifestTentacle::new(installed);
-
-        let read = tentacle
-            .plan_tool(&Need::new(NeedKind::Observe, "read clipboard"))
-            .expect("clipboard observe need should plan a tool");
-        let write = tentacle
-            .plan_tool(&Need::new(NeedKind::Execute, "copy octopus to clipboard"))
-            .expect("clipboard execute need should plan a tool");
-
-        assert_eq!(read.tool.id, "clipboard_read");
-        assert_eq!(write.tool.id, "clipboard_write");
     }
 }

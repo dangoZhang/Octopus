@@ -1,5 +1,9 @@
 {
-  "current_version": "0.1.1",
+  "current_version": "0.2.0",
+  "release_status": "stable",
+  "stable_release": "v0.2.0",
+  "next_release": "0.2.1",
+  "release_gate": "passed: desktop pet observer plus real LLM-driven harness evolution",
   "repository": "https://github.com/dangoZhang/Octopus",
   "source_archive_url": "https://github.com/dangoZhang/Octopus/archive/refs/heads/main.zip",
   "cargo_package": "octopus-core",
@@ -53,7 +57,7 @@
   "start": "octopus start --open",
   "docs": [
     {
-      "label": "Try app",
+      "label": "Local app",
       "url": "https://dangozhang.github.io/Octopus/app.html"
     },
     {

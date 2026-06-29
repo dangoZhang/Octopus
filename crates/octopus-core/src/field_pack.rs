@@ -40,6 +40,10 @@ const EMBEDDED_FIELD_PACKS: &[(&str, &str)] = &[
         "robotics",
         include_str!("../../../field-packs/robotics/field-pack.json"),
     ),
+    (
+        "write",
+        include_str!("../../../field-packs/write/field-pack.json"),
+    ),
 ];
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -570,7 +574,8 @@ mod tests {
                 "research",
                 "computer-use",
                 "ib",
-                "robotics"
+                "robotics",
+                "write"
             ]
         );
         let research = catalog
@@ -596,6 +601,7 @@ mod tests {
                 "computer-use".to_string(),
                 "ib".to_string(),
                 "robotics".to_string(),
+                "write".to_string(),
             ]
         );
         let aliases = default_field_pack_aliases();

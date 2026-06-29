@@ -45,7 +45,6 @@
       }
 
       button,
-      input,
       textarea {
         font: inherit;
       }
@@ -85,21 +84,6 @@
       }
 
       textarea::placeholder {
-        color: #99a1ad;
-      }
-
-      input {
-        width: 100%;
-        min-height: 40px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #fff;
-        color: var(--ink);
-        padding: 0 12px;
-        outline: none;
-      }
-
-      input::placeholder {
         color: #99a1ad;
       }
 
@@ -328,79 +312,6 @@
         border-top: 1px solid var(--line);
       }
 
-      .demo-panel {
-        display: grid;
-        gap: 10px;
-        padding: 14px 0;
-        border-top: 1px solid var(--line);
-      }
-
-      .demo-panel label {
-        display: grid;
-        gap: 6px;
-        color: var(--muted);
-        font-size: 12px;
-      }
-
-      .demo-grid {
-        display: grid;
-        grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
-        gap: 8px;
-      }
-
-      .demo-note {
-        margin: 0;
-        color: var(--muted);
-        font-size: 12px;
-        line-height: 1.5;
-      }
-
-      .artifact-panel {
-        margin-top: 16px;
-        padding: 18px;
-      }
-
-      .artifact-body {
-        min-height: 180px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--wash);
-        padding: 14px;
-        overflow: hidden;
-      }
-
-      .hello-artifact {
-        display: grid;
-        gap: 12px;
-        align-content: center;
-        min-height: 150px;
-      }
-
-      .hello-output {
-        font-size: 30px;
-        font-weight: 750;
-      }
-
-      pre.code {
-        margin: 0;
-        overflow: auto;
-        border-radius: 8px;
-        background: #101318;
-        color: #e8eef7;
-        padding: 12px;
-        font-size: 13px;
-      }
-
-      .octopus-canvas {
-        display: block;
-        width: 100%;
-        max-width: 560px;
-        height: 260px;
-        margin: 0 auto;
-        border-radius: 8px;
-        background: #eef7fb;
-      }
-
       .signals {
         display: grid;
         gap: 16px;
@@ -474,9 +385,6 @@
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
-        .demo-grid {
-          grid-template-columns: 1fr;
-        }
       }
 
       @media (max-width: 720px) {
@@ -530,27 +438,6 @@
           </div>
           <textarea id="goal" placeholder="What should Octopus work toward?"></textarea>
           <div>
-            <div class="demo-panel" id="webDemo" hidden>
-              <div class="demo-grid">
-                <label>
-                  API key
-                  <input id="apiKey" type="password" autocomplete="off" placeholder="OpenAI-compatible key" />
-                </label>
-                <label>
-                  Model
-                  <input id="model" value="gpt-4.1-mini" />
-                </label>
-              </div>
-              <label>
-                Endpoint or /v1 base URL
-                <input id="endpoint" value="https://api.openai.com/v1" />
-              </label>
-              <p class="demo-note">Web demo: the clean brain only returns a Need; the browser tentacle uses tool intelligence to create Feed in this page. Use an OpenAI-compatible endpoint that allows browser requests. The key stays in this tab.</p>
-              <div class="controls">
-                <button type="button" id="helloDemo">Hello World</button>
-                <button type="button" id="octopusDemo">Draw Octopus</button>
-              </div>
-            </div>
             <div class="controls">
               <button class="primary" type="button" id="send">Send</button>
             </div>
@@ -577,17 +464,9 @@
         <div class="output-list" id="outputList">
           <div class="output-item warn">
             <strong>Waiting</strong>
-            <span>Run Octopus locally or use the web demo with an API key.</span>
+            <span>Run Octopus locally.</span>
           </div>
         </div>
-      </section>
-
-      <section class="panel artifact-panel" id="artifactPanel" hidden>
-        <div class="output-head">
-          <h2>Artifact</h2>
-          <span class="status" id="artifactStatus">empty</span>
-        </div>
-        <div class="artifact-body" id="artifactBody"></div>
       </section>
     </main>
 
@@ -595,13 +474,9 @@
       const $ = (id) => document.getElementById(id);
       const statePath = ".octopus/state.json";
       const storageKeys = {
-        goal: "octopus.app.goal",
-        model: "octopus.app.model",
-        endpoint: "octopus.app.endpoint"
+        goal: "octopus.app.goal"
       };
       let lastStatus = null;
-      let artifactAnimation = 0;
-      const modelRequestTimeoutMs = 45000;
       const petMap = [
         "....BBBB....",
         "...BBBBBB...",
@@ -646,11 +521,6 @@
         return location.protocol.startsWith("http") && local ? location.origin : "http://127.0.0.1:8765";
       }
 
-      function webDemoMode() {
-        const local = ["localhost", "127.0.0.1", "::1", ""].includes(location.hostname);
-        return !(location.protocol.startsWith("http") && local);
-      }
-
       function baseArgs() {
         return ["--state", statePath, "--json"];
       }
@@ -676,34 +546,13 @@
         }
       }
 
-      function queryValue(name) {
-        return new URLSearchParams(location.search).get(name) || "";
-      }
-
-      function captureDemoTask() {
-        const capture = queryValue("capture").toLowerCase();
-        return ["hello", "octopus"].includes(capture) ? capture : "";
-      }
-
       function hydrateInputs() {
-        const demo = queryValue("demo").toLowerCase();
-        const queryGoal = queryValue("goal");
-        const goal =
-          queryGoal ||
-          (demo === "octopus" ? "Draw an animated Octopus and show Need becoming Feed." : "") ||
-          (demo === "hello" ? "Write Hello World and show Need becoming Feed." : "") ||
-          readStored(storageKeys.goal);
-        const model = queryValue("model") || readStored(storageKeys.model);
-        const endpoint = queryValue("endpoint") || readStored(storageKeys.endpoint);
+        const goal = readStored(storageKeys.goal);
         if (goal) $("goal").value = goal;
-        if (model) $("model").value = model;
-        if (endpoint) $("endpoint").value = endpoint;
       }
 
       function persistInputs() {
         writeStored(storageKeys.goal, goalText());
-        writeStored(storageKeys.model, $("model").value.trim());
-        writeStored(storageKeys.endpoint, $("endpoint").value.trim());
       }
 
       function setBusy(busy) {
@@ -801,7 +650,8 @@
         const event = report.last_pet_event || {};
         const goal = report.goal || {};
         const queued = report.latest_need_queue_item;
-        const hasPendingNeed = Boolean(queued && queued.need);
+        const queuedStatus = String((queued || {}).status || "").toLowerCase();
+        const hasPendingNeed = Boolean(queued && queued.need && queuedStatus === "pending");
         const queuedContext = queuedNeedContext(queued);
         const queuedText = queued && queued.need ? [queued.need.query, queuedContext].filter(Boolean).join(" · ") : "";
         const petState = goalStatus(goal) === "blocked" ? "blocked" : (hasPendingNeed ? "need" : (event.state || "heartbeat"));
@@ -810,7 +660,7 @@
         if (goal.objective) $("goal").value = goal.objective;
 
         const trace = report.latest_feed_trace;
-        if (queued && queued.need) {
+        if (hasPendingNeed) {
           setBlock("needCard", queued.need.kind || "Need", queuedText || queued.status || "Pending Need");
         } else if (trace) {
           setBlock("needCard", trace.need_kind || "Need", trace.need_query || "Need supplied by latest Feed");
@@ -823,253 +673,6 @@
           setBlock("feedCard", trace.status || "Feed", `${trace.summary || trace.need_query || "Feed trace"}${via ? " · " + via : ""}`);
         } else {
           setBlock("feedCard", "Current Feed", "No Feed yet.");
-        }
-      }
-
-      function apiConfig() {
-        return {
-          key: $("apiKey").value.trim(),
-          model: $("model").value.trim() || "gpt-4.1-mini",
-          endpoint: chatCompletionsEndpoint($("endpoint").value.trim() || "https://api.openai.com/v1")
-        };
-      }
-
-      function chatCompletionsEndpoint(value) {
-        const endpoint = value.replace(/\/+$/, "");
-        if (endpoint.endsWith("/chat/completions")) return endpoint;
-        return `${endpoint}/chat/completions`;
-      }
-
-      function parseJsonObject(text) {
-        try {
-          return JSON.parse(text);
-        } catch (_) {
-          const match = String(text || "").match(/\{[\s\S]*\}/);
-          if (!match) throw new Error("model did not return JSON");
-          return JSON.parse(match[0]);
-        }
-      }
-
-      async function callModelJson(messages) {
-        const config = apiConfig();
-        if (!config.key) throw new Error("Enter an API key first.");
-        const headers = {
-          "content-type": "application/json",
-          authorization: `Bearer ${config.key}`
-        };
-        const basePayload = {
-          model: config.model,
-          messages,
-          temperature: 0.2
-        };
-        const attempts = [
-          { ...basePayload, response_format: { type: "json_object" } },
-          basePayload
-        ];
-        let lastError = "";
-        for (const payload of attempts) {
-          let response;
-          const controller = new AbortController();
-          const timeout = window.setTimeout(() => controller.abort(), modelRequestTimeoutMs);
-          try {
-            response = await fetch(config.endpoint, {
-              method: "POST",
-              headers,
-              body: JSON.stringify(payload),
-              signal: controller.signal
-            });
-          } catch (error) {
-            const timedOut = error && error.name === "AbortError";
-            lastError = timedOut
-              ? `Browser request timed out after ${Math.round(modelRequestTimeoutMs / 1000)}s for ${config.endpoint}.`
-              : `Browser request failed for ${config.endpoint}: ${error.message || error}`;
-            continue;
-          } finally {
-            window.clearTimeout(timeout);
-          }
-          const body = await response.text();
-          if (!response.ok) {
-            lastError = body || `${response.status} ${response.statusText}`;
-            continue;
-          }
-          const json = JSON.parse(body);
-          const content =
-            json.choices?.[0]?.message?.content ||
-            json.output_text ||
-            json.message?.content ||
-            "";
-          return parseJsonObject(content);
-        }
-        throw new Error(lastError || "model request failed");
-      }
-
-      async function cleanBrainNeed(goal, task) {
-        const result = await callModelJson([
-          {
-            role: "system",
-            content:
-              "You are the Octopus clean brain. You have no tools. Convert the user goal into one cognitive Need only. Do not choose implementation, libraries, APIs, DOM, canvas, files, shell, or commands. Return JSON only: {\"need\":{\"kind\":\"execute|verify|compare|remember|forget|reproduce\",\"query\":\"...\"},\"brief\":\"...\"}."
-          },
-          {
-            role: "user",
-            content: `Goal: ${goal}\nDemo target: ${task}`
-          }
-        ]);
-        const need = result.need || result;
-        return {
-          kind: need.kind || "execute",
-          query: need.query || goal,
-          brief: result.brief || "Clean brain emitted a Need without tool burden."
-        };
-      }
-
-      async function browserTentaclePlan(need, task) {
-        const result = await callModelJson([
-          {
-            role: "system",
-            content:
-              "You are an Octopus browser tentacle: LLM + tool meta + code implementation. Choose how to satisfy the Need using only these browser actions: write_hello_world, draw_octopus_animation. Return JSON only: {\"action\":\"write_hello_world|draw_octopus_animation\",\"feed_summary\":\"...\",\"steps\":[\"...\"],\"artifact_title\":\"...\"}."
-          },
-          {
-            role: "user",
-            content: `Need kind: ${need.kind}\nNeed query: ${need.query}\nPreferred demo target: ${task}`
-          }
-        ]);
-        const fallback = task === "octopus" ? "draw_octopus_animation" : "write_hello_world";
-        const action = ["write_hello_world", "draw_octopus_animation"].includes(result.action)
-          ? result.action
-          : fallback;
-        return {
-          action,
-          feed_summary: result.feed_summary || `Browser tentacle executed ${action}.`,
-          steps: Array.isArray(result.steps) ? result.steps : ["observe Need", "choose browser action", "render artifact"],
-          artifact_title: result.artifact_title || (action === "draw_octopus_animation" ? "Animated Octopus" : "Hello World")
-        };
-      }
-
-      function inferDemoTask(goal) {
-        return /octopus|章鱼|draw|绘|画|animation|animate|动画/i.test(goal) ? "octopus" : "hello";
-      }
-
-      function renderArtifact(title) {
-        cancelAnimationFrame(artifactAnimation);
-        $("artifactPanel").hidden = false;
-        $("artifactStatus").textContent = title;
-        $("artifactBody").textContent = "";
-      }
-
-      function renderHelloWorld() {
-        renderArtifact("hello world");
-        const wrap = document.createElement("div");
-        wrap.className = "hello-artifact";
-        const code = document.createElement("pre");
-        code.className = "code";
-        code.textContent = 'console.log("Hello, world from Octopus!");';
-        const outputText = document.createElement("div");
-        outputText.className = "hello-output";
-        outputText.textContent = "Hello, world from Octopus!";
-        wrap.append(code, outputText);
-        $("artifactBody").appendChild(wrap);
-      }
-
-      function renderOctopusAnimation() {
-        renderArtifact("animated octopus");
-        const canvas = document.createElement("canvas");
-        canvas.className = "octopus-canvas";
-        canvas.width = 720;
-        canvas.height = 320;
-        $("artifactBody").appendChild(canvas);
-        const context = canvas.getContext("2d");
-        const draw = (time) => {
-          const t = time / 700;
-          context.clearRect(0, 0, canvas.width, canvas.height);
-          const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
-          gradient.addColorStop(0, "#dff6ff");
-          gradient.addColorStop(1, "#f8fbff");
-          context.fillStyle = gradient;
-          context.fillRect(0, 0, canvas.width, canvas.height);
-
-          const cx = canvas.width / 2;
-          const cy = 120 + Math.sin(t) * 8;
-          context.lineCap = "round";
-          for (let i = 0; i < 8; i += 1) {
-            const side = i < 4 ? -1 : 1;
-            const row = i % 4;
-            const startX = cx + side * (34 + row * 18);
-            const startY = cy + 62;
-            context.beginPath();
-            context.moveTo(startX, startY);
-            for (let p = 0; p < 4; p += 1) {
-              const x = startX + side * (28 + p * 32);
-              const y = startY + 22 + p * 18 + Math.sin(t + row + p) * 14;
-              context.lineTo(x, y);
-            }
-            context.strokeStyle = i % 2 ? "#0f766e" : "#2563eb";
-            context.lineWidth = 16 - row;
-            context.stroke();
-          }
-
-          context.fillStyle = "#2563eb";
-          context.beginPath();
-          context.ellipse(cx, cy, 88, 72, 0, 0, Math.PI * 2);
-          context.fill();
-          context.fillStyle = "#0f766e";
-          context.beginPath();
-          context.ellipse(cx, cy + 34, 108, 54, 0, 0, Math.PI);
-          context.fill();
-          context.fillStyle = "#fff";
-          context.beginPath();
-          context.arc(cx - 34, cy - 8, 15, 0, Math.PI * 2);
-          context.arc(cx + 34, cy - 8, 15, 0, Math.PI * 2);
-          context.fill();
-          context.fillStyle = "#101318";
-          context.beginPath();
-          context.arc(cx - 30 + Math.sin(t) * 3, cy - 7, 6, 0, Math.PI * 2);
-          context.arc(cx + 38 + Math.sin(t) * 3, cy - 7, 6, 0, Math.PI * 2);
-          context.fill();
-          artifactAnimation = requestAnimationFrame(draw);
-        };
-        artifactAnimation = requestAnimationFrame(draw);
-      }
-
-      function executeBrowserAction(plan) {
-        if (plan.action === "draw_octopus_animation") {
-          renderOctopusAnimation();
-        } else {
-          renderHelloWorld();
-        }
-      }
-
-      async function runWebDemo(task, explicitGoal = "") {
-        const goal = explicitGoal || goalText() || (task === "octopus" ? "Draw an animated Octopus." : "Write Hello World.");
-        $("goal").value = goal;
-        setBusy(true);
-        setStatus("Web demo · clean brain thinking");
-        setOutputStatus("thinking");
-        try {
-          const need = await cleanBrainNeed(goal, task);
-          drawPet("need");
-          setBlock("needCard", `${need.kind} Need`, `${need.query} · ${need.brief}`);
-          output("Brain Need", `${need.kind}: ${need.query}`, "pass");
-
-          setStatus("Web demo · browser tentacle feeding");
-          const plan = await browserTentaclePlan(need, task);
-          drawPet("action");
-          executeBrowserAction(plan);
-          drawPet("feed");
-          setBlock("feedCard", "Browser Tentacle Feed", `${plan.feed_summary} Steps: ${plan.steps.join(" -> ")}`);
-          output("Tentacle Feed", `${plan.action}: ${plan.feed_summary}`, "pass");
-          setBlock("petText", "Feed", "The browser tentacle compressed action back into Feed.");
-          setStatus("Web demo · complete");
-          setOutputStatus("ready");
-        } catch (error) {
-          drawPet("blocked");
-          output("Web demo failed", String(error), "fail");
-          setBlock("feedCard", "Current Feed", "No Feed returned.");
-          setStatus("Web demo · blocked");
-          setOutputStatus("error");
-        } finally {
-          setBusy(false);
         }
       }
 
@@ -1123,7 +726,7 @@
             worker: slot.latest_worker_id || "",
             field: slot.field || "field",
             task: slot.latest_mini_task || slot.next_mini_task || "done",
-            status: slot.latest_worker_status || slot.latest_status || "unknown",
+            status: slot.latest_status || slot.latest_worker_status || "unknown",
             updatedAt: Number(slot.latest_updated_at_secs || 0),
           }))
           .filter((slot) => slot.updatedAt > 0)
@@ -1136,18 +739,6 @@
 
       async function refresh(options = {}) {
         const replace = options.replaceOutput !== false;
-        if (webDemoMode()) {
-          $("webDemo").hidden = false;
-          drawPet("waiting");
-          setBlock("petText", "Web demo", "Enter an API key, then run Hello World or draw the Octopus.");
-          setBlock("needCard", "Current Need", "No Need yet.");
-          setBlock("feedCard", "Current Feed", "No Feed yet.");
-          if (replace) replaceOutput("Web demo ready", "Clean brain will emit a Need. Browser tentacle will execute Feed in this page.", "warn");
-          setStatus("Web demo · API key needed");
-          setOutputStatus("ready");
-          return;
-        }
-        $("webDemo").hidden = true;
         setBusy(true);
         setStatus("checking...");
         setOutputStatus("checking");
@@ -1213,9 +804,6 @@
           setOutputStatus("waiting");
           return;
         }
-        if (webDemoMode()) {
-          return runWebDemo(inferDemoTask(goal), goal);
-        }
         const hasFeed = lastStatus && Number(lastStatus.feed_trace_count || 0) > 0;
         const args = hasFeed
           ? [...baseArgs(), "chat", goal]
@@ -1234,53 +822,15 @@
         refresh();
       }
 
-      function runCaptureDemo(task) {
-        const goal =
-          task === "octopus"
-            ? "Draw an animated Octopus and show how Need becomes Feed."
-            : "Write Hello World and show how Need becomes Feed.";
-        const need =
-          task === "octopus"
-            ? "Create a visible Octopus artifact, then verify the result in the browser surface."
-            : "Create a runnable Hello World artifact, then verify the visible output.";
-        const action = task === "octopus" ? "draw_octopus_animation" : "write_hello_world";
-        const title = task === "octopus" ? "Animated Octopus" : "Hello World";
-        const summary =
-          task === "octopus"
-            ? "Browser tentacle drew the animated Octopus and returned checked Feed."
-            : "Browser tentacle rendered Hello World and returned checked Feed.";
-        $("goal").value = goal;
-        $("webDemo").hidden = true;
-        drawPet("feed");
-        setBlock("petText", "Feed", "The browser tentacle compressed action back into Feed.");
-        setBlock("needCard", "execute Need", need);
-        setBlock("feedCard", "Browser Tentacle Feed", `${summary} Steps: observe Need -> choose ${action} -> render artifact -> verify output`);
-        replaceOutput("Brain Need", `execute: ${need}`, "pass");
-        output("Tentacle Feed", `${action}: ${summary}`, "pass");
-        executeBrowserAction({ action, artifact_title: title, feed_summary: summary, steps: [] });
-        setStatus("Octopus App · demo complete");
-        setOutputStatus("ready");
-      }
-
       function bind() {
         hydrateInputs();
         drawPet("waiting");
-        ["goal", "model", "endpoint"].forEach((id) => {
-          $(id).addEventListener("input", persistInputs);
-        });
+        $("goal").addEventListener("input", persistInputs);
         $("send").addEventListener("click", sendGoal);
-        $("helloDemo").addEventListener("click", () => {
-          runWebDemo("hello", "Write Hello World and show how a clean Need becomes browser Feed.");
-        });
-        $("octopusDemo").addEventListener("click", () => {
-          runWebDemo("octopus", "Draw an animated Octopus and show how Octopus turns Need into Feed.");
-        });
       }
 
       bind();
-      const capturedTask = captureDemoTask();
-      if (capturedTask) runCaptureDemo(capturedTask);
-      else runStartupSnapshot();
+      runStartupSnapshot();
     </script>
   </body>
 </html>

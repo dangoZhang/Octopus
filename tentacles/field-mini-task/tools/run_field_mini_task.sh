@@ -55,6 +55,58 @@ def repair_template_path(root, tentacle_root, field, mini_task):
     return next((path for path in candidates if path.exists()), None)
 
 
+def load_field_pack_task(root, query, context):
+    packs_root = root / "field-packs"
+    if not packs_root.is_dir():
+        return None
+    context = context if isinstance(context, dict) else {}
+    requested_field = slug(context.get("field_pack") or "")
+    requested_task = slug(context.get("field_mini_task") or "")
+    query_text = str(query or "")
+    query_fold = query_text.lower()
+    matches = []
+    for pack_path in sorted(packs_root.glob("*/field-pack.json")):
+        try:
+            pack = json.loads(pack_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        pack_id = slug(pack.get("id") or pack_path.parent.name)
+        if requested_field and requested_field != "unknown" and pack_id != requested_field:
+            continue
+        aliases = [pack_id, *pack.get("aliases", [])]
+        field_matches = bool(requested_field and requested_field != "unknown")
+        field_matches = field_matches or any(
+            str(alias or "").lower() in query_fold for alias in aliases
+        )
+        for task in pack.get("mini_tasks", []):
+            task_id = slug(task.get("id") or "")
+            if not task_id:
+                continue
+            task_matches = (
+                requested_task
+                and requested_task != "ad-hoc"
+                and task_id == requested_task
+            )
+            task_matches = task_matches or task_id.lower() in query_fold
+            if task_matches and field_matches:
+                return {
+                    "field": pack_id,
+                    "mini_task": task_id,
+                    "expected_feed": compact(task.get("expected_feed") or ""),
+                    "goal": compact(task.get("goal") or ""),
+                }
+            if task_matches:
+                matches.append({
+                    "field": pack_id,
+                    "mini_task": task_id,
+                    "expected_feed": compact(task.get("expected_feed") or ""),
+                    "goal": compact(task.get("goal") or ""),
+                })
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
 def template_error_result(error, template_path):
     metadata = {
         "runtime": "shell",
@@ -138,13 +190,26 @@ if not root.is_absolute():
 root = root.resolve()
 script_dir = Path(sys.argv[3]).expanduser().resolve()
 tentacle_root = script_dir.parent
+if not ((root / "field-packs").is_dir() and (root / "tentacles").is_dir()):
+    for candidate in [root, *root.parents, tentacle_root, *tentacle_root.parents]:
+        if (candidate / "field-packs").is_dir() and (candidate / "tentacles").is_dir():
+            root = candidate.resolve()
+            break
 
 need = payload.get("need") if isinstance(payload.get("need"), dict) else {}
 context = need.get("context") if isinstance(need.get("context"), dict) else {}
-field = slug(context.get("field_pack") or "unknown")
-mini_task = slug(context.get("field_mini_task") or "ad-hoc")
-expected_feed = compact(context.get("field_expected_feed") or "")
 query = compact(need.get("query") or "")
+resolved_task = load_field_pack_task(root, query, context)
+field = slug(context.get("field_pack") or (resolved_task or {}).get("field") or "unknown")
+mini_task = slug(context.get("field_mini_task") or (resolved_task or {}).get("mini_task") or "ad-hoc")
+expected_feed = compact(
+    context.get("field_expected_feed") or (resolved_task or {}).get("expected_feed") or ""
+)
+if resolved_task:
+    context = dict(context)
+    context.setdefault("field_pack", field)
+    context.setdefault("field_mini_task", mini_task)
+    context.setdefault("field_expected_feed", expected_feed)
 now = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 session = root / ".octopus" / "field-mini-task" / field / f"{now}-{mini_task}"
 session.mkdir(parents=True, exist_ok=True)

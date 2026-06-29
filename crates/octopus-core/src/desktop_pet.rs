@@ -341,9 +341,9 @@ mod tests {
             "requested \\(requested) · active \\(active) · candidates \\(candidateText)"
         ));
         assert!(DESKTOP_PET_SOURCE.contains("text(pool[\"worker_slots\"])"));
-        assert!(DESKTOP_PET_SOURCE.contains("let fallbackWorkerPolicy = \"workers are execution slots from the peer field pool; fields stay peer\""));
+        assert!(DESKTOP_PET_SOURCE.contains("let workerPolicyDefault = \"workers are execution slots from the peer field pool; fields stay peer\""));
         assert!(DESKTOP_PET_SOURCE
-            .contains("text(latestRun?[\"worker_policy\"]) ?? fallbackWorkerPolicy"));
+            .contains("text(latestRun?[\"worker_policy\"]) ?? workerPolicyDefault"));
         assert!(DESKTOP_PET_SOURCE.contains("func bool"));
         assert!(DESKTOP_PET_SOURCE.contains("latestWorkerByField"));
         assert!(DESKTOP_PET_SOURCE.contains("latestVerifierByField"));

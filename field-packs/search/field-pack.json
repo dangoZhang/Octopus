@@ -35,6 +35,11 @@
       "id": "search-mini-3",
       "goal": "Compare three sources for one release claim, deduplicate overlapping evidence, and mark the strongest source.",
       "expected_feed": "Three sources, deduplicated claim table, strongest-source rationale, dates, and unsupported gaps."
+    },
+    {
+      "id": "search-mini-4",
+      "goal": "Audit four sources for one Octopus release claim, rank each source by authority and freshness, deduplicate overlapping evidence, and identify stale or unsupported gaps.",
+      "expected_feed": "Four sources with dates, source-type ranking, deduplicated release-claim coverage, strongest-source rationale, stale/unsupported gaps, and verifier evidence."
     }
   ]
 }

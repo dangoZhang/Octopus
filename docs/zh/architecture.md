@@ -42,7 +42,7 @@ cowork/
 ## 当前能力
 
 产品面只允许用户写入 Goal：`chat`、`goal set/refine` 和 `first-run` 的目标输入。`brain --goal` 保留为开发者 CLI；`download`、`doctor`、`report`、`preflight` 属于观察面。Need、Feed、feedback、repair、evolve、install、check、provider 写入由 agent loop 或开发者流程驱动。
-本地 app bridge 已拆到 `app_bridge.rs`，包括 HTTP/SSE、静态 app fallback、命令流式执行、输入策略和 `bridge_goal_surface` preflight 证据。
+本地 app bridge 已拆到 `app_bridge.rs`，包括 HTTP/SSE、内嵌 app 资源、命令流式执行、输入策略和 `bridge_goal_surface` preflight 证据。
 `report` 和 `preflight` 会显示稳定 Rust 层、产品 app 层和可变 code-as-harness 层，避免触手/feed 实现重新混进核心。
 
 - `bootstrap`：初始化状态，安装 seed tentacles，触发 heartbeat。
@@ -56,7 +56,7 @@ cowork/
 - `evolve` / `beat`：从失败 trace、check history、repair outcome 生成 harness 演化建议。
 - `provider`：生成、保存、检查 Codex/OpenAI-compatible/local/LiteLLM 配置，同一套 env 可供 clean brain、触手规划和 harness evolution 使用；`provider status` 会先显示 Goal chat、clean brain、tentacle planning、harness evolution 四类覆盖，避免把 Codex OAuth 或本地模型误判成缺少 API key。
 - `start`：启动本地 HTML app，通过受限本地 API 运行 Octopus 子命令。
-- `preflight`：检查 `0.1.0` 发布门槛，并显示必需/可选通过数和必需阻塞项。
+- `preflight`：检查下一次可用 release 的门槛，并显示必需/可选通过数和必需阻塞项。
 
 ## Seed tentacles
 
@@ -72,7 +72,7 @@ cowork/
 
 ## 发布门槛
 
-- `0.1.0` 已记录真实机器 gate、live provider gate、GitHub OAuth/PR dry-run、provider matrix 和 benchmark evidence。
+- 旧 `0.1.0` release 记录已保留为历史证据，但产物已撤回；下一次稳定发布线是 `0.2.0`。
 - 后续 tag 仍需要在发布前让 `preflight --live` 全部 required check 通过，并追加真实机器记录。
 - 旧 Python SDK 已移除；Python 继续作为 tentacle runtime 存在，例如 `json-feed` 和 repair tools。
 - Seed profiles 已从 Rust kernel 源码移到 `tentacles/profile-registry/default.json`；启动会写出 `.octopus/profile-registry/default.json`，也可用 `OCTOPUS_PROFILE_REGISTRY` 指向其他 registry。Registry 属于 developer/harness 数据面；app 用户写入口只保留 Goal。

@@ -11,7 +11,7 @@ if command -v gh >/dev/null 2>&1; then
 else
   issues="[]"
   runs="[]"
-  source="fallback"
+  source="gh_unavailable"
 fi
 
 python3 - "$repo" "$source" "$issues" "$runs" <<'PY'

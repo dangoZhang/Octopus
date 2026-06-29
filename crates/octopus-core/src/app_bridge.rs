@@ -31,7 +31,7 @@ pub(crate) struct LocalAppRunReport {
     pub(crate) installed_tentacles: Vec<String>,
     pub(crate) skipped_tentacles: Vec<String>,
     pub(crate) pages: Vec<LocalAppPageReport>,
-    pub(crate) web_demo: PreflightCheck,
+    pub(crate) app_surface: PreflightCheck,
     pub(crate) api_policy: PreflightCheck,
     pub(crate) next: Vec<String>,
 }
@@ -143,7 +143,7 @@ pub(crate) fn local_app_run_status_check(
     };
     let version_ready = report.version == env!("CARGO_PKG_VERSION");
     let pages_ready = report.pages.iter().all(|page| page.ok);
-    let web_demo_ready = report.web_demo.status == "pass";
+    let app_surface_ready = report.app_surface.status == "pass";
     let tentacles_ready =
         !report.installed_tentacles.is_empty() || !report.seed_tentacles.is_empty();
     preflight_check(
@@ -154,10 +154,10 @@ pub(crate) fn local_app_run_status_check(
             && head_ready
             && version_ready
             && pages_ready
-            && web_demo_ready,
+            && app_surface_ready,
         true,
         format!(
-            "ready={}, head={}, version={}, seeds={}, installed={}, skipped={}, pages={}/{}, web_demo={}, policy={}",
+            "ready={}, head={}, version={}, seeds={}, installed={}, skipped={}, pages={}/{}, app_surface={}, policy={}",
             report.ready,
             report.current_head.as_deref().unwrap_or("unknown"),
             report.version,
@@ -166,7 +166,7 @@ pub(crate) fn local_app_run_status_check(
             report.skipped_tentacles.len(),
             report.pages.iter().filter(|page| page.ok).count(),
             report.pages.len(),
-            report.web_demo.status,
+            report.app_surface.status,
             report.api_policy.status
         ),
         next,
@@ -180,7 +180,7 @@ fn local_app_run_report(
 ) -> Result<LocalAppRunReport, String> {
     let startup = prepare_state(state_path.clone())?;
     let pages = local_app_pages();
-    let web_demo = web_demo_preflight_check();
+    let app_surface = app_surface_preflight_check();
     let api_policy = goal_surface_preflight_check(&state_path);
     let pages_ready = pages.iter().all(|page| page.ok);
     let tentacles_ready =
@@ -189,7 +189,7 @@ fn local_app_run_report(
         && tentacles_ready
         && startup.skipped_tentacles.is_empty()
         && pages_ready
-        && web_demo.status == "pass"
+        && app_surface.status == "pass"
         && api_policy.status == "pass";
     let state_arg = shell_arg(&startup.state_path);
     let next = if ready {
@@ -217,18 +217,18 @@ fn local_app_run_report(
         installed_tentacles: startup.installed_tentacles,
         skipped_tentacles: startup.skipped_tentacles,
         pages,
-        web_demo,
+        app_surface,
         api_policy,
         next,
     })
 }
 
-fn web_demo_preflight_check() -> PreflightCheck {
+fn app_surface_preflight_check() -> PreflightCheck {
     let (_, body) = match static_page("/app.html") {
         Ok(page) => page,
         Err(error) => {
             return preflight_check(
-                "web_try_app",
+                "local_app_surface",
                 false,
                 true,
                 format!("app page unavailable: {error}"),
@@ -238,15 +238,13 @@ fn web_demo_preflight_check() -> PreflightCheck {
     };
     let content = String::from_utf8_lossy(&body);
     let markers = [
-        r#"id="apiKey""#,
-        "Hello World",
-        "Draw Octopus",
-        "clean brain only returns a Need",
-        "browserTentaclePlan",
-        "chatCompletionsEndpoint",
-        "modelRequestTimeoutMs",
-        "AbortError",
-        "renderOctopusAnimation",
+        r#"id="goal""#,
+        r#"id="send""#,
+        r#"id="pixelPet""#,
+        "Current Need",
+        "Current Feed",
+        "Latest Feed",
+        r#"runJson([...baseArgs(), "status"])"#,
     ];
     let missing = markers
         .iter()
@@ -254,15 +252,15 @@ fn web_demo_preflight_check() -> PreflightCheck {
         .copied()
         .collect::<Vec<_>>();
     preflight_check(
-        "web_try_app",
+        "local_app_surface",
         missing.is_empty(),
         true,
         if missing.is_empty() {
-            "api-key Need demo and browser-tentacle Feed demo present".to_string()
+            "local Goal/Need/Feed app surface present".to_string()
         } else {
             format!("missing {}", missing.join(", "))
         },
-        "restore browser Try App demo in docs/app.html",
+        "restore local app surface in docs/app.html",
     )
 }
 

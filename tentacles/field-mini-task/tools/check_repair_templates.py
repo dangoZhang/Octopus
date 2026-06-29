@@ -44,6 +44,49 @@ def rel(path: Path, root: Path) -> str:
         return str(path)
 
 
+def has_artifact_backing(item: object, root: Path, session: Path) -> bool:
+    if not isinstance(item, dict):
+        return False
+    candidates: list[object] = []
+    for key in ("artifact", "artifact_path", "path", "source", "content"):
+        candidates.append(item.get(key))
+    metadata = item.get("metadata")
+    if isinstance(metadata, dict):
+        candidates.extend(metadata.values())
+    for value in candidates:
+        if not isinstance(value, str) or not value.strip():
+            continue
+        text = value.strip()
+        if not looks_like_artifact_path(text):
+            continue
+        paths = [Path(text)]
+        if not Path(text).is_absolute():
+            paths.extend([root / text, session / text])
+        if any(path_exists(path) for path in paths):
+            return True
+    return False
+
+
+def looks_like_artifact_path(text: str) -> bool:
+    if len(text) > 240 or "\n" in text or text[0] in "[{":
+        return False
+    path = Path(text)
+    return (
+        path.is_absolute()
+        or text.startswith(".")
+        or "/" in text
+        or "\\" in text
+        or bool(path.suffix)
+    )
+
+
+def path_exists(path: Path) -> bool:
+    try:
+        return path.exists()
+    except OSError:
+        return False
+
+
 def seed_session(session: Path, field: str, task_id: str, expected_feed: str) -> None:
     session.mkdir(parents=True, exist_ok=True)
     (session / "TASK.json").write_text(
@@ -85,7 +128,7 @@ def seed_session(session: Path, field: str, task_id: str, expected_feed: str) ->
     (session / "FEED.md").write_text("# Current Feed\n\nStatus: partial\n", encoding="utf-8")
 
 
-def exercise_template(root: Path, template: Path, field: str, task_id: str, expected_feed: str) -> str | None:
+def exercise_template(root: Path, template: Path, field: str, task_id: str, expected_feed: str) -> tuple[str | None, str | None]:
     with tempfile.TemporaryDirectory(prefix="octopus-template-check-") as tmp:
         session = Path(tmp) / "session"
         seed_session(session, field, task_id, expected_feed)
@@ -110,25 +153,39 @@ def exercise_template(root: Path, template: Path, field: str, task_id: str, expe
             source = template.read_text(encoding="utf-8", errors="replace")
             exec(compile(source, str(template), "exec"), env, env)
         except Exception as exc:  # noqa: BLE001 - check report should preserve template errors.
-            return f"{field}/{task_id}: execution failed: {type(exc).__name__}: {compact(exc, 360)}"
+            return f"{field}/{task_id}: execution failed: {type(exc).__name__}: {compact(exc, 360)}", None
 
         result = env.get("field_result")
         if not isinstance(result, dict):
-            return f"{field}/{task_id}: did not set field_result dict"
+            return f"{field}/{task_id}: did not set field_result dict", None
         status = result.get("status")
-        if status != "satisfied":
-            return f"{field}/{task_id}: status is {status!r}, expected 'satisfied'"
+        if status not in {"satisfied", "partial"}:
+            return f"{field}/{task_id}: status is {status!r}, expected 'satisfied' or honest 'partial'", None
         metadata = result.get("metadata")
         if not isinstance(metadata, dict):
-            return f"{field}/{task_id}: missing metadata dict"
+            return f"{field}/{task_id}: missing metadata dict", None
         if metadata.get("field_pack") != field:
-            return f"{field}/{task_id}: metadata.field_pack is {metadata.get('field_pack')!r}"
+            return f"{field}/{task_id}: metadata.field_pack is {metadata.get('field_pack')!r}", None
         if metadata.get("field_mini_task") != task_id:
-            return f"{field}/{task_id}: metadata.field_mini_task is {metadata.get('field_mini_task')!r}"
+            return f"{field}/{task_id}: metadata.field_mini_task is {metadata.get('field_mini_task')!r}", None
+        if metadata.get("field_expected_feed") != expected_feed:
+            return f"{field}/{task_id}: metadata.field_expected_feed is {metadata.get('field_expected_feed')!r}", None
         evidence = result.get("evidence")
         if not isinstance(evidence, list) or not evidence:
-            return f"{field}/{task_id}: missing evidence list"
-    return None
+            return f"{field}/{task_id}: missing evidence list", None
+        if status == "satisfied" and not any(
+            has_artifact_backing(item, root, session) for item in evidence
+        ):
+            return f"{field}/{task_id}: satisfied result lacks artifact-backed evidence", None
+        if status == "partial":
+            has_gap = (
+                metadata.get("verifier_status") == "partial"
+                or bool(metadata.get("error_category"))
+                or bool(metadata.get("missing_regions"))
+            )
+            if not has_gap:
+                return f"{field}/{task_id}: partial result must include verifier_status=partial, error_category, or missing_regions", None
+    return None, status
 
 
 def main() -> int:
@@ -140,6 +197,8 @@ def main() -> int:
     invalid: list[str] = []
     checked: list[str] = []
     executed: list[str] = []
+    satisfied: list[str] = []
+    partial: list[str] = []
 
     bundled_pack_root = tentacle_root_path.parent / "field-packs"
     pack_root = (root / "field-packs") if root else bundled_pack_root if bundled_pack_root.exists() else None
@@ -189,12 +248,16 @@ def main() -> int:
         if "elif field ==" in template.read_text(encoding="utf-8", errors="replace"):
             invalid.append(f"{label}: template must be standalone and must not use elif field guard")
             continue
-        execution_error = exercise_template(display_root, template, field, task_id, expected_feed)
+        execution_error, status = exercise_template(display_root, template, field, task_id, expected_feed)
         if execution_error:
             invalid.append(execution_error)
             continue
         checked.append(label)
         executed.append(label)
+        if status == "partial":
+            partial.append(label)
+        else:
+            satisfied.append(label)
 
     if not checked:
         invalid.append("no repair templates were checked")
@@ -203,6 +266,9 @@ def main() -> int:
         "status": "ok" if not missing and not invalid else "failed",
         "checked_count": len(checked),
         "executed_count": len(executed),
+        "satisfied_count": len(satisfied),
+        "partial_count": len(partial),
+        "partial": partial,
         "missing": missing,
         "invalid": invalid,
     }

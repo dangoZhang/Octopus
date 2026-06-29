@@ -35,6 +35,11 @@
       "id": "math-mini-3",
       "goal": "Prove by induction that 1 + 2 + ... + n = n(n + 1)/2, then verify the formula at n = 10.",
       "expected_feed": "Base case, induction step, and numeric verification that the sum at n = 10 equals 55."
+    },
+    {
+      "id": "math-mini-4",
+      "goal": "Minimize f(x) = x^2 - 6x + 13 by completing the square, then verify the minimum with a derivative check and nearby numeric comparisons.",
+      "expected_feed": "Completed square form, minimum point, derivative check, nearby numeric comparison, and artifact-backed verifier evidence."
     }
   ]
 }

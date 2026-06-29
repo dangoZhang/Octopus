@@ -283,8 +283,8 @@
       <nav class="shell" aria-label="Primary navigation">
         <div class="brand">Octopus</div>
         <div class="nav-links">
-          <a href="./demo.html">Demo</a>
-          <a href="#quickstart">Install & use</a>
+          <a href="#quickstart">Install</a>
+          <a href="./use.html">Use</a>
           <a href="./docs.html">Docs</a>
           <a class="button" href="https://github.com/dangoZhang/Octopus">GitHub</a>
         </div>
@@ -297,9 +297,7 @@
           <h1>Octopus</h1>
           <p class="lead">Keep the main agent focused on the goal. Let local tentacles handle files, browsers, commands, checks, and messy tool work.</p>
           <div class="hero-actions">
-            <a class="button primary" href="./demo.html">Watch product demo</a>
-            <a class="button" href="./app.html?demo=hello">Try Hello World</a>
-            <a class="button" href="./app.html?demo=octopus">Draw Octopus</a>
+            <a class="button primary" href="#quickstart">Install and open locally</a>
             <a class="button" href="./docs.html">Read docs tutorial</a>
           </div>
           <div class="flow" aria-label="Octopus thinking flow">
@@ -312,15 +310,15 @@
         </div>
       </section>
 
-      <section id="demo">
+      <section id="local-app">
         <div class="shell">
-          <h2>Octopus App Demo</h2>
+          <h2>Local Goal/Need/Feed App</h2>
           <div class="grid">
-            <article class="card"><h3>One binary</h3><p>Install, start the app, and run the first Goal from the same CLI.</p></article>
+            <article class="card"><h3>One binary</h3><p>Install, run the first Goal, and open the app from the same CLI.</p></article>
             <article class="card"><h3>One local surface</h3><p>The app, pet, docs, recipes, and installer route ship together.</p></article>
             <article class="card"><h3>One visible loop</h3><p>A Goal becomes a Feed summary and a pixel Octopus state.</p></article>
           </div>
-          <p class="copy"><a href="./demo.html">Open the product demo</a></p>
+          <p class="copy"><a href="#quickstart">Follow the local install path</a></p>
         </div>
       </section>
 
@@ -351,14 +349,11 @@
         <div class="shell">
           <h2>Quick Install & Use</h2>
           <pre><code>curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
-octopus --version
-octopus start --check</code></pre>
-          <p class="copy"><code>start --check</code> prepares state, seed tentacles, heartbeats, app evidence, and returns to the shell.</p>
-          <pre><code>octopus first-run "make this repo easier to use"
-octopus chat "prefer one small evidence-backed improvement"
-octopus pet desktop
+	octopus --version
+	octopus start --check
+	octopus first-run "make this repo easier to use"
 octopus start --open</code></pre>
-          <p class="copy"><a href="./demo.html">Product demo</a>. <a href="./docs.html">Docs tutorial</a>. <a href="./use.html">5-minute use guide</a>. <a href="./quickstart.html">Full install guide</a>. <a href="./app.html?demo=hello">Try App</a>.</p>
+          <p class="copy">The local app opens at <code>http://127.0.0.1:8765/app.html</code> with Goal, Need, and Feed. <a href="./docs.html">Docs tutorial</a>. <a href="./use.html">5-minute use guide</a>. <a href="./quickstart.html">Full install guide</a>. <a href="./app.html">Local App</a>.</p>
         </div>
       </section>
     </main>

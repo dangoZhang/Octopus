@@ -47,7 +47,7 @@ let rows = [
 ]
 
 let observationFreshSeconds: TimeInterval = 8
-let fallbackWorkerPolicy = "workers are execution slots from the peer field pool; fields stay peer"
+let workerPolicyDefault = "workers are execution slots from the peer field pool; fields stay peer"
 
 func parseConfig() -> AppConfig {
     var config = AppConfig()
@@ -302,14 +302,14 @@ func observeSerializedFieldPool(_ pool: [String: Any], slots: [[String: Any]], r
         let taskSuffix = task.map { "/\($0)" } ?? ""
         let worker = text(slot["latest_worker_id"]).map { "\($0):" } ?? "pool:"
         sources.append("\(worker)\(field)\(taskSuffix)")
-        states.append(workerState(from: text(slot["latest_worker_status"]) ?? text(slot["latest_status"])))
+        states.append(workerState(from: text(slot["latest_status"]) ?? text(slot["latest_worker_status"])))
         updatedAt.append(int(slot["latest_updated_at_secs"]) ?? 0)
     }
 
     let count = int(pool["field_slot_count"]) ?? int(pool["field_count"]) ?? slots.count
     let workers = int(pool["latest_worker_slot_count"]) ?? 0
     let completed = int(pool["completed_fields"]) ?? slots.filter { bool($0["completed"]) == true }.count
-    let policy = text(pool["worker_slots"]) ?? text(pool["policy"]) ?? fallbackWorkerPolicy
+    let policy = text(pool["worker_slots"]) ?? text(pool["policy"]) ?? workerPolicyDefault
     let reason = text(pool["active_slot_reason"]).map { "\nreason: \($0)" } ?? ""
     let latestRun = lastDict(root["parallel_evolution_runs"])
     let runDetail = parallelRunPoolDetail(from: latestRun, activeWorkers: workers)
@@ -325,7 +325,7 @@ func observeLegacyFieldPool(_ root: [String: Any]) -> FieldPoolObservation {
     let verifierByField = latestVerifierByField(root)
     let workerByField = latestWorkerByField(root)
     let latestRun = lastDict(root["parallel_evolution_runs"])
-    let policy = text(latestRun?["worker_policy"]) ?? fallbackWorkerPolicy
+    let policy = text(latestRun?["worker_policy"]) ?? workerPolicyDefault
     let activeField = peerFieldIds.first { field in
         let status = text(workerByField[field]?["status"]) ?? text(verifierByField[field]?["status"])
         return status?.lowercased() != "satisfied"

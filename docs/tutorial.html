@@ -309,7 +309,7 @@
         <div class="links">
           <a href="./">Home</a>
           <a href="./recipes.html">Recipes</a>
-          <a href="./app.html">Try app</a>
+          <a href="./app.html">Local app</a>
           <a href="./use.html">Use</a>
           <a href="./quickstart.html">Install</a>
           <a class="button" href="https://github.com/dangoZhang/Octopus">GitHub</a>
@@ -320,11 +320,10 @@
     <main>
       <section class="hero shell">
         <div>
-          <h1>Try the clean brain loop.</h1>
-          <p class="lead">Octopus lets the model ask for a cognitive Need, then lets an intelligent tentacle decide how to supply Feed. This page shows the browser path first, then the full local product path.</p>
+          <h1>Run the clean brain loop.</h1>
+          <p class="lead">Octopus lets the model ask for a cognitive Need, then lets an intelligent tentacle decide how to supply Feed. This page starts from the local product path.</p>
           <div class="hero-actions">
-            <a class="button primary" href="./app.html?demo=hello">Try Hello World</a>
-            <a class="button" href="./app.html?demo=octopus">Draw Octopus</a>
+            <a class="button primary" href="./app.html">Open local app</a>
             <a class="button" href="#local">Run locally</a>
           </div>
         </div>
@@ -344,19 +343,19 @@
 
       <section>
         <div class="shell">
-          <h2>Browser path</h2>
+          <h2>Local app path</h2>
           <div class="steps">
             <article class="card">
-              <h3>1. Pick a demo</h3>
-              <p>Open Hello World or Draw Octopus. The Goal is prefilled so the first screen already shows what Octopus is trying to do.</p>
+              <h3>1. Start Octopus</h3>
+              <p>Open the local app after starting Octopus. The first screen shows the current Goal, Need, Feed, and pet state.</p>
             </article>
             <article class="card">
-              <h3>2. Add a model key</h3>
-              <p>Paste an API key and choose an OpenAI-compatible endpoint or a <code>/v1</code> base URL. The key stays in the current tab.</p>
+              <h3>2. Change the Goal</h3>
+              <p>The page only writes the Goal. Model and provider settings stay in the local runtime, not inside the Need text.</p>
             </article>
             <article class="card">
               <h3>3. Watch Feed arrive</h3>
-              <p>The clean brain emits a Need. The browser tentacle plans the action, writes output, and returns compact Feed. No local bridge is required.</p>
+              <p>The clean brain emits a Need. A model-backed tentacle enters the environment, acts, checks itself, and returns compact Feed.</p>
             </article>
           </div>
         </div>

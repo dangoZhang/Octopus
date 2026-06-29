@@ -6,7 +6,7 @@ Target: `v0.2.0`.
 
 目标：让 Octopus 在八个同级 field slot 里长出合适触手，同时保持 Brain 只表达 Need。八个 field 是同一个 Goal 的并列适应面；调度器看状态、失败轨迹和最近运行记录来选择当前 worker slot。
 
-`--workers n` 只表示一次打开几个执行槽。`--workers 1` 是单槽观察模式；未点名具体领域时，Goal 层仍然同时保留 math、search、code、SWE、research、computer-use、IB work、robotics。Goal 点名一个或多个领域时，这组领域会成为本次候选池。`mini-1/2/3` 是单个 field 内部的训练阶梯，不给八个 field 排序。
+`--workers n` 只表示一次打开几个执行槽。`--workers 1` 是单槽观察模式；未点名具体领域时，Goal 层仍然同时保留 math、search、code、SWE、research、computer-use、IB work、robotics。Goal 点名一个或多个领域时，这组领域会成为本次候选池。`mini-*` 是单个 field 内部的训练阶梯，不给八个 field 排序。
 
 ```text
 Goal -> field signal -> Need -> tentacle selection/generation
@@ -117,14 +117,15 @@ Need 稳定，实现可替换。相同 Need 可以路由到不同触手组合。
 - [x] `octopus fields summary` 可报告 all-pack task 完成状态。
 - [x] 为八个并列领域定义第三层 mini task；调度器从同一个并列池选择未满足任务。
 - [x] 八个第三层 mini task 已全部进入失败轨迹 -> runtime patch -> apply -> rerun -> score 闭环，并变为 satisfied。
-- [x] `field-mini-task` 开始支持 `repair-templates/` 外部模板；24 个 field mini task 修复模板已从 Rust core 迁到可进化触手目录，三层模板已全部外置。
-- [x] `check field-mini-task` 会运行 repair-template 覆盖检查，确认 8 个并列 field 的 24 个 mini task 都有匹配模板。
-- [x] `preflight` 将 `check field-mini-task 2` 作为 required gate，发布前必须证明 24 个 repair template 全部存在并可执行。
+- [x] `field-mini-task` 开始支持 `repair-templates/` 外部模板；已声明 field mini task 修复模板已从 Rust core 迁到可进化触手目录，前三层模板已全部外置。
+- [x] `check field-mini-task` 会运行 repair-template 覆盖检查，确认已声明 field mini task 都有匹配模板；v0.2 八个必需领域前三层已通过，扩展领域会加入同一检查。
+- [x] `preflight` 将 `check field-mini-task 2` 作为 required gate，发布前必须证明已声明 repair template 全部存在并可执行。
 - [x] `run_field_mini_task` 优先执行外部 `repair-templates/*.pyfrag`，并在 Feed metadata 里记录 `runtime_template=repair-template` 和模板路径。
 - [x] field-mini-task 的 runtime evolution 候选现在指向 `repair-templates/<field>/<mini>.pyfrag`，不再向 runner 插入领域分支。
+- [x] harness beat 的 evolution artifact 只由真实 LLM planner 生成；本地规则候选和静态 patch 兜底已删除。
 - [x] Rust 核心测试只断言模板边界，不再复制 8 个领域的具体模板实现。
-- [x] 24 个 repair template 都已改成独立 `if field/mini_task` 文件，loader 不再把 `elif` 转成 `if`。
-- [x] `check field-mini-task` 会编译并执行 24 个 repair template，要求每个模板返回 `status=satisfied` 的 `field_result`。
+- [x] 已声明 repair template 都已改成独立 `if field/mini_task` 文件，loader 不再把 `elif` 转成 `if`。
+- [x] `check field-mini-task` 会编译并执行已声明 repair template，要求每个模板返回 `status=satisfied` 的 `field_result`。
 - [x] 多领域 objective 只定义候选池；`evolve parallel --workers 1` 会按 field 完成度和最近运行状态选择一个执行槽，避免固定从列表第一个领域开始。
 - [x] `evolve parallel --workers n` 会为每个 peer-field worker slot 写入一个独立 Need Queue 项，执行仍走 Need -> Feed 链路。
 - [x] `evolve parallel --workers n` 会校验 worker 输入；`n` 是 1 到 8 的执行槽数量，非法值不会静默退回默认并继续运行。
@@ -151,10 +152,10 @@ Need 稳定，实现可替换。相同 Need 可以路由到不同触手组合。
 - [x] `field_parallel_pool` 产品和 preflight gate 需要八个命名领域都存在；只凑够 8 个任意 slot 不算通过。
 - [x] `evolve parallel` 在新 state 中会先准备 `field-mini-task` seed 触手，再让 worker Needs 进入真实 Feed。
 - [x] `evolve parallel` 会在 worker Needs 进入 Feed 前写入带 `field/mini_task` 标签的 `action` pet event，让桌宠先看到具体触手槽位开始行动。
-- [x] installed binary 会物化 `field-mini-task` runner、checker 和 24 个 repair template，下载运行路径不依赖源码树。
+- [x] installed binary 会物化 `field-mini-task` runner、checker 和已声明 repair template，下载运行路径不依赖源码树。
 - [x] 如果当前项目已有自己的 `tentacles/` 但缺少 `field-mini-task`，parallel evolution 会回退到 bundled seed，不让项目触手目录遮掉 field 基建。
-- [x] bundled seed 同时物化 field-packs 和最小文档 fixture；`check field-mini-task` 在无源码树或本地触手遮挡时也能执行 24/24 模板。
-- [x] 直接点名触手的 `install`、`probe`、`think` 入口也复用 bundled seed fallback，避免用户项目自定义 `tentacles/` 遮住内置触手。
+- [x] bundled seed 同时物化 field-packs 和最小文档 fixture；`check field-mini-task` 在无源码树或本地触手遮挡时也能执行已声明模板。
+- [x] 直接点名触手的 `install`、`probe`、`think` 入口也复用 bundled seed overlay，避免用户项目自定义 `tentacles/` 遮住内置触手。
 - [x] `evolve recommend/apply` 和 provider matrix 的触手规划/进化检查也复用同一个 manifest resolver，下载版自进化路径不再依赖源码树触手目录。
 - [x] `starter` 和 `skills` 使用本地 manifest 加 bundled seed 的合并视图；用户自定义触手不会覆盖掉 Octopus 自带起步能力。
 - [x] `bootstrap`、`adapt` 和默认 `manifests` 也保留本地触手优先级，同时补齐缺失 bundled seeds。
@@ -201,13 +202,13 @@ field-packs/
   computer-use/
   ib/
   robotics/
+  write/
 
 .octopus/trajectories/
 .octopus/field-scores/
 ```
 
-`field-packs/` contains the first reusable pack template plus eight field skeletons. Rust core loads these packs, `octopus fields` exposes them, and Feed traces now carry the selected `field_pack`.
+`field-packs/` contains the first reusable pack template, the eight required v0.2 field skeletons, and expansion packs such as `write`. Rust core loads these packs, `octopus fields` exposes them, and Feed traces now carry the selected `field_pack`.
 
-Current infrastructure step: keep all eight fields in the same parallel Goal pool while worker slots take runnable field Needs from that pool. All first-pass, second-layer, and third-layer mini tasks are satisfied. Each third-layer task passed through failure, runtime patch, authorized apply, rerun, verifier score, and evolution outcome. `octopus fields summary` now reports `all_pack_tasks_satisfied=true`, no active slot when the pool is complete, and an executable `evolve recommend field-mini-task` next action for the next harder layer. `field-mini-task/repair-templates/` has moved all 24 task-specific implementation fragments out of Rust core and into editable harness. The live runner now only records the task, loads the matching standalone template, returns its compact Feed, or falls back to a generic partial result when no template exists. It no longer carries hard-coded math/search/code/SWE/research/computer-use/IB/robotics branches or `elif` conversion compatibility. Runtime evolution candidates now target template files directly. The manifest check now verifies 24/24 template coverage and executes every template in a temporary session. `--workers 1` means one active worker slot; higher worker counts expand concurrent slots from the same pool and enqueue one Need per worker slot. Each queued worker Need carries structured `field_pack`, mini-task, and expected-Feed context before it enters Feed, with text parsing kept only for older state files. `evolve parallel --workers n` prepares the `field-mini-task` seed tentacle when a fresh state has not installed it yet, records each worker's queued Need index, runs those Needs through the same Need -> Feed verifier path, then writes trace/verifier/status back onto the worker. If an objective names multiple fields, those names constrain the candidate pool; worker slot selection still follows field status and recent-run fairness rather than textual order.
 
 稳定 Rust kernel 只保留 Field Pack 读取、轨迹记录、路由信号、Need/Feed 传输和 heartbeat。领域实现继续留在可进化 harness 中。

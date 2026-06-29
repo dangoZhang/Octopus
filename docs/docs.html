@@ -208,8 +208,8 @@
         <div class="brand">Octopus Docs</div>
         <div class="links">
           <a href="./">Home</a>
-          <a href="./demo.html">Demo</a>
-          <a href="./app.html?demo=hello">Try App</a>
+          <a href="./quickstart.html">Install</a>
+          <a href="./app.html">Local App</a>
           <a href="./use.html">Use</a>
           <a href="https://github.com/dangoZhang/Octopus">GitHub</a>
         </div>
@@ -220,16 +220,14 @@
       <section class="hero shell">
         <h1>Learn Octopus from idea to running app.</h1>
         <p class="lead">Install it, open the local app, run one Goal, and inspect where the tool workflows live.</p>
-        <a class="button primary" href="./demo.html">Start with the product demo</a>
+        <a class="button primary" href="./quickstart.html">Start with install</a>
       </section>
 
       <section>
         <div class="shell">
-          <h2>1. See the idea running</h2>
+          <h2>1. Follow the product path</h2>
           <div class="steps">
-            <article class="card"><span class="tag">Browser</span><h3>Hello World</h3><p>Open the browser app with a prefilled Goal and generate a small page.</p><a class="button" href="./app.html?demo=hello">Try Hello World</a></article>
-            <article class="card"><span class="tag">Browser</span><h3>Draw Octopus</h3><p>The browser tentacle chooses the action and draws an animated Octopus output.</p><a class="button" href="./app.html?demo=octopus">Draw Octopus</a></article>
-            <article class="card"><span class="tag">Product</span><h3>Octopus App Demo</h3><p>The demo page shows the product surface: Goal, Need, Feed, Output, pet state, and install path.</p><a class="button" href="./demo.html">Open demo</a></article>
+            <article class="card"><span class="tag">Product</span><h3>Install -> first-run -> start --open</h3><p>The local app shows Goal, Need, Feed, Output, and pet state from the run.</p><a class="button" href="./quickstart.html">Open install guide</a></article>
           </div>
         </div>
       </section>
@@ -238,9 +236,8 @@
         <div class="shell">
           <h2>2. Install and launch</h2>
           <pre><code>curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
-octopus --version
-octopus start --check</code></pre>
-          <p class="lead"><code>start --check</code> prepares state, seed tentacles, heartbeats, app evidence, and returns to the shell. Use <code>octopus start --open</code> when you want the browser app.</p>
+octopus --version</code></pre>
+          <p class="lead">After install, run one Goal and open the local app.</p>
         </div>
       </section>
 
@@ -248,8 +245,6 @@ octopus start --check</code></pre>
         <div class="shell">
           <h2>3. Run the first clean loop</h2>
           <pre><code>octopus first-run "make this repo easier to use"
-octopus chat "prefer one small evidence-backed improvement"
-octopus pet desktop
 octopus start --open</code></pre>
           <div class="grid">
             <article class="card"><h3>Goal</h3><p>User input changes the objective.</p></article>
@@ -278,7 +273,7 @@ octopus provider check</code></pre>
       <section>
         <div class="shell">
           <h2>5. Preview field evolution</h2>
-          <pre><code>octopus evolve parallel --workers 1 --open "advance the eight peer field objectives toward v0.2.0"
+          <pre><code>octopus evolve parallel --workers 1 --open "advance the peer field objectives toward v0.2.0"
 octopus fields summary</code></pre>
           <p class="lead">This opens one worker slot from the peer field pool, runs the editable field harness, records Feed plus verifier signal, and keeps the Octopus pet as a state observer.</p>
         </div>
@@ -290,7 +285,7 @@ octopus fields summary</code></pre>
           <div class="grid">
             <article class="card"><h3><code>tentacles/</code></h3><p>Editable workflows for repo, browser, repair, and script tasks.</p></article>
             <article class="card"><h3><code>crates/octopus-core/</code></h3><p>Runtime, state, local server, and release checks.</p></article>
-            <article class="card"><h3><code>docs/</code></h3><p>GitHub Pages website, demo, tutorial, use guide, recipes, and research map.</p></article>
+            <article class="card"><h3><code>docs/</code></h3><p>GitHub Pages website, tutorial, use guide, recipes, app page, and research map.</p></article>
           </div>
         </div>
       </section>

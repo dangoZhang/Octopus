@@ -13,8 +13,8 @@
   "skills": [
     {
       "id": "harness-self-repair",
-      "description": "Diagnose broken harness feedback loops and prepare safe repair actions.",
-      "needs": ["observe", "verify", "execute"]
+      "description": "Diagnose broken harness feedback loops and prepare safe repair actions. Ordinary verification Needs should route to SWE, bash, computer-use, or field harnesses first.",
+      "needs": ["observe", "execute"]
     }
   ],
   "tools": [

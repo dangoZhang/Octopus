@@ -8,7 +8,7 @@ Octopus core loads these packs from `field-packs/` or the embedded release copy.
 
 The packs describe task shape. Concrete tentacle behavior should be iterated by Octopus from trajectories, verifier results, and repair attempts.
 
-Current `0.1.x` scope: keep eight field goals as peer slots in one pool, open worker slots from that pool, record traces, record verifier results, and route failed field evidence into harness repair. The field list is not a backlog. Worker count controls concurrency only. Each seed pack now has three mini tasks, and all three layers are satisfied after repair/rerun/score cycles.
+Current `0.1.x` scope: keep the required v0.2 field goals as peer slots in one pool, allow expansion packs such as writing, open worker slots from that pool, record traces, record verifier results, and route failed field evidence into harness repair. The field list is not a backlog. Worker count controls concurrency only. Required seed packs now have three mini tasks, and all three layers are satisfied after repair/rerun/score cycles.
 
 ## Contract
 
@@ -33,6 +33,7 @@ field-packs/
   computer-use/field-pack.json
   ib/field-pack.json
   robotics/field-pack.json
+  write/field-pack.json
 ```
 
 ## Pack Rules
@@ -57,6 +58,6 @@ octopus fields
 octopus fields summary
 octopus fields match verify "dedupe search results and keep citations"
 octopus fields score latest failed missing_source "citation coverage failed"
-octopus evolve parallel --workers 4 --open "advance the eight peer field objectives toward v0.2.0"
+octopus evolve parallel --workers 4 --open "advance the peer field objectives toward v0.2.0"
 octopus traces 10
 ```

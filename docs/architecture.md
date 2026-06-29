@@ -48,7 +48,7 @@ Every executed Feed is also written to a compact harness trace journal and retur
 
 `start [--open] [addr]` prepares local state, starts the native HTML app, overlays `.octopus/llm.env`, and exposes `/api/run` plus `/api/stream` through a narrow bridge. The bridge allows Goal writes through `chat`, `goal set/refine`, and `first-run [--live] [objective]`. Doctor, report, preflight, provider status/check, starter recommendations, traces, and pet state are observable. Need execution, Feed scoring, repair, evolve, OAuth grants, installs, checks, provider env writes, preflight record writes, `brain --goal`, and pet image writes stay internal or developer-only. Blocked bridge calls return `user_writes_brain_goal_only` with suggested Goal commands instead of a generic server error, and `preflight` treats that boundary as release evidence.
 
-`app_bridge.rs` owns the local app bridge runtime: start parsing, HTTP/SSE serving, static app fallback, child command streaming, command allow-listing, denial responses, `.octopus/llm.env` overlay parsing, and the `bridge_goal_surface` preflight evidence. `main.rs` only dispatches `start` into that module.
+`app_bridge.rs` owns the local app bridge runtime: start parsing, HTTP/SSE serving, embedded app assets, child command streaming, command allow-listing, denial responses, `.octopus/llm.env` overlay parsing, and the `bridge_goal_surface` preflight evidence. `main.rs` only dispatches `start` into that module.
 
 `release_gate.rs` owns preflight check records, real-machine record parsing, generated script commands, and docs-only record status logic. `main.rs` still aggregates doctor, provider, bridge, and product evidence into the final `preflight_report`.
 
@@ -90,7 +90,7 @@ Tentacles can be segmented internally without exposing every local step to the m
 
 Color change is a pixel pet layer. It can show heartbeat, memory beat, harness beat, blocked state, or success without changing `Need`, `Feed`, or `Feedback`. `pet image [state] [path]` exports the same pixel body as an SVG for chat, docs, or app surfaces.
 
-`need`, `chat`, `feedback`, `beat`, and `evolve score` write the latest pet event into harness state. `pet` auto-selects a color from that event plus goal status. `pet [state]` can force `heartbeat`, `memory`, `harness`, `blocked`, or `success`; `--json pet` returns the chat fallback square, event source, event summary, and local `pet.html` URL for other UI shells.
+`need`, `chat`, `feedback`, `beat`, and `evolve score` write the latest pet event into harness state. `pet` auto-selects a color from that event plus goal status. `pet [state]` can force `heartbeat`, `memory`, `harness`, `blocked`, or `success`; `--json pet` returns the chat badge, event source, event summary, and local `pet.html` URL for other UI shells.
 
 ## Boundary
 

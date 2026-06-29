@@ -2,7 +2,7 @@
 
 Keep the main agent focused on the goal. Let local tentacles handle the tool work.
 
-[Install](#quick-install--use) · [Product Demo](https://dangozhang.github.io/Octopus/demo.html) · [Docs](https://dangozhang.github.io/Octopus/docs.html) · [Try App](https://dangozhang.github.io/Octopus/app.html?demo=hello) · [中文](README.zh-CN.md)
+[Install](#quick-install--use) · [Local App](https://dangozhang.github.io/Octopus/app.html) · [Docs](https://dangozhang.github.io/Octopus/docs.html) · [中文](README.zh-CN.md)
 
 Biological octopuses distribute control through the body. The central brain sets direction; the arms do much of the sensing and adjustment close to the world.
 
@@ -41,30 +41,27 @@ The pixel pet is a read-only desktop observer. It watches `.octopus/state.json`:
 
 ## Quick Install & Use
 
+Current status: `v0.2.0`. The old `v0.1.0` release artifacts were removed; this is the first usable public line with desktop pet observation and real harness-evolution evidence.
+
 ```bash
 curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh
 octopus --version
-octopus start --check
 ```
 
-Then run one local loop:
+Then run one local Goal/Need/Feed loop and open the app:
 
 ```bash
 octopus first-run "make this repo easier to use"
-octopus chat "prefer one small evidence-backed improvement"
-octopus pet desktop
 octopus start --open
 ```
 
-You should see `.octopus/state.json`, one Feed summary, one native desktop Octopus observing that state, and the local app at `http://127.0.0.1:8765/app.html`. `start --open` keeps the app server running; use `start --check` when you only need evidence.
+You should see `.octopus/state.json`, one Feed summary, and the local Goal/Need/Feed app at `http://127.0.0.1:8765/app.html`. `start --open` keeps the app server running; use `start --check` when you only need evidence.
 
 Direct GitHub install:
 
 ```bash
 cargo install --git https://github.com/dangoZhang/Octopus octopus-core --locked --bin octopus --force
-octopus start --check
 octopus first-run "make this repo easier to use"
-octopus pet desktop
 octopus start --open
 ```
 

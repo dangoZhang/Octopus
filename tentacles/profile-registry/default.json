@@ -247,8 +247,8 @@
       {
         "id": "harness-self-repair",
         "name": "Harness Self Repair",
-        "description": "Diagnose heartbeat/evolution signals and plan the next grant-bound harness repair.",
-        "needs": ["observe", "verify", "execute"],
+        "description": "Diagnose heartbeat/evolution signals and plan the next grant-bound harness repair. Ordinary verification should stay with SWE, bash, computer-use, or field harnesses.",
+        "needs": ["observe", "execute"],
         "tools": [
           "tentacles/harness-repair-agent/tools/diagnose_harness.sh",
           "tentacles/harness-repair-agent/tools/heartbeat_repair.sh",
