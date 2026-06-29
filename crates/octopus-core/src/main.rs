@@ -4112,6 +4112,31 @@ fn write_repair_score_journal(
         .get("llm_draft_status")
         .cloned()
         .unwrap_or_else(|| "unknown".to_string());
+    let action_trace_json = trace
+        .metadata
+        .get("action_trace_json")
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_status = trace
+        .metadata
+        .get("action_trace_status")
+        .cloned()
+        .unwrap_or_else(|| "unknown".to_string());
+    let action_trace_stage_count = trace
+        .metadata
+        .get("action_trace_stage_count")
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_last_action = trace
+        .metadata
+        .get("action_trace_last_action")
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_repair_hint = trace
+        .metadata
+        .get("action_trace_repair_hint")
+        .cloned()
+        .unwrap_or_default();
     let timestamp_secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| error.to_string())?
@@ -4127,6 +4152,11 @@ fn write_repair_score_journal(
         "source": trace.metadata.get("source").cloned().unwrap_or_else(|| "repair_score".to_string()),
         "next_need": trace.metadata.get("next_need").cloned().unwrap_or_default(),
         "draft_status": draft_status,
+        "action_trace_json": action_trace_json,
+        "action_trace_status": action_trace_status,
+        "action_trace_stage_count": action_trace_stage_count,
+        "action_trace_last_action": action_trace_last_action,
+        "action_trace_repair_hint": action_trace_repair_hint,
         "outcome_status": status,
         "summary": truncate_chars(&outcome.summary, 500),
     });
@@ -4139,12 +4169,16 @@ fn write_repair_score_journal(
     fs::write(
         &outcome_path,
         format!(
-            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\n\n{}\n\njournal: `{}`\n",
+            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\n\n{}\n\njournal: `{}`\n",
             status,
             display_path(&workspace, &session_path),
             record["target_tentacle"].as_str().unwrap_or("unknown"),
             record["candidate"].as_str().unwrap_or("none"),
             record["draft_status"].as_str().unwrap_or("unknown"),
+            record["action_trace_json"].as_str().unwrap_or(""),
+            record["action_trace_status"].as_str().unwrap_or("unknown"),
+            record["action_trace_stage_count"].as_str().unwrap_or(""),
+            record["action_trace_last_action"].as_str().unwrap_or(""),
             outcome.summary,
             display_path(&workspace, &outcomes_file)
         ),
@@ -24039,6 +24073,9 @@ JSON
         assert!(outcomes.contains("\"outcome_status\":\"satisfied\""));
         assert!(outcomes.contains("\"target_tentacle\":\"swe-agent\""));
         assert!(outcomes.contains("\"candidate\":\"03-runtime-code\""));
+        assert!(outcomes.contains("\"action_trace_status\":\"satisfied\""));
+        assert!(outcomes.contains("\"action_trace_stage_count\":\"6\""));
+        assert!(outcomes.contains("\"action_trace_json\":\".octopus/harness-repair/"));
         assert!(outcomes.contains("repair improved harness"));
         let outcome_markdown = workspace
             .join(".octopus/harness-repair")
@@ -24050,9 +24087,31 @@ JSON
                 candidate.exists().then_some(candidate)
             })
             .expect("repair outcome markdown");
-        assert!(fs::read_to_string(outcome_markdown)
+        let outcome_markdown = fs::read_to_string(outcome_markdown).unwrap();
+        assert!(outcome_markdown.contains("repair improved harness"));
+        assert!(outcome_markdown.contains("action_trace_status: `satisfied`"));
+        run(vec![
+            "--state".to_string(),
+            state,
+            "need".to_string(),
+            "execute".to_string(),
+            workspace.to_string_lossy().to_string(),
+        ])
+        .unwrap();
+        let memory_has_action_trace = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
             .unwrap()
-            .contains("repair improved harness"));
+            .filter_map(|entry| {
+                let candidate = entry.ok()?.path().join("OUTCOME_MEMORY.md");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| content.contains("action_trace: status=`satisfied`"))
+                    .unwrap_or(false)
+            });
+        assert!(memory_has_action_trace);
         let _ = fs::remove_dir_all(workspace);
     }
 

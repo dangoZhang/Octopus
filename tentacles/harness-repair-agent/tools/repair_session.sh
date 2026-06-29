@@ -73,6 +73,7 @@ def outcome_status(item):
 
 
 def normalized_outcome(item, origin):
+    action_trace = item.get("action_trace") if isinstance(item.get("action_trace"), dict) else {}
     return {
         "origin": origin,
         "index": item.get("index", ""),
@@ -87,6 +88,12 @@ def normalized_outcome(item, origin):
         "source": str(item.get("source") or origin),
         "next_need": str(item.get("next_need") or ""),
         "draft_status": str(item.get("draft_status") or ""),
+        "action_trace_json": str(item.get("action_trace_json") or action_trace.get("json") or ""),
+        "action_trace_status": str(item.get("action_trace_status") or action_trace.get("status") or ""),
+        "action_trace_stage_count": str(item.get("action_trace_stage_count") or action_trace.get("stage_count") or ""),
+        "action_trace_last_action": str(item.get("action_trace_last_action") or action_trace.get("last_action") or ""),
+        "action_trace_repair_hint": str(item.get("action_trace_repair_hint") or action_trace.get("repair_hint") or ""),
+        "action_trace_failed_stage": str(item.get("action_trace_failed_stage") or action_trace.get("failed_stage") or ""),
         "outcome_status": outcome_status(item),
         "summary": compact(item.get("summary") or item.get("content") or "", 500),
     }
@@ -134,10 +141,15 @@ def outcome_memory_markdown(outcomes, workspace, outcomes_file):
         candidate = item.get("candidate") or "none"
         status = item.get("outcome_status") or "unknown"
         origin = item.get("origin") or "unknown"
+        action_status = item.get("action_trace_status") or "unknown"
+        action_count = item.get("action_trace_stage_count") or "0"
+        action_last = item.get("action_trace_last_action") or "none"
+        action_hint = item.get("action_trace_repair_hint") or "none"
         lines.extend(
             [
                 f"- `{status}` target=`{target}` candidate=`{candidate}` origin=`{origin}` session=`{session}`",
                 f"  summary: {compact(item.get('summary', ''), 320)}",
+                f"  action_trace: status=`{action_status}` stages=`{action_count}` last=`{compact(action_last, 120)}` hint=`{compact(action_hint, 160)}`",
             ]
         )
     return "\n".join(lines) + "\n"

@@ -53,9 +53,9 @@
     },
     {
       "id": "repair_outcome",
-      "description": "Record a reviewed harness repair session outcome so future repair sessions can learn from it.",
+      "description": "Record a reviewed harness repair session outcome, including action-trace memory, so future repair sessions can learn from it.",
       "input": "workspace root, SESSION.json path, outcome status, and summary, or octopus-json-v1 Need",
-      "output": "JSON Feed with OUTCOME.md, outcomes.jsonl path, and next Need",
+      "output": "JSON Feed with OUTCOME.md, outcomes.jsonl path, action-trace outcome memory, and next Need",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/repair_outcome.sh",
@@ -109,6 +109,7 @@
       "Return repair plans as Feed before writing patches.",
       "Keep provider repair drafts optional and reviewable.",
       "Record repair outcomes before using them as future repair evidence.",
+      "Record ACTION_TRACE.json status, stage count, last action, and repair hint into repair outcomes.",
       "Feed repair-session planning with local OUTCOME_MEMORY, never raw tool logs in clean-brain context.",
       "Feed repair-session planning with ADAPTER_CONTEXT from local command, provider, desktop, and GitHub adapter probes.",
       "Feed repair-session planning with CODE_CONTEXT from the target tentacle manifest and tool code.",

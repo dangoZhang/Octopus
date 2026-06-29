@@ -57,6 +57,45 @@ def newest_session(root):
     return max(sessions, key=lambda path: path.stat().st_mtime)
 
 
+def resolve_session_artifact(workspace, session_path, value, fallback_name):
+    if value:
+        path = Path(str(value)).expanduser()
+        if not path.is_absolute():
+            path = workspace / path
+        if path.exists():
+            return path
+    fallback = session_path.parent / fallback_name
+    return fallback if fallback.exists() else None
+
+
+def action_trace_summary(workspace, session_path, session):
+    path = resolve_session_artifact(
+        workspace,
+        session_path,
+        session.get("action_trace_json"),
+        "ACTION_TRACE.json",
+    )
+    data = load_json(path) if path else {}
+    next_need = data.get("next_need") if isinstance(data.get("next_need"), dict) else {}
+    failed_stage = ""
+    for stage in data.get("stages") if isinstance(data.get("stages"), list) else []:
+        if not isinstance(stage, dict):
+            continue
+        if str(stage.get("status") or "") in {"failed", "missing_context"}:
+            failed_stage = str(stage.get("action") or "")
+            break
+    return {
+        "json": rel(path, workspace) if path else "",
+        "status": str(data.get("status") or "unknown"),
+        "stage_count": str(data.get("stage_count") or ""),
+        "last_action": str(data.get("last_action") or ""),
+        "repair_hint": str(data.get("repair_hint") or ""),
+        "failed_stage": failed_stage,
+        "next_need_kind": str(next_need.get("kind") or ""),
+        "next_need_query": str(next_need.get("query") or ""),
+    }
+
+
 def parse_input(payload, args):
     query = payload.get("need", {}).get("query", "")
     tokens = list(args)
@@ -147,6 +186,7 @@ if outcome_status is None:
     raise SystemExit(0)
 
 session = load_json(session_path)
+action_trace = action_trace_summary(workspace, session_path, session)
 record = {
     "schema_version": "octopus-harness-repair-outcome-v1",
     "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -157,6 +197,13 @@ record = {
     "source": str(session.get("source") or "none"),
     "next_need": str(session.get("next_need") or ""),
     "draft_status": str((session.get("draft") or {}).get("status") or "unknown"),
+    "action_trace_json": action_trace["json"],
+    "action_trace_status": action_trace["status"],
+    "action_trace_stage_count": action_trace["stage_count"],
+    "action_trace_last_action": action_trace["last_action"],
+    "action_trace_repair_hint": action_trace["repair_hint"],
+    "action_trace_failed_stage": action_trace["failed_stage"],
+    "action_trace": action_trace,
     "outcome_status": outcome_status,
     "summary": compact(summary, 500),
 }
@@ -174,6 +221,10 @@ outcome_md.write_text(
         f"target: `{record['target_tentacle']}`",
         f"candidate: `{record['candidate']}`",
         f"draft_status: `{record['draft_status']}`",
+        f"action_trace_json: `{record['action_trace_json'] or 'missing'}`",
+        f"action_trace_status: `{record['action_trace_status']}`",
+        f"action_trace_stages: `{record['action_trace_stage_count'] or 'unknown'}`",
+        f"action_trace_last: `{record['action_trace_last_action'] or 'unknown'}`",
         "",
         summary,
         "",
@@ -196,6 +247,10 @@ metadata = {
     "outcome_status": outcome_status,
     "target_tentacle": record["target_tentacle"],
     "candidate": record["candidate"],
+    "action_trace_json": record["action_trace_json"],
+    "action_trace_status": record["action_trace_status"],
+    "action_trace_stage_count": record["action_trace_stage_count"],
+    "action_trace_last_action": record["action_trace_last_action"],
     "next_need_kind": next_need_kind,
     "next_need_query": next_need_query,
 }
