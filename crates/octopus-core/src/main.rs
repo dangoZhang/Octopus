@@ -637,6 +637,16 @@ struct RepairPlanReport {
     action_trace_status: String,
     action_trace_stage_count: String,
     action_trace_last_action: String,
+    action_trace_effectiveness: String,
+    action_trace_effectiveness_json: String,
+    action_trace_effectiveness_used_count: String,
+    action_trace_effectiveness_satisfied_count: String,
+    action_trace_effectiveness_partial_count: String,
+    action_trace_effectiveness_failed_count: String,
+    action_trace_effectiveness_success_rate: String,
+    action_trace_effectiveness_failure_rate: String,
+    action_trace_effectiveness_top_reuse: String,
+    action_trace_effectiveness_top_avoid: String,
     repair_recall: String,
     repair_recall_match_count: String,
     repair_recall_top_status: String,
@@ -3880,6 +3890,14 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("action_trace", &plan.action_trace);
                 print_optional_line("action_trace_json", &plan.action_trace_json);
                 print_optional_line("action_trace_status", &repair_plan_action_trace_label(plan));
+                print_optional_line(
+                    "action_trace_effectiveness",
+                    &plan.action_trace_effectiveness,
+                );
+                print_optional_line(
+                    "action_trace_effectiveness_status",
+                    &repair_plan_action_trace_effectiveness_label(plan),
+                );
                 print_optional_line("repair_recall", &plan.repair_recall);
                 print_optional_line("repair_recall_status", &repair_plan_recall_label(plan));
                 print_optional_line("repair_lessons", &plan.repair_lessons);
@@ -3997,6 +4015,11 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("行动轨迹", &plan.action_trace);
                 print_optional_line("行动轨迹JSON", &plan.action_trace_json);
                 print_optional_line("行动轨迹状态", &repair_plan_action_trace_label(plan));
+                print_optional_line("行动轨迹有效性", &plan.action_trace_effectiveness);
+                print_optional_line(
+                    "行动轨迹有效性状态",
+                    &repair_plan_action_trace_effectiveness_label(plan),
+                );
                 print_optional_line("修复召回", &plan.repair_recall);
                 print_optional_line("修复召回状态", &repair_plan_recall_label(plan));
                 print_optional_line("修复教训", &plan.repair_lessons);
@@ -4397,6 +4420,59 @@ fn repair_plan_lessons_label(plan: &RepairPlanReport) -> String {
     }
     if !plan.repair_lessons_top_avoid.trim().is_empty() {
         parts.push(format!("top_avoid={}", plan.repair_lessons_top_avoid));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_action_trace_effectiveness_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan.action_trace_effectiveness_used_count.trim().is_empty() {
+        parts.push(format!(
+            "used={}",
+            plan.action_trace_effectiveness_used_count
+        ));
+    }
+    if !plan
+        .action_trace_effectiveness_satisfied_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "satisfied={}",
+            plan.action_trace_effectiveness_satisfied_count
+        ));
+    }
+    if !plan
+        .action_trace_effectiveness_failed_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "failed={}",
+            plan.action_trace_effectiveness_failed_count
+        ));
+    }
+    if !plan
+        .action_trace_effectiveness_success_rate
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "success_rate={}",
+            plan.action_trace_effectiveness_success_rate
+        ));
+    }
+    if !plan.action_trace_effectiveness_top_reuse.trim().is_empty() {
+        parts.push(format!(
+            "top_reuse={}",
+            plan.action_trace_effectiveness_top_reuse
+        ));
+    }
+    if !plan.action_trace_effectiveness_top_avoid.trim().is_empty() {
+        parts.push(format!(
+            "top_avoid={}",
+            plan.action_trace_effectiveness_top_avoid
+        ));
     }
     parts.join(" ")
 }
@@ -9675,6 +9751,18 @@ fn repair_report(
         if !plan.action_trace_json.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.action_trace_json)));
         }
+        if !plan.action_trace_effectiveness.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.action_trace_effectiveness)
+            ));
+        }
+        if !plan.action_trace_effectiveness_json.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.action_trace_effectiveness_json)
+            ));
+        }
         if !plan.repair_recall.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.repair_recall)));
         }
@@ -10200,6 +10288,43 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         action_trace_status: metadata_value(metadata, "action_trace_status"),
         action_trace_stage_count: metadata_value(metadata, "action_trace_stage_count"),
         action_trace_last_action: metadata_value(metadata, "action_trace_last_action"),
+        action_trace_effectiveness: metadata_value(metadata, "action_trace_effectiveness"),
+        action_trace_effectiveness_json: metadata_value(
+            metadata,
+            "action_trace_effectiveness_json",
+        ),
+        action_trace_effectiveness_used_count: metadata_value(
+            metadata,
+            "action_trace_effectiveness_used_count",
+        ),
+        action_trace_effectiveness_satisfied_count: metadata_value(
+            metadata,
+            "action_trace_effectiveness_satisfied_count",
+        ),
+        action_trace_effectiveness_partial_count: metadata_value(
+            metadata,
+            "action_trace_effectiveness_partial_count",
+        ),
+        action_trace_effectiveness_failed_count: metadata_value(
+            metadata,
+            "action_trace_effectiveness_failed_count",
+        ),
+        action_trace_effectiveness_success_rate: metadata_value(
+            metadata,
+            "action_trace_effectiveness_success_rate",
+        ),
+        action_trace_effectiveness_failure_rate: metadata_value(
+            metadata,
+            "action_trace_effectiveness_failure_rate",
+        ),
+        action_trace_effectiveness_top_reuse: metadata_value(
+            metadata,
+            "action_trace_effectiveness_top_reuse",
+        ),
+        action_trace_effectiveness_top_avoid: metadata_value(
+            metadata,
+            "action_trace_effectiveness_top_avoid",
+        ),
         repair_recall: metadata_value(metadata, "repair_recall"),
         repair_recall_match_count: metadata_value(metadata, "repair_recall_match_count"),
         repair_recall_top_status: metadata_value(metadata, "repair_recall_top_status"),
@@ -22473,6 +22598,16 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan
             .action_trace_last_action
             .contains("write reviewable repair plan"));
+        assert!(plan
+            .action_trace_effectiveness
+            .ends_with("ACTION_TRACE_EFFECTIVENESS.md"));
+        assert!(plan
+            .action_trace_effectiveness_json
+            .ends_with("ACTION_TRACE_EFFECTIVENESS.json"));
+        assert_eq!(plan.action_trace_effectiveness_used_count, "0");
+        assert_eq!(plan.action_trace_effectiveness_satisfied_count, "0");
+        assert_eq!(plan.action_trace_effectiveness_failed_count, "0");
+        assert_eq!(plan.action_trace_effectiveness_success_rate, "0.00");
         assert!(plan.repair_recall.ends_with("REPAIR_RECALL.json"));
         assert_eq!(plan.repair_recall_match_count, "0");
         assert!(plan.repair_lessons.ends_with("REPAIR_LESSONS.md"));
@@ -22723,6 +22858,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "\"schema_version\": \"octopus-harness-repair-command-strategy-effectiveness-v1\""
         ));
         assert!(command_strategy_effectiveness_json.contains("\"used_count\": 0"));
+        let action_trace_effectiveness_json =
+            fs::read_to_string(&plan.action_trace_effectiveness_json).unwrap();
+        assert!(action_trace_effectiveness_json
+            .contains("\"schema_version\": \"octopus-harness-action-trace-effectiveness-v1\""));
+        assert!(action_trace_effectiveness_json.contains("\"used_count\": 0"));
         let profile_journal = fs::read_to_string(&plan.environment_profile_journal).unwrap();
         assert!(profile_journal.contains("octopus-harness-environment-profile-v1"));
         let adaptation_json = fs::read_to_string(&plan.harness_adaptation_json).unwrap();
@@ -22790,6 +22930,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("ACTION_TRACE.json")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("ACTION_TRACE_EFFECTIVENESS.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("ACTION_TRACE_EFFECTIVENESS.json")));
         assert!(report
             .next
             .iter()
@@ -26525,6 +26673,27 @@ JSON
                     .unwrap_or(false)
             });
         assert!(draft_effectiveness_found);
+        let action_trace_effectiveness_found = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry.ok()?.path().join("ACTION_TRACE_EFFECTIVENESS.json");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains(
+                            "\"schema_version\": \"octopus-harness-action-trace-effectiveness-v1\"",
+                        ) && content.contains("\"used_count\": 1")
+                            && content.contains("\"satisfied_count\": 1")
+                            && content.contains("\"success_rate\": \"1.00\"")
+                            && content.contains("status=satisfied")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(action_trace_effectiveness_found);
         let command_effectiveness_found = workspace
             .join(".octopus/harness-repair")
             .read_dir()
@@ -26611,6 +26780,10 @@ JSON
             .feed
             .summary
             .contains("command_strategy_effectiveness=1"));
+        assert!(strategy_report
+            .feed
+            .summary
+            .contains("action_trace_effectiveness=1"));
         assert!(strategy_report
             .queued
             .iter()

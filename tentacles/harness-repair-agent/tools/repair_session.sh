@@ -642,6 +642,88 @@ def build_repair_lesson_effectiveness(outcomes):
     }
 
 
+def build_action_trace_effectiveness(outcomes):
+    used = []
+    hints = {}
+    counts = {
+        "satisfied": 0,
+        "partial": 0,
+        "failed": 0,
+        "unknown": 0,
+    }
+    for outcome in outcomes:
+        action_status = str(outcome.get("action_trace_status") or "").strip()
+        action_hint = compact(outcome.get("action_trace_repair_hint") or "", 180)
+        failed_stage = compact(outcome.get("action_trace_failed_stage") or "", 120)
+        last_action = compact(outcome.get("action_trace_last_action") or "", 160)
+        action_parts = [
+            f"status={action_status}" if action_status else "",
+            f"failed_stage={failed_stage}" if failed_stage else "",
+            f"hint={action_hint}" if action_hint else "",
+            f"last={last_action}" if last_action else "",
+        ]
+        action_hint = compact(" | ".join(part for part in action_parts if part), 320)
+        if not action_hint:
+            continue
+        status = outcome.get("outcome_status") or "unknown"
+        if status not in counts:
+            status = "unknown"
+        counts[status] += 1
+        used.append(outcome)
+        if status == "satisfied":
+            direction = "reuse"
+        elif status in {"partial", "failed"}:
+            direction = "avoid"
+        else:
+            direction = "observe"
+        add_effectiveness_hint(
+            hints,
+            direction,
+            action_hint,
+            status,
+            outcome,
+        )
+    used_count = len(used)
+    hint_rows = []
+    for record in hints.values():
+        record["success_rate"] = rate_label(record["satisfied_count"], record["used_count"])
+        record["failure_rate"] = rate_label(record["failed_count"], record["used_count"])
+        hint_rows.append(record)
+    hint_rows.sort(
+        key=lambda item: (
+            item["satisfied_count"],
+            item["used_count"],
+            -item["failed_count"],
+            item["hint"],
+        ),
+        reverse=True,
+    )
+    reuse = [item for item in hint_rows if item["direction"] == "reuse"]
+    avoid = [item for item in hint_rows if item["direction"] == "avoid"]
+    avoid.sort(
+        key=lambda item: (
+            item["failed_count"] + item["partial_count"],
+            item["used_count"],
+            item["hint"],
+        ),
+        reverse=True,
+    )
+    return {
+        "schema_version": "octopus-harness-action-trace-effectiveness-v1",
+        "used_count": used_count,
+        "satisfied_count": counts["satisfied"],
+        "partial_count": counts["partial"],
+        "failed_count": counts["failed"],
+        "unknown_count": counts["unknown"],
+        "success_rate": rate_label(counts["satisfied"], used_count),
+        "partial_rate": rate_label(counts["partial"], used_count),
+        "failure_rate": rate_label(counts["failed"], used_count),
+        "top_reuse": reuse[0]["hint"] if reuse else "",
+        "top_avoid": avoid[0]["hint"] if avoid else "",
+        "hints": hint_rows[:8],
+    }
+
+
 def build_repair_draft_effectiveness(outcomes):
     used = []
     hints = {}
@@ -1355,6 +1437,42 @@ def repair_lesson_effectiveness_markdown(effectiveness, workspace, effectiveness
                     f"failed=`{hint.get('failed_count')}` success_rate=`{hint.get('success_rate')}`"
                 ),
                 f"  hint: {compact(hint.get('hint'), 260)}",
+                f"  latest: target=`{hint.get('latest_target') or 'unknown'}` candidate=`{hint.get('latest_candidate') or 'none'}`",
+                f"  summary: {compact(hint.get('latest_summary'), 220) or 'none'}",
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
+def action_trace_effectiveness_markdown(effectiveness, workspace, effectiveness_json):
+    lines = [
+        "# Harness Action Trace Effectiveness",
+        "",
+        "This file measures whether tool-side Need/Tool/Action/Feed traces helped later reviewed outcomes.",
+        "It is local tentacle Feed evidence, not clean-brain context.",
+        "",
+        f"json: `{rel(effectiveness_json, workspace)}`",
+        f"used_count: `{effectiveness.get('used_count', 0)}`",
+        f"satisfied_count: `{effectiveness.get('satisfied_count', 0)}`",
+        f"partial_count: `{effectiveness.get('partial_count', 0)}`",
+        f"failed_count: `{effectiveness.get('failed_count', 0)}`",
+        f"success_rate: `{effectiveness.get('success_rate', '0.00')}`",
+        f"failure_rate: `{effectiveness.get('failure_rate', '0.00')}`",
+        "",
+    ]
+    if not effectiveness.get("hints"):
+        lines.append("No scored repair outcome has used a recorded action trace yet.")
+        return "\n".join(lines) + "\n"
+    lines.extend(["## Hints", ""])
+    for hint in effectiveness["hints"]:
+        lines.extend(
+            [
+                (
+                    f"- `{hint.get('direction')}` used=`{hint.get('used_count')}` "
+                    f"satisfied=`{hint.get('satisfied_count')}` partial=`{hint.get('partial_count')}` "
+                    f"failed=`{hint.get('failed_count')}` success_rate=`{hint.get('success_rate')}`"
+                ),
+                f"  trace: {compact(hint.get('hint'), 260)}",
                 f"  latest: target=`{hint.get('latest_target') or 'unknown'}` candidate=`{hint.get('latest_candidate') or 'none'}`",
                 f"  summary: {compact(hint.get('latest_summary'), 220) or 'none'}",
             ]
@@ -2721,6 +2839,7 @@ def action_trace_record(
     repair_recall,
     repair_lessons,
     repair_lesson_effectiveness,
+    action_trace_effectiveness,
     repair_draft_effectiveness,
     repair_command_effectiveness,
     repair_command_strategy,
@@ -2763,6 +2882,14 @@ def action_trace_record(
         "success_rate": str(repair_lesson_effectiveness.get("success_rate") or "0.00"),
         "top_reuse": compact(repair_lesson_effectiveness.get("top_reuse") or "", 240),
         "top_avoid": compact(repair_lesson_effectiveness.get("top_avoid") or "", 240),
+    }
+    action_trace_effectiveness_summary = {
+        "used_count": str(action_trace_effectiveness.get("used_count") or 0),
+        "satisfied_count": str(action_trace_effectiveness.get("satisfied_count") or 0),
+        "failed_count": str(action_trace_effectiveness.get("failed_count") or 0),
+        "success_rate": str(action_trace_effectiveness.get("success_rate") or "0.00"),
+        "top_reuse": compact(action_trace_effectiveness.get("top_reuse") or "", 240),
+        "top_avoid": compact(action_trace_effectiveness.get("top_avoid") or "", 240),
     }
     draft_effectiveness_summary = {
         "used_count": str(repair_draft_effectiveness.get("used_count") or 0),
@@ -2854,7 +2981,7 @@ def action_trace_record(
         {
             "kind": "Action",
             "action": "merge field, recall, lessons, effectiveness, decision, and outcome evidence",
-            "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']} recalled={recall_count} top={recall_top_status} lessons={lessons_summary['lesson_count']} effectiveness_used={effectiveness_summary['used_count']} draft_effectiveness_used={draft_effectiveness_summary['used_count']} command_effectiveness_used={command_effectiveness_summary['used_count']} command_strategy={command_strategy_summary['status']} command_strategy_effectiveness_used={command_strategy_effectiveness_summary['used_count']} drift={drift_summary['status']} drift_effectiveness_used={drift_effectiveness_summary['used_count']} success_rate={effectiveness_summary['success_rate']} decision={decision_summary['decision']}",
+            "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']} recalled={recall_count} top={recall_top_status} lessons={lessons_summary['lesson_count']} effectiveness_used={effectiveness_summary['used_count']} action_trace_effectiveness_used={action_trace_effectiveness_summary['used_count']} draft_effectiveness_used={draft_effectiveness_summary['used_count']} command_effectiveness_used={command_effectiveness_summary['used_count']} command_strategy={command_strategy_summary['status']} command_strategy_effectiveness_used={command_strategy_effectiveness_summary['used_count']} drift={drift_summary['status']} drift_effectiveness_used={drift_effectiveness_summary['used_count']} success_rate={effectiveness_summary['success_rate']} decision={decision_summary['decision']}",
             "status": "satisfied",
         },
         {
@@ -2895,6 +3022,7 @@ def action_trace_record(
         "repair_recall": recall_summary,
         "repair_lessons": lessons_summary,
         "repair_lesson_effectiveness": effectiveness_summary,
+        "action_trace_effectiveness": action_trace_effectiveness_summary,
         "repair_draft_effectiveness": draft_effectiveness_summary,
         "repair_command_effectiveness": command_effectiveness_summary,
         "repair_command_strategy": command_strategy_summary,
@@ -2935,6 +3063,8 @@ def action_trace_markdown(record, workspace, repair_plan):
         f"lesson_avoid: `{record.get('repair_lessons', {}).get('avoid_count', '0')}`",
         f"lesson_effectiveness_used: `{record.get('repair_lesson_effectiveness', {}).get('used_count', '0')}`",
         f"lesson_effectiveness_success_rate: `{record.get('repair_lesson_effectiveness', {}).get('success_rate', '0.00')}`",
+        f"action_trace_effectiveness_used: `{record.get('action_trace_effectiveness', {}).get('used_count', '0')}`",
+        f"action_trace_effectiveness_success_rate: `{record.get('action_trace_effectiveness', {}).get('success_rate', '0.00')}`",
         f"repair_draft_effectiveness_used: `{record.get('repair_draft_effectiveness', {}).get('used_count', '0')}`",
         f"repair_draft_effectiveness_success_rate: `{record.get('repair_draft_effectiveness', {}).get('success_rate', '0.00')}`",
         f"repair_command_effectiveness_used: `{record.get('repair_command_effectiveness', {}).get('used_count', '0')}`",
@@ -3115,6 +3245,8 @@ code_context_md = session_dir / "CODE_CONTEXT.md"
 field_trajectory_md = session_dir / "FIELD_TRAJECTORY.md"
 action_trace_md = session_dir / "ACTION_TRACE.md"
 action_trace_json = session_dir / "ACTION_TRACE.json"
+action_trace_effectiveness_json = session_dir / "ACTION_TRACE_EFFECTIVENESS.json"
+action_trace_effectiveness_md = session_dir / "ACTION_TRACE_EFFECTIVENESS.md"
 repair_plan_json = session_dir / "REPAIR_PLAN.json"
 environment_profile_journal = repair_root / "environment-profiles.jsonl"
 outcome_command = (
@@ -3152,6 +3284,7 @@ repair_recall = build_repair_recall(
 )
 repair_lessons = build_repair_lessons(repair_outcomes, repair_recall)
 repair_lesson_effectiveness = build_repair_lesson_effectiveness(repair_outcomes)
+action_trace_effectiveness = build_action_trace_effectiveness(repair_outcomes)
 repair_draft_effectiveness = build_repair_draft_effectiveness(repair_outcomes)
 repair_command_effectiveness = build_repair_command_effectiveness(repair_outcomes)
 repair_command_strategy_effectiveness = build_repair_command_strategy_effectiveness(repair_outcomes)
@@ -3225,6 +3358,8 @@ session = {
     "repair_lessons_json": rel(repair_lessons_json, workspace),
     "repair_lesson_effectiveness": rel(repair_lesson_effectiveness_md, workspace),
     "repair_lesson_effectiveness_json": rel(repair_lesson_effectiveness_json, workspace),
+    "action_trace_effectiveness": rel(action_trace_effectiveness_md, workspace),
+    "action_trace_effectiveness_json": rel(action_trace_effectiveness_json, workspace),
     "repair_draft_effectiveness": rel(repair_draft_effectiveness_md, workspace),
     "repair_draft_effectiveness_json": rel(repair_draft_effectiveness_json, workspace),
     "repair_command_effectiveness": rel(repair_command_effectiveness_md, workspace),
@@ -3289,6 +3424,14 @@ session = {
         "success_rate": repair_lesson_effectiveness["success_rate"],
         "top_reuse": repair_lesson_effectiveness["top_reuse"],
         "top_avoid": repair_lesson_effectiveness["top_avoid"],
+    },
+    "action_trace_effectiveness_summary": {
+        "used_count": action_trace_effectiveness["used_count"],
+        "satisfied_count": action_trace_effectiveness["satisfied_count"],
+        "failed_count": action_trace_effectiveness["failed_count"],
+        "success_rate": action_trace_effectiveness["success_rate"],
+        "top_reuse": action_trace_effectiveness["top_reuse"],
+        "top_avoid": action_trace_effectiveness["top_avoid"],
     },
     "repair_draft_effectiveness_summary": {
         "used_count": repair_draft_effectiveness["used_count"],
@@ -3413,6 +3556,18 @@ repair_lesson_effectiveness_md.write_text(
         repair_lesson_effectiveness,
         workspace,
         repair_lesson_effectiveness_json,
+    ),
+    encoding="utf-8",
+)
+action_trace_effectiveness_json.write_text(
+    json.dumps(action_trace_effectiveness, ensure_ascii=True, indent=2) + "\n",
+    encoding="utf-8",
+)
+action_trace_effectiveness_md.write_text(
+    action_trace_effectiveness_markdown(
+        action_trace_effectiveness,
+        workspace,
+        action_trace_effectiveness_json,
     ),
     encoding="utf-8",
 )
@@ -3583,6 +3738,8 @@ repair_plan["inputs"]["harness_adaptation"] = rel(harness_adaptation_md, workspa
 repair_plan["inputs"]["harness_adaptation_json"] = rel(harness_adaptation_json, workspace)
 repair_plan["inputs"]["action_trace"] = rel(action_trace_md, workspace)
 repair_plan["inputs"]["action_trace_json"] = rel(action_trace_json, workspace)
+repair_plan["inputs"]["action_trace_effectiveness"] = rel(action_trace_effectiveness_md, workspace)
+repair_plan["inputs"]["action_trace_effectiveness_json"] = rel(action_trace_effectiveness_json, workspace)
 repair_plan["field_trajectory_target"] = {
     "field": field_trajectory["field"],
     "mini_task": field_trajectory["mini_task"],
@@ -3593,6 +3750,7 @@ repair_plan["field_trajectory_target"] = {
 repair_plan["repair_recall_target"] = repair_recall["target"]
 repair_plan["repair_lessons_summary"] = session["repair_lessons_summary"]
 repair_plan["repair_lesson_effectiveness_summary"] = session["repair_lesson_effectiveness_summary"]
+repair_plan["action_trace_effectiveness_summary"] = session["action_trace_effectiveness_summary"]
 repair_plan["repair_draft_effectiveness_summary"] = session["repair_draft_effectiveness_summary"]
 repair_plan["repair_command_effectiveness_summary"] = session["repair_command_effectiveness_summary"]
 repair_plan["repair_command_strategy_summary"] = session["repair_command_strategy_summary"]
@@ -3607,7 +3765,7 @@ repair_plan["harness_environment_profile_summary"] = session["harness_environmen
 repair_plan["harness_environment_drift_summary"] = session["harness_environment_drift_summary"]
 repair_plan["harness_environment_drift_effectiveness_summary"] = session["harness_environment_drift_effectiveness_summary"]
 repair_plan["harness_adaptation_summary"] = session["harness_adaptation_summary"]
-repair_plan["review_boundary"] = "Review HARNESS_ADAPTATION, HARNESS_ENVIRONMENT_PROFILE, HARNESS_ENVIRONMENT_DRIFT, HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS, HARNESS_ADAPTATION_EFFECTIVENESS, ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_RECALL.json, REPAIR_LESSONS, REPAIR_LESSON_EFFECTIVENESS, REPAIR_DRAFT_EFFECTIVENESS, REPAIR_COMMAND_EFFECTIVENESS, REPAIR_COMMAND_STRATEGY, REPAIR_COMMAND_STRATEGY_EFFECTIVENESS, REPAIR_DECISION, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
+repair_plan["review_boundary"] = "Review HARNESS_ADAPTATION, HARNESS_ENVIRONMENT_PROFILE, HARNESS_ENVIRONMENT_DRIFT, HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS, HARNESS_ADAPTATION_EFFECTIVENESS, ACTION_TRACE.md, ACTION_TRACE.json, ACTION_TRACE_EFFECTIVENESS, REPAIR_RECALL.json, REPAIR_LESSONS, REPAIR_LESSON_EFFECTIVENESS, REPAIR_DRAFT_EFFECTIVENESS, REPAIR_COMMAND_EFFECTIVENESS, REPAIR_COMMAND_STRATEGY, REPAIR_COMMAND_STRATEGY_EFFECTIVENESS, REPAIR_DECISION, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
 repair_plan_json.write_text(
     json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
     encoding="utf-8",
@@ -3668,6 +3826,17 @@ effectiveness_lines = [
         f" hint={compact(hint.get('hint') or '', 180)}"
     )
     for hint in repair_lesson_effectiveness.get("hints", [])[:4]
+] or ["- none"]
+action_trace_effectiveness_lines = [
+    (
+        f"- {hint.get('direction')}"
+        f" used={hint.get('used_count')}"
+        f" satisfied={hint.get('satisfied_count')}"
+        f" failed={hint.get('failed_count')}"
+        f" success={hint.get('success_rate')}"
+        f" trace={compact(hint.get('hint') or '', 180)}"
+    )
+    for hint in action_trace_effectiveness.get("hints", [])[:4]
 ] or ["- none"]
 draft_effectiveness_lines = [
     (
@@ -3785,6 +3954,12 @@ prompt_md.write_text(
             f"- effectiveness json: `{rel(repair_lesson_effectiveness_json, workspace)}`",
             f"- used: `{repair_lesson_effectiveness.get('used_count', 0)}` satisfied: `{repair_lesson_effectiveness.get('satisfied_count', 0)}` failed: `{repair_lesson_effectiveness.get('failed_count', 0)}` success_rate: `{repair_lesson_effectiveness.get('success_rate', '0.00')}`",
             *effectiveness_lines,
+            "",
+            "action trace effectiveness:",
+            f"- effectiveness artifact: `{rel(action_trace_effectiveness_md, workspace)}`",
+            f"- effectiveness json: `{rel(action_trace_effectiveness_json, workspace)}`",
+            f"- used: `{action_trace_effectiveness.get('used_count', 0)}` satisfied: `{action_trace_effectiveness.get('satisfied_count', 0)}` failed: `{action_trace_effectiveness.get('failed_count', 0)}` success_rate: `{action_trace_effectiveness.get('success_rate', '0.00')}`",
+            *action_trace_effectiveness_lines,
             "",
             "repair draft effectiveness:",
             f"- effectiveness artifact: `{rel(repair_draft_effectiveness_md, workspace)}`",
@@ -3927,6 +4102,8 @@ prompt_md.write_text(
             f"- field trajectory: `{rel(field_trajectory_md, workspace)}`",
             f"- action trace: `{rel(action_trace_md, workspace)}`",
             f"- action trace json: `{rel(action_trace_json, workspace)}`",
+            f"- action trace effectiveness: `{rel(action_trace_effectiveness_md, workspace)}`",
+            f"- action trace effectiveness json: `{rel(action_trace_effectiveness_json, workspace)}`",
             f"- repair plan: `{rel(repair_plan_json, workspace)}`",
         ]
     )
@@ -3947,6 +4124,7 @@ action_trace = action_trace_record(
         repair_recall,
         repair_lessons,
         repair_lesson_effectiveness,
+        action_trace_effectiveness,
         repair_draft_effectiveness,
         repair_command_effectiveness,
         repair_command_strategy,
@@ -4011,6 +4189,8 @@ review_md.write_text(
             f"- adapter context: `{rel(adapter_context_md, workspace)}`",
             f"- action trace: `{rel(action_trace_md, workspace)}`",
             f"- action trace json: `{rel(action_trace_json, workspace)}`",
+            f"- action trace effectiveness: `{rel(action_trace_effectiveness_md, workspace)}`",
+            f"- action trace effectiveness json: `{rel(action_trace_effectiveness_json, workspace)}`",
             f"- repair recall: `{rel(repair_recall_json, workspace)}`",
             f"- repair lessons: `{rel(repair_lessons_md, workspace)}`",
             f"- repair lessons json: `{rel(repair_lessons_json, workspace)}`",
@@ -4089,6 +4269,8 @@ session_md.write_text(
             f"repair command effectiveness json: `{rel(repair_command_effectiveness_json, workspace)}`",
             f"repair command strategy: `{rel(repair_command_strategy_md, workspace)}`",
             f"repair command strategy json: `{rel(repair_command_strategy_json, workspace)}`",
+            f"repair command strategy effectiveness: `{rel(repair_command_strategy_effectiveness_md, workspace)}`",
+            f"repair command strategy effectiveness json: `{rel(repair_command_strategy_effectiveness_json, workspace)}`",
             f"repair decision: `{rel(repair_decision_md, workspace)}`",
             f"repair decision json: `{rel(repair_decision_json, workspace)}`",
             f"harness adaptation effectiveness: `{rel(harness_adaptation_effectiveness_md, workspace)}`",
@@ -4107,6 +4289,8 @@ session_md.write_text(
             f"field trajectory: `{rel(field_trajectory_md, workspace)}`",
             f"action trace: `{rel(action_trace_md, workspace)}`",
             f"action trace json: `{rel(action_trace_json, workspace)}`",
+            f"action trace effectiveness: `{rel(action_trace_effectiveness_md, workspace)}`",
+            f"action trace effectiveness json: `{rel(action_trace_effectiveness_json, workspace)}`",
             f"repair plan: `{rel(repair_plan_json, workspace)}`",
             f"outcome command: `{outcome_command}`",
             "outcome options:",
@@ -4152,6 +4336,16 @@ metadata = {
     "repair_lesson_effectiveness_failure_rate": repair_lesson_effectiveness.get("failure_rate", "0.00"),
     "repair_lesson_effectiveness_top_reuse": repair_lesson_effectiveness.get("top_reuse", ""),
     "repair_lesson_effectiveness_top_avoid": repair_lesson_effectiveness.get("top_avoid", ""),
+    "action_trace_effectiveness": rel(action_trace_effectiveness_md, workspace),
+    "action_trace_effectiveness_json": rel(action_trace_effectiveness_json, workspace),
+    "action_trace_effectiveness_used_count": str(action_trace_effectiveness.get("used_count", 0)),
+    "action_trace_effectiveness_satisfied_count": str(action_trace_effectiveness.get("satisfied_count", 0)),
+    "action_trace_effectiveness_partial_count": str(action_trace_effectiveness.get("partial_count", 0)),
+    "action_trace_effectiveness_failed_count": str(action_trace_effectiveness.get("failed_count", 0)),
+    "action_trace_effectiveness_success_rate": action_trace_effectiveness.get("success_rate", "0.00"),
+    "action_trace_effectiveness_failure_rate": action_trace_effectiveness.get("failure_rate", "0.00"),
+    "action_trace_effectiveness_top_reuse": action_trace_effectiveness.get("top_reuse", ""),
+    "action_trace_effectiveness_top_avoid": action_trace_effectiveness.get("top_avoid", ""),
     "repair_draft_effectiveness": rel(repair_draft_effectiveness_md, workspace),
     "repair_draft_effectiveness_json": rel(repair_draft_effectiveness_json, workspace),
     "repair_draft_effectiveness_used_count": str(repair_draft_effectiveness.get("used_count", 0)),

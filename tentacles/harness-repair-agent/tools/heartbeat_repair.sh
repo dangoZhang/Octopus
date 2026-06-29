@@ -465,6 +465,44 @@ def repair_lesson_effectiveness_metadata(root, value, json_value=""):
     return metadata
 
 
+def action_trace_effectiveness_metadata(root, value, json_value=""):
+    path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
+    metadata = {
+        "action_trace_effectiveness": rel(path, root) if path else "",
+        "action_trace_effectiveness_json": rel(json_path, root) if json_path else "",
+        "action_trace_effectiveness_used_count": "",
+        "action_trace_effectiveness_satisfied_count": "",
+        "action_trace_effectiveness_partial_count": "",
+        "action_trace_effectiveness_failed_count": "",
+        "action_trace_effectiveness_success_rate": "",
+        "action_trace_effectiveness_failure_rate": "",
+        "action_trace_effectiveness_top_reuse": "",
+        "action_trace_effectiveness_top_avoid": "",
+        "action_trace_effectiveness_preview": "",
+    }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        metadata.update({
+            "action_trace_effectiveness_used_count": str(data.get("used_count") or 0),
+            "action_trace_effectiveness_satisfied_count": str(data.get("satisfied_count") or 0),
+            "action_trace_effectiveness_partial_count": str(data.get("partial_count") or 0),
+            "action_trace_effectiveness_failed_count": str(data.get("failed_count") or 0),
+            "action_trace_effectiveness_success_rate": str(data.get("success_rate") or "0.00"),
+            "action_trace_effectiveness_failure_rate": str(data.get("failure_rate") or "0.00"),
+            "action_trace_effectiveness_top_reuse": compact(data.get("top_reuse") or "", 320),
+            "action_trace_effectiveness_top_avoid": compact(data.get("top_avoid") or "", 320),
+            "action_trace_effectiveness_preview": compact(json.dumps(data, sort_keys=True), 700),
+        })
+    if path and path.exists() and not metadata["action_trace_effectiveness_preview"]:
+        metadata["action_trace_effectiveness_preview"] = compact(path.read_text(encoding="utf-8", errors="replace"), 700)
+    return metadata
+
+
 def harness_adaptation_effectiveness_metadata(root, value, json_value=""):
     path = resolve_artifact(root, value)
     json_path = resolve_artifact(root, json_value)
@@ -871,6 +909,8 @@ if latest_repair_plan:
     repair_lessons_json = str(inputs.get("repair_lessons_json") or "")
     repair_lesson_effectiveness = str(inputs.get("repair_lesson_effectiveness") or "")
     repair_lesson_effectiveness_json = str(inputs.get("repair_lesson_effectiveness_json") or "")
+    action_trace_effectiveness = str(inputs.get("action_trace_effectiveness") or "")
+    action_trace_effectiveness_json = str(inputs.get("action_trace_effectiveness_json") or "")
     repair_draft_effectiveness = str(inputs.get("repair_draft_effectiveness") or "")
     repair_draft_effectiveness_json = str(inputs.get("repair_draft_effectiveness_json") or "")
     repair_command_effectiveness = str(inputs.get("repair_command_effectiveness") or "")
@@ -901,6 +941,11 @@ if latest_repair_plan:
         root,
         repair_lesson_effectiveness,
         repair_lesson_effectiveness_json,
+    )
+    action_effectiveness_metadata = action_trace_effectiveness_metadata(
+        root,
+        action_trace_effectiveness,
+        action_trace_effectiveness_json,
     )
     draft_effectiveness_metadata = repair_draft_effectiveness_metadata(
         root,
@@ -997,6 +1042,8 @@ if latest_repair_plan:
     lesson_avoid = lessons_metadata.get("repair_lessons_avoid_count", "")
     effectiveness_used = effectiveness_metadata.get("repair_lesson_effectiveness_used_count", "")
     effectiveness_success = effectiveness_metadata.get("repair_lesson_effectiveness_success_rate", "")
+    action_trace_effectiveness_used = action_effectiveness_metadata.get("action_trace_effectiveness_used_count", "")
+    action_trace_effectiveness_success = action_effectiveness_metadata.get("action_trace_effectiveness_success_rate", "")
     draft_effectiveness_used = draft_effectiveness_metadata.get("repair_draft_effectiveness_used_count", "")
     draft_effectiveness_success = draft_effectiveness_metadata.get("repair_draft_effectiveness_success_rate", "")
     command_effectiveness_used = command_effectiveness_metadata.get("repair_command_effectiveness_used_count", "")
@@ -1133,6 +1180,7 @@ if latest_repair_plan:
             f"reason={recall_top_reason or 'none'}; "
             f"lessons={lesson_count or '0'} reuse={lesson_reuse or '0'} avoid={lesson_avoid or '0'}; "
             f"effectiveness={effectiveness_used or '0'} success_rate={effectiveness_success or '0.00'}; "
+            f"action_trace_effectiveness={action_trace_effectiveness_used or '0'} success_rate={action_trace_effectiveness_success or '0.00'}; "
             f"draft_effectiveness={draft_effectiveness_used or '0'} success_rate={draft_effectiveness_success or '0.00'}; "
             f"command_effectiveness={command_effectiveness_used or '0'} success_rate={command_effectiveness_success or '0.00'}; "
             f"command_strategy={command_strategy_status or 'none'} focus={command_strategy_focus or 'none'}; "
@@ -1160,6 +1208,8 @@ if latest_repair_plan:
         "repair_lessons_json": repair_lessons_json,
         "repair_lesson_effectiveness": repair_lesson_effectiveness,
         "repair_lesson_effectiveness_json": repair_lesson_effectiveness_json,
+        "action_trace_effectiveness": action_trace_effectiveness,
+        "action_trace_effectiveness_json": action_trace_effectiveness_json,
         "repair_draft_effectiveness": repair_draft_effectiveness,
         "repair_draft_effectiveness_json": repair_draft_effectiveness_json,
         "repair_command_effectiveness": repair_command_effectiveness,
@@ -1204,6 +1254,7 @@ if latest_repair_plan:
     repair_metadata.update(recall_metadata)
     repair_metadata.update(lessons_metadata)
     repair_metadata.update(effectiveness_metadata)
+    repair_metadata.update(action_effectiveness_metadata)
     repair_metadata.update(draft_effectiveness_metadata)
     repair_metadata.update(command_effectiveness_metadata)
     repair_metadata.update(command_strategy_metadata)
