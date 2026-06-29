@@ -215,6 +215,7 @@ Updated: 2026-06-29
 - Harness beat turns recent failed or partial check history, Feed traces, or repair outcomes into a written evolution proposal, recommendation, and apply plan.
 - Harness beat recommendations can be granted, written as reviewable apply artifacts, reviewed, and scored from internal/developer flows; the product app can observe the result.
 - `harness-repair-agent` can read heartbeat/evolution/state signals, probe adapter readiness, write `.octopus/harness-repair/SESSION.*`, `PROMPT.md`, optional provider-backed `DRAFT.md`, `REVIEW.md`, `NEXT_NEED.json`, `COMMANDS.sh`, `OUTCOME_MEMORY.md`, `ADAPTER_CONTEXT.md`, `CODE_CONTEXT.md`, `FIELD_TRAJECTORY.md`, `ACTION_TRACE.md`, `ACTION_TRACE.json`, and `REPAIR_PLAN.json`, continue from the latest repair plan through `heartbeat_repair`, record reviewed `OUTCOME.md` plus `.octopus/harness-repair/outcomes.jsonl` with action-trace outcome memory, then feed merged outcome memory, adapter context, target code context, field trajectory, and structured action trace into later reviewable repair plans.
+- Repair sessions now write `REPAIR_EFFECTIVENESS_ROLLUP.md/json` across lesson, action-trace, draft, patch, command, decision, adaptation, and environment-drift effectiveness; heartbeat exposes it as Feed and lets it queue the next Need only when unreliable evidence dominates.
 - The SWE read tool now returns a compact file/range header and line-numbered evidence.
 
 ## Filled So Far

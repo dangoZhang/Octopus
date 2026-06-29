@@ -901,6 +901,23 @@ struct RepairPlanReport {
     harness_environment_drift_effectiveness_failure_rate: String,
     harness_environment_drift_effectiveness_top_reuse: String,
     harness_environment_drift_effectiveness_top_avoid: String,
+    repair_effectiveness_rollup: String,
+    repair_effectiveness_rollup_json: String,
+    repair_effectiveness_rollup_status: String,
+    repair_effectiveness_rollup_source_count: String,
+    repair_effectiveness_rollup_active_source_count: String,
+    repair_effectiveness_rollup_used_count: String,
+    repair_effectiveness_rollup_satisfied_count: String,
+    repair_effectiveness_rollup_partial_count: String,
+    repair_effectiveness_rollup_failed_count: String,
+    repair_effectiveness_rollup_success_rate: String,
+    repair_effectiveness_rollup_failure_rate: String,
+    repair_effectiveness_rollup_strongest_source: String,
+    repair_effectiveness_rollup_weakest_source: String,
+    repair_effectiveness_rollup_top_reuse: String,
+    repair_effectiveness_rollup_top_avoid: String,
+    repair_effectiveness_rollup_next_need_kind: String,
+    repair_effectiveness_rollup_next_need_query: String,
     environment_profile_journal: String,
     harness_adaptation: String,
     harness_adaptation_json: String,
@@ -4260,6 +4277,14 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                     &repair_plan_environment_drift_effectiveness_label(plan),
                 );
                 print_optional_line(
+                    "repair_effectiveness_rollup",
+                    &plan.repair_effectiveness_rollup,
+                );
+                print_optional_line(
+                    "repair_effectiveness_rollup_status",
+                    &repair_plan_effectiveness_rollup_label(plan),
+                );
+                print_optional_line(
                     "environment_profile_journal",
                     &plan.environment_profile_journal,
                 );
@@ -4425,6 +4450,11 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line(
                     "Harness环境漂移有效性状态",
                     &repair_plan_environment_drift_effectiveness_label(plan),
+                );
+                print_optional_line("修复有效性总览", &plan.repair_effectiveness_rollup);
+                print_optional_line(
+                    "修复有效性总览状态",
+                    &repair_plan_effectiveness_rollup_label(plan),
                 );
                 print_optional_line("环境Profile日志", &plan.environment_profile_journal);
                 print_optional_line("Harness适应", &plan.harness_adaptation);
@@ -5471,6 +5501,83 @@ fn repair_plan_environment_drift_effectiveness_label(plan: &RepairPlanReport) ->
                 .as_str(),
         ),
     ])
+}
+
+fn repair_plan_effectiveness_rollup_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan.repair_effectiveness_rollup_status.trim().is_empty() {
+        parts.push(plan.repair_effectiveness_rollup_status.trim().to_string());
+    }
+    if !plan
+        .repair_effectiveness_rollup_active_source_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "active_sources={}",
+            plan.repair_effectiveness_rollup_active_source_count
+        ));
+    }
+    if !plan
+        .repair_effectiveness_rollup_used_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "used={}",
+            plan.repair_effectiveness_rollup_used_count
+        ));
+    }
+    if !plan
+        .repair_effectiveness_rollup_failed_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "failed={}",
+            plan.repair_effectiveness_rollup_failed_count
+        ));
+    }
+    if !plan
+        .repair_effectiveness_rollup_success_rate
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "success_rate={}",
+            plan.repair_effectiveness_rollup_success_rate
+        ));
+    }
+    if !plan
+        .repair_effectiveness_rollup_weakest_source
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "weakest={}",
+            plan.repair_effectiveness_rollup_weakest_source
+        ));
+    }
+    if !plan
+        .repair_effectiveness_rollup_next_need_query
+        .trim()
+        .is_empty()
+    {
+        let kind = if plan
+            .repair_effectiveness_rollup_next_need_kind
+            .trim()
+            .is_empty()
+        {
+            "verify"
+        } else {
+            plan.repair_effectiveness_rollup_next_need_kind.trim()
+        };
+        parts.push(format!(
+            "next={kind} {}",
+            plan.repair_effectiveness_rollup_next_need_query
+        ));
+    }
+    parts.join(" ")
 }
 
 fn repair_plan_adaptation_label(plan: &RepairPlanReport) -> String {
@@ -11369,6 +11476,18 @@ fn repair_report(
                 shell_arg(&plan.harness_environment_drift_effectiveness_json)
             ));
         }
+        if !plan.repair_effectiveness_rollup.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.repair_effectiveness_rollup)
+            ));
+        }
+        if !plan.repair_effectiveness_rollup_json.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.repair_effectiveness_rollup_json)
+            ));
+        }
         if !plan.environment_profile_journal.trim().is_empty() {
             next.push(format!(
                 "review {}",
@@ -13094,6 +13213,71 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         harness_environment_drift_effectiveness_top_avoid: metadata_value(
             metadata,
             "harness_environment_drift_effectiveness_top_avoid",
+        ),
+        repair_effectiveness_rollup: metadata_value(metadata, "repair_effectiveness_rollup"),
+        repair_effectiveness_rollup_json: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_json",
+        ),
+        repair_effectiveness_rollup_status: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_status",
+        ),
+        repair_effectiveness_rollup_source_count: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_source_count",
+        ),
+        repair_effectiveness_rollup_active_source_count: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_active_source_count",
+        ),
+        repair_effectiveness_rollup_used_count: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_used_count",
+        ),
+        repair_effectiveness_rollup_satisfied_count: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_satisfied_count",
+        ),
+        repair_effectiveness_rollup_partial_count: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_partial_count",
+        ),
+        repair_effectiveness_rollup_failed_count: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_failed_count",
+        ),
+        repair_effectiveness_rollup_success_rate: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_success_rate",
+        ),
+        repair_effectiveness_rollup_failure_rate: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_failure_rate",
+        ),
+        repair_effectiveness_rollup_strongest_source: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_strongest_source",
+        ),
+        repair_effectiveness_rollup_weakest_source: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_weakest_source",
+        ),
+        repair_effectiveness_rollup_top_reuse: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_top_reuse",
+        ),
+        repair_effectiveness_rollup_top_avoid: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_top_avoid",
+        ),
+        repair_effectiveness_rollup_next_need_kind: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_next_need_kind",
+        ),
+        repair_effectiveness_rollup_next_need_query: metadata_value(
+            metadata,
+            "repair_effectiveness_rollup_next_need_query",
         ),
         environment_profile_journal: metadata_value(metadata, "environment_profile_journal"),
         harness_adaptation: metadata_value(metadata, "harness_adaptation"),
@@ -25492,6 +25676,22 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "0.00"
         );
         assert!(plan
+            .repair_effectiveness_rollup
+            .ends_with("REPAIR_EFFECTIVENESS_ROLLUP.md"));
+        assert!(plan
+            .repair_effectiveness_rollup_json
+            .ends_with("REPAIR_EFFECTIVENESS_ROLLUP.json"));
+        assert_eq!(plan.repair_effectiveness_rollup_status, "collect_outcomes");
+        assert_eq!(plan.repair_effectiveness_rollup_source_count, "15");
+        assert_eq!(plan.repair_effectiveness_rollup_active_source_count, "0");
+        assert_eq!(plan.repair_effectiveness_rollup_used_count, "0");
+        assert_eq!(plan.repair_effectiveness_rollup_satisfied_count, "0");
+        assert_eq!(plan.repair_effectiveness_rollup_failed_count, "0");
+        assert_eq!(plan.repair_effectiveness_rollup_success_rate, "0.00");
+        assert!(plan
+            .repair_effectiveness_rollup_next_need_query
+            .contains("collect scored repair outcomes"));
+        assert!(plan
             .environment_profile_journal
             .ends_with("environment-profiles.jsonl"));
         assert!(plan.harness_adaptation.ends_with("HARNESS_ADAPTATION.md"));
@@ -25562,6 +25762,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan_json.contains("\"harness_environment_profile\""));
         assert!(plan_json.contains("\"harness_environment_drift\""));
         assert!(plan_json.contains("\"harness_environment_drift_effectiveness\""));
+        assert!(plan_json.contains("\"repair_effectiveness_rollup\""));
         assert!(plan_json.contains("\"repair_command_effectiveness\""));
         assert!(plan_json.contains("\"repair_patch_draft\""));
         assert!(plan_json.contains("\"repair_patch_draft_effectiveness\""));
@@ -25601,6 +25802,13 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "\"schema_version\": \"octopus-harness-environment-drift-effectiveness-v1\""
         ));
         assert!(environment_drift_effectiveness_json.contains("\"used_count\": 0"));
+        let repair_effectiveness_rollup_json =
+            fs::read_to_string(&plan.repair_effectiveness_rollup_json).unwrap();
+        assert!(repair_effectiveness_rollup_json
+            .contains("\"schema_version\": \"octopus-harness-repair-effectiveness-rollup-v1\""));
+        assert!(repair_effectiveness_rollup_json.contains("\"status\": \"collect_outcomes\""));
+        assert!(repair_effectiveness_rollup_json.contains("\"source_count\": 15"));
+        assert!(repair_effectiveness_rollup_json.contains("\"active_source_count\": 0"));
         let draft_effectiveness_json =
             fs::read_to_string(&plan.repair_draft_effectiveness_json).unwrap();
         assert!(draft_effectiveness_json
@@ -25746,6 +25954,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS.json")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_EFFECTIVENESS_ROLLUP.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_EFFECTIVENESS_ROLLUP.json")));
         assert!(report
             .next
             .iter()
