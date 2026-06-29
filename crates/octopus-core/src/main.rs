@@ -4220,6 +4220,31 @@ fn write_repair_score_journal(
         .get("action_trace_recall_top_summary")
         .cloned()
         .unwrap_or_default();
+    let action_trace_lesson_count = trace
+        .metadata
+        .get("action_trace_lesson_count")
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_lesson_reuse_count = trace
+        .metadata
+        .get("action_trace_lesson_reuse_count")
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_lesson_avoid_count = trace
+        .metadata
+        .get("action_trace_lesson_avoid_count")
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_lesson_top_reuse = trace
+        .metadata
+        .get("action_trace_lesson_top_reuse")
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_lesson_top_avoid = trace
+        .metadata
+        .get("action_trace_lesson_top_avoid")
+        .cloned()
+        .unwrap_or_default();
     let timestamp_secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| error.to_string())?
@@ -4245,6 +4270,11 @@ fn write_repair_score_journal(
         "action_trace_recall_top_score": action_trace_recall_top_score,
         "action_trace_recall_top_reasons": action_trace_recall_top_reasons,
         "action_trace_recall_top_summary": action_trace_recall_top_summary,
+        "action_trace_lesson_count": action_trace_lesson_count,
+        "action_trace_lesson_reuse_count": action_trace_lesson_reuse_count,
+        "action_trace_lesson_avoid_count": action_trace_lesson_avoid_count,
+        "action_trace_lesson_top_reuse": action_trace_lesson_top_reuse,
+        "action_trace_lesson_top_avoid": action_trace_lesson_top_avoid,
         "outcome_status": status,
         "summary": truncate_chars(&outcome.summary, 500),
     });
@@ -4257,7 +4287,7 @@ fn write_repair_score_journal(
     fs::write(
         &outcome_path,
         format!(
-            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\naction_trace_recall: matches=`{}` top=`{}` reasons=`{}`\n\n{}\n\njournal: `{}`\n",
+            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\naction_trace_recall: matches=`{}` top=`{}` reasons=`{}`\naction_trace_lessons: count=`{}` reuse=`{}` avoid=`{}` top_reuse=`{}` top_avoid=`{}`\n\n{}\n\njournal: `{}`\n",
             status,
             display_path(&workspace, &session_path),
             record["target_tentacle"].as_str().unwrap_or("unknown"),
@@ -4270,6 +4300,11 @@ fn write_repair_score_journal(
             record["action_trace_recall_count"].as_str().unwrap_or(""),
             record["action_trace_recall_top_status"].as_str().unwrap_or(""),
             record["action_trace_recall_top_reasons"].as_str().unwrap_or(""),
+            record["action_trace_lesson_count"].as_str().unwrap_or(""),
+            record["action_trace_lesson_reuse_count"].as_str().unwrap_or(""),
+            record["action_trace_lesson_avoid_count"].as_str().unwrap_or(""),
+            record["action_trace_lesson_top_reuse"].as_str().unwrap_or(""),
+            record["action_trace_lesson_top_avoid"].as_str().unwrap_or(""),
             outcome.summary,
             display_path(&workspace, &outcomes_file)
         ),
@@ -24317,6 +24352,9 @@ JSON
         let outcomes = fs::read_to_string(&outcomes_file).unwrap();
         assert!(outcomes.contains("\"action_trace_recall_count\":\"1\""));
         assert!(outcomes.contains("\"action_trace_recall_top_status\":\"satisfied\""));
+        assert!(outcomes.contains("\"action_trace_lesson_count\":\"1\""));
+        assert!(outcomes.contains("\"action_trace_lesson_reuse_count\":\"1\""));
+        assert!(outcomes.contains("\"action_trace_lesson_top_reuse\":\"repair improved harness\""));
         assert!(outcomes.contains("same target tentacle"));
         let outcome_has_recall_usage = workspace
             .join(".octopus/harness-repair")
@@ -24331,6 +24369,8 @@ JSON
                     .map(|content| {
                         content.contains("action_trace_recall: matches=`1`")
                             && content.contains("top=`satisfied`")
+                            && content.contains("action_trace_lessons: count=`1`")
+                            && content.contains("reuse=`1`")
                     })
                     .unwrap_or(false)
             });
@@ -24356,6 +24396,8 @@ JSON
                     .map(|content| {
                         content.contains("recall_used: matches=`1`")
                             && content.contains("top=`satisfied`")
+                            && content.contains("lesson_used: count=`1`")
+                            && content.contains("reuse=`1`")
                     })
                     .unwrap_or(false)
             });

@@ -99,6 +99,11 @@ def normalized_outcome(item, origin):
         "action_trace_recall_top_score": str(item.get("action_trace_recall_top_score") or action_trace.get("recall_top_score") or ""),
         "action_trace_recall_top_reasons": str(item.get("action_trace_recall_top_reasons") or action_trace.get("recall_top_reasons") or ""),
         "action_trace_recall_top_summary": str(item.get("action_trace_recall_top_summary") or action_trace.get("recall_top_summary") or ""),
+        "action_trace_lesson_count": str(item.get("action_trace_lesson_count") or action_trace.get("lesson_count") or ""),
+        "action_trace_lesson_reuse_count": str(item.get("action_trace_lesson_reuse_count") or action_trace.get("lesson_reuse_count") or ""),
+        "action_trace_lesson_avoid_count": str(item.get("action_trace_lesson_avoid_count") or action_trace.get("lesson_avoid_count") or ""),
+        "action_trace_lesson_top_reuse": str(item.get("action_trace_lesson_top_reuse") or action_trace.get("lesson_top_reuse") or ""),
+        "action_trace_lesson_top_avoid": str(item.get("action_trace_lesson_top_avoid") or action_trace.get("lesson_top_avoid") or ""),
         "outcome_status": outcome_status(item),
         "summary": compact(item.get("summary") or item.get("content") or "", 500),
     }
@@ -140,6 +145,11 @@ def merge_repair_outcomes(state_items, journal_items, limit=8):
                     "action_trace_recall_top_score",
                     "action_trace_recall_top_reasons",
                     "action_trace_recall_top_summary",
+                    "action_trace_lesson_count",
+                    "action_trace_lesson_reuse_count",
+                    "action_trace_lesson_avoid_count",
+                    "action_trace_lesson_top_reuse",
+                    "action_trace_lesson_top_avoid",
                 ]:
                     if outcome.get(field) and not current.get(field):
                         current[field] = outcome[field]
@@ -210,12 +220,17 @@ def outcome_memory_markdown(outcomes, workspace, outcomes_file, repair_recall=No
         recall_count = item.get("action_trace_recall_count") or "0"
         recall_status = item.get("action_trace_recall_top_status") or "none"
         recall_reasons = item.get("action_trace_recall_top_reasons") or "none"
+        lesson_count = item.get("action_trace_lesson_count") or "0"
+        lesson_reuse = item.get("action_trace_lesson_reuse_count") or "0"
+        lesson_avoid = item.get("action_trace_lesson_avoid_count") or "0"
+        lesson_top = item.get("action_trace_lesson_top_reuse") or item.get("action_trace_lesson_top_avoid") or "none"
         lines.extend(
             [
                 f"- `{status}` target=`{target}` candidate=`{candidate}` origin=`{origin}` session=`{session}`",
                 f"  summary: {compact(item.get('summary', ''), 320)}",
                 f"  action_trace: status=`{action_status}` stages=`{action_count}` last=`{compact(action_last, 120)}` hint=`{compact(action_hint, 160)}`",
                 f"  recall_used: matches=`{recall_count}` top=`{compact(recall_status, 80)}` reasons=`{compact(recall_reasons, 160)}`",
+                f"  lesson_used: count=`{lesson_count}` reuse=`{lesson_reuse}` avoid=`{lesson_avoid}` top=`{compact(lesson_top, 160)}`",
             ]
         )
     return "\n".join(lines) + "\n"
@@ -1765,6 +1780,8 @@ metadata = {
     "action_trace_lesson_count": action_trace["repair_lessons"]["lesson_count"],
     "action_trace_lesson_reuse_count": action_trace["repair_lessons"]["reuse_count"],
     "action_trace_lesson_avoid_count": action_trace["repair_lessons"]["avoid_count"],
+    "action_trace_lesson_top_reuse": action_trace["repair_lessons"]["top_reuse"],
+    "action_trace_lesson_top_avoid": action_trace["repair_lessons"]["top_avoid"],
     "repair_plan_status": repair_plan["status"],
     "code_context_tentacle": code_context["tentacle"],
     "code_context_tool": code_context["tool"],
