@@ -620,6 +620,15 @@ enum NeedRunRequest {
 #[derive(Debug, serde::Serialize)]
 struct RepairPlanReport {
     path: String,
+    repair_queue_brief: String,
+    repair_queue_brief_json: String,
+    repair_queue_brief_status: String,
+    repair_queue_brief_plan_status: String,
+    repair_queue_brief_source: String,
+    repair_queue_brief_next_need_kind: String,
+    repair_queue_brief_next_need_query: String,
+    repair_queue_brief_blockers: String,
+    repair_queue_brief_review_first: String,
     review: String,
     outcome: String,
     outcome_status: String,
@@ -4112,6 +4121,11 @@ fn print_repair_report(report: &RepairReport, language: Language) {
             }
             if let Some(plan) = &report.repair_plan {
                 println!("repair_plan: {}", plan.path);
+                print_optional_line("repair_queue_brief", &plan.repair_queue_brief);
+                print_optional_line(
+                    "repair_queue_brief_status",
+                    &repair_plan_queue_brief_label(plan),
+                );
                 print_optional_line("review", &plan.review);
                 print_optional_line("outcome", &plan.outcome);
                 print_optional_line("outcome_status", &plan.outcome_status);
@@ -4369,6 +4383,8 @@ fn print_repair_report(report: &RepairReport, language: Language) {
             }
             if let Some(plan) = &report.repair_plan {
                 println!("修复计划: {}", plan.path);
+                print_optional_line("修复队列摘要", &plan.repair_queue_brief);
+                print_optional_line("修复队列摘要状态", &repair_plan_queue_brief_label(plan));
                 print_optional_line("审阅", &plan.review);
                 print_optional_line("结果", &plan.outcome);
                 print_optional_line("结果状态", &plan.outcome_status);
@@ -4548,6 +4564,37 @@ fn print_optional_line(label: &str, value: &str) {
     if !value.trim().is_empty() {
         println!("{label}: {value}");
     }
+}
+
+fn repair_plan_queue_brief_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan.repair_queue_brief_status.trim().is_empty() {
+        parts.push(plan.repair_queue_brief_status.trim().to_string());
+    }
+    if !plan.repair_queue_brief_source.trim().is_empty() {
+        parts.push(format!("source={}", plan.repair_queue_brief_source));
+    }
+    if !plan.repair_queue_brief_next_need_query.trim().is_empty() {
+        let kind = if plan.repair_queue_brief_next_need_kind.trim().is_empty() {
+            "verify"
+        } else {
+            plan.repair_queue_brief_next_need_kind.trim()
+        };
+        parts.push(format!(
+            "next={kind} {}",
+            plan.repair_queue_brief_next_need_query
+        ));
+    }
+    if !plan.repair_queue_brief_blockers.trim().is_empty() {
+        parts.push(format!("blockers={}", plan.repair_queue_brief_blockers));
+    }
+    if !plan.repair_queue_brief_review_first.trim().is_empty() {
+        parts.push(format!(
+            "review_first={}",
+            plan.repair_queue_brief_review_first
+        ));
+    }
+    parts.join(" ")
 }
 
 fn repair_plan_field_label(plan: &RepairPlanReport) -> String {
@@ -11452,6 +11499,15 @@ fn repair_report(
         ));
     }
     if let Some(plan) = &repair_plan {
+        if !plan.repair_queue_brief.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.repair_queue_brief)));
+        }
+        if !plan.repair_queue_brief_json.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.repair_queue_brief_json)
+            ));
+        }
         if !plan.review.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.review)));
         }
@@ -12706,6 +12762,24 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         .unwrap_or_else(|| repair_score_commands_from_plan(&score_command));
     Some(RepairPlanReport {
         path,
+        repair_queue_brief: metadata_value(metadata, "repair_queue_brief"),
+        repair_queue_brief_json: metadata_value(metadata, "repair_queue_brief_json"),
+        repair_queue_brief_status: metadata_value(metadata, "repair_queue_brief_status"),
+        repair_queue_brief_plan_status: metadata_value(metadata, "repair_queue_brief_plan_status"),
+        repair_queue_brief_source: metadata_value(metadata, "repair_queue_brief_source"),
+        repair_queue_brief_next_need_kind: metadata_value(
+            metadata,
+            "repair_queue_brief_next_need_kind",
+        ),
+        repair_queue_brief_next_need_query: metadata_value(
+            metadata,
+            "repair_queue_brief_next_need_query",
+        ),
+        repair_queue_brief_blockers: metadata_value(metadata, "repair_queue_brief_blockers"),
+        repair_queue_brief_review_first: metadata_value(
+            metadata,
+            "repair_queue_brief_review_first",
+        ),
         review: metadata_value(metadata, "review"),
         outcome: metadata_value(metadata, "outcome"),
         outcome_status: metadata_value(metadata, "outcome_status"),
@@ -25787,6 +25861,21 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(report.feed.summary.contains("source=harness_adaptation"));
         let plan = report.repair_plan.expect("repair plan report");
         assert!(plan.path.ends_with("REPAIR_PLAN.json"));
+        assert!(plan.repair_queue_brief.ends_with("REPAIR_QUEUE_BRIEF.md"));
+        assert!(plan
+            .repair_queue_brief_json
+            .ends_with("REPAIR_QUEUE_BRIEF.json"));
+        assert_eq!(plan.repair_queue_brief_status, "satisfied");
+        assert_eq!(plan.repair_queue_brief_plan_status, "review_required");
+        assert_eq!(plan.repair_queue_brief_source, "harness_adaptation");
+        assert_eq!(plan.repair_queue_brief_next_need_kind, "verify");
+        assert!(plan
+            .repair_queue_brief_next_need_query
+            .contains("collect repair outcome memory"));
+        assert!(plan.repair_queue_brief_blockers.is_empty());
+        assert!(plan
+            .repair_queue_brief_review_first
+            .ends_with("HARNESS_ADAPTATION.md"));
         assert!(plan.review.ends_with("REVIEW.md"));
         assert!(plan.draft.ends_with("DRAFT.md"));
         assert_eq!(plan.draft_status, "disabled");
@@ -26287,6 +26376,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan_json.contains("\"learned_reuse\""));
         assert!(plan_json.contains("repair partly improved Feed"));
         assert!(plan_json.contains("repair did not improve Feed"));
+        let queue_brief_json = fs::read_to_string(&plan.repair_queue_brief_json).unwrap();
+        assert!(queue_brief_json
+            .contains("\"schema_version\": \"octopus-harness-repair-queue-brief-v1\""));
+        assert!(queue_brief_json.contains("\"source\": \"harness_adaptation\""));
+        assert!(queue_brief_json.contains("\"blockers\": []"));
+        assert!(queue_brief_json.contains("Clean brain sees queued Need"));
         let adaptation_effectiveness_json =
             fs::read_to_string(&plan.harness_adaptation_effectiveness_json).unwrap();
         assert!(adaptation_effectiveness_json
@@ -26441,6 +26536,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(adaptation_json.contains("\"status\": \"decision_guided\""));
         assert!(adaptation_json.contains("\"profile_status\": \"satisfied\""));
         assert!(adaptation_json.contains("\"drift_status\": \"baseline\""));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_QUEUE_BRIEF.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_QUEUE_BRIEF.json")));
         assert!(report
             .next
             .iter()
@@ -26785,6 +26888,15 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .summary
             .contains("effectiveness_rollup_adaptation=repair_rollup_guidance"));
         let plan = report.repair_plan.expect("repair plan report");
+        assert_eq!(
+            plan.repair_queue_brief_source,
+            "repair_effectiveness_rollup_adaptation"
+        );
+        assert!(plan
+            .repair_queue_brief_review_first
+            .ends_with("REPAIR_EFFECTIVENESS_ROLLUP_ADAPTATION.md"));
+        let queue_brief_json = fs::read_to_string(&plan.repair_queue_brief_json).unwrap();
+        assert!(queue_brief_json.contains("\"source\": \"repair_effectiveness_rollup_adaptation\""));
         assert_eq!(
             plan.repair_effectiveness_rollup_adaptation_status,
             "repair_rollup_guidance"
@@ -27222,6 +27334,11 @@ JSON
 
         assert_eq!(report.feed.status, Status::Partial);
         assert_eq!(plan.status, "adapter_blocked");
+        assert_eq!(plan.repair_queue_brief_status, "partial");
+        assert_eq!(plan.repair_queue_brief_source, "adapter_context");
+        assert!(plan
+            .repair_queue_brief_blockers
+            .contains("adapter_context:git"));
         assert_eq!(plan.adapter_context_status, "partial");
         assert_eq!(plan.adapter_context_missing_core, "git");
         assert!(plan.grant_command.is_empty());
@@ -27240,6 +27357,9 @@ JSON
             .next
             .iter()
             .any(|command| command.contains("repair score")));
+        let queue_brief_json = fs::read_to_string(&plan.repair_queue_brief_json).unwrap();
+        assert!(queue_brief_json.contains("\"source\": \"adapter_context\""));
+        assert!(queue_brief_json.contains("\"adapter_context:git\""));
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);

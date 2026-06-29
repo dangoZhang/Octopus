@@ -31,9 +31,9 @@
     },
     {
       "id": "heartbeat_repair",
-      "description": "Inspect the latest repair-session action plan, similar action-trace recall, repair lesson effectiveness, repair effectiveness rollup adaptation, repair effectiveness rollup effectiveness, repair effectiveness rollup, repair decision, and tool-side action trace, then harness-beat evolution artifacts, and suggest the next review, grant, apply, or score action.",
+      "description": "Inspect the latest repair-session action plan, similar action-trace recall, repair lesson effectiveness, repair effectiveness rollup adaptation, repair effectiveness rollup effectiveness, repair effectiveness rollup, repair decision, and tool-side action trace, then write a repair queue brief before suggesting the next review, grant, apply, or score action.",
       "input": "octopus-json-v1 tool call or workspace root",
-      "output": "JSON Feed with latest REPAIR_PLAN, REPAIR_RECALL.json signal, REPAIR_LESSON_EFFECTIVENESS, REPAIR_EFFECTIVENESS_ROLLUP, REPAIR_EFFECTIVENESS_ROLLUP_EFFECTIVENESS, REPAIR_EFFECTIVENESS_ROLLUP_ADAPTATION, REPAIR_DECISION, ACTION_TRACE.md, ACTION_TRACE.json, review boundary, grant/apply/score commands, next_need_kind, and next_need_query",
+      "output": "JSON Feed with latest REPAIR_PLAN, REPAIR_QUEUE_BRIEF.md/json, REPAIR_RECALL.json signal, REPAIR_LESSON_EFFECTIVENESS, REPAIR_EFFECTIVENESS_ROLLUP, REPAIR_EFFECTIVENESS_ROLLUP_EFFECTIVENESS, REPAIR_EFFECTIVENESS_ROLLUP_ADAPTATION, REPAIR_DECISION, ACTION_TRACE.md, ACTION_TRACE.json, review boundary, grant/apply/score commands, next_need_kind, and next_need_query",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/heartbeat_repair.sh",
@@ -132,6 +132,7 @@
       "Let heartbeat_repair read REPAIR_EFFECTIVENESS_ROLLUP and queue its next Need only when unreliable sources dominate.",
       "Let heartbeat_repair read REPAIR_EFFECTIVENESS_ROLLUP_EFFECTIVENESS and expose rollup guidance success before grant/apply/score.",
       "Let heartbeat_repair read REPAIR_EFFECTIVENESS_ROLLUP_ADAPTATION and queue its next Need only when rollup guidance itself is unreliable.",
+      "Let heartbeat_repair write REPAIR_QUEUE_BRIEF.md/json before returning queued Need metadata.",
       "Let heartbeat_repair read REPAIR_DECISION and expose the local harness focus before grant/apply/score.",
       "Let heartbeat_repair queue REPAIR_DECISION next Need when adapter, draft, action trace, and reviewed outcome are not blocking.",
       "Expose provider DRAFT and CODE_CONTEXT as repair-plan Feed metadata before grant, apply, or score.",

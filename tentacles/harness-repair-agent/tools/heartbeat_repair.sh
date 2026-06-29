@@ -1618,6 +1618,45 @@ def plan_next_need(plan):
     return "verify", text
 
 
+def write_repair_queue_brief(root, latest_repair_plan, brief):
+    if not latest_repair_plan:
+        return "", ""
+    session_dir = latest_repair_plan.parent
+    brief_path = session_dir / "REPAIR_QUEUE_BRIEF.md"
+    json_path = session_dir / "REPAIR_QUEUE_BRIEF.json"
+    json_path.write_text(
+        json.dumps(brief, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    blockers = ", ".join(brief.get("blockers") or []) or "none"
+    next_need = brief.get("next_need") or {}
+    target = brief.get("target") or {}
+    commands = brief.get("commands") or {}
+    markdown = "\n".join([
+        "# Repair Queue Brief",
+        "",
+        f"status: `{brief.get('status') or 'unknown'}`",
+        f"plan_status: `{brief.get('plan_status') or 'unknown'}`",
+        f"source: `{brief.get('source') or 'heartbeat_repair'}`",
+        f"next_need: `{next_need.get('kind') or 'verify'} {next_need.get('query') or ''}`",
+        f"target: `{target.get('tentacle') or 'unknown'}/{target.get('tool') or 'unknown'}`",
+        f"candidate: `{target.get('candidate') or 'none'}`",
+        f"blockers: `{blockers}`",
+        f"review_first: `{brief.get('review_first') or 'REPAIR_PLAN.json'}`",
+        f"check: `{commands.get('check') or 'none'}`",
+        f"grant: `{commands.get('grant') or 'none'}`",
+        f"apply: `{commands.get('apply') or 'none'}`",
+        f"score_options_count: `{commands.get('score_options_count') or 0}`",
+        "",
+        brief.get("summary") or "",
+        "",
+        f"context_boundary: `{brief.get('context_boundary')}`",
+        "",
+    ])
+    brief_path.write_text(markdown, encoding="utf-8")
+    return rel(brief_path, root), rel(json_path, root)
+
+
 payload = read_payload()
 root = resolve_workspace(sys.argv[1] if len(sys.argv) > 1 else ".", payload)
 evolution_root = root / ".octopus/evolution"
@@ -2277,8 +2316,83 @@ if latest_repair_plan:
             f"adaptation_effectiveness={adaptation_effectiveness_used or '0'} success_rate={adaptation_effectiveness_success or '0.00'}; "
             "review before grant/apply/score"
         )
+    queue_blockers = []
+    if has_outcome:
+        queue_blockers.append(f"outcome:{outcome_metadata.get('outcome_status', 'reviewed')}")
+    if adapter_blocked:
+        queue_blockers.append(f"adapter_context:{adapter_missing_core or adapter_status or 'blocked'}")
+    if draft_blocked:
+        queue_blockers.append(f"provider_draft:{draft_status or 'blocked'}")
+    if action_trace_blocked:
+        queue_blockers.append(f"action_trace:{action_trace_status or 'blocked'}")
+    if patch_review_blocked:
+        queue_blockers.append(f"patch_review:{patch_review_status or patch_review_check or 'blocked'}")
+    if patch_apply_failed:
+        queue_blockers.append(f"patch_apply:{patch_apply_status or 'failed'}")
+    if patch_verify_failed:
+        queue_blockers.append(f"patch_verify:{patch_verify_status or 'failed'}")
+    if patch_apply_needs_verify:
+        queue_blockers.append("patch_apply:needs_verify")
+    source_review = {
+        "repair_effectiveness_rollup_adaptation": repair_effectiveness_rollup_adaptation,
+        "repair_effectiveness_rollup": repair_effectiveness_rollup,
+        "repair_command_strategy": repair_command_strategy,
+        "repair_patch_strategy": repair_patch_strategy,
+        "repair_patch_learning": repair_patch_learning,
+        "repair_draft_strategy": repair_draft_strategy,
+        "harness_adaptation": harness_adaptation,
+        "repair_decision": repair_decision,
+        "adapter_context": adapter_context,
+        "provider_draft": draft,
+        "action_trace": action_trace,
+        "repair_patch_review": repair_patch_review,
+        "repair_patch_apply": repair_patch_apply,
+        "repair_patch_verify": repair_patch_verify,
+        "repair_outcome": outcome_metadata.get("outcome", ""),
+    }.get(next_need_source, "")
+    review_first = source_review or str(inputs.get("review") or "") or rel(latest_repair_plan, root)
+    queue_brief_data = {
+        "schema_version": "octopus-harness-repair-queue-brief-v1",
+        "status": status,
+        "plan_status": plan_status,
+        "source": next_need_source,
+        "next_need": {
+            "kind": next_need_kind,
+            "query": next_need_query,
+        },
+        "target": {
+            "tentacle": target_tentacle,
+            "tool": target_tool,
+            "candidate": candidate,
+        },
+        "blockers": queue_blockers,
+        "review_first": review_first,
+        "commands": {
+            "check": " && ".join(checks),
+            "grant": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked or patch_review_blocked or patch_apply_applied_status or patch_apply_failed else command_value(commands, "grant"),
+            "apply": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked or patch_review_blocked or patch_apply_applied_status or patch_apply_failed else command_value(commands, "apply"),
+            "score_options_count": len(as_list(commands.get("score_options"))) if not (has_outcome or adapter_blocked or draft_blocked or action_trace_blocked or patch_review_blocked or patch_apply_needs_verify) else 0,
+            "suggested": suggested,
+        },
+        "summary": compact(output, 900),
+        "context_boundary": "Clean brain sees queued Need and compact Feed; queue selection evidence stays inside harness Feed.",
+    }
+    repair_queue_brief, repair_queue_brief_json = write_repair_queue_brief(
+        root,
+        latest_repair_plan,
+        queue_brief_data,
+    )
     repair_metadata = {
         "repair_plan": rel(latest_repair_plan, root),
+        "repair_queue_brief": repair_queue_brief,
+        "repair_queue_brief_json": repair_queue_brief_json,
+        "repair_queue_brief_status": status,
+        "repair_queue_brief_plan_status": plan_status,
+        "repair_queue_brief_source": next_need_source,
+        "repair_queue_brief_next_need_kind": next_need_kind,
+        "repair_queue_brief_next_need_query": next_need_query,
+        "repair_queue_brief_blockers": ",".join(queue_blockers),
+        "repair_queue_brief_review_first": review_first,
         "repair_plan_status": plan_status,
         "repair_plan_schema": str(repair_plan.get("schema_version") or ""),
         "repair_plan_session": str(repair_plan.get("session") or ""),

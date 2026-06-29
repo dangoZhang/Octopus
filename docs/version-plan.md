@@ -55,5 +55,6 @@ Last release correction: `0.1.0` on 2026-06-28. Scope: recorded GitHub-installed
 - `0.1.1`: repair outcomes now remember repair-effectiveness-rollup usage, so later rollups can score whether the rollup guidance helped.
 - `0.1.1`: rollup guidance effectiveness is now a first-class repair artifact and heartbeat Feed field.
 - `0.1.1`: rollup guidance adaptation is now a reviewable Feed that can repair unreliable rollup guidance before it keeps driving heartbeat.
+- `0.1.1`: repair queue brief is now a reviewable heartbeat artifact that explains which harness evidence queued the next self-repair Need.
 - `0.1.x`: keep the eight fields as peer slots; add depth inside each field without turning the field list into a sequence.
 - `0.2.0`: Octopus can run, score, repair, and rerun tasks across math, search, code, SWE, research, computer-use, IB work, and robotics with the concrete tentacle code primarily iterated by Octopus.
