@@ -1,6 +1,6 @@
 # Version Plan
 
-Current version: `0.1.0`.
+Current version: `0.1.1`.
 
 Cadence from this plan forward:
 
@@ -50,5 +50,6 @@ Last release correction: `0.1.0` on 2026-06-28. Scope: recorded GitHub-installed
 - `0.1.x`: generic `field-mini-task` code-as-harness surface so sampled field tasks create repairable trajectories before domain behavior is evolved.
 - `0.1.x`: field trajectory summaries, failed-run reuse, reviewable harness patches. Current state has `octopus fields summary` reporting all eight first-pass mini tasks as satisfied.
 - `0.1.x`: define harder mini tasks per field and keep the same sampled parallel pool. Current state has three satisfied mini-task layers in all eight packs after real trace repair cycles.
+- `0.1.1`: repair self-evolution cleanup: scored patch draft/review/apply/verify/learning/strategy evidence is reviewable, and repair effectiveness labels share one helper.
 - `0.1.x`: keep the eight fields as peer slots; add depth inside each field without turning the field list into a sequence.
 - `0.2.0`: Octopus can run, score, repair, and rerun tasks across math, search, code, SWE, research, computer-use, IB work, and robotics with the concrete tentacle code primarily iterated by Octopus.

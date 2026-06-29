@@ -4520,57 +4520,40 @@ fn repair_plan_draft_label(plan: &RepairPlanReport) -> String {
     parts.join(" ")
 }
 
-fn repair_plan_draft_effectiveness_label(plan: &RepairPlanReport) -> String {
+fn repair_effectiveness_label(fields: &[(&str, &str)]) -> String {
     let mut parts = Vec::new();
-    if !plan.repair_draft_effectiveness_used_count.trim().is_empty() {
-        parts.push(format!(
-            "used={}",
-            plan.repair_draft_effectiveness_used_count
-        ));
-    }
-    if !plan
-        .repair_draft_effectiveness_satisfied_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "satisfied={}",
-            plan.repair_draft_effectiveness_satisfied_count
-        ));
-    }
-    if !plan
-        .repair_draft_effectiveness_failed_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "failed={}",
-            plan.repair_draft_effectiveness_failed_count
-        ));
-    }
-    if !plan
-        .repair_draft_effectiveness_success_rate
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "success_rate={}",
-            plan.repair_draft_effectiveness_success_rate
-        ));
-    }
-    if !plan.repair_draft_effectiveness_top_reuse.trim().is_empty() {
-        parts.push(format!(
-            "top_reuse={}",
-            plan.repair_draft_effectiveness_top_reuse
-        ));
-    }
-    if !plan.repair_draft_effectiveness_top_avoid.trim().is_empty() {
-        parts.push(format!(
-            "top_avoid={}",
-            plan.repair_draft_effectiveness_top_avoid
-        ));
+    for (name, value) in fields {
+        if !value.trim().is_empty() {
+            parts.push(format!("{name}={value}"));
+        }
     }
     parts.join(" ")
+}
+
+fn repair_plan_draft_effectiveness_label(plan: &RepairPlanReport) -> String {
+    repair_effectiveness_label(&[
+        ("used", plan.repair_draft_effectiveness_used_count.as_str()),
+        (
+            "satisfied",
+            plan.repair_draft_effectiveness_satisfied_count.as_str(),
+        ),
+        (
+            "failed",
+            plan.repair_draft_effectiveness_failed_count.as_str(),
+        ),
+        (
+            "success_rate",
+            plan.repair_draft_effectiveness_success_rate.as_str(),
+        ),
+        (
+            "top_reuse",
+            plan.repair_draft_effectiveness_top_reuse.as_str(),
+        ),
+        (
+            "top_avoid",
+            plan.repair_draft_effectiveness_top_avoid.as_str(),
+        ),
+    ])
 }
 
 fn repair_plan_draft_strategy_label(plan: &RepairPlanReport) -> String {
@@ -4628,68 +4611,35 @@ fn repair_plan_draft_strategy_label(plan: &RepairPlanReport) -> String {
 }
 
 fn repair_plan_draft_strategy_effectiveness_label(plan: &RepairPlanReport) -> String {
-    let mut parts = Vec::new();
-    if !plan
-        .repair_draft_strategy_effectiveness_used_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "used={}",
-            plan.repair_draft_strategy_effectiveness_used_count
-        ));
-    }
-    if !plan
-        .repair_draft_strategy_effectiveness_satisfied_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "satisfied={}",
+    repair_effectiveness_label(&[
+        (
+            "used",
+            plan.repair_draft_strategy_effectiveness_used_count.as_str(),
+        ),
+        (
+            "satisfied",
             plan.repair_draft_strategy_effectiveness_satisfied_count
-        ));
-    }
-    if !plan
-        .repair_draft_strategy_effectiveness_failed_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "failed={}",
+                .as_str(),
+        ),
+        (
+            "failed",
             plan.repair_draft_strategy_effectiveness_failed_count
-        ));
-    }
-    if !plan
-        .repair_draft_strategy_effectiveness_success_rate
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "success_rate={}",
+                .as_str(),
+        ),
+        (
+            "success_rate",
             plan.repair_draft_strategy_effectiveness_success_rate
-        ));
-    }
-    if !plan
-        .repair_draft_strategy_effectiveness_top_reuse
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_reuse={}",
-            plan.repair_draft_strategy_effectiveness_top_reuse
-        ));
-    }
-    if !plan
-        .repair_draft_strategy_effectiveness_top_avoid
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_avoid={}",
-            plan.repair_draft_strategy_effectiveness_top_avoid
-        ));
-    }
-    parts.join(" ")
+                .as_str(),
+        ),
+        (
+            "top_reuse",
+            plan.repair_draft_strategy_effectiveness_top_reuse.as_str(),
+        ),
+        (
+            "top_avoid",
+            plan.repair_draft_strategy_effectiveness_top_avoid.as_str(),
+        ),
+    ])
 }
 
 fn repair_plan_patch_draft_label(plan: &RepairPlanReport) -> String {
@@ -4718,68 +4668,33 @@ fn repair_plan_patch_draft_label(plan: &RepairPlanReport) -> String {
 }
 
 fn repair_plan_patch_draft_effectiveness_label(plan: &RepairPlanReport) -> String {
-    let mut parts = Vec::new();
-    if !plan
-        .repair_patch_draft_effectiveness_used_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "used={}",
-            plan.repair_patch_draft_effectiveness_used_count
-        ));
-    }
-    if !plan
-        .repair_patch_draft_effectiveness_satisfied_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "satisfied={}",
+    repair_effectiveness_label(&[
+        (
+            "used",
+            plan.repair_patch_draft_effectiveness_used_count.as_str(),
+        ),
+        (
+            "satisfied",
             plan.repair_patch_draft_effectiveness_satisfied_count
-        ));
-    }
-    if !plan
-        .repair_patch_draft_effectiveness_failed_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "failed={}",
-            plan.repair_patch_draft_effectiveness_failed_count
-        ));
-    }
-    if !plan
-        .repair_patch_draft_effectiveness_success_rate
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "success_rate={}",
-            plan.repair_patch_draft_effectiveness_success_rate
-        ));
-    }
-    if !plan
-        .repair_patch_draft_effectiveness_top_reuse
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_reuse={}",
-            plan.repair_patch_draft_effectiveness_top_reuse
-        ));
-    }
-    if !plan
-        .repair_patch_draft_effectiveness_top_avoid
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_avoid={}",
-            plan.repair_patch_draft_effectiveness_top_avoid
-        ));
-    }
-    parts.join(" ")
+                .as_str(),
+        ),
+        (
+            "failed",
+            plan.repair_patch_draft_effectiveness_failed_count.as_str(),
+        ),
+        (
+            "success_rate",
+            plan.repair_patch_draft_effectiveness_success_rate.as_str(),
+        ),
+        (
+            "top_reuse",
+            plan.repair_patch_draft_effectiveness_top_reuse.as_str(),
+        ),
+        (
+            "top_avoid",
+            plan.repair_patch_draft_effectiveness_top_avoid.as_str(),
+        ),
+    ])
 }
 
 fn repair_plan_patch_review_label(plan: &RepairPlanReport) -> String {
@@ -4814,68 +4729,33 @@ fn repair_plan_patch_review_label(plan: &RepairPlanReport) -> String {
 }
 
 fn repair_plan_patch_review_effectiveness_label(plan: &RepairPlanReport) -> String {
-    let mut parts = Vec::new();
-    if !plan
-        .repair_patch_review_effectiveness_used_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "used={}",
-            plan.repair_patch_review_effectiveness_used_count
-        ));
-    }
-    if !plan
-        .repair_patch_review_effectiveness_satisfied_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "satisfied={}",
+    repair_effectiveness_label(&[
+        (
+            "used",
+            plan.repair_patch_review_effectiveness_used_count.as_str(),
+        ),
+        (
+            "satisfied",
             plan.repair_patch_review_effectiveness_satisfied_count
-        ));
-    }
-    if !plan
-        .repair_patch_review_effectiveness_failed_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "failed={}",
-            plan.repair_patch_review_effectiveness_failed_count
-        ));
-    }
-    if !plan
-        .repair_patch_review_effectiveness_success_rate
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "success_rate={}",
-            plan.repair_patch_review_effectiveness_success_rate
-        ));
-    }
-    if !plan
-        .repair_patch_review_effectiveness_top_reuse
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_reuse={}",
-            plan.repair_patch_review_effectiveness_top_reuse
-        ));
-    }
-    if !plan
-        .repair_patch_review_effectiveness_top_avoid
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_avoid={}",
-            plan.repair_patch_review_effectiveness_top_avoid
-        ));
-    }
-    parts.join(" ")
+                .as_str(),
+        ),
+        (
+            "failed",
+            plan.repair_patch_review_effectiveness_failed_count.as_str(),
+        ),
+        (
+            "success_rate",
+            plan.repair_patch_review_effectiveness_success_rate.as_str(),
+        ),
+        (
+            "top_reuse",
+            plan.repair_patch_review_effectiveness_top_reuse.as_str(),
+        ),
+        (
+            "top_avoid",
+            plan.repair_patch_review_effectiveness_top_avoid.as_str(),
+        ),
+    ])
 }
 
 fn repair_plan_patch_apply_label(plan: &RepairPlanReport) -> String {
@@ -4905,68 +4785,33 @@ fn repair_plan_patch_apply_label(plan: &RepairPlanReport) -> String {
 }
 
 fn repair_plan_patch_apply_effectiveness_label(plan: &RepairPlanReport) -> String {
-    let mut parts = Vec::new();
-    if !plan
-        .repair_patch_apply_effectiveness_used_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "used={}",
-            plan.repair_patch_apply_effectiveness_used_count
-        ));
-    }
-    if !plan
-        .repair_patch_apply_effectiveness_satisfied_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "satisfied={}",
+    repair_effectiveness_label(&[
+        (
+            "used",
+            plan.repair_patch_apply_effectiveness_used_count.as_str(),
+        ),
+        (
+            "satisfied",
             plan.repair_patch_apply_effectiveness_satisfied_count
-        ));
-    }
-    if !plan
-        .repair_patch_apply_effectiveness_failed_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "failed={}",
-            plan.repair_patch_apply_effectiveness_failed_count
-        ));
-    }
-    if !plan
-        .repair_patch_apply_effectiveness_success_rate
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "success_rate={}",
-            plan.repair_patch_apply_effectiveness_success_rate
-        ));
-    }
-    if !plan
-        .repair_patch_apply_effectiveness_top_reuse
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_reuse={}",
-            plan.repair_patch_apply_effectiveness_top_reuse
-        ));
-    }
-    if !plan
-        .repair_patch_apply_effectiveness_top_avoid
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_avoid={}",
-            plan.repair_patch_apply_effectiveness_top_avoid
-        ));
-    }
-    parts.join(" ")
+                .as_str(),
+        ),
+        (
+            "failed",
+            plan.repair_patch_apply_effectiveness_failed_count.as_str(),
+        ),
+        (
+            "success_rate",
+            plan.repair_patch_apply_effectiveness_success_rate.as_str(),
+        ),
+        (
+            "top_reuse",
+            plan.repair_patch_apply_effectiveness_top_reuse.as_str(),
+        ),
+        (
+            "top_avoid",
+            plan.repair_patch_apply_effectiveness_top_avoid.as_str(),
+        ),
+    ])
 }
 
 fn repair_plan_patch_verify_label(plan: &RepairPlanReport) -> String {
@@ -4990,68 +4835,33 @@ fn repair_plan_patch_verify_label(plan: &RepairPlanReport) -> String {
 }
 
 fn repair_plan_patch_verify_effectiveness_label(plan: &RepairPlanReport) -> String {
-    let mut parts = Vec::new();
-    if !plan
-        .repair_patch_verify_effectiveness_used_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "used={}",
-            plan.repair_patch_verify_effectiveness_used_count
-        ));
-    }
-    if !plan
-        .repair_patch_verify_effectiveness_satisfied_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "satisfied={}",
+    repair_effectiveness_label(&[
+        (
+            "used",
+            plan.repair_patch_verify_effectiveness_used_count.as_str(),
+        ),
+        (
+            "satisfied",
             plan.repair_patch_verify_effectiveness_satisfied_count
-        ));
-    }
-    if !plan
-        .repair_patch_verify_effectiveness_failed_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "failed={}",
-            plan.repair_patch_verify_effectiveness_failed_count
-        ));
-    }
-    if !plan
-        .repair_patch_verify_effectiveness_success_rate
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "success_rate={}",
-            plan.repair_patch_verify_effectiveness_success_rate
-        ));
-    }
-    if !plan
-        .repair_patch_verify_effectiveness_top_reuse
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_reuse={}",
-            plan.repair_patch_verify_effectiveness_top_reuse
-        ));
-    }
-    if !plan
-        .repair_patch_verify_effectiveness_top_avoid
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_avoid={}",
-            plan.repair_patch_verify_effectiveness_top_avoid
-        ));
-    }
-    parts.join(" ")
+                .as_str(),
+        ),
+        (
+            "failed",
+            plan.repair_patch_verify_effectiveness_failed_count.as_str(),
+        ),
+        (
+            "success_rate",
+            plan.repair_patch_verify_effectiveness_success_rate.as_str(),
+        ),
+        (
+            "top_reuse",
+            plan.repair_patch_verify_effectiveness_top_reuse.as_str(),
+        ),
+        (
+            "top_avoid",
+            plan.repair_patch_verify_effectiveness_top_avoid.as_str(),
+        ),
+    ])
 }
 
 fn repair_plan_patch_learning_label(plan: &RepairPlanReport) -> String {
@@ -5105,68 +4915,35 @@ fn repair_plan_patch_learning_label(plan: &RepairPlanReport) -> String {
 }
 
 fn repair_plan_patch_learning_effectiveness_label(plan: &RepairPlanReport) -> String {
-    let mut parts = Vec::new();
-    if !plan
-        .repair_patch_learning_effectiveness_used_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "used={}",
-            plan.repair_patch_learning_effectiveness_used_count
-        ));
-    }
-    if !plan
-        .repair_patch_learning_effectiveness_satisfied_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "satisfied={}",
+    repair_effectiveness_label(&[
+        (
+            "used",
+            plan.repair_patch_learning_effectiveness_used_count.as_str(),
+        ),
+        (
+            "satisfied",
             plan.repair_patch_learning_effectiveness_satisfied_count
-        ));
-    }
-    if !plan
-        .repair_patch_learning_effectiveness_failed_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "failed={}",
+                .as_str(),
+        ),
+        (
+            "failed",
             plan.repair_patch_learning_effectiveness_failed_count
-        ));
-    }
-    if !plan
-        .repair_patch_learning_effectiveness_success_rate
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "success_rate={}",
+                .as_str(),
+        ),
+        (
+            "success_rate",
             plan.repair_patch_learning_effectiveness_success_rate
-        ));
-    }
-    if !plan
-        .repair_patch_learning_effectiveness_top_reuse
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_reuse={}",
-            plan.repair_patch_learning_effectiveness_top_reuse
-        ));
-    }
-    if !plan
-        .repair_patch_learning_effectiveness_top_avoid
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_avoid={}",
-            plan.repair_patch_learning_effectiveness_top_avoid
-        ));
-    }
-    parts.join(" ")
+                .as_str(),
+        ),
+        (
+            "top_reuse",
+            plan.repair_patch_learning_effectiveness_top_reuse.as_str(),
+        ),
+        (
+            "top_avoid",
+            plan.repair_patch_learning_effectiveness_top_avoid.as_str(),
+        ),
+    ])
 }
 
 fn repair_plan_patch_strategy_label(plan: &RepairPlanReport) -> String {
@@ -5204,133 +4981,64 @@ fn repair_plan_patch_strategy_label(plan: &RepairPlanReport) -> String {
 }
 
 fn repair_plan_patch_strategy_effectiveness_label(plan: &RepairPlanReport) -> String {
-    let mut parts = Vec::new();
-    if !plan
-        .repair_patch_strategy_effectiveness_used_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "used={}",
-            plan.repair_patch_strategy_effectiveness_used_count
-        ));
-    }
-    if !plan
-        .repair_patch_strategy_effectiveness_satisfied_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "satisfied={}",
+    repair_effectiveness_label(&[
+        (
+            "used",
+            plan.repair_patch_strategy_effectiveness_used_count.as_str(),
+        ),
+        (
+            "satisfied",
             plan.repair_patch_strategy_effectiveness_satisfied_count
-        ));
-    }
-    if !plan
-        .repair_patch_strategy_effectiveness_failed_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "failed={}",
+                .as_str(),
+        ),
+        (
+            "failed",
             plan.repair_patch_strategy_effectiveness_failed_count
-        ));
-    }
-    if !plan
-        .repair_patch_strategy_effectiveness_success_rate
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "success_rate={}",
+                .as_str(),
+        ),
+        (
+            "success_rate",
             plan.repair_patch_strategy_effectiveness_success_rate
-        ));
-    }
-    if !plan
-        .repair_patch_strategy_effectiveness_top_reuse
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_reuse={}",
-            plan.repair_patch_strategy_effectiveness_top_reuse
-        ));
-    }
-    if !plan
-        .repair_patch_strategy_effectiveness_top_avoid
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_avoid={}",
-            plan.repair_patch_strategy_effectiveness_top_avoid
-        ));
-    }
-    parts.join(" ")
+                .as_str(),
+        ),
+        (
+            "top_reuse",
+            plan.repair_patch_strategy_effectiveness_top_reuse.as_str(),
+        ),
+        (
+            "top_avoid",
+            plan.repair_patch_strategy_effectiveness_top_avoid.as_str(),
+        ),
+    ])
 }
 
 fn repair_plan_command_effectiveness_label(plan: &RepairPlanReport) -> String {
-    let mut parts = Vec::new();
-    if !plan
-        .repair_command_effectiveness_used_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "used={}",
-            plan.repair_command_effectiveness_used_count
-        ));
-    }
-    if !plan
-        .repair_command_effectiveness_satisfied_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "satisfied={}",
-            plan.repair_command_effectiveness_satisfied_count
-        ));
-    }
-    if !plan
-        .repair_command_effectiveness_failed_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "failed={}",
-            plan.repair_command_effectiveness_failed_count
-        ));
-    }
-    if !plan
-        .repair_command_effectiveness_success_rate
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "success_rate={}",
-            plan.repair_command_effectiveness_success_rate
-        ));
-    }
-    if !plan
-        .repair_command_effectiveness_top_reuse
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_reuse={}",
-            plan.repair_command_effectiveness_top_reuse
-        ));
-    }
-    if !plan
-        .repair_command_effectiveness_top_avoid
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_avoid={}",
-            plan.repair_command_effectiveness_top_avoid
-        ));
-    }
-    parts.join(" ")
+    repair_effectiveness_label(&[
+        (
+            "used",
+            plan.repair_command_effectiveness_used_count.as_str(),
+        ),
+        (
+            "satisfied",
+            plan.repair_command_effectiveness_satisfied_count.as_str(),
+        ),
+        (
+            "failed",
+            plan.repair_command_effectiveness_failed_count.as_str(),
+        ),
+        (
+            "success_rate",
+            plan.repair_command_effectiveness_success_rate.as_str(),
+        ),
+        (
+            "top_reuse",
+            plan.repair_command_effectiveness_top_reuse.as_str(),
+        ),
+        (
+            "top_avoid",
+            plan.repair_command_effectiveness_top_avoid.as_str(),
+        ),
+    ])
 }
 
 fn repair_plan_command_strategy_label(plan: &RepairPlanReport) -> String {
@@ -5376,68 +5084,38 @@ fn repair_plan_command_strategy_label(plan: &RepairPlanReport) -> String {
 }
 
 fn repair_plan_command_strategy_effectiveness_label(plan: &RepairPlanReport) -> String {
-    let mut parts = Vec::new();
-    if !plan
-        .repair_command_strategy_effectiveness_used_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "used={}",
+    repair_effectiveness_label(&[
+        (
+            "used",
             plan.repair_command_strategy_effectiveness_used_count
-        ));
-    }
-    if !plan
-        .repair_command_strategy_effectiveness_satisfied_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "satisfied={}",
+                .as_str(),
+        ),
+        (
+            "satisfied",
             plan.repair_command_strategy_effectiveness_satisfied_count
-        ));
-    }
-    if !plan
-        .repair_command_strategy_effectiveness_failed_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "failed={}",
+                .as_str(),
+        ),
+        (
+            "failed",
             plan.repair_command_strategy_effectiveness_failed_count
-        ));
-    }
-    if !plan
-        .repair_command_strategy_effectiveness_success_rate
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "success_rate={}",
+                .as_str(),
+        ),
+        (
+            "success_rate",
             plan.repair_command_strategy_effectiveness_success_rate
-        ));
-    }
-    if !plan
-        .repair_command_strategy_effectiveness_top_reuse
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_reuse={}",
+                .as_str(),
+        ),
+        (
+            "top_reuse",
             plan.repair_command_strategy_effectiveness_top_reuse
-        ));
-    }
-    if !plan
-        .repair_command_strategy_effectiveness_top_avoid
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_avoid={}",
+                .as_str(),
+        ),
+        (
+            "top_avoid",
             plan.repair_command_strategy_effectiveness_top_avoid
-        ));
-    }
-    parts.join(" ")
+                .as_str(),
+        ),
+    ])
 }
 
 fn repair_plan_action_trace_label(plan: &RepairPlanReport) -> String {
@@ -5492,113 +5170,55 @@ fn repair_plan_lessons_label(plan: &RepairPlanReport) -> String {
 }
 
 fn repair_plan_action_trace_effectiveness_label(plan: &RepairPlanReport) -> String {
-    let mut parts = Vec::new();
-    if !plan.action_trace_effectiveness_used_count.trim().is_empty() {
-        parts.push(format!(
-            "used={}",
-            plan.action_trace_effectiveness_used_count
-        ));
-    }
-    if !plan
-        .action_trace_effectiveness_satisfied_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "satisfied={}",
-            plan.action_trace_effectiveness_satisfied_count
-        ));
-    }
-    if !plan
-        .action_trace_effectiveness_failed_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "failed={}",
-            plan.action_trace_effectiveness_failed_count
-        ));
-    }
-    if !plan
-        .action_trace_effectiveness_success_rate
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "success_rate={}",
-            plan.action_trace_effectiveness_success_rate
-        ));
-    }
-    if !plan.action_trace_effectiveness_top_reuse.trim().is_empty() {
-        parts.push(format!(
-            "top_reuse={}",
-            plan.action_trace_effectiveness_top_reuse
-        ));
-    }
-    if !plan.action_trace_effectiveness_top_avoid.trim().is_empty() {
-        parts.push(format!(
-            "top_avoid={}",
-            plan.action_trace_effectiveness_top_avoid
-        ));
-    }
-    parts.join(" ")
+    repair_effectiveness_label(&[
+        ("used", plan.action_trace_effectiveness_used_count.as_str()),
+        (
+            "satisfied",
+            plan.action_trace_effectiveness_satisfied_count.as_str(),
+        ),
+        (
+            "failed",
+            plan.action_trace_effectiveness_failed_count.as_str(),
+        ),
+        (
+            "success_rate",
+            plan.action_trace_effectiveness_success_rate.as_str(),
+        ),
+        (
+            "top_reuse",
+            plan.action_trace_effectiveness_top_reuse.as_str(),
+        ),
+        (
+            "top_avoid",
+            plan.action_trace_effectiveness_top_avoid.as_str(),
+        ),
+    ])
 }
 
 fn repair_plan_lesson_effectiveness_label(plan: &RepairPlanReport) -> String {
-    let mut parts = Vec::new();
-    if !plan
-        .repair_lesson_effectiveness_used_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "used={}",
-            plan.repair_lesson_effectiveness_used_count
-        ));
-    }
-    if !plan
-        .repair_lesson_effectiveness_satisfied_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "satisfied={}",
-            plan.repair_lesson_effectiveness_satisfied_count
-        ));
-    }
-    if !plan
-        .repair_lesson_effectiveness_failed_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "failed={}",
-            plan.repair_lesson_effectiveness_failed_count
-        ));
-    }
-    if !plan
-        .repair_lesson_effectiveness_success_rate
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "success_rate={}",
-            plan.repair_lesson_effectiveness_success_rate
-        ));
-    }
-    if !plan.repair_lesson_effectiveness_top_reuse.trim().is_empty() {
-        parts.push(format!(
-            "top_reuse={}",
-            plan.repair_lesson_effectiveness_top_reuse
-        ));
-    }
-    if !plan.repair_lesson_effectiveness_top_avoid.trim().is_empty() {
-        parts.push(format!(
-            "top_avoid={}",
-            plan.repair_lesson_effectiveness_top_avoid
-        ));
-    }
-    parts.join(" ")
+    repair_effectiveness_label(&[
+        ("used", plan.repair_lesson_effectiveness_used_count.as_str()),
+        (
+            "satisfied",
+            plan.repair_lesson_effectiveness_satisfied_count.as_str(),
+        ),
+        (
+            "failed",
+            plan.repair_lesson_effectiveness_failed_count.as_str(),
+        ),
+        (
+            "success_rate",
+            plan.repair_lesson_effectiveness_success_rate.as_str(),
+        ),
+        (
+            "top_reuse",
+            plan.repair_lesson_effectiveness_top_reuse.as_str(),
+        ),
+        (
+            "top_avoid",
+            plan.repair_lesson_effectiveness_top_avoid.as_str(),
+        ),
+    ])
 }
 
 fn repair_plan_decision_label(plan: &RepairPlanReport) -> String {
@@ -5627,133 +5247,62 @@ fn repair_plan_decision_label(plan: &RepairPlanReport) -> String {
 }
 
 fn repair_plan_decision_effectiveness_label(plan: &RepairPlanReport) -> String {
-    let mut parts = Vec::new();
-    if !plan
-        .repair_decision_effectiveness_used_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "used={}",
-            plan.repair_decision_effectiveness_used_count
-        ));
-    }
-    if !plan
-        .repair_decision_effectiveness_satisfied_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "satisfied={}",
-            plan.repair_decision_effectiveness_satisfied_count
-        ));
-    }
-    if !plan
-        .repair_decision_effectiveness_failed_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "failed={}",
-            plan.repair_decision_effectiveness_failed_count
-        ));
-    }
-    if !plan
-        .repair_decision_effectiveness_success_rate
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "success_rate={}",
-            plan.repair_decision_effectiveness_success_rate
-        ));
-    }
-    if !plan
-        .repair_decision_effectiveness_top_reuse
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_reuse={}",
-            plan.repair_decision_effectiveness_top_reuse
-        ));
-    }
-    if !plan
-        .repair_decision_effectiveness_top_avoid
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_avoid={}",
-            plan.repair_decision_effectiveness_top_avoid
-        ));
-    }
-    parts.join(" ")
+    repair_effectiveness_label(&[
+        (
+            "used",
+            plan.repair_decision_effectiveness_used_count.as_str(),
+        ),
+        (
+            "satisfied",
+            plan.repair_decision_effectiveness_satisfied_count.as_str(),
+        ),
+        (
+            "failed",
+            plan.repair_decision_effectiveness_failed_count.as_str(),
+        ),
+        (
+            "success_rate",
+            plan.repair_decision_effectiveness_success_rate.as_str(),
+        ),
+        (
+            "top_reuse",
+            plan.repair_decision_effectiveness_top_reuse.as_str(),
+        ),
+        (
+            "top_avoid",
+            plan.repair_decision_effectiveness_top_avoid.as_str(),
+        ),
+    ])
 }
 
 fn repair_plan_adaptation_effectiveness_label(plan: &RepairPlanReport) -> String {
-    let mut parts = Vec::new();
-    if !plan
-        .harness_adaptation_effectiveness_used_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "used={}",
-            plan.harness_adaptation_effectiveness_used_count
-        ));
-    }
-    if !plan
-        .harness_adaptation_effectiveness_satisfied_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "satisfied={}",
+    repair_effectiveness_label(&[
+        (
+            "used",
+            plan.harness_adaptation_effectiveness_used_count.as_str(),
+        ),
+        (
+            "satisfied",
             plan.harness_adaptation_effectiveness_satisfied_count
-        ));
-    }
-    if !plan
-        .harness_adaptation_effectiveness_failed_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "failed={}",
-            plan.harness_adaptation_effectiveness_failed_count
-        ));
-    }
-    if !plan
-        .harness_adaptation_effectiveness_success_rate
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "success_rate={}",
-            plan.harness_adaptation_effectiveness_success_rate
-        ));
-    }
-    if !plan
-        .harness_adaptation_effectiveness_top_reuse
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_reuse={}",
-            plan.harness_adaptation_effectiveness_top_reuse
-        ));
-    }
-    if !plan
-        .harness_adaptation_effectiveness_top_avoid
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_avoid={}",
-            plan.harness_adaptation_effectiveness_top_avoid
-        ));
-    }
-    parts.join(" ")
+                .as_str(),
+        ),
+        (
+            "failed",
+            plan.harness_adaptation_effectiveness_failed_count.as_str(),
+        ),
+        (
+            "success_rate",
+            plan.harness_adaptation_effectiveness_success_rate.as_str(),
+        ),
+        (
+            "top_reuse",
+            plan.harness_adaptation_effectiveness_top_reuse.as_str(),
+        ),
+        (
+            "top_avoid",
+            plan.harness_adaptation_effectiveness_top_avoid.as_str(),
+        ),
+    ])
 }
 
 fn repair_plan_environment_profile_label(plan: &RepairPlanReport) -> String {
@@ -5890,68 +5439,38 @@ fn repair_plan_environment_drift_label(plan: &RepairPlanReport) -> String {
 }
 
 fn repair_plan_environment_drift_effectiveness_label(plan: &RepairPlanReport) -> String {
-    let mut parts = Vec::new();
-    if !plan
-        .harness_environment_drift_effectiveness_used_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "used={}",
+    repair_effectiveness_label(&[
+        (
+            "used",
             plan.harness_environment_drift_effectiveness_used_count
-        ));
-    }
-    if !plan
-        .harness_environment_drift_effectiveness_satisfied_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "satisfied={}",
+                .as_str(),
+        ),
+        (
+            "satisfied",
             plan.harness_environment_drift_effectiveness_satisfied_count
-        ));
-    }
-    if !plan
-        .harness_environment_drift_effectiveness_failed_count
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "failed={}",
+                .as_str(),
+        ),
+        (
+            "failed",
             plan.harness_environment_drift_effectiveness_failed_count
-        ));
-    }
-    if !plan
-        .harness_environment_drift_effectiveness_success_rate
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "success_rate={}",
+                .as_str(),
+        ),
+        (
+            "success_rate",
             plan.harness_environment_drift_effectiveness_success_rate
-        ));
-    }
-    if !plan
-        .harness_environment_drift_effectiveness_top_reuse
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_reuse={}",
+                .as_str(),
+        ),
+        (
+            "top_reuse",
             plan.harness_environment_drift_effectiveness_top_reuse
-        ));
-    }
-    if !plan
-        .harness_environment_drift_effectiveness_top_avoid
-        .trim()
-        .is_empty()
-    {
-        parts.push(format!(
-            "top_avoid={}",
+                .as_str(),
+        ),
+        (
+            "top_avoid",
             plan.harness_environment_drift_effectiveness_top_avoid
-        ));
-    }
-    parts.join(" ")
+                .as_str(),
+        ),
+    ])
 }
 
 fn repair_plan_adaptation_label(plan: &RepairPlanReport) -> String {
