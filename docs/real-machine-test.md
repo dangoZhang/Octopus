@@ -332,3 +332,100 @@ Field mini task harness result should include `checked_count=...`, `executed_cou
 
 - Pass or fail: pass
 - Follow-up: after review and push, rerun GitHub install by remote rev before tagging 0.2.0.
+
+---
+
+## Appended Real-Machine Record
+
+# Real-Machine Record
+
+Append the completed result to `docs/real-machine-test.md` after the run.
+
+## Machine
+
+- Date: 2026-06-30 CST
+- Tester: Codex local release gate
+- Machine: TianyideMacBook-Pro.local
+- OS: Darwin 24.0.0 arm64
+- Shell: /bin/zsh
+- Rust: rustc 1.86.0 (05f9846f8 2025-03-31) (Homebrew)
+- Python: Python 3.14.3
+- Git commit: `58741f40`
+- Package version: `0.2.0`
+- State: `.octopus/state.json`
+
+## Commands
+
+```bash
+tmp=$(mktemp -d)
+cargo install --git https://github.com/dangoZhang/Octopus --rev 58741f40 octopus-core --locked --bin octopus --force --root "$tmp/root"
+OCTOPUS="$tmp/root/bin/octopus"
+STATE=${OCTOPUS_PREFLIGHT_STATE:-.octopus/state.json}
+"$OCTOPUS" --version
+"$OCTOPUS" --state "$STATE" first-run "preflight local evidence"
+"$OCTOPUS" --state "$STATE" doctor
+"$OCTOPUS" --state "$STATE" context observe .
+"$OCTOPUS" --state "$STATE" think swe-agent observe README.md
+"$OCTOPUS" --state "$STATE" traces
+"$OCTOPUS" --state "$STATE" repair .
+"$OCTOPUS" --state "$STATE" needs
+"$OCTOPUS" --state "$STATE" evolve parallel --workers 2 "preflight math and search field adaptation"
+"$OCTOPUS" --state "$STATE" fields summary
+"$OCTOPUS" --state "$STATE" status
+"$OCTOPUS" --state "$STATE" check swe-agent
+"$OCTOPUS" --state "$STATE" check field-mini-task 2
+"$OCTOPUS" --state "$STATE" routes observe README.md
+"$OCTOPUS" --state "$STATE" beat 200
+"$OCTOPUS" --state "$STATE" pet harness
+"$OCTOPUS" --state "$STATE" report
+"$OCTOPUS" download
+"$OCTOPUS" --json download > "$tmp/download.json"
+grep '"install_script_url"' "$tmp/download.json"
+"$OCTOPUS" --state "$STATE" preflight
+"$OCTOPUS" --state "$STATE" preflight | grep bridge_goal_surface
+"$OCTOPUS" --state "$STATE" preflight | grep desktop_pet_source
+"$OCTOPUS" provider status
+"$OCTOPUS" provider matrix "$tmp/provider-matrix.md"
+"$OCTOPUS" --state "$STATE" provider matrix run "$tmp/provider-matrix.md"
+"$OCTOPUS" provider matrix check "$tmp/provider-matrix.md"
+"$OCTOPUS" provider check "${OCTOPUS_LLM_PREFIX:-OCTOPUS_LLM}"
+"$OCTOPUS" --state "$STATE" preflight --live
+"$OCTOPUS" benchmark record
+# Fill .octopus/benchmark-evidence.md with real SWE/Claw/Wild case ids, commands, pass results, output summaries, and artifact paths.
+"$OCTOPUS" benchmark check
+"$OCTOPUS" --state "$STATE" start --check 127.0.0.1:18765
+"$OCTOPUS" start 127.0.0.1:18765 &
+START_PID=$!
+trap 'kill "$START_PID" 2>/dev/null || true' EXIT
+sleep 1
+curl -fsS http://127.0.0.1:18765/app.html >/dev/null
+curl -fsS 'http://127.0.0.1:18765/pet.html?state=harness' >/dev/null
+curl -fsS http://127.0.0.1:18765/download.json | grep '"cargo_package"'
+curl -fsS http://127.0.0.1:18765/install.sh | grep 'cargo install'
+curl -fsS -X POST http://127.0.0.1:18765/api/run -H 'content-type: application/json' --data-binary "{\"args\":[\"--state\",\"$STATE\",\"--json\",\"doctor\"]}"
+kill "$START_PID"
+"$OCTOPUS" --state "$STATE" self-iterate dangoZhang/Octopus
+OCTOPUS_PR_DRY_RUN=1 "$OCTOPUS" --state "$STATE" self-iterate pr dangoZhang/Octopus "preflight dry run"
+```
+
+## Results
+
+- Install and doctor: pass for local binary `octopus 0.2.0`; `octopus doctor` found state present, manifests=8, broken=none, profile_registry ok, self-iteration pr-ready. GitHub install by current rev must be rerun after push because this head is local until publish.
+- Download artifacts: pass; `octopus download` reported install_script_url, cargo install command, update command, docs links, and `octopus --json download` included `current_version=0.2.0`, `release_status=stable`, and `cargo_package=octopus-core`.
+- Core loop: pass; status shows heartbeat/memory/harness ready, feed_trace_count=81, evolution_outcome_count=39, latest evolution outcome satisfied, and Need queue empty after field evolution.
+- Product bridge: pass; bridge_goal_surface allowed_goal_writes=3/3, denied_internal_writes=13/13, policy=user_writes_brain_goal_only.
+
+Field pool result should include the required v0.2 peer fields, `missing_required=none`, latest worker slots, `latest_activity` with `worker=`, and `parallel_run` with `requested_worker_slots=`, `active_worker_slots=`, and `candidate_pool=` containing `math` and `search` from `octopus status` or `octopus report`.
+- Field pool: pass; fields=math,search,code,swe,research,computer-use,ib,robotics,write missing_required=none latest_worker_slots=1 latest_activity=math:math-mini-4:Satisfied@1782769018 worker=octopus-70-1 parallel_run requested_worker_slots=1 active_worker_slots=none candidate_pool=math,search,code,swe,research,computer-use,ib,robotics,write.
+Field mini task harness result should include `checked_count=...`, `executed_count=...`, `satisfied_count=...`, `partial_count=...`, `missing_count=0`, `invalid_count=0`, and `status=ok` from `octopus check field-mini-task 2`.
+- Field mini task harness: pass; status=ok checked_count=27 executed_count=27 satisfied_count=27 partial_count=0 missing_count=0 invalid_count=0 from `octopus check field-mini-task 2`.
+- Desktop pet source: pass; preflight `desktop_pet_source` typechecked embedded Swift source, `octopus pet desktop --workers 1` launched, and macOS process `OctopusDesktopPet` exists=true.
+- Start/app: pass; `octopus start --check 127.0.0.1:18765` returned ready=true, head=58741f40, version=0.2.0, pages=10/10, app_surface=pass, policy=pass. Live app GET `/app.html` returned HTTP 200 and 24617 bytes.
+- Live provider: pass; Codex provider check returned `octopus provider live`; provider_layers pass for goal_chat, clean_brain, tentacle_planning, and harness_evolution. Provider matrix pass with Codex OAuth enabled and API-key/local/gateway targets skipped as unconfigured.
+- Benchmark evidence: pass; `octopus benchmark check .octopus/benchmark-evidence.md` passed all 8 checks on head 58741f40.
+- PR dry run: pass; `OCTOPUS_PR_DRY_RUN=1 octopus self-iterate pr dangoZhang/Octopus "0.2.0 preflight dry run"` wrote `.octopus/self-iteration/PR_PUBLISH.json` for branch `octopus/0-2-0-preflight-dry-run`.
+
+## Decision
+
+- Pass or fail: pass
+- Follow-up: after push, rerun GitHub install by remote rev before tagging 0.2.0.
