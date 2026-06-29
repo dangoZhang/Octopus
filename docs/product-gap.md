@@ -73,6 +73,7 @@ Updated: 2026-06-29
 - Memory is a heart/beat; visual is the color-changing pet layer.
 - Harness repair now writes `HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS.md/json`, so scored outcomes teach whether responding to environment drift actually helped.
 - Harness repair now writes `REPAIR_DRAFT_EFFECTIVENESS.md/json`, so provider-generated repair drafts get scored into future repair prompts instead of staying one-off text.
+- Harness repair now writes `REPAIR_DRAFT_STRATEGY.md/json`, so provider draft effectiveness becomes a reviewable next-Need strategy for repair sessions.
 - Harness repair now writes `REPAIR_PATCH_DRAFT.md/json` and `REPAIR_PATCH_DRAFT_EFFECTIVENESS.md/json`, so provider repair drafts can carry reviewable patch intent and later outcome scores teach whether that patch-draft mode helped.
 - Harness repair now writes `REPAIR_PATCH_REVIEW.md/json`, `REPAIR_PATCH_APPLY.md/json`, `REPAIR_PATCH_VERIFY.md/json`, and patch-review effectiveness memory, so provider patch drafts are checked locally, applied only after a harness-write grant, verified with the target tentacle check, and then handed back to heartbeat for score/learning.
 - Harness repair now writes `REPAIR_PATCH_LEARNING.md/json`, so scored apply+verify outcomes become compact reuse/avoid/observe evidence for the next tool-side repair session.

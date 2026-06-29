@@ -243,6 +243,41 @@ def repair_draft_effectiveness_metadata(root, value, json_value=""):
     return metadata
 
 
+def repair_draft_strategy_metadata(root, value, json_value=""):
+    path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
+    metadata = {
+        "repair_draft_strategy": rel(path, root) if path else "",
+        "repair_draft_strategy_json": rel(json_path, root) if json_path else "",
+        "repair_draft_strategy_status": "",
+        "repair_draft_strategy_focus": "",
+        "repair_draft_strategy_learned_reuse": "",
+        "repair_draft_strategy_learned_avoid": "",
+        "repair_draft_strategy_next_need_kind": "",
+        "repair_draft_strategy_next_need_query": "",
+        "repair_draft_strategy_preview": "",
+    }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        next_need = data.get("next_need") if isinstance(data.get("next_need"), dict) else {}
+        metadata.update({
+            "repair_draft_strategy_status": str(data.get("status") or ""),
+            "repair_draft_strategy_focus": compact(data.get("focus") or "", 320),
+            "repair_draft_strategy_learned_reuse": compact(data.get("learned_reuse") or "", 320),
+            "repair_draft_strategy_learned_avoid": compact(data.get("learned_avoid") or "", 320),
+            "repair_draft_strategy_next_need_kind": str(next_need.get("kind") or ""),
+            "repair_draft_strategy_next_need_query": compact(next_need.get("query") or "", 320),
+            "repair_draft_strategy_preview": compact(json.dumps(data, sort_keys=True), 700),
+        })
+    if path and path.exists() and not metadata["repair_draft_strategy_preview"]:
+        metadata["repair_draft_strategy_preview"] = compact(path.read_text(encoding="utf-8", errors="replace"), 700)
+    return metadata
+
+
 def repair_patch_draft_metadata(root, value, json_value=""):
     path = resolve_artifact(root, value)
     json_path = resolve_artifact(root, json_value)
@@ -1381,6 +1416,8 @@ if latest_repair_plan:
     action_trace_effectiveness_json = str(inputs.get("action_trace_effectiveness_json") or "")
     repair_draft_effectiveness = str(inputs.get("repair_draft_effectiveness") or "")
     repair_draft_effectiveness_json = str(inputs.get("repair_draft_effectiveness_json") or "")
+    repair_draft_strategy = str(inputs.get("repair_draft_strategy") or "")
+    repair_draft_strategy_json = str(inputs.get("repair_draft_strategy_json") or "")
     repair_patch_draft = str(inputs.get("repair_patch_draft") or "")
     repair_patch_draft_json = str(inputs.get("repair_patch_draft_json") or "")
     repair_patch_draft_effectiveness = str(inputs.get("repair_patch_draft_effectiveness") or "")
@@ -1441,6 +1478,11 @@ if latest_repair_plan:
         root,
         repair_draft_effectiveness,
         repair_draft_effectiveness_json,
+    )
+    draft_strategy_metadata = repair_draft_strategy_metadata(
+        root,
+        repair_draft_strategy,
+        repair_draft_strategy_json,
     )
     patch_draft_metadata = repair_patch_draft_metadata(
         root,
@@ -1591,6 +1633,10 @@ if latest_repair_plan:
     action_trace_effectiveness_success = action_effectiveness_metadata.get("action_trace_effectiveness_success_rate", "")
     draft_effectiveness_used = draft_effectiveness_metadata.get("repair_draft_effectiveness_used_count", "")
     draft_effectiveness_success = draft_effectiveness_metadata.get("repair_draft_effectiveness_success_rate", "")
+    draft_strategy_status = draft_strategy_metadata.get("repair_draft_strategy_status", "")
+    draft_strategy_focus = draft_strategy_metadata.get("repair_draft_strategy_focus", "")
+    draft_strategy_next_kind = draft_strategy_metadata.get("repair_draft_strategy_next_need_kind", "")
+    draft_strategy_next_query = draft_strategy_metadata.get("repair_draft_strategy_next_need_query", "")
     patch_draft_status = patch_draft_metadata.get("repair_patch_draft_status", "")
     patch_draft_has_patch = patch_draft_metadata.get("repair_patch_draft_has_patch", "")
     patch_draft_effectiveness_used = patch_draft_effectiveness_metadata.get("repair_patch_draft_effectiveness_used_count", "")
@@ -1664,6 +1710,10 @@ if latest_repair_plan:
         next_need_kind = patch_learning_next_kind or "remember"
         next_need_query = patch_learning_next_query
         next_need_source = "repair_patch_learning"
+    elif draft_strategy_next_query and draft_strategy_status != "collect_provider_draft_outcomes":
+        next_need_kind = draft_strategy_next_kind or "verify"
+        next_need_query = draft_strategy_next_query
+        next_need_source = "repair_draft_strategy"
     elif adaptation_next_query:
         next_need_kind = adaptation_next_kind or "verify"
         next_need_query = adaptation_next_query
@@ -1869,6 +1919,7 @@ if latest_repair_plan:
             f"effectiveness={effectiveness_used or '0'} success_rate={effectiveness_success or '0.00'}; "
             f"action_trace_effectiveness={action_trace_effectiveness_used or '0'} success_rate={action_trace_effectiveness_success or '0.00'}; "
             f"draft_effectiveness={draft_effectiveness_used or '0'} success_rate={draft_effectiveness_success or '0.00'}; "
+            f"draft_strategy={draft_strategy_status or 'none'} focus={draft_strategy_focus or 'none'}; "
             f"patch_draft={patch_draft_status or 'none'} has_patch={patch_draft_has_patch or 'false'}; "
             f"patch_draft_effectiveness={patch_draft_effectiveness_used or '0'} success_rate={patch_draft_effectiveness_success or '0.00'}; "
             f"patch_review={patch_review_status or 'none'} check={patch_review_check or 'none'}; "
@@ -1910,6 +1961,8 @@ if latest_repair_plan:
         "action_trace_effectiveness_json": action_trace_effectiveness_json,
         "repair_draft_effectiveness": repair_draft_effectiveness,
         "repair_draft_effectiveness_json": repair_draft_effectiveness_json,
+        "repair_draft_strategy": repair_draft_strategy,
+        "repair_draft_strategy_json": repair_draft_strategy_json,
         "repair_patch_draft": repair_patch_draft,
         "repair_patch_draft_json": repair_patch_draft_json,
         "repair_patch_draft_effectiveness": repair_patch_draft_effectiveness,
@@ -1979,6 +2032,7 @@ if latest_repair_plan:
     repair_metadata.update(effectiveness_metadata)
     repair_metadata.update(action_effectiveness_metadata)
     repair_metadata.update(draft_effectiveness_metadata)
+    repair_metadata.update(draft_strategy_metadata)
     repair_metadata.update(patch_draft_metadata)
     repair_metadata.update(patch_draft_effectiveness_metadata)
     repair_metadata.update(patch_review_metadata)
