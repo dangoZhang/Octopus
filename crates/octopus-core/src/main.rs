@@ -585,6 +585,11 @@ struct RepairPlanReport {
     action_trace_stage_count: String,
     action_trace_last_action: String,
     repair_recall: String,
+    repair_recall_match_count: String,
+    repair_recall_top_status: String,
+    repair_recall_top_score: String,
+    repair_recall_top_reasons: String,
+    repair_recall_top_summary: String,
     code_context: String,
     adapter_context: String,
     adapter_context_status: String,
@@ -3753,6 +3758,7 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("action_trace_json", &plan.action_trace_json);
                 print_optional_line("action_trace_status", &repair_plan_action_trace_label(plan));
                 print_optional_line("repair_recall", &plan.repair_recall);
+                print_optional_line("repair_recall_status", &repair_plan_recall_label(plan));
                 print_optional_line("code_context", &plan.code_context);
                 print_optional_line("adapter_context", &plan.adapter_context);
                 print_optional_line("adapter_status", &repair_plan_adapter_label(plan));
@@ -3796,6 +3802,7 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("行动轨迹JSON", &plan.action_trace_json);
                 print_optional_line("行动轨迹状态", &repair_plan_action_trace_label(plan));
                 print_optional_line("修复召回", &plan.repair_recall);
+                print_optional_line("修复召回状态", &repair_plan_recall_label(plan));
                 print_optional_line("代码上下文", &plan.code_context);
                 print_optional_line("适配器上下文", &plan.adapter_context);
                 print_optional_line("适配器状态", &repair_plan_adapter_label(plan));
@@ -3894,6 +3901,23 @@ fn repair_plan_action_trace_label(plan: &RepairPlanReport) -> String {
     }
     if !plan.action_trace_last_action.trim().is_empty() {
         parts.push(format!("last={}", plan.action_trace_last_action));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_recall_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan.repair_recall_match_count.trim().is_empty() {
+        parts.push(format!("matches={}", plan.repair_recall_match_count));
+    }
+    if !plan.repair_recall_top_status.trim().is_empty() {
+        parts.push(format!("top={}", plan.repair_recall_top_status));
+    }
+    if !plan.repair_recall_top_score.trim().is_empty() {
+        parts.push(format!("score={}", plan.repair_recall_top_score));
+    }
+    if !plan.repair_recall_top_reasons.trim().is_empty() {
+        parts.push(format!("reason={}", plan.repair_recall_top_reasons));
     }
     parts.join(" ")
 }
@@ -8560,6 +8584,11 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         action_trace_stage_count: metadata_value(metadata, "action_trace_stage_count"),
         action_trace_last_action: metadata_value(metadata, "action_trace_last_action"),
         repair_recall: metadata_value(metadata, "repair_recall"),
+        repair_recall_match_count: metadata_value(metadata, "repair_recall_match_count"),
+        repair_recall_top_status: metadata_value(metadata, "repair_recall_top_status"),
+        repair_recall_top_score: metadata_value(metadata, "repair_recall_top_score"),
+        repair_recall_top_reasons: metadata_value(metadata, "repair_recall_top_reasons"),
+        repair_recall_top_summary: metadata_value(metadata, "repair_recall_top_summary"),
         code_context: metadata_value(metadata, "code_context"),
         adapter_context: metadata_value(metadata, "adapter_context"),
         adapter_context_status: metadata_value(metadata, "adapter_context_status"),
@@ -20504,6 +20533,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .action_trace_last_action
             .contains("write reviewable repair plan"));
         assert!(plan.repair_recall.ends_with("REPAIR_RECALL.json"));
+        assert_eq!(plan.repair_recall_match_count, "0");
         assert!(plan.code_context.ends_with("CODE_CONTEXT.md"));
         assert!(plan.adapter_context.ends_with("ADAPTER_CONTEXT.md"));
         assert_eq!(plan.adapter_context_status, "satisfied");
@@ -24159,6 +24189,15 @@ JSON
                     .unwrap_or(false)
             });
         assert!(memory_has_recall);
+        let mut restored = HarnessState::load(&path).unwrap();
+        let report = repair_report(&path, &mut restored, ".".to_string()).unwrap();
+        let plan = report.repair_plan.expect("repair recall plan report");
+        assert_eq!(plan.repair_recall_match_count, "1");
+        assert_eq!(plan.repair_recall_top_status, "satisfied");
+        assert!(plan
+            .repair_recall_top_reasons
+            .contains("same target tentacle"));
+        assert!(plan.repair_recall_top_summary.contains("repair improved"));
         let _ = fs::remove_dir_all(workspace);
     }
 

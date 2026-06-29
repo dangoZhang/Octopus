@@ -31,9 +31,9 @@
     },
     {
       "id": "heartbeat_repair",
-      "description": "Inspect the latest repair-session action plan and tool-side action trace, then harness-beat evolution artifacts, and suggest the next review, grant, apply, or score action.",
+      "description": "Inspect the latest repair-session action plan, similar action-trace recall, and tool-side action trace, then harness-beat evolution artifacts, and suggest the next review, grant, apply, or score action.",
       "input": "octopus-json-v1 tool call or workspace root",
-      "output": "JSON Feed with latest REPAIR_PLAN, ACTION_TRACE.md, ACTION_TRACE.json, review boundary, grant/apply/score commands, next_need_kind, and next_need_query",
+      "output": "JSON Feed with latest REPAIR_PLAN, REPAIR_RECALL.json signal, ACTION_TRACE.md, ACTION_TRACE.json, review boundary, grant/apply/score commands, next_need_kind, and next_need_query",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/heartbeat_repair.sh",
@@ -118,6 +118,7 @@
       "Write REVIEW.md as the user-facing repair review bundle for each session.",
       "Keep REPAIR_PLAN commands reviewable and grant-bound before any harness write.",
       "Let heartbeat_repair read the latest REPAIR_PLAN before older evolution artifacts.",
+      "Let heartbeat_repair read REPAIR_RECALL.json and expose match count plus top recalled outcome before grant/apply/score.",
       "Expose provider DRAFT and CODE_CONTEXT as repair-plan Feed metadata before grant, apply, or score.",
       "Expose ACTION_TRACE as repair-plan Feed metadata before grant, apply, or score.",
       "Prefer ACTION_TRACE.json as heartbeat's structured tool-side thinking signal, with ACTION_TRACE.md kept for human review.",

@@ -205,6 +205,44 @@ def repair_draft_metadata(root, value):
     return metadata
 
 
+def repair_recall_metadata(root, value):
+    path = resolve_artifact(root, value)
+    metadata = {
+        "repair_recall_match_count": "",
+        "repair_recall_top_score": "",
+        "repair_recall_top_status": "",
+        "repair_recall_top_target": "",
+        "repair_recall_top_candidate": "",
+        "repair_recall_top_reasons": "",
+        "repair_recall_top_summary": "",
+        "repair_recall_top_action_status": "",
+        "repair_recall_top_action_hint": "",
+        "repair_recall_preview": "",
+    }
+    if not path or not path.exists():
+        return metadata
+    data = load_json(path)
+    matches = data.get("matches") if isinstance(data.get("matches"), list) else []
+    metadata["repair_recall_match_count"] = str(data.get("match_count") or len(matches))
+    metadata["repair_recall_preview"] = compact(json.dumps(data, sort_keys=True), 700)
+    if not matches:
+        return metadata
+    top = matches[0] if isinstance(matches[0], dict) else {}
+    outcome = top.get("outcome") if isinstance(top.get("outcome"), dict) else {}
+    reasons = top.get("reasons") if isinstance(top.get("reasons"), list) else []
+    metadata.update({
+        "repair_recall_top_score": str(top.get("score") or ""),
+        "repair_recall_top_status": str(outcome.get("outcome_status") or ""),
+        "repair_recall_top_target": str(outcome.get("target_tentacle") or ""),
+        "repair_recall_top_candidate": str(outcome.get("candidate") or ""),
+        "repair_recall_top_reasons": compact(", ".join(str(reason) for reason in reasons), 260),
+        "repair_recall_top_summary": compact(outcome.get("summary") or "", 320),
+        "repair_recall_top_action_status": str(outcome.get("action_trace_status") or ""),
+        "repair_recall_top_action_hint": compact(outcome.get("action_trace_repair_hint") or "", 240),
+    })
+    return metadata
+
+
 def action_trace_metadata(root, value, json_value=""):
     path = resolve_artifact(root, value)
     json_path = resolve_artifact(root, json_value)
@@ -361,6 +399,7 @@ if latest_repair_plan:
     action_trace = str(inputs.get("action_trace") or "")
     action_trace_json = str(inputs.get("action_trace_json") or "")
     draft_metadata = repair_draft_metadata(root, draft)
+    recall_metadata = repair_recall_metadata(root, repair_recall)
     action_metadata = action_trace_metadata(root, action_trace, action_trace_json)
     adapter_metadata = adapter_context_metadata(
         root,
@@ -398,6 +437,9 @@ if latest_repair_plan:
         and draft_status in {"missing_config", "failed"}
     )
     action_trace_status = action_metadata.get("action_trace_status", "")
+    recall_count = recall_metadata.get("repair_recall_match_count", "")
+    recall_top_status = recall_metadata.get("repair_recall_top_status", "")
+    recall_top_reason = recall_metadata.get("repair_recall_top_reasons", "")
     action_trace_blocked = (
         not has_outcome
         and not adapter_blocked
@@ -475,6 +517,8 @@ if latest_repair_plan:
             f"status={plan_status}; target={target_tentacle}/{target_tool}; "
             f"next={next_need_kind} {next_need_query}; "
             f"field={field_label or 'none'}; action_trace={action_trace_status or 'none'}; "
+            f"recall={recall_count or '0'} top={recall_top_status or 'none'} "
+            f"reason={recall_top_reason or 'none'}; "
             "review before grant/apply/score"
         )
     repair_metadata = {
@@ -504,6 +548,7 @@ if latest_repair_plan:
         "suggested_commands": " && ".join(suggested),
     }
     repair_metadata.update(draft_metadata)
+    repair_metadata.update(recall_metadata)
     repair_metadata.update(action_metadata)
     repair_metadata.update(adapter_metadata)
     repair_metadata.update(field_metadata)
