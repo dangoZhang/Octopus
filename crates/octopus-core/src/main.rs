@@ -558,6 +558,21 @@ struct RepairPatchApplyReport {
     next: Vec<String>,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct RepairPatchVerifyReport {
+    workspace: String,
+    plan: String,
+    apply: String,
+    verify: String,
+    status: String,
+    passed: bool,
+    target: String,
+    command: String,
+    summary: String,
+    check: Option<CheckReport>,
+    next: Vec<String>,
+}
+
 #[derive(Debug)]
 struct RepairContinueArgs {
     query: String,
@@ -672,6 +687,13 @@ struct RepairPlanReport {
     repair_patch_apply_grant_command: String,
     repair_patch_apply_apply_command: String,
     repair_patch_apply_summary: String,
+    repair_patch_verify: String,
+    repair_patch_verify_json: String,
+    repair_patch_verify_status: String,
+    repair_patch_verify_passed: String,
+    repair_patch_verify_target: String,
+    repair_patch_verify_command: String,
+    repair_patch_verify_summary: String,
     repair_command_effectiveness: String,
     repair_command_effectiveness_json: String,
     repair_command_effectiveness_used_count: String,
@@ -1148,6 +1170,25 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     );
                 } else {
                     print_repair_patch_apply_report(&report, language);
+                }
+                return Ok(());
+            }
+            if rest.get(1).map(String::as_str) == Some("verify") {
+                let query = rest
+                    .get(2..)
+                    .filter(|values| !values.is_empty())
+                    .map(|values| values.join(" "))
+                    .unwrap_or_else(|| ".".to_string());
+                let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                let report = repair_patch_verify_report(&state, &mut loaded, query)?;
+                loaded.save(&state).map_err(|error| error.to_string())?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_repair_patch_verify_report(&report, language);
                 }
                 return Ok(());
             }
@@ -3994,6 +4035,11 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                     "repair_patch_apply_status",
                     &repair_plan_patch_apply_label(plan),
                 );
+                print_optional_line("repair_patch_verify", &plan.repair_patch_verify);
+                print_optional_line(
+                    "repair_patch_verify_status",
+                    &repair_plan_patch_verify_label(plan),
+                );
                 print_optional_line(
                     "repair_command_effectiveness",
                     &plan.repair_command_effectiveness,
@@ -4149,6 +4195,8 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 );
                 print_optional_line("补丁应用", &plan.repair_patch_apply);
                 print_optional_line("补丁应用状态", &repair_plan_patch_apply_label(plan));
+                print_optional_line("补丁验证", &plan.repair_patch_verify);
+                print_optional_line("补丁验证状态", &repair_plan_patch_verify_label(plan));
                 print_optional_line("命令有效性", &plan.repair_command_effectiveness);
                 print_optional_line(
                     "命令有效性状态",
@@ -4566,6 +4614,26 @@ fn repair_plan_patch_apply_label(plan: &RepairPlanReport) -> String {
     }
     if !plan.repair_patch_apply_summary.trim().is_empty() {
         parts.push(format!("summary={}", plan.repair_patch_apply_summary));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_patch_verify_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan.repair_patch_verify_status.trim().is_empty() {
+        parts.push(plan.repair_patch_verify_status.trim().to_string());
+    }
+    if !plan.repair_patch_verify_passed.trim().is_empty() {
+        parts.push(format!("passed={}", plan.repair_patch_verify_passed));
+    }
+    if !plan.repair_patch_verify_target.trim().is_empty() {
+        parts.push(format!("target={}", plan.repair_patch_verify_target));
+    }
+    if !plan.repair_patch_verify_command.trim().is_empty() {
+        parts.push(format!("command={}", plan.repair_patch_verify_command));
+    }
+    if !plan.repair_patch_verify_summary.trim().is_empty() {
+        parts.push(format!("summary={}", plan.repair_patch_verify_summary));
     }
     parts.join(" ")
 }
@@ -5384,6 +5452,33 @@ fn print_repair_patch_apply_report(report: &RepairPatchApplyReport, language: La
                 println!("命令: {}", report.command);
             }
             println!("应用记录: {}", report.apply);
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn print_repair_patch_verify_report(report: &RepairPatchVerifyReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("repair_patch_verify: {}", report.status);
+            println!("passed: {}", report.passed);
+            println!("target: {}", report.target);
+            if !report.command.is_empty() {
+                println!("command: {}", report.command);
+            }
+            println!("summary: {}", report.summary);
+            println!("verify_artifact: {}", report.verify);
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("修复补丁验证: {}", report.status);
+            println!("已通过: {}", report.passed);
+            println!("目标: {}", report.target);
+            if !report.command.is_empty() {
+                println!("命令: {}", report.command);
+            }
+            println!("摘要: {}", report.summary);
+            println!("验证记录: {}", report.verify);
             println!("下一步: {}", join_or_none(&report.next));
         }
     }
@@ -10377,6 +10472,15 @@ fn repair_report(
                 shell_arg(&plan.repair_patch_apply_json)
             ));
         }
+        if !plan.repair_patch_verify.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.repair_patch_verify)));
+        }
+        if !plan.repair_patch_verify_json.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.repair_patch_verify_json)
+            ));
+        }
         let patch_apply_status = plan.repair_patch_apply_status.trim();
         if plan.repair_patch_review_status == "check_passed"
             && plan.repair_patch_apply_applied != "true"
@@ -10387,6 +10491,15 @@ fn repair_report(
         {
             next.push(format!(
                 "octopus repair apply {}",
+                shell_arg(&continue_query)
+            ));
+        }
+        let patch_verify_status = plan.repair_patch_verify_status.trim();
+        if plan.repair_patch_apply_applied == "true"
+            && !matches!(patch_verify_status, "passed" | "failed")
+        {
+            next.push(format!(
+                "octopus repair verify {}",
                 shell_arg(&continue_query)
             ));
         }
@@ -10993,6 +11106,7 @@ fn repair_patch_apply_report(
         }
         if applied {
             if target_tentacle != "unknown" {
+                next.push(format!("octopus repair verify {}", shell_arg(&query)));
                 next.push(format!("octopus check {}", shell_arg(&target_tentacle)));
             }
             next.push("octopus repair score latest satisfied \"repair patch applied\"".to_string());
@@ -11084,6 +11198,197 @@ fn repair_patch_apply_report(
     })
 }
 
+fn repair_patch_verify_report(
+    state_path: &Path,
+    state: &mut HarnessState,
+    query: String,
+) -> Result<RepairPatchVerifyReport, String> {
+    let workspace = repair_workspace_from_query(&query)
+        .or_else(|_| {
+            repair_workspace_from_state_path(state_path)
+                .ok_or_else(|| "cannot resolve repair workspace".to_string())
+        })
+        .or_else(|_| env::current_dir().map_err(|error| error.to_string()))?;
+    let plan_path = latest_repair_plan_in_workspace(&workspace)
+        .ok_or_else(|| "repair verify requires an existing REPAIR_PLAN.json".to_string())?;
+    let plan: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&plan_path).map_err(|error| error.to_string())?)
+            .map_err(|error| format!("invalid repair plan JSON: {error}"))?;
+    let inputs = plan
+        .get("inputs")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "repair plan has no inputs".to_string())?;
+    let patch_apply_value = inputs
+        .get("repair_patch_apply_json")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            plan_path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join("REPAIR_PATCH_APPLY.json")
+                .to_string_lossy()
+                .to_string()
+        });
+    let patch_apply_path = metadata_path(&workspace, &patch_apply_value);
+    let patch_apply: serde_json::Value = if patch_apply_path.exists() {
+        serde_json::from_str(
+            &fs::read_to_string(&patch_apply_path).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| format!("invalid repair patch apply JSON: {error}"))?
+    } else {
+        serde_json::json!({})
+    };
+    let patch_verify_value = inputs
+        .get("repair_patch_verify_json")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            plan_path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join("REPAIR_PATCH_VERIFY.json")
+                .to_string_lossy()
+                .to_string()
+        });
+    let patch_verify_path = metadata_path(&workspace, &patch_verify_value);
+    let patch_verify_md = patch_verify_path.with_extension("md");
+    let target_tentacle = patch_apply
+        .get("target")
+        .and_then(|target| target.get("tentacle"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            plan.get("target_tentacle")
+                .and_then(serde_json::Value::as_str)
+        })
+        .unwrap_or("unknown")
+        .to_string();
+    let target_tool = patch_apply
+        .get("target")
+        .and_then(|target| target.get("tool"))
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| plan.get("target_tool").and_then(serde_json::Value::as_str))
+        .unwrap_or("")
+        .to_string();
+    let target = if target_tool.is_empty() {
+        target_tentacle.clone()
+    } else {
+        format!("{target_tentacle}/{target_tool}")
+    };
+    let command = if target_tentacle == "unknown" {
+        String::new()
+    } else {
+        format!("octopus check {}", shell_arg(&target_tentacle))
+    };
+    let mut status = "blocked_patch_apply".to_string();
+    let mut passed = false;
+    let mut check = None;
+    let mut error = String::new();
+    let mut next = Vec::new();
+
+    if !patch_apply_path.exists() {
+        status = "missing_patch_apply".to_string();
+        next.push(format!("octopus repair apply {}", shell_arg(&query)));
+    } else if !json_bool(&patch_apply, "applied") {
+        next.push(format!("octopus repair apply {}", shell_arg(&query)));
+    } else if target_tentacle == "unknown" {
+        status = "missing_target".to_string();
+        next.push("octopus repair .".to_string());
+    } else {
+        let original_dir = env::current_dir().map_err(|error| error.to_string())?;
+        env::set_current_dir(&workspace).map_err(|error| error.to_string())?;
+        let check_result = check_report(&target_tentacle, None);
+        let restore_result = env::set_current_dir(&original_dir);
+        if let Err(error) = restore_result {
+            return Err(error.to_string());
+        }
+        match check_result {
+            Ok(mut check_report) => {
+                record_check_report(state, &mut check_report);
+                passed = check_report.passed;
+                status = if passed { "passed" } else { "failed" }.to_string();
+                check = Some(check_report);
+                if passed {
+                    next.push(
+                        "octopus repair score latest satisfied \"repair patch verified\""
+                            .to_string(),
+                    );
+                } else {
+                    next.push(
+                        "octopus repair score latest failed \"repair patch verify failed\""
+                            .to_string(),
+                    );
+                    next.push("octopus repair .".to_string());
+                }
+            }
+            Err(check_error) => {
+                status = "failed_to_start".to_string();
+                error = check_error;
+                next.push(
+                    "octopus repair score latest failed \"repair patch verify failed\"".to_string(),
+                );
+                next.push("octopus repair .".to_string());
+            }
+        }
+    }
+
+    let summary = match status.as_str() {
+        "passed" => "repair patch verification passed".to_string(),
+        "failed" => "repair patch verification failed".to_string(),
+        "failed_to_start" => format!("repair patch verification failed to start: {error}"),
+        "missing_patch_apply" => "repair patch apply record is missing".to_string(),
+        "missing_target" => "repair patch verification target is missing".to_string(),
+        _ => "repair patch must be applied before verification".to_string(),
+    };
+    let verify_record = serde_json::json!({
+        "schema_version": "octopus-harness-repair-patch-verify-v1",
+        "status": status,
+        "passed": passed,
+        "target": {
+            "tentacle": target_tentacle,
+            "tool": target_tool,
+        },
+        "target_label": target,
+        "patch_apply": display_path(&workspace, &patch_apply_path),
+        "command": command,
+        "summary": summary,
+        "error": error,
+        "check": check.as_ref().map(serde_json::to_value).transpose().map_err(|error| error.to_string())?,
+        "next_need": {
+            "kind": if passed { "verify" } else { "execute" },
+            "query": if passed { "score verified repair patch outcome" } else { "repair failed post-apply verification" },
+        },
+    });
+    if let Some(parent) = patch_verify_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    fs::write(
+        &patch_verify_path,
+        serde_json::to_string_pretty(&verify_record).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        &patch_verify_md,
+        render_repair_patch_verify_markdown(&workspace, &patch_verify_path, &verify_record),
+    )
+    .map_err(|error| error.to_string())?;
+
+    Ok(RepairPatchVerifyReport {
+        workspace: workspace.to_string_lossy().to_string(),
+        plan: display_path(&workspace, &plan_path),
+        apply: display_path(&workspace, &patch_apply_path),
+        verify: display_path(&workspace, &patch_verify_path),
+        status,
+        passed,
+        target,
+        command: json_string(&verify_record, "command"),
+        summary,
+        check,
+        next,
+    })
+}
+
 fn repair_patch_apply_grant(state: &HarnessState, target_tentacle: &str) -> (String, String, bool) {
     let scope = if target_tentacle.trim().is_empty() || target_tentacle == "unknown" {
         "harness:write".to_string()
@@ -11127,6 +11432,39 @@ fn render_repair_patch_apply_markdown(
         json_string(record, "summary"),
         json_string(record, "stdout"),
         json_string(record, "stderr"),
+    )
+}
+
+fn render_repair_patch_verify_markdown(
+    workspace: &Path,
+    verify_path: &Path,
+    record: &serde_json::Value,
+) -> String {
+    let check = record.get("check").unwrap_or(&serde_json::Value::Null);
+    let check_summary = if check.is_null() {
+        "none".to_string()
+    } else {
+        format!(
+            "passed={} results={}",
+            check
+                .get("passed")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+            check
+                .get("results")
+                .and_then(serde_json::Value::as_array)
+                .map_or(0, Vec::len)
+        )
+    };
+    format!(
+        "# Harness Repair Patch Verify\n\njson: `{}`\nstatus: `{}`\npassed: `{}`\ntarget: `{}`\ncommand: `{}`\nsummary: {}\ncheck: `{}`\n\n",
+        display_path(workspace, verify_path),
+        json_string(record, "status"),
+        json_bool(record, "passed"),
+        json_string(record, "target_label"),
+        json_string(record, "command"),
+        json_string(record, "summary"),
+        check_summary,
     )
 }
 
@@ -11338,6 +11676,13 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
             "repair_patch_apply_apply_command",
         ),
         repair_patch_apply_summary: metadata_value(metadata, "repair_patch_apply_summary"),
+        repair_patch_verify: metadata_value(metadata, "repair_patch_verify"),
+        repair_patch_verify_json: metadata_value(metadata, "repair_patch_verify_json"),
+        repair_patch_verify_status: metadata_value(metadata, "repair_patch_verify_status"),
+        repair_patch_verify_passed: metadata_value(metadata, "repair_patch_verify_passed"),
+        repair_patch_verify_target: metadata_value(metadata, "repair_patch_verify_target"),
+        repair_patch_verify_command: metadata_value(metadata, "repair_patch_verify_command"),
+        repair_patch_verify_summary: metadata_value(metadata, "repair_patch_verify_summary"),
         repair_command_effectiveness: metadata_value(metadata, "repair_command_effectiveness"),
         repair_command_effectiveness_json: metadata_value(
             metadata,
@@ -19248,7 +19593,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair apply [query] | repair continue [query] [--score status [summary]] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers n]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state]|pet desktop [--workers n]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers n] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair apply [query] | repair verify [query] | repair continue [query] [--score status [summary]] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers n]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state]|pet desktop [--workers n]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers n] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -19693,11 +20038,12 @@ mod tests {
         parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
         preflight_report, prepare_bridge_state, product_report, provider_coverage_ready,
         provider_env_report, provider_status_report, real_machine_record_status_from_parts,
-        repair_continue_report, repair_patch_apply_report, repair_report, repair_score_report,
-        resolve_tentacle_manifest_root, run, run_bridge_command, run_provider_matrix_record,
-        save_provider_env_report_with_key, shell_arg, skill_reports, start_check_requested,
-        starter_report, tentacles_root_ready, update_report, usage, write_benchmark_record,
-        write_pet_image_report, write_provider_matrix_record, Language,
+        repair_continue_report, repair_patch_apply_report, repair_patch_verify_report,
+        repair_report, repair_score_report, resolve_tentacle_manifest_root, run,
+        run_bridge_command, run_provider_matrix_record, save_provider_env_report_with_key,
+        shell_arg, skill_reports, start_check_requested, starter_report, tentacles_root_ready,
+        update_report, usage, write_benchmark_record, write_pet_image_report,
+        write_provider_matrix_record, Language,
     };
     use super::{
         parse_need_run_request, run_queued_need_indices, run_queued_needs, NeedRunRequest,
@@ -22618,6 +22964,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         ));
         assert!(usage().contains("repair [query]"));
         assert!(usage().contains("repair apply [query]"));
+        assert!(usage().contains("repair verify [query]"));
         assert!(usage().contains("repair continue [query] [--score status [summary]]"));
         assert!(usage().contains("repair score <trace-index|latest>"));
         assert!(usage().contains("context [kind query]"));
@@ -23876,6 +24223,15 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan
             .repair_patch_apply_required_grant
             .contains("harness-repair-agent"));
+        assert!(plan.repair_patch_verify.ends_with("REPAIR_PATCH_VERIFY.md"));
+        assert!(plan
+            .repair_patch_verify_json
+            .ends_with("REPAIR_PATCH_VERIFY.json"));
+        assert_eq!(plan.repair_patch_verify_status, "waiting_for_patch_apply");
+        assert_eq!(plan.repair_patch_verify_passed, "false");
+        assert!(plan
+            .repair_patch_verify_command
+            .contains("harness-repair-agent"));
         assert!(plan
             .repair_command_effectiveness
             .ends_with("REPAIR_COMMAND_EFFECTIVENESS.md"));
@@ -24068,6 +24424,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan_json.contains("\"repair_patch_review\""));
         assert!(plan_json.contains("\"repair_patch_review_effectiveness\""));
         assert!(plan_json.contains("\"repair_patch_apply\""));
+        assert!(plan_json.contains("\"repair_patch_verify\""));
         assert!(plan_json.contains("\"repair_command_strategy\""));
         assert!(plan_json.contains("\"repair_command_strategy_effectiveness\""));
         assert!(plan_json.contains("\"repair_decision_effectiveness\""));
@@ -24126,6 +24483,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(patch_apply_json.contains("\"status\": \"blocked_no_patch\""));
         assert!(patch_apply_json.contains("\"applied\": false"));
         assert!(patch_apply_json.contains("\"authorized\": false"));
+        let patch_verify_json = fs::read_to_string(&plan.repair_patch_verify_json).unwrap();
+        assert!(patch_verify_json
+            .contains("\"schema_version\": \"octopus-harness-repair-patch-verify-v1\""));
+        assert!(patch_verify_json.contains("\"status\": \"waiting_for_patch_apply\""));
+        assert!(patch_verify_json.contains("\"passed\": false"));
         let command_effectiveness_json =
             fs::read_to_string(&plan.repair_command_effectiveness_json).unwrap();
         assert!(command_effectiveness_json
@@ -24290,6 +24652,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(report
             .next
             .iter()
+            .any(|command| command.contains("REPAIR_PATCH_VERIFY.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_PATCH_VERIFY.json")));
+        assert!(report
+            .next
+            .iter()
             .any(|command| command.contains("REPAIR_COMMAND_EFFECTIVENESS.md")));
         assert!(report
             .next
@@ -24442,6 +24812,11 @@ JSON
             plan.repair_patch_apply_required_grant,
             "octopus:evolve:harness-repair-agent"
         );
+        assert_eq!(plan.repair_patch_verify_status, "waiting_for_patch_apply");
+        assert_eq!(plan.repair_patch_verify_passed, "false");
+        assert!(plan
+            .repair_patch_verify_command
+            .contains("harness-repair-agent"));
         let patch_draft_json = fs::read_to_string(&plan.repair_patch_draft_json).unwrap();
         assert!(patch_draft_json
             .contains("\"schema_version\": \"octopus-harness-repair-patch-draft-v1\""));
@@ -24457,6 +24832,10 @@ JSON
             .contains("\"schema_version\": \"octopus-harness-repair-patch-apply-v1\""));
         assert!(patch_apply_json.contains("\"status\": \"ready_for_authorized_apply\""));
         assert!(patch_apply_json.contains("octopus repair apply"));
+        let patch_verify_json = fs::read_to_string(&plan.repair_patch_verify_json).unwrap();
+        assert!(patch_verify_json
+            .contains("\"schema_version\": \"octopus-harness-repair-patch-verify-v1\""));
+        assert!(patch_verify_json.contains("\"status\": \"waiting_for_patch_apply\""));
         assert!(report
             .next
             .iter()
@@ -24469,6 +24848,10 @@ JSON
             .next
             .iter()
             .any(|command| command.contains("REPAIR_PATCH_APPLY.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_PATCH_VERIFY.md")));
         assert!(report
             .next
             .iter()
@@ -24583,6 +24966,10 @@ JSON
         assert!(applied_json.contains("\"status\": \"applied\""));
         assert!(applied_json.contains("\"applied\": true"));
         assert!(applied_json.contains("\"authorized\": true"));
+        assert!(applied
+            .next
+            .iter()
+            .any(|command| command.contains("repair verify")));
 
         let mut restored = HarnessState::load(&state_path).unwrap();
         let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
@@ -24593,8 +24980,39 @@ JSON
         assert_eq!(plan.repair_patch_apply_applied, "true");
         assert!(plan.grant_command.is_empty());
         assert!(plan.apply_command.is_empty());
-        assert!(plan.score_command.contains("repair score"));
+        assert_eq!(plan.repair_patch_verify_status, "waiting_for_patch_apply");
+        assert_eq!(plan.repair_patch_verify_passed, "false");
+        assert!(plan.score_command.is_empty());
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("octopus repair verify")));
         assert!(report.feed.summary.contains("patch_apply=applied"));
+
+        let mut restored = HarnessState::load(&state_path).unwrap();
+        let verified =
+            repair_patch_verify_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        restored.save(&state_path).unwrap();
+        assert_eq!(verified.status, "passed");
+        assert!(verified.passed);
+        assert!(verified
+            .command
+            .contains("octopus check harness-repair-agent"));
+        assert!(verified.check.as_ref().is_some_and(|check| check.passed));
+        let verified_json = fs::read_to_string(&verified.verify).unwrap();
+        assert!(verified_json.contains("\"status\": \"passed\""));
+        assert!(verified_json.contains("\"passed\": true"));
+        assert!(verified_json.contains("\"check\""));
+
+        let mut restored = HarnessState::load(&state_path).unwrap();
+        let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        let plan = report.repair_plan.expect("repair plan report");
+        assert_eq!(report.feed.status, Status::Satisfied);
+        assert_eq!(plan.status, "patch_verified");
+        assert_eq!(plan.repair_patch_verify_status, "passed");
+        assert_eq!(plan.repair_patch_verify_passed, "true");
+        assert!(plan.score_command.contains("repair score"));
+        assert!(report.feed.summary.contains("patch_verify=passed"));
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);

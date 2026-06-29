@@ -469,6 +469,54 @@ def repair_patch_apply_metadata(root, value, json_value=""):
     return metadata
 
 
+def repair_patch_verify_metadata(root, value, json_value=""):
+    path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
+    metadata = {
+        "repair_patch_verify": rel(path, root) if path else "",
+        "repair_patch_verify_json": rel(json_path, root) if json_path else "",
+        "repair_patch_verify_status": "",
+        "repair_patch_verify_passed": "",
+        "repair_patch_verify_target": "",
+        "repair_patch_verify_command": "",
+        "repair_patch_verify_summary": "",
+        "repair_patch_verify_next_need_kind": "",
+        "repair_patch_verify_next_need_query": "",
+        "repair_patch_verify_preview": "",
+    }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        target = data.get("target") if isinstance(data.get("target"), dict) else {}
+        next_need = data.get("next_need") if isinstance(data.get("next_need"), dict) else {}
+        target_label = str(data.get("target_label") or "")
+        if not target_label:
+            target_label = "/".join(
+                item
+                for item in [
+                    str(target.get("tentacle") or ""),
+                    str(target.get("tool") or ""),
+                ]
+                if item
+            )
+        metadata.update({
+            "repair_patch_verify_status": str(data.get("status") or ""),
+            "repair_patch_verify_passed": "true" if data.get("passed") else "false",
+            "repair_patch_verify_target": target_label,
+            "repair_patch_verify_command": str(data.get("command") or ""),
+            "repair_patch_verify_summary": compact(data.get("summary") or "", 360),
+            "repair_patch_verify_next_need_kind": str(next_need.get("kind") or ""),
+            "repair_patch_verify_next_need_query": compact(next_need.get("query") or "", 320),
+            "repair_patch_verify_preview": compact(json.dumps(data, sort_keys=True), 700),
+        })
+    if path and path.exists() and not metadata["repair_patch_verify_preview"]:
+        metadata["repair_patch_verify_preview"] = compact(path.read_text(encoding="utf-8", errors="replace"), 700)
+    return metadata
+
+
 def repair_command_effectiveness_metadata(root, value, json_value=""):
     path = resolve_artifact(root, value)
     json_path = resolve_artifact(root, json_value)
@@ -1187,6 +1235,8 @@ if latest_repair_plan:
     repair_patch_review_effectiveness_json = str(inputs.get("repair_patch_review_effectiveness_json") or "")
     repair_patch_apply = str(inputs.get("repair_patch_apply") or "")
     repair_patch_apply_json = str(inputs.get("repair_patch_apply_json") or "")
+    repair_patch_verify = str(inputs.get("repair_patch_verify") or "")
+    repair_patch_verify_json = str(inputs.get("repair_patch_verify_json") or "")
     repair_command_effectiveness = str(inputs.get("repair_command_effectiveness") or "")
     repair_command_effectiveness_json = str(inputs.get("repair_command_effectiveness_json") or "")
     repair_command_strategy = str(inputs.get("repair_command_strategy") or "")
@@ -1252,6 +1302,11 @@ if latest_repair_plan:
         root,
         repair_patch_apply,
         repair_patch_apply_json,
+    )
+    patch_verify_metadata = repair_patch_verify_metadata(
+        root,
+        repair_patch_verify,
+        repair_patch_verify_json,
     )
     command_effectiveness_metadata = repair_command_effectiveness_metadata(
         root,
@@ -1364,6 +1419,9 @@ if latest_repair_plan:
     patch_apply_status = patch_apply_metadata.get("repair_patch_apply_status", "")
     patch_apply_applied = patch_apply_metadata.get("repair_patch_apply_applied", "")
     patch_apply_summary = patch_apply_metadata.get("repair_patch_apply_summary", "")
+    patch_verify_status = patch_verify_metadata.get("repair_patch_verify_status", "")
+    patch_verify_passed = patch_verify_metadata.get("repair_patch_verify_passed", "")
+    patch_verify_summary = patch_verify_metadata.get("repair_patch_verify_summary", "")
     command_effectiveness_used = command_effectiveness_metadata.get("repair_command_effectiveness_used_count", "")
     command_effectiveness_success = command_effectiveness_metadata.get("repair_command_effectiveness_success_rate", "")
     command_strategy_status = command_strategy_metadata.get("repair_command_strategy_status", "")
@@ -1428,6 +1486,20 @@ if latest_repair_plan:
     patch_apply_failed = (
         not has_outcome
         and patch_apply_status in {"failed", "check_failed", "failed_to_start"}
+    )
+    patch_verify_passed_status = (
+        patch_apply_applied_status
+        and patch_verify_status == "passed"
+        and patch_verify_passed == "true"
+    )
+    patch_verify_failed = (
+        patch_apply_applied_status
+        and patch_verify_status in {"failed", "failed_to_start"}
+    )
+    patch_apply_needs_verify = (
+        patch_apply_applied_status
+        and not patch_verify_passed_status
+        and not patch_verify_failed
     )
     if has_outcome:
         outcome_status = outcome_metadata.get("outcome_status", "reviewed")
@@ -1512,20 +1584,50 @@ if latest_repair_plan:
         )
         checks = []
         suggested = []
-    elif patch_apply_applied_status:
-        plan_status = "patch_applied"
+    elif patch_verify_passed_status:
+        plan_status = "patch_verified"
         status = "satisfied"
-        next_need = "score applied repair patch"
+        next_need = "score verified repair patch"
         next_need_kind = "verify"
-        next_need_query = "score the applied repair patch outcome"
-        next_need_source = "repair_patch_apply"
+        next_need_query = "score the verified repair patch outcome"
+        next_need_source = "repair_patch_verify"
         output = (
             f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
-            f"patch_apply={patch_apply_status}; applied={patch_apply_applied}; "
+            f"patch_verify={patch_verify_status}; passed={patch_verify_passed}; "
             f"target={target_tentacle}/{target_tool}; next={next_need_kind} {next_need_query}"
         )
         checks = []
         suggested = []
+    elif patch_verify_failed:
+        plan_status = "patch_verify_failed"
+        status = "partial"
+        blocker = patch_verify_summary or patch_verify_status or "repair patch verification failed"
+        next_need = f"repair patch verification failure: {blocker}"
+        next_need_kind = patch_verify_metadata.get("repair_patch_verify_next_need_kind") or "execute"
+        next_need_query = patch_verify_metadata.get("repair_patch_verify_next_need_query") or "repair failed post-apply verification"
+        next_need_source = "repair_patch_verify"
+        output = (
+            f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
+            f"patch_verify={patch_verify_status}; passed={patch_verify_passed or 'false'}; "
+            f"target={target_tentacle}/{target_tool}; next={next_need_kind} {next_need_query}"
+        )
+        checks = []
+        suggested = []
+    elif patch_apply_applied_status:
+        plan_status = "patch_applied"
+        status = "satisfied"
+        next_need = "verify applied repair patch"
+        next_need_kind = "verify"
+        next_need_query = "run post-apply repair patch verification"
+        next_need_source = "repair_patch_apply"
+        output = (
+            f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
+            f"patch_apply={patch_apply_status}; applied={patch_apply_applied}; "
+            f"patch_verify={patch_verify_status or 'none'}; "
+            f"target={target_tentacle}/{target_tool}; next={next_need_kind} {next_need_query}"
+        )
+        checks = []
+        suggested = [f"octopus repair verify {root}"]
     elif patch_apply_failed:
         plan_status = "patch_apply_failed"
         status = "partial"
@@ -1566,6 +1668,7 @@ if latest_repair_plan:
             f"patch_review={patch_review_status or 'none'} check={patch_review_check or 'none'}; "
             f"patch_review_effectiveness={patch_review_effectiveness_used or '0'} success_rate={patch_review_effectiveness_success or '0.00'}; "
             f"patch_apply={patch_apply_status or 'none'} applied={patch_apply_applied or 'false'}; "
+            f"patch_verify={patch_verify_status or 'none'} passed={patch_verify_passed or 'false'}; "
             f"command_effectiveness={command_effectiveness_used or '0'} success_rate={command_effectiveness_success or '0.00'}; "
             f"command_strategy={command_strategy_status or 'none'} focus={command_strategy_focus or 'none'}; "
             f"command_strategy_effectiveness={command_strategy_effectiveness_used or '0'} success_rate={command_strategy_effectiveness_success or '0.00'}; "
@@ -1607,6 +1710,8 @@ if latest_repair_plan:
         "repair_patch_review_effectiveness_json": repair_patch_review_effectiveness_json,
         "repair_patch_apply": repair_patch_apply,
         "repair_patch_apply_json": repair_patch_apply_json,
+        "repair_patch_verify": repair_patch_verify,
+        "repair_patch_verify_json": repair_patch_verify_json,
         "repair_command_effectiveness": repair_command_effectiveness,
         "repair_command_effectiveness_json": repair_command_effectiveness_json,
         "repair_command_strategy": repair_command_strategy,
@@ -1642,10 +1747,11 @@ if latest_repair_plan:
         "action_trace_blocker": action_trace_status if action_trace_blocked else "",
         "patch_review_blocker": patch_review_status if patch_review_blocked else "",
         "patch_apply_blocker": patch_apply_status if patch_apply_failed else "",
+        "patch_verify_blocker": patch_verify_status if patch_verify_failed else "",
         "grant_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked or patch_review_blocked or patch_apply_applied_status or patch_apply_failed else command_value(commands, "grant"),
         "apply_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked or patch_review_blocked or patch_apply_applied_status or patch_apply_failed else command_value(commands, "apply"),
-        "score_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked or patch_review_blocked else command_value(commands, "score"),
-        "score_commands": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked or patch_review_blocked else command_lines(commands, "score_options"),
+        "score_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked or patch_review_blocked or patch_apply_needs_verify else command_value(commands, "score"),
+        "score_commands": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked or patch_review_blocked or patch_apply_needs_verify else command_lines(commands, "score_options"),
         "suggested_commands": " && ".join(suggested),
         "next_need_source": next_need_source,
     }
@@ -1660,6 +1766,7 @@ if latest_repair_plan:
     repair_metadata.update(patch_review_metadata)
     repair_metadata.update(patch_review_effectiveness_metadata)
     repair_metadata.update(patch_apply_metadata)
+    repair_metadata.update(patch_verify_metadata)
     repair_metadata.update(command_effectiveness_metadata)
     repair_metadata.update(command_strategy_metadata)
     repair_metadata.update(command_strategy_effectiveness_metadata)

@@ -74,7 +74,7 @@ Updated: 2026-06-29
 - Harness repair now writes `HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS.md/json`, so scored outcomes teach whether responding to environment drift actually helped.
 - Harness repair now writes `REPAIR_DRAFT_EFFECTIVENESS.md/json`, so provider-generated repair drafts get scored into future repair prompts instead of staying one-off text.
 - Harness repair now writes `REPAIR_PATCH_DRAFT.md/json` and `REPAIR_PATCH_DRAFT_EFFECTIVENESS.md/json`, so provider repair drafts can carry reviewable patch intent and later outcome scores teach whether that patch-draft mode helped.
-- Harness repair now writes `REPAIR_PATCH_REVIEW.md/json`, `REPAIR_PATCH_APPLY.md/json`, and patch-review effectiveness memory, so provider patch drafts are checked locally, applied only after a harness-write grant, and then handed back to heartbeat for score/learning.
+- Harness repair now writes `REPAIR_PATCH_REVIEW.md/json`, `REPAIR_PATCH_APPLY.md/json`, `REPAIR_PATCH_VERIFY.md/json`, and patch-review effectiveness memory, so provider patch drafts are checked locally, applied only after a harness-write grant, verified with the target tentacle check, and then handed back to heartbeat for score/learning.
 - Harness repair now writes `REPAIR_COMMAND_EFFECTIVENESS.md/json`, so scored outcomes teach which reviewable check/grant/apply/score command recipes should be reused or avoided.
 - Harness repair now writes `REPAIR_COMMAND_STRATEGY_EFFECTIVENESS.md/json`, so reviewed outcomes can teach whether command-strategy choices themselves help future repair sessions.
 - Harness repair now writes `REPAIR_DECISION_EFFECTIVENESS.md/json`, so reviewed outcomes teach whether the repair decision itself helped later repair sessions.

@@ -3599,6 +3599,68 @@ def repair_patch_apply_markdown(patch_apply, workspace, patch_apply_json):
     return "\n".join(lines) + "\n"
 
 
+def build_repair_patch_verify_plan(workspace, patch_apply):
+    target = patch_apply.get("target") if isinstance(patch_apply.get("target"), dict) else {}
+    target_tentacle = str(target.get("tentacle") or "unknown")
+    target_label = str(patch_apply.get("target_label") or "")
+    if not target_label:
+        target_label = "/".join(
+            item
+            for item in [
+                target_tentacle if target_tentacle != "unknown" else "",
+                str(target.get("tool") or ""),
+            ]
+            if item
+        )
+    applied = bool(patch_apply.get("applied"))
+    if applied:
+        status = "ready_for_check"
+        next_need = {
+            "kind": "verify",
+            "query": "run post-apply repair patch verification",
+        }
+    else:
+        status = "waiting_for_patch_apply"
+        next_need = {
+            "kind": "execute",
+            "query": "apply reviewed repair patch before verification",
+        }
+    check_command = ""
+    if target_tentacle and target_tentacle != "unknown":
+        check_command = f"octopus check {shell_arg(target_tentacle)}"
+    return {
+        "schema_version": "octopus-harness-repair-patch-verify-v1",
+        "status": status,
+        "passed": False,
+        "target": target,
+        "target_label": target_label,
+        "patch_apply": str(patch_apply.get("patch_file") or ""),
+        "command": check_command,
+        "summary": "repair patch verification waits for an applied patch",
+        "check": None,
+        "next_need": next_need,
+    }
+
+
+def repair_patch_verify_markdown(patch_verify, workspace, patch_verify_json):
+    target = patch_verify.get("target") if isinstance(patch_verify.get("target"), dict) else {}
+    next_need = patch_verify.get("next_need") if isinstance(patch_verify.get("next_need"), dict) else {}
+    lines = [
+        "# Harness Repair Patch Verify",
+        "",
+        "This file records post-apply verification for a reviewed repair patch.",
+        "",
+        f"json: `{rel(patch_verify_json, workspace)}`",
+        f"status: `{patch_verify.get('status')}`",
+        f"passed: `{str(bool(patch_verify.get('passed'))).lower()}`",
+        f"target: `{target.get('tentacle') or 'unknown'}/{target.get('tool') or ''}`",
+        f"command: `{patch_verify.get('command') or 'none'}`",
+        f"summary: {compact(patch_verify.get('summary') or '', 360) or 'none'}",
+        f"next_need: `{next_need.get('kind') or 'verify'} {next_need.get('query') or ''}`",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def action_trace_record(
     workspace,
     session_path,
@@ -4090,6 +4152,8 @@ repair_patch_review_effectiveness_json = session_dir / "REPAIR_PATCH_REVIEW_EFFE
 repair_patch_review_effectiveness_md = session_dir / "REPAIR_PATCH_REVIEW_EFFECTIVENESS.md"
 repair_patch_apply_json = session_dir / "REPAIR_PATCH_APPLY.json"
 repair_patch_apply_md = session_dir / "REPAIR_PATCH_APPLY.md"
+repair_patch_verify_json = session_dir / "REPAIR_PATCH_VERIFY.json"
+repair_patch_verify_md = session_dir / "REPAIR_PATCH_VERIFY.md"
 repair_command_effectiveness_json = session_dir / "REPAIR_COMMAND_EFFECTIVENESS.json"
 repair_command_effectiveness_md = session_dir / "REPAIR_COMMAND_EFFECTIVENESS.md"
 repair_command_strategy_json = session_dir / "REPAIR_COMMAND_STRATEGY.json"
@@ -4246,6 +4310,8 @@ session = {
     "repair_patch_review_effectiveness_json": rel(repair_patch_review_effectiveness_json, workspace),
     "repair_patch_apply": rel(repair_patch_apply_md, workspace),
     "repair_patch_apply_json": rel(repair_patch_apply_json, workspace),
+    "repair_patch_verify": rel(repair_patch_verify_md, workspace),
+    "repair_patch_verify_json": rel(repair_patch_verify_json, workspace),
     "repair_command_effectiveness": rel(repair_command_effectiveness_md, workspace),
     "repair_command_effectiveness_json": rel(repair_command_effectiveness_json, workspace),
     "repair_command_strategy": rel(repair_command_strategy_md, workspace),
@@ -4673,6 +4739,8 @@ repair_plan["inputs"]["repair_patch_review_effectiveness"] = rel(repair_patch_re
 repair_plan["inputs"]["repair_patch_review_effectiveness_json"] = rel(repair_patch_review_effectiveness_json, workspace)
 repair_plan["inputs"]["repair_patch_apply"] = rel(repair_patch_apply_md, workspace)
 repair_plan["inputs"]["repair_patch_apply_json"] = rel(repair_patch_apply_json, workspace)
+repair_plan["inputs"]["repair_patch_verify"] = rel(repair_patch_verify_md, workspace)
+repair_plan["inputs"]["repair_patch_verify_json"] = rel(repair_patch_verify_json, workspace)
 repair_plan["inputs"]["repair_command_effectiveness"] = rel(repair_command_effectiveness_md, workspace)
 repair_plan["inputs"]["repair_command_effectiveness_json"] = rel(repair_command_effectiveness_json, workspace)
 repair_plan["inputs"]["repair_command_strategy"] = rel(repair_command_strategy_md, workspace)
@@ -4726,7 +4794,7 @@ repair_plan["harness_environment_profile_summary"] = session["harness_environmen
 repair_plan["harness_environment_drift_summary"] = session["harness_environment_drift_summary"]
 repair_plan["harness_environment_drift_effectiveness_summary"] = session["harness_environment_drift_effectiveness_summary"]
 repair_plan["harness_adaptation_summary"] = session["harness_adaptation_summary"]
-repair_plan["review_boundary"] = "Review HARNESS_ADAPTATION, HARNESS_ENVIRONMENT_PROFILE, HARNESS_ENVIRONMENT_DRIFT, HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS, HARNESS_ADAPTATION_EFFECTIVENESS, ACTION_TRACE.md, ACTION_TRACE.json, ACTION_TRACE_EFFECTIVENESS, REPAIR_RECALL.json, REPAIR_LESSONS, REPAIR_LESSON_EFFECTIVENESS, REPAIR_DRAFT_EFFECTIVENESS, REPAIR_PATCH_DRAFT, REPAIR_PATCH_DRAFT_EFFECTIVENESS, REPAIR_PATCH_REVIEW, REPAIR_PATCH_REVIEW_EFFECTIVENESS, REPAIR_PATCH_APPLY, REPAIR_COMMAND_EFFECTIVENESS, REPAIR_COMMAND_STRATEGY, REPAIR_COMMAND_STRATEGY_EFFECTIVENESS, REPAIR_DECISION_EFFECTIVENESS, REPAIR_DECISION, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
+repair_plan["review_boundary"] = "Review HARNESS_ADAPTATION, HARNESS_ENVIRONMENT_PROFILE, HARNESS_ENVIRONMENT_DRIFT, HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS, HARNESS_ADAPTATION_EFFECTIVENESS, ACTION_TRACE.md, ACTION_TRACE.json, ACTION_TRACE_EFFECTIVENESS, REPAIR_RECALL.json, REPAIR_LESSONS, REPAIR_LESSON_EFFECTIVENESS, REPAIR_DRAFT_EFFECTIVENESS, REPAIR_PATCH_DRAFT, REPAIR_PATCH_DRAFT_EFFECTIVENESS, REPAIR_PATCH_REVIEW, REPAIR_PATCH_REVIEW_EFFECTIVENESS, REPAIR_PATCH_APPLY, REPAIR_PATCH_VERIFY, REPAIR_COMMAND_EFFECTIVENESS, REPAIR_COMMAND_STRATEGY, REPAIR_COMMAND_STRATEGY_EFFECTIVENESS, REPAIR_DECISION_EFFECTIVENESS, REPAIR_DECISION, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
 repair_plan_json.write_text(
     json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
     encoding="utf-8",
@@ -5100,6 +5168,8 @@ prompt_md.write_text(
             f"- repair patch review effectiveness json: `{rel(repair_patch_review_effectiveness_json, workspace)}`",
             f"- repair patch apply: `{rel(repair_patch_apply_md, workspace)}`",
             f"- repair patch apply json: `{rel(repair_patch_apply_json, workspace)}`",
+            f"- repair patch verify: `{rel(repair_patch_verify_md, workspace)}`",
+            f"- repair patch verify json: `{rel(repair_patch_verify_json, workspace)}`",
             f"- repair command effectiveness: `{rel(repair_command_effectiveness_md, workspace)}`",
             f"- repair command effectiveness json: `{rel(repair_command_effectiveness_json, workspace)}`",
             f"- repair command strategy: `{rel(repair_command_strategy_md, workspace)}`",
@@ -5163,6 +5233,15 @@ repair_patch_apply_md.write_text(
     repair_patch_apply_markdown(repair_patch_apply, workspace, repair_patch_apply_json),
     encoding="utf-8",
 )
+repair_patch_verify = build_repair_patch_verify_plan(workspace, repair_patch_apply)
+repair_patch_verify_json.write_text(
+    json.dumps(repair_patch_verify, ensure_ascii=True, indent=2) + "\n",
+    encoding="utf-8",
+)
+repair_patch_verify_md.write_text(
+    repair_patch_verify_markdown(repair_patch_verify, workspace, repair_patch_verify_json),
+    encoding="utf-8",
+)
 session["repair_patch_draft_summary"] = {
     "status": repair_patch_draft["status"],
     "draft_status": repair_patch_draft["draft_status"],
@@ -5187,9 +5266,17 @@ session["repair_patch_apply_summary"] = {
     "required_grant": repair_patch_apply["required_grant"],
     "next_need": repair_patch_apply["next_need"],
 }
+session["repair_patch_verify_summary"] = {
+    "status": repair_patch_verify["status"],
+    "passed": repair_patch_verify["passed"],
+    "target": repair_patch_verify["target"],
+    "command": repair_patch_verify["command"],
+    "next_need": repair_patch_verify["next_need"],
+}
 repair_plan["repair_patch_draft_summary"] = session["repair_patch_draft_summary"]
 repair_plan["repair_patch_review_summary"] = session["repair_patch_review_summary"]
 repair_plan["repair_patch_apply_summary"] = session["repair_patch_apply_summary"]
+repair_plan["repair_patch_verify_summary"] = session["repair_patch_verify_summary"]
 action_trace = action_trace_record(
         workspace,
         session_json,
@@ -5291,6 +5378,8 @@ review_md.write_text(
             f"- repair patch review effectiveness json: `{rel(repair_patch_review_effectiveness_json, workspace)}`",
             f"- repair patch apply: `{rel(repair_patch_apply_md, workspace)}`",
             f"- repair patch apply json: `{rel(repair_patch_apply_json, workspace)}`",
+            f"- repair patch verify: `{rel(repair_patch_verify_md, workspace)}`",
+            f"- repair patch verify json: `{rel(repair_patch_verify_json, workspace)}`",
             f"- repair command effectiveness: `{rel(repair_command_effectiveness_md, workspace)}`",
             f"- repair command effectiveness json: `{rel(repair_command_effectiveness_json, workspace)}`",
             f"- repair command strategy: `{rel(repair_command_strategy_md, workspace)}`",
@@ -5370,6 +5459,8 @@ session_md.write_text(
             f"repair patch review effectiveness json: `{rel(repair_patch_review_effectiveness_json, workspace)}`",
             f"repair patch apply: `{rel(repair_patch_apply_md, workspace)}`",
             f"repair patch apply json: `{rel(repair_patch_apply_json, workspace)}`",
+            f"repair patch verify: `{rel(repair_patch_verify_md, workspace)}`",
+            f"repair patch verify json: `{rel(repair_patch_verify_json, workspace)}`",
             f"repair command effectiveness: `{rel(repair_command_effectiveness_md, workspace)}`",
             f"repair command effectiveness json: `{rel(repair_command_effectiveness_json, workspace)}`",
             f"repair command strategy: `{rel(repair_command_strategy_md, workspace)}`",
@@ -5519,6 +5610,13 @@ metadata = {
     "repair_patch_apply_grant_command": repair_patch_apply.get("grant_command", ""),
     "repair_patch_apply_apply_command": repair_patch_apply.get("apply_command", ""),
     "repair_patch_apply_summary": repair_patch_apply.get("summary", ""),
+    "repair_patch_verify": rel(repair_patch_verify_md, workspace),
+    "repair_patch_verify_json": rel(repair_patch_verify_json, workspace),
+    "repair_patch_verify_status": repair_patch_verify.get("status", ""),
+    "repair_patch_verify_passed": "true" if repair_patch_verify.get("passed") else "false",
+    "repair_patch_verify_target": repair_patch_verify.get("target_label", ""),
+    "repair_patch_verify_command": repair_patch_verify.get("command", ""),
+    "repair_patch_verify_summary": repair_patch_verify.get("summary", ""),
     "repair_command_effectiveness": rel(repair_command_effectiveness_md, workspace),
     "repair_command_effectiveness_json": rel(repair_command_effectiveness_json, workspace),
     "repair_command_effectiveness_used_count": str(repair_command_effectiveness.get("used_count", 0)),
