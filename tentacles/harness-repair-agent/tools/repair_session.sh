@@ -112,6 +112,12 @@ def normalized_outcome(item, origin):
         "action_trace_lesson_avoid_count": str(item.get("action_trace_lesson_avoid_count") or action_trace.get("lesson_avoid_count") or ""),
         "action_trace_lesson_top_reuse": str(item.get("action_trace_lesson_top_reuse") or action_trace.get("lesson_top_reuse") or ""),
         "action_trace_lesson_top_avoid": str(item.get("action_trace_lesson_top_avoid") or action_trace.get("lesson_top_avoid") or ""),
+        "action_trace_command_strategy_status": str(item.get("action_trace_command_strategy_status") or action_trace.get("command_strategy_status") or ""),
+        "action_trace_command_strategy_focus": str(item.get("action_trace_command_strategy_focus") or action_trace.get("command_strategy_focus") or ""),
+        "action_trace_command_strategy_learned_reuse": str(item.get("action_trace_command_strategy_learned_reuse") or action_trace.get("command_strategy_learned_reuse") or ""),
+        "action_trace_command_strategy_learned_avoid": str(item.get("action_trace_command_strategy_learned_avoid") or action_trace.get("command_strategy_learned_avoid") or ""),
+        "action_trace_command_strategy_next_need_kind": str(item.get("action_trace_command_strategy_next_need_kind") or action_trace.get("command_strategy_next_need_kind") or ""),
+        "action_trace_command_strategy_next_need_query": str(item.get("action_trace_command_strategy_next_need_query") or action_trace.get("command_strategy_next_need_query") or ""),
         "action_trace_harness_adaptation_status": str(item.get("action_trace_harness_adaptation_status") or action_trace.get("harness_adaptation_status") or ""),
         "action_trace_harness_adaptation_focus": str(item.get("action_trace_harness_adaptation_focus") or action_trace.get("harness_adaptation_focus") or ""),
         "action_trace_harness_environment_drift_status": str(item.get("action_trace_harness_environment_drift_status") or action_trace.get("harness_environment_drift_status") or ""),
@@ -174,6 +180,12 @@ def merge_repair_outcomes(state_items, journal_items, limit=8):
                     "action_trace_lesson_avoid_count",
                     "action_trace_lesson_top_reuse",
                     "action_trace_lesson_top_avoid",
+                    "action_trace_command_strategy_status",
+                    "action_trace_command_strategy_focus",
+                    "action_trace_command_strategy_learned_reuse",
+                    "action_trace_command_strategy_learned_avoid",
+                    "action_trace_command_strategy_next_need_kind",
+                    "action_trace_command_strategy_next_need_query",
                     "action_trace_harness_adaptation_status",
                     "action_trace_harness_adaptation_focus",
                     "action_trace_harness_environment_drift_status",
@@ -265,6 +277,8 @@ def outcome_memory_markdown(outcomes, workspace, outcomes_file, repair_recall=No
         lesson_reuse = item.get("action_trace_lesson_reuse_count") or "0"
         lesson_avoid = item.get("action_trace_lesson_avoid_count") or "0"
         lesson_top = item.get("action_trace_lesson_top_reuse") or item.get("action_trace_lesson_top_avoid") or "none"
+        command_strategy_status = item.get("action_trace_command_strategy_status") or "none"
+        command_strategy_focus = item.get("action_trace_command_strategy_focus") or "none"
         adaptation_status = item.get("action_trace_harness_adaptation_status") or "none"
         adaptation_focus = item.get("action_trace_harness_adaptation_focus") or "none"
         drift_status = item.get("action_trace_harness_environment_drift_status") or "none"
@@ -279,6 +293,7 @@ def outcome_memory_markdown(outcomes, workspace, outcomes_file, repair_recall=No
                 f"  action_trace: status=`{action_status}` stages=`{action_count}` last=`{compact(action_last, 120)}` hint=`{compact(action_hint, 160)}`",
                 f"  recall_used: matches=`{recall_count}` top=`{compact(recall_status, 80)}` reasons=`{compact(recall_reasons, 160)}`",
                 f"  lesson_used: count=`{lesson_count}` reuse=`{lesson_reuse}` avoid=`{lesson_avoid}` top=`{compact(lesson_top, 160)}`",
+                f"  command_strategy_used: status=`{command_strategy_status}` focus=`{compact(command_strategy_focus, 180)}`",
                 f"  adaptation_used: status=`{adaptation_status}` focus=`{compact(adaptation_focus, 180)}`",
                 f"  environment_drift_used: status=`{drift_status}` history=`{drift_history}` detail=`{compact(drift_detail, 180)}`",
             ]
@@ -1028,6 +1043,101 @@ def repair_command_effectiveness_markdown(effectiveness, workspace, effectivenes
                 f"  summary: {compact(hint.get('latest_summary'), 220) or 'none'}",
             ]
         )
+    return "\n".join(lines) + "\n"
+
+
+def build_repair_command_strategy(effectiveness, command_recipe, target_tentacle, target_tool):
+    used_count = int_count(effectiveness.get("used_count"))
+    satisfied_count = int_count(effectiveness.get("satisfied_count"))
+    partial_count = int_count(effectiveness.get("partial_count"))
+    failed_count = int_count(effectiveness.get("failed_count"))
+    top_reuse = compact(effectiveness.get("top_reuse") or "", 260)
+    top_avoid = compact(effectiveness.get("top_avoid") or "", 260)
+    current_recipe = {
+        "check": " && ".join(command_recipe.get("checks") or []),
+        "grant": command_recipe.get("grant") or "",
+        "apply": command_recipe.get("apply") or "",
+        "score": command_recipe.get("score") or "",
+        "score_options": " || ".join(command_recipe.get("score_options") or []),
+    }
+    if used_count <= 0:
+        status = "collect_command_outcomes"
+        focus = "score reviewed repair outcomes with their command recipes"
+        next_kind = "verify"
+        next_query = "collect reviewed repair command outcomes"
+    elif failed_count > satisfied_count:
+        status = "inspect_unreliable_command_recipe"
+        focus = top_avoid or top_reuse or "repair command recipe needs inspection"
+        next_kind = "execute"
+        next_query = "octopus repair . after unreliable repair command recipe"
+    elif partial_count > 0 and satisfied_count == 0:
+        status = "tighten_partial_command_recipe"
+        focus = top_avoid or top_reuse or "partial command recipe outcomes need tighter evidence"
+        next_kind = "execute"
+        next_query = "octopus repair . after partial repair command recipe"
+    else:
+        status = "reuse_effective_command_recipe"
+        focus = top_reuse or current_recipe["apply"] or "reuse effective repair command recipe"
+        next_kind = "verify"
+        next_query = "review repair plan with effective command recipe"
+    return {
+        "schema_version": "octopus-harness-repair-command-strategy-v1",
+        "status": status,
+        "focus": compact(focus, 260),
+        "target_tentacle": target_tentacle,
+        "target_tool": target_tool,
+        "current_recipe": current_recipe,
+        "learned_reuse": top_reuse,
+        "learned_avoid": top_avoid,
+        "next_need": {
+            "kind": next_kind,
+            "query": next_query,
+        },
+        "evidence": {
+            "used_count": used_count,
+            "satisfied_count": satisfied_count,
+            "partial_count": partial_count,
+            "failed_count": failed_count,
+            "success_rate": effectiveness.get("success_rate") or "0.00",
+            "failure_rate": effectiveness.get("failure_rate") or "0.00",
+        },
+    }
+
+
+def repair_command_strategy_markdown(strategy, workspace, strategy_json):
+    evidence = strategy.get("evidence") if isinstance(strategy.get("evidence"), dict) else {}
+    current = strategy.get("current_recipe") if isinstance(strategy.get("current_recipe"), dict) else {}
+    next_need = strategy.get("next_need") if isinstance(strategy.get("next_need"), dict) else {}
+    lines = [
+        "# Harness Repair Command Strategy",
+        "",
+        "This file compresses command effectiveness into the next reviewable repair command focus.",
+        "It is local tentacle Feed evidence, not clean-brain context.",
+        "",
+        f"json: `{rel(strategy_json, workspace)}`",
+        f"status: `{strategy.get('status')}`",
+        f"focus: {compact(strategy.get('focus'), 260)}",
+        f"target: `{strategy.get('target_tentacle')}/{strategy.get('target_tool')}`",
+        f"next_need: `{next_need.get('kind') or 'verify'} {next_need.get('query') or ''}`",
+        "",
+        "## Evidence",
+        "",
+        f"- used: `{evidence.get('used_count', 0)}`",
+        f"- satisfied: `{evidence.get('satisfied_count', 0)}`",
+        f"- partial: `{evidence.get('partial_count', 0)}`",
+        f"- failed: `{evidence.get('failed_count', 0)}`",
+        f"- success_rate: `{evidence.get('success_rate', '0.00')}`",
+        f"- failure_rate: `{evidence.get('failure_rate', '0.00')}`",
+        f"- learned_reuse: {compact(strategy.get('learned_reuse'), 260) or 'none'}",
+        f"- learned_avoid: {compact(strategy.get('learned_avoid'), 260) or 'none'}",
+        "",
+        "## Current Recipe",
+        "",
+        f"- check: {compact(current.get('check'), 260) or 'none'}",
+        f"- grant: {compact(current.get('grant'), 260) or 'none'}",
+        f"- apply: {compact(current.get('apply'), 260) or 'none'}",
+        f"- score: {compact(current.get('score'), 260) or 'none'}",
+    ]
     return "\n".join(lines) + "\n"
 
 
@@ -2235,28 +2345,16 @@ def build_action_plan(
     draft_path,
     plan_path,
 ):
+    repair_commands = build_repair_commands(
+        workspace,
+        target_tentacle,
+        candidate,
+        code_context,
+        commands,
+    )
     target = code_context.get("tentacle") or target_tentacle or "unknown"
     tool = code_context.get("tool") or "unknown"
     tool_path = code_context.get("tool_path") or ""
-    check_commands = []
-    if target and target != "unknown":
-        check_commands.append(f"octopus check {shell_arg(target)}")
-    if tool_path and tool_path.endswith(".sh"):
-        check_commands.append(
-            f"{shell_arg(tool_path)} {shell_arg(workspace)} | python3 -m json.tool > /dev/null"
-        )
-    if not check_commands:
-        check_commands.append("octopus report")
-    grant_command = (
-        f"octopus oauth octopus evolve:{shell_arg(target)} harness:write"
-        if target and target != "unknown"
-        else "octopus oauth octopus harness:write"
-    )
-    apply_command = (
-        f"octopus evolve apply {shell_arg(target)} {shell_arg(candidate)}"
-        if target and target != "unknown" and candidate not in {"none", "recommended", "unknown"}
-        else "octopus beat 200"
-    )
     return {
         "schema_version": "octopus-harness-repair-plan-v1",
         "status": "review_required",
@@ -2283,18 +2381,43 @@ def build_action_plan(
             "desktop_adapters": adapter_context.get("desktop_adapters", ""),
         },
         "review_boundary": "Review CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands.",
-        "commands": {
-            "checks": check_commands,
-            "grant": grant_command,
-            "apply": apply_command,
-            "score": "octopus repair score <trace-index> satisfied \"repair improved Feed\"",
-            "score_options": [
-                "octopus repair score <trace-index> satisfied \"repair improved Feed\"",
-                "octopus repair score <trace-index> partial \"repair partly improved Feed\"",
-                "octopus repair score <trace-index> failed \"repair did not improve Feed\"",
-            ],
-            "suggested": commands,
-        },
+        "commands": repair_commands,
+    }
+
+
+def build_repair_commands(workspace, target_tentacle, candidate, code_context, commands):
+    target = code_context.get("tentacle") or target_tentacle or "unknown"
+    tool_path = code_context.get("tool_path") or ""
+    check_commands = []
+    if target and target != "unknown":
+        check_commands.append(f"octopus check {shell_arg(target)}")
+    if tool_path and tool_path.endswith(".sh"):
+        check_commands.append(
+            f"{shell_arg(tool_path)} {shell_arg(workspace)} | python3 -m json.tool > /dev/null"
+        )
+    if not check_commands:
+        check_commands.append("octopus report")
+    grant_command = (
+        f"octopus oauth octopus evolve:{shell_arg(target)} harness:write"
+        if target and target != "unknown"
+        else "octopus oauth octopus harness:write"
+    )
+    apply_command = (
+        f"octopus evolve apply {shell_arg(target)} {shell_arg(candidate)}"
+        if target and target != "unknown" and candidate not in {"none", "recommended", "unknown"}
+        else "octopus beat 200"
+    )
+    return {
+        "checks": check_commands,
+        "grant": grant_command,
+        "apply": apply_command,
+        "score": "octopus repair score <trace-index> satisfied \"repair improved Feed\"",
+        "score_options": [
+            "octopus repair score <trace-index> satisfied \"repair improved Feed\"",
+            "octopus repair score <trace-index> partial \"repair partly improved Feed\"",
+            "octopus repair score <trace-index> failed \"repair did not improve Feed\"",
+        ],
+        "suggested": commands,
     }
 
 
@@ -2451,6 +2574,7 @@ def action_trace_record(
     repair_lesson_effectiveness,
     repair_draft_effectiveness,
     repair_command_effectiveness,
+    repair_command_strategy,
     harness_environment_drift,
     harness_environment_drift_effectiveness,
     repair_decision,
@@ -2505,6 +2629,17 @@ def action_trace_record(
         "success_rate": str(repair_command_effectiveness.get("success_rate") or "0.00"),
         "top_reuse": compact(repair_command_effectiveness.get("top_reuse") or "", 240),
         "top_avoid": compact(repair_command_effectiveness.get("top_avoid") or "", 240),
+    }
+    command_strategy_next = repair_command_strategy.get("next_need") if isinstance(repair_command_strategy.get("next_need"), dict) else {}
+    command_strategy_current = repair_command_strategy.get("current_recipe") if isinstance(repair_command_strategy.get("current_recipe"), dict) else {}
+    command_strategy_summary = {
+        "status": str(repair_command_strategy.get("status") or ""),
+        "focus": compact(repair_command_strategy.get("focus") or "", 240),
+        "learned_reuse": compact(repair_command_strategy.get("learned_reuse") or "", 240),
+        "learned_avoid": compact(repair_command_strategy.get("learned_avoid") or "", 240),
+        "current_apply": compact(command_strategy_current.get("apply") or "", 240),
+        "next_need_kind": str(command_strategy_next.get("kind") or ""),
+        "next_need_query": compact(command_strategy_next.get("query") or "", 260),
     }
     drift_next = harness_environment_drift.get("next_need") if isinstance(harness_environment_drift.get("next_need"), dict) else {}
     drift_summary = {
@@ -2561,7 +2696,7 @@ def action_trace_record(
         {
             "kind": "Action",
             "action": "merge field, recall, lessons, effectiveness, decision, and outcome evidence",
-            "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']} recalled={recall_count} top={recall_top_status} lessons={lessons_summary['lesson_count']} effectiveness_used={effectiveness_summary['used_count']} draft_effectiveness_used={draft_effectiveness_summary['used_count']} command_effectiveness_used={command_effectiveness_summary['used_count']} drift={drift_summary['status']} drift_effectiveness_used={drift_effectiveness_summary['used_count']} success_rate={effectiveness_summary['success_rate']} decision={decision_summary['decision']}",
+            "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']} recalled={recall_count} top={recall_top_status} lessons={lessons_summary['lesson_count']} effectiveness_used={effectiveness_summary['used_count']} draft_effectiveness_used={draft_effectiveness_summary['used_count']} command_effectiveness_used={command_effectiveness_summary['used_count']} command_strategy={command_strategy_summary['status']} drift={drift_summary['status']} drift_effectiveness_used={drift_effectiveness_summary['used_count']} success_rate={effectiveness_summary['success_rate']} decision={decision_summary['decision']}",
             "status": "satisfied",
         },
         {
@@ -2604,6 +2739,7 @@ def action_trace_record(
         "repair_lesson_effectiveness": effectiveness_summary,
         "repair_draft_effectiveness": draft_effectiveness_summary,
         "repair_command_effectiveness": command_effectiveness_summary,
+        "repair_command_strategy": command_strategy_summary,
         "harness_environment_drift": drift_summary,
         "harness_environment_drift_status": drift_summary["status"],
         "harness_environment_drift_detail": drift_summary["detail"],
@@ -2644,6 +2780,9 @@ def action_trace_markdown(record, workspace, repair_plan):
         f"repair_draft_effectiveness_success_rate: `{record.get('repair_draft_effectiveness', {}).get('success_rate', '0.00')}`",
         f"repair_command_effectiveness_used: `{record.get('repair_command_effectiveness', {}).get('used_count', '0')}`",
         f"repair_command_effectiveness_success_rate: `{record.get('repair_command_effectiveness', {}).get('success_rate', '0.00')}`",
+        f"repair_command_strategy: `{record.get('repair_command_strategy', {}).get('status', 'none')}`",
+        f"repair_command_strategy_focus: {record.get('repair_command_strategy', {}).get('focus', 'none') or 'none'}",
+        f"repair_command_strategy_next: `{record.get('repair_command_strategy', {}).get('next_need_kind', 'verify')} {record.get('repair_command_strategy', {}).get('next_need_query', '')}`",
         f"harness_environment_drift: `{record.get('harness_environment_drift', {}).get('status', 'none') or 'none'}`",
         f"harness_environment_drift_detail: `{record.get('harness_environment_drift', {}).get('detail', 'none') or 'none'}`",
         f"harness_environment_drift_effectiveness_used: `{record.get('harness_environment_drift_effectiveness', {}).get('used_count', '0')}`",
@@ -2794,6 +2933,8 @@ repair_draft_effectiveness_json = session_dir / "REPAIR_DRAFT_EFFECTIVENESS.json
 repair_draft_effectiveness_md = session_dir / "REPAIR_DRAFT_EFFECTIVENESS.md"
 repair_command_effectiveness_json = session_dir / "REPAIR_COMMAND_EFFECTIVENESS.json"
 repair_command_effectiveness_md = session_dir / "REPAIR_COMMAND_EFFECTIVENESS.md"
+repair_command_strategy_json = session_dir / "REPAIR_COMMAND_STRATEGY.json"
+repair_command_strategy_md = session_dir / "REPAIR_COMMAND_STRATEGY.md"
 repair_decision_json = session_dir / "REPAIR_DECISION.json"
 repair_decision_md = session_dir / "REPAIR_DECISION.md"
 harness_adaptation_effectiveness_json = session_dir / "HARNESS_ADAPTATION_EFFECTIVENESS.json"
@@ -2850,6 +2991,19 @@ repair_lessons = build_repair_lessons(repair_outcomes, repair_recall)
 repair_lesson_effectiveness = build_repair_lesson_effectiveness(repair_outcomes)
 repair_draft_effectiveness = build_repair_draft_effectiveness(repair_outcomes)
 repair_command_effectiveness = build_repair_command_effectiveness(repair_outcomes)
+repair_command_recipe = build_repair_commands(
+    workspace,
+    target_tentacle,
+    candidate,
+    code_context,
+    commands,
+)
+repair_command_strategy = build_repair_command_strategy(
+    repair_command_effectiveness,
+    repair_command_recipe,
+    code_context["tentacle"],
+    code_context["tool"],
+)
 harness_adaptation_effectiveness = build_harness_adaptation_effectiveness(repair_outcomes)
 harness_environment_drift_effectiveness = build_harness_environment_drift_effectiveness(repair_outcomes)
 harness_environment_profile = build_harness_environment_profile(
@@ -2910,6 +3064,8 @@ session = {
     "repair_draft_effectiveness_json": rel(repair_draft_effectiveness_json, workspace),
     "repair_command_effectiveness": rel(repair_command_effectiveness_md, workspace),
     "repair_command_effectiveness_json": rel(repair_command_effectiveness_json, workspace),
+    "repair_command_strategy": rel(repair_command_strategy_md, workspace),
+    "repair_command_strategy_json": rel(repair_command_strategy_json, workspace),
     "repair_decision": rel(repair_decision_md, workspace),
     "repair_decision_json": rel(repair_decision_json, workspace),
     "harness_adaptation_effectiveness": rel(harness_adaptation_effectiveness_md, workspace),
@@ -2982,6 +3138,13 @@ session = {
         "success_rate": repair_command_effectiveness["success_rate"],
         "top_reuse": repair_command_effectiveness["top_reuse"],
         "top_avoid": repair_command_effectiveness["top_avoid"],
+    },
+    "repair_command_strategy_summary": {
+        "status": repair_command_strategy["status"],
+        "focus": repair_command_strategy["focus"],
+        "learned_reuse": repair_command_strategy["learned_reuse"],
+        "learned_avoid": repair_command_strategy["learned_avoid"],
+        "next_need": repair_command_strategy["next_need"],
     },
     "repair_decision_summary": {
         "status": repair_decision["status"],
@@ -3100,6 +3263,18 @@ repair_command_effectiveness_md.write_text(
     ),
     encoding="utf-8",
 )
+repair_command_strategy_json.write_text(
+    json.dumps(repair_command_strategy, ensure_ascii=True, indent=2) + "\n",
+    encoding="utf-8",
+)
+repair_command_strategy_md.write_text(
+    repair_command_strategy_markdown(
+        repair_command_strategy,
+        workspace,
+        repair_command_strategy_json,
+    ),
+    encoding="utf-8",
+)
 repair_decision_json.write_text(
     json.dumps(repair_decision, ensure_ascii=True, indent=2) + "\n",
     encoding="utf-8",
@@ -3200,6 +3375,8 @@ repair_plan["inputs"]["repair_draft_effectiveness"] = rel(repair_draft_effective
 repair_plan["inputs"]["repair_draft_effectiveness_json"] = rel(repair_draft_effectiveness_json, workspace)
 repair_plan["inputs"]["repair_command_effectiveness"] = rel(repair_command_effectiveness_md, workspace)
 repair_plan["inputs"]["repair_command_effectiveness_json"] = rel(repair_command_effectiveness_json, workspace)
+repair_plan["inputs"]["repair_command_strategy"] = rel(repair_command_strategy_md, workspace)
+repair_plan["inputs"]["repair_command_strategy_json"] = rel(repair_command_strategy_json, workspace)
 repair_plan["inputs"]["repair_decision"] = rel(repair_decision_md, workspace)
 repair_plan["inputs"]["repair_decision_json"] = rel(repair_decision_json, workspace)
 repair_plan["inputs"]["harness_adaptation_effectiveness"] = rel(harness_adaptation_effectiveness_md, workspace)
@@ -3227,13 +3404,16 @@ repair_plan["repair_lessons_summary"] = session["repair_lessons_summary"]
 repair_plan["repair_lesson_effectiveness_summary"] = session["repair_lesson_effectiveness_summary"]
 repair_plan["repair_draft_effectiveness_summary"] = session["repair_draft_effectiveness_summary"]
 repair_plan["repair_command_effectiveness_summary"] = session["repair_command_effectiveness_summary"]
+repair_plan["repair_command_strategy_summary"] = session["repair_command_strategy_summary"]
+repair_plan["commands"]["learned_reuse"] = repair_command_strategy.get("learned_reuse", "")
+repair_plan["commands"]["learned_avoid"] = repair_command_strategy.get("learned_avoid", "")
 repair_plan["repair_decision_summary"] = session["repair_decision_summary"]
 repair_plan["harness_adaptation_effectiveness_summary"] = session["harness_adaptation_effectiveness_summary"]
 repair_plan["harness_environment_profile_summary"] = session["harness_environment_profile_summary"]
 repair_plan["harness_environment_drift_summary"] = session["harness_environment_drift_summary"]
 repair_plan["harness_environment_drift_effectiveness_summary"] = session["harness_environment_drift_effectiveness_summary"]
 repair_plan["harness_adaptation_summary"] = session["harness_adaptation_summary"]
-repair_plan["review_boundary"] = "Review HARNESS_ADAPTATION, HARNESS_ENVIRONMENT_PROFILE, HARNESS_ENVIRONMENT_DRIFT, HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS, HARNESS_ADAPTATION_EFFECTIVENESS, ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_RECALL.json, REPAIR_LESSONS, REPAIR_LESSON_EFFECTIVENESS, REPAIR_DRAFT_EFFECTIVENESS, REPAIR_COMMAND_EFFECTIVENESS, REPAIR_DECISION, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
+repair_plan["review_boundary"] = "Review HARNESS_ADAPTATION, HARNESS_ENVIRONMENT_PROFILE, HARNESS_ENVIRONMENT_DRIFT, HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS, HARNESS_ADAPTATION_EFFECTIVENESS, ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_RECALL.json, REPAIR_LESSONS, REPAIR_LESSON_EFFECTIVENESS, REPAIR_DRAFT_EFFECTIVENESS, REPAIR_COMMAND_EFFECTIVENESS, REPAIR_COMMAND_STRATEGY, REPAIR_DECISION, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
 repair_plan_json.write_text(
     json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
     encoding="utf-8",
@@ -3317,6 +3497,16 @@ command_effectiveness_lines = [
     )
     for hint in repair_command_effectiveness.get("hints", [])[:4]
 ] or ["- none"]
+command_strategy_next = (
+    repair_command_strategy.get("next_need")
+    if isinstance(repair_command_strategy.get("next_need"), dict)
+    else {}
+)
+command_strategy_current = (
+    repair_command_strategy.get("current_recipe")
+    if isinstance(repair_command_strategy.get("current_recipe"), dict)
+    else {}
+)
 adaptation_effectiveness_lines = [
     (
         f"- {hint.get('direction')}"
@@ -3402,6 +3592,15 @@ prompt_md.write_text(
             f"- effectiveness json: `{rel(repair_command_effectiveness_json, workspace)}`",
             f"- used: `{repair_command_effectiveness.get('used_count', 0)}` satisfied: `{repair_command_effectiveness.get('satisfied_count', 0)}` failed: `{repair_command_effectiveness.get('failed_count', 0)}` success_rate: `{repair_command_effectiveness.get('success_rate', '0.00')}`",
             *command_effectiveness_lines,
+            "",
+            "repair command strategy:",
+            f"- strategy artifact: `{rel(repair_command_strategy_md, workspace)}`",
+            f"- strategy json: `{rel(repair_command_strategy_json, workspace)}`",
+            f"- status: `{repair_command_strategy.get('status')}` focus: {compact(repair_command_strategy.get('focus'), 220)}",
+            f"- learned_reuse: {compact(repair_command_strategy.get('learned_reuse'), 180) or 'none'}",
+            f"- learned_avoid: {compact(repair_command_strategy.get('learned_avoid'), 180) or 'none'}",
+            f"- current_apply: {compact(command_strategy_current.get('apply'), 180) or 'none'}",
+            f"- next_need: `{command_strategy_next.get('kind') or 'verify'} {command_strategy_next.get('query') or ''}`",
             "",
             "harness adaptation effectiveness:",
             f"- effectiveness artifact: `{rel(harness_adaptation_effectiveness_md, workspace)}`",
@@ -3493,6 +3692,8 @@ prompt_md.write_text(
             f"- repair draft effectiveness json: `{rel(repair_draft_effectiveness_json, workspace)}`",
             f"- repair command effectiveness: `{rel(repair_command_effectiveness_md, workspace)}`",
             f"- repair command effectiveness json: `{rel(repair_command_effectiveness_json, workspace)}`",
+            f"- repair command strategy: `{rel(repair_command_strategy_md, workspace)}`",
+            f"- repair command strategy json: `{rel(repair_command_strategy_json, workspace)}`",
             f"- repair decision: `{rel(repair_decision_md, workspace)}`",
             f"- repair decision json: `{rel(repair_decision_json, workspace)}`",
             f"- harness adaptation effectiveness: `{rel(harness_adaptation_effectiveness_md, workspace)}`",
@@ -3533,6 +3734,7 @@ action_trace = action_trace_record(
         repair_lesson_effectiveness,
         repair_draft_effectiveness,
         repair_command_effectiveness,
+        repair_command_strategy,
         harness_environment_drift,
         harness_environment_drift_effectiveness,
         repair_decision,
@@ -3602,6 +3804,8 @@ review_md.write_text(
             f"- repair draft effectiveness json: `{rel(repair_draft_effectiveness_json, workspace)}`",
             f"- repair command effectiveness: `{rel(repair_command_effectiveness_md, workspace)}`",
             f"- repair command effectiveness json: `{rel(repair_command_effectiveness_json, workspace)}`",
+            f"- repair command strategy: `{rel(repair_command_strategy_md, workspace)}`",
+            f"- repair command strategy json: `{rel(repair_command_strategy_json, workspace)}`",
             f"- repair decision: `{rel(repair_decision_md, workspace)}`",
             f"- repair decision json: `{rel(repair_decision_json, workspace)}`",
             f"- field trajectory: `{rel(field_trajectory_md, workspace)}`",
@@ -3665,6 +3869,8 @@ session_md.write_text(
             f"repair draft effectiveness json: `{rel(repair_draft_effectiveness_json, workspace)}`",
             f"repair command effectiveness: `{rel(repair_command_effectiveness_md, workspace)}`",
             f"repair command effectiveness json: `{rel(repair_command_effectiveness_json, workspace)}`",
+            f"repair command strategy: `{rel(repair_command_strategy_md, workspace)}`",
+            f"repair command strategy json: `{rel(repair_command_strategy_json, workspace)}`",
             f"repair decision: `{rel(repair_decision_md, workspace)}`",
             f"repair decision json: `{rel(repair_decision_json, workspace)}`",
             f"harness adaptation effectiveness: `{rel(harness_adaptation_effectiveness_md, workspace)}`",
@@ -3748,6 +3954,15 @@ metadata = {
     "repair_command_effectiveness_failure_rate": repair_command_effectiveness.get("failure_rate", "0.00"),
     "repair_command_effectiveness_top_reuse": repair_command_effectiveness.get("top_reuse", ""),
     "repair_command_effectiveness_top_avoid": repair_command_effectiveness.get("top_avoid", ""),
+    "repair_command_strategy": rel(repair_command_strategy_md, workspace),
+    "repair_command_strategy_json": rel(repair_command_strategy_json, workspace),
+    "repair_command_strategy_status": repair_command_strategy.get("status", ""),
+    "repair_command_strategy_focus": repair_command_strategy.get("focus", ""),
+    "repair_command_strategy_learned_reuse": repair_command_strategy.get("learned_reuse", ""),
+    "repair_command_strategy_learned_avoid": repair_command_strategy.get("learned_avoid", ""),
+    "repair_command_strategy_current_apply": repair_command_strategy.get("current_recipe", {}).get("apply", ""),
+    "repair_command_strategy_next_need_kind": repair_command_strategy.get("next_need", {}).get("kind", ""),
+    "repair_command_strategy_next_need_query": repair_command_strategy.get("next_need", {}).get("query", ""),
     "repair_decision": rel(repair_decision_md, workspace),
     "repair_decision_json": rel(repair_decision_json, workspace),
     "repair_decision_status": repair_decision.get("status", ""),

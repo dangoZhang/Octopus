@@ -79,6 +79,7 @@ def action_trace_summary(workspace, session_path, session):
     next_need = data.get("next_need") if isinstance(data.get("next_need"), dict) else {}
     repair_recall = data.get("repair_recall") if isinstance(data.get("repair_recall"), dict) else {}
     repair_lessons = data.get("repair_lessons") if isinstance(data.get("repair_lessons"), dict) else {}
+    repair_command_strategy = data.get("repair_command_strategy") if isinstance(data.get("repair_command_strategy"), dict) else {}
     harness_adaptation = data.get("harness_adaptation") if isinstance(data.get("harness_adaptation"), dict) else {}
     harness_environment_drift = data.get("harness_environment_drift") if isinstance(data.get("harness_environment_drift"), dict) else {}
     failed_stage = ""
@@ -108,6 +109,12 @@ def action_trace_summary(workspace, session_path, session):
         "lesson_avoid_count": str(repair_lessons.get("avoid_count") or ""),
         "lesson_top_reuse": str(repair_lessons.get("top_reuse") or ""),
         "lesson_top_avoid": str(repair_lessons.get("top_avoid") or ""),
+        "command_strategy_status": str(repair_command_strategy.get("status") or ""),
+        "command_strategy_focus": str(repair_command_strategy.get("focus") or ""),
+        "command_strategy_learned_reuse": str(repair_command_strategy.get("learned_reuse") or ""),
+        "command_strategy_learned_avoid": str(repair_command_strategy.get("learned_avoid") or ""),
+        "command_strategy_next_need_kind": str(repair_command_strategy.get("next_need_kind") or ""),
+        "command_strategy_next_need_query": str(repair_command_strategy.get("next_need_query") or ""),
         "harness_environment_drift_status": str(harness_environment_drift.get("status") or data.get("harness_environment_drift_status") or ""),
         "harness_environment_drift_detail": str(harness_environment_drift.get("detail") or data.get("harness_environment_drift_detail") or ""),
         "harness_environment_drift_history_count": str(harness_environment_drift.get("history_count") or data.get("harness_environment_drift_history_count") or ""),
@@ -269,6 +276,12 @@ record = {
     "action_trace_lesson_avoid_count": action_trace["lesson_avoid_count"],
     "action_trace_lesson_top_reuse": action_trace["lesson_top_reuse"],
     "action_trace_lesson_top_avoid": action_trace["lesson_top_avoid"],
+    "action_trace_command_strategy_status": action_trace["command_strategy_status"],
+    "action_trace_command_strategy_focus": action_trace["command_strategy_focus"],
+    "action_trace_command_strategy_learned_reuse": action_trace["command_strategy_learned_reuse"],
+    "action_trace_command_strategy_learned_avoid": action_trace["command_strategy_learned_avoid"],
+    "action_trace_command_strategy_next_need_kind": action_trace["command_strategy_next_need_kind"],
+    "action_trace_command_strategy_next_need_query": action_trace["command_strategy_next_need_query"],
     "action_trace_harness_environment_drift_status": action_trace["harness_environment_drift_status"],
     "action_trace_harness_environment_drift_detail": action_trace["harness_environment_drift_detail"],
     "action_trace_harness_environment_drift_history_count": action_trace["harness_environment_drift_history_count"],
@@ -309,6 +322,7 @@ outcome_md.write_text(
         f"action_trace_last: `{record['action_trace_last_action'] or 'unknown'}`",
         f"action_trace_recall: matches=`{record['action_trace_recall_count'] or '0'}` top=`{record['action_trace_recall_top_status'] or 'none'}` reasons=`{record['action_trace_recall_top_reasons'] or 'none'}`",
         f"action_trace_lessons: count=`{record['action_trace_lesson_count'] or '0'}` reuse=`{record['action_trace_lesson_reuse_count'] or '0'}` avoid=`{record['action_trace_lesson_avoid_count'] or '0'}` top_reuse=`{record['action_trace_lesson_top_reuse'] or 'none'}` top_avoid=`{record['action_trace_lesson_top_avoid'] or 'none'}`",
+        f"action_trace_command_strategy: status=`{record['action_trace_command_strategy_status'] or 'none'}` focus=`{record['action_trace_command_strategy_focus'] or 'none'}` next=`{record['action_trace_command_strategy_next_need_kind'] or 'verify'} {record['action_trace_command_strategy_next_need_query'] or ''}`",
         f"action_trace_harness_environment_drift: status=`{record['action_trace_harness_environment_drift_status'] or 'none'}` detail=`{record['action_trace_harness_environment_drift_detail'] or 'none'}` history=`{record['action_trace_harness_environment_drift_history_count'] or '0'}` next=`{record['action_trace_harness_environment_drift_next_need_kind'] or 'verify'} {record['action_trace_harness_environment_drift_next_need_query'] or ''}`",
         f"action_trace_harness_adaptation: status=`{record['action_trace_harness_adaptation_status'] or 'none'}` focus=`{record['action_trace_harness_adaptation_focus'] or 'none'}` next=`{record['action_trace_harness_adaptation_next_need_kind'] or 'verify'} {record['action_trace_harness_adaptation_next_need_query'] or ''}`",
         "",
@@ -351,6 +365,12 @@ metadata = {
     "action_trace_lesson_count": record["action_trace_lesson_count"],
     "action_trace_lesson_reuse_count": record["action_trace_lesson_reuse_count"],
     "action_trace_lesson_avoid_count": record["action_trace_lesson_avoid_count"],
+    "action_trace_command_strategy_status": record["action_trace_command_strategy_status"],
+    "action_trace_command_strategy_focus": record["action_trace_command_strategy_focus"],
+    "action_trace_command_strategy_learned_reuse": record["action_trace_command_strategy_learned_reuse"],
+    "action_trace_command_strategy_learned_avoid": record["action_trace_command_strategy_learned_avoid"],
+    "action_trace_command_strategy_next_need_kind": record["action_trace_command_strategy_next_need_kind"],
+    "action_trace_command_strategy_next_need_query": record["action_trace_command_strategy_next_need_query"],
     "action_trace_harness_environment_drift_status": record["action_trace_harness_environment_drift_status"],
     "action_trace_harness_environment_drift_detail": record["action_trace_harness_environment_drift_detail"],
     "action_trace_harness_environment_drift_history_count": record["action_trace_harness_environment_drift_history_count"],
