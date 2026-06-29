@@ -86,7 +86,7 @@ Octopus/
 | --- | --- | --- | ---: |
 | Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, evolution data | `crates/octopus-core/src/lib.rs` | 17,577 |
 | Field adaptation core | Field-pack loading, matching, Need annotation, trace metadata, sampled field execution slots, verifier results, field trajectory summaries, live field mini task loader, editable repair templates, and compile/execute template checks | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 3,606 |
-| CLI and product backend | Command dispatch, Goal/chat/brain, provider setup, doctor/report/preflight aggregation, starter/install/check flows | `crates/octopus-core/src/main.rs` | 23,542 |
+| CLI and product backend | Command dispatch, Goal/chat/brain, provider setup, doctor/report/preflight aggregation, starter/install/check flows | `crates/octopus-core/src/main.rs` | 23,695 |
 | Local app bridge | Local HTTP/SSE server, app policy, command allow-list, static app/docs/demo fallback | `app_bridge.rs`, `docs/app.html` | 2,348 |
 | Release and install gates | Release records, benchmark evidence, download/install manifest, real-machine checks | `release_gate.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 1,021 |
 | Pet and visual state | Pixel Octopus state, SVG/export helpers, native read-only observer, HTML preview | `pet.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 1,505 |
@@ -103,9 +103,10 @@ These should remain stable and hard to accidentally mutate:
 - Need to Feed transport and trace records.
 - Field-pack loading and Need/Feed trace annotation.
 - Field trajectory summaries for parallel field pool learning.
+- Product report field-pool block: eight peer slots, sampled slot, and worker-slot policy.
 - Route scoring, provider clients, memory/heartbeat state, grants, permissions.
 - Product bridge rule: user-facing writes go through Goal; internal actions feed the agent.
-- Release gates: preflight, benchmark evidence, real-machine records, local app readiness.
+- Release gates: preflight, benchmark evidence, field-pool visibility, real-machine records, local app readiness.
 
 Where they live:
 
@@ -145,7 +146,7 @@ These are intended to be changed by Octopus or by harness iteration:
 - Seed profile registry.
 - Harness repair sessions and adapter probes.
 - Field mini task trajectory adapters, live task-template loading, task-specific repair templates, and compile/execute template checks.
-- Field packs for math, search, code, SWE, research, computer-use, IB work, and robotics. The eight packs are peer slots in the same parallel Goal pool; multi-field objectives constrain the candidate pool while field status and recent-run fairness choose sampled slots, then each worker slot writes its own Need Queue item. `evolve parallel`, `check field-mini-task`, `install`, `probe`, `think`, `repair`, `beat` harness evolution, `evolve recommend/apply/score`, provider matrix tentacle checks, `starter`, `skills`, `init`, `bootstrap`, `adapt`, default `manifests`, `report`, `doctor`, and `preflight` preserve local manifests while falling back to bundled seeds when a project-local `tentacles/` lacks or shadows a seed. The default merged view replaces broken same-ID seed manifests with healthy bundled seeds, and the direct resolver skips local same-ID seed manifests with missing entrypoints, so `chat`/`need`/`beat`, `check`/`think`/`probe`/`evolve`, `repair`, `start --check`, and direct `install` retry bundled seeds when the local seed is incomplete. `report` also exposes broken installed seed sources as a gap pointing to `beat 200` without mutating state. Each worker records its queued Need index, automatically runs sampled Needs through Feed, and backfills worker trace/verifier/status. Installed binaries also materialize the `field-mini-task` runner, checker, 24 repair templates, field-packs, and minimal docs fixtures into editable bundled seeds. Each pack now has first, second, and third-layer mini tasks, all eight third-layer tasks passed real failure -> repair -> rerun cycles, all 24 task-specific repair templates live outside Rust core, live runtime loads standalone templates without duplicate field-specific branches, and the harness check verifies and executes 24/24 templates.
+- Field packs for math, search, code, SWE, research, computer-use, IB work, and robotics. The eight packs are peer slots in the same parallel Goal pool; multi-field objectives constrain the candidate pool while field status and recent-run fairness choose sampled slots, then each worker slot writes its own Need Queue item. `evolve parallel`, `check field-mini-task`, `install`, `probe`, `think`, `repair`, `beat` harness evolution, `evolve recommend/apply/score`, provider matrix tentacle checks, `starter`, `skills`, `init`, `bootstrap`, `adapt`, default `manifests`, `report`, `doctor`, and `preflight` preserve local manifests while falling back to bundled seeds when a project-local `tentacles/` lacks or shadows a seed. The default merged view replaces broken same-ID seed manifests with healthy bundled seeds, and the direct resolver skips local same-ID seed manifests with missing entrypoints, so `chat`/`need`/`beat`, `check`/`think`/`probe`/`evolve`, `repair`, `start --check`, and direct `install` retry bundled seeds when the local seed is incomplete. `report` exposes the field pool as eight peer slots and broken installed seed sources as a gap pointing to `beat 200` without mutating state; `preflight` now requires that field-pool visibility before release readiness can pass. Each worker records its queued Need index, automatically runs sampled Needs through Feed, and backfills worker trace/verifier/status. Installed binaries also materialize the `field-mini-task` runner, checker, 24 repair templates, field-packs, and minimal docs fixtures into editable bundled seeds. Each pack now has first, second, and third-layer mini tasks, all eight third-layer tasks passed real failure -> repair -> rerun cycles, all 24 task-specific repair templates live outside Rust core, live runtime loads standalone templates without duplicate field-specific branches, and the harness check verifies and executes 24/24 templates.
 
 Where they live now:
 
@@ -175,7 +176,7 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 12 | 44,460 |
+| `crates/octopus-core/src` | 12 | 44,613 |
 | `crates/octopus-core/examples` | 1 | 27 |
 | `tentacles` | 66 | 6,950 |
 | `field-packs` | 12 | 487 |
@@ -188,7 +189,7 @@ field-packs/
 
 | File | Lines |
 | --- | ---: |
-| `main.rs` | 23,542 |
+| `main.rs` | 23,695 |
 | `lib.rs` | 17,577 |
 | `app_bridge.rs` | 1,125 |
 | `release_gate.rs` | 513 |

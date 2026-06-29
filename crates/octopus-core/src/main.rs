@@ -509,6 +509,7 @@ struct ProductReport {
     state_path: String,
     state_exists: bool,
     context: ProductContextPolicy,
+    field_pool: ProductFieldPoolReport,
     boundary: core_boundary::CoreBoundaryReport,
     harness_learning: HarnessLearningSummary,
     capabilities: Vec<ProductCapability>,
@@ -728,6 +729,17 @@ struct ProductContextPolicy {
     brain: String,
     tentacle: String,
     feedback_loop: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ProductFieldPoolReport {
+    policy: String,
+    field_count: usize,
+    fields: Vec<String>,
+    completed_fields: usize,
+    sampled_slot_field: Option<String>,
+    worker_slots: String,
+    next: String,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -8443,6 +8455,8 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
     let provider_matrix = check_provider_matrix_record(Path::new(DEFAULT_PROVIDER_MATRIX_PATH))?;
     let profile_registry = profile_registry_report(state_path);
     let boundary = core_boundary::report(state_path);
+    let field_trajectory = state.field_trajectory_report_with_state(Some(state_path))?;
+    let field_pool = product_field_pool_report(&field_trajectory);
     let pet_exists = repo_root().join("docs/pet.html").exists();
     let app_exists = repo_root().join("docs/app.html").exists();
     let docs_exists = repo_root().join("docs/index.html").exists();
@@ -8642,6 +8656,21 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
                 required_surfaces.join(", ")
             ),
             Some("octopus manifests"),
+        ),
+        product_capability(
+            "field_parallel_pool",
+            if field_pool.field_count >= 8 {
+                "ready"
+            } else {
+                "needs_field_packs"
+            },
+            format!(
+                "{} peer slots, {} completed, sampled_slot={}",
+                field_pool.field_count,
+                field_pool.completed_fields,
+                option_or_none(&field_pool.sampled_slot_field)
+            ),
+            Some("octopus fields summary"),
         ),
         product_capability(
             "profile_registry",
@@ -8940,12 +8969,37 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             tentacle: "Need + Tool + Action + Tool + Action -> Feed".to_string(),
             feedback_loop: "Need -> Feed -> Feedback".to_string(),
         },
+        field_pool,
         boundary,
         harness_learning: status.harness_learning,
         capabilities,
         gaps,
         next,
     })
+}
+
+fn product_field_pool_report(report: &FieldTrajectoryReport) -> ProductFieldPoolReport {
+    let fields = report
+        .fields
+        .iter()
+        .map(|field| field.field.clone())
+        .collect::<Vec<_>>();
+    let completed_fields = report
+        .fields
+        .iter()
+        .filter(|field| {
+            field.mini_task_count > 0 && field.satisfied_mini_task_count == field.mini_task_count
+        })
+        .count();
+    ProductFieldPoolReport {
+        policy: "eight peer field slots; workers are sampled execution slots".to_string(),
+        field_count: report.field_count,
+        fields,
+        completed_fields,
+        sampled_slot_field: report.sampled_slot_field.clone(),
+        worker_slots: "worker count selects concurrent sampled slots; fields stay peer".to_string(),
+        next: report.next.first().cloned().unwrap_or_default(),
+    }
 }
 
 fn product_capability(
@@ -9107,6 +9161,19 @@ fn preflight_report(
                 }
             ),
             "octopus report",
+        ),
+        preflight_check(
+            "field_parallel_pool",
+            product.field_pool.field_count >= 8,
+            true,
+            format!(
+                "{} peer slots, completed={}, sampled_slot={}, workers={}",
+                product.field_pool.field_count,
+                product.field_pool.completed_fields,
+                option_or_none(&product.field_pool.sampled_slot_field),
+                product.field_pool.worker_slots
+            ),
+            "octopus fields summary",
         ),
         app_bridge::goal_surface_preflight_check(state_path),
         app_bridge::local_app_run_status_check(state_path, current_head.as_deref()),
@@ -9677,6 +9744,13 @@ fn print_product_report(report: &ProductReport, language: Language) {
             println!("brain: {}", report.context.brain);
             println!("tentacle: {}", report.context.tentacle);
             println!("loop: {}", report.context.feedback_loop);
+            println!(
+                "field_pool: {} slots, {} completed, sampled_slot={}, workers={}",
+                report.field_pool.field_count,
+                report.field_pool.completed_fields,
+                option_or_none(&report.field_pool.sampled_slot_field),
+                report.field_pool.worker_slots
+            );
             println!("boundary: {}", report.boundary.policy);
             println!(
                 "harness_learning: {}",
@@ -9743,6 +9817,13 @@ fn print_product_report(report: &ProductReport, language: Language) {
             println!("主脑上下文: {}", report.context.brain);
             println!("触手上下文: {}", report.context.tentacle);
             println!("循环: {}", report.context.feedback_loop);
+            println!(
+                "领域池: {} 个并列槽，{} 个完成，当前采样槽={}，workers={}",
+                report.field_pool.field_count,
+                report.field_pool.completed_fields,
+                option_or_none(&report.field_pool.sampled_slot_field),
+                report.field_pool.worker_slots
+            );
             println!("边界: {}", report.boundary.policy);
             println!(
                 "Harness学习: {}",
@@ -19415,11 +19496,23 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .iter()
             .find(|capability| capability.id == "runtime_neutral_harness")
             .unwrap();
+        let field_capability = product
+            .capabilities
+            .iter()
+            .find(|capability| capability.id == "field_parallel_pool")
+            .unwrap();
         let doctor = doctor_report(&state, state_path).unwrap();
 
         assert!(tentacle_capability.evidence.contains("manifests"));
         assert!(!tentacle_capability.evidence.contains("1 manifests"));
         assert_eq!(runtime_capability.status, "ready");
+        assert_eq!(field_capability.status, "ready");
+        assert!(field_capability.evidence.contains("peer slots"));
+        assert_eq!(product.field_pool.field_count, 8);
+        assert!(product.field_pool.fields.contains(&"math".to_string()));
+        assert!(product.field_pool.fields.contains(&"robotics".to_string()));
+        assert!(product.field_pool.policy.contains("peer field slots"));
+        assert!(product.field_pool.worker_slots.contains("fields stay peer"));
         assert!(doctor.manifest_count > 1);
         assert!(!doctor
             .broken_manifests
@@ -21933,6 +22026,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .checks
             .iter()
             .any(|item| item.id == "core_harness_boundary" && item.status == "pass"));
+        assert!(preflight
+            .checks
+            .iter()
+            .any(|item| item.id == "field_parallel_pool"
+                && item.status == "pass"
+                && item.required));
         assert!(preflight
             .checks
             .iter()
