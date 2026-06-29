@@ -622,6 +622,16 @@ struct RepairPlanReport {
     repair_command_strategy_current_apply: String,
     repair_command_strategy_next_need_kind: String,
     repair_command_strategy_next_need_query: String,
+    repair_command_strategy_effectiveness: String,
+    repair_command_strategy_effectiveness_json: String,
+    repair_command_strategy_effectiveness_used_count: String,
+    repair_command_strategy_effectiveness_satisfied_count: String,
+    repair_command_strategy_effectiveness_partial_count: String,
+    repair_command_strategy_effectiveness_failed_count: String,
+    repair_command_strategy_effectiveness_success_rate: String,
+    repair_command_strategy_effectiveness_failure_rate: String,
+    repair_command_strategy_effectiveness_top_reuse: String,
+    repair_command_strategy_effectiveness_top_avoid: String,
     action_trace: String,
     action_trace_json: String,
     action_trace_status: String,
@@ -3859,6 +3869,14 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                     "repair_command_strategy_status",
                     &repair_plan_command_strategy_label(plan),
                 );
+                print_optional_line(
+                    "repair_command_strategy_effectiveness",
+                    &plan.repair_command_strategy_effectiveness,
+                );
+                print_optional_line(
+                    "repair_command_strategy_effectiveness_status",
+                    &repair_plan_command_strategy_effectiveness_label(plan),
+                );
                 print_optional_line("action_trace", &plan.action_trace);
                 print_optional_line("action_trace_json", &plan.action_trace_json);
                 print_optional_line("action_trace_status", &repair_plan_action_trace_label(plan));
@@ -3968,6 +3986,14 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 );
                 print_optional_line("命令策略", &plan.repair_command_strategy);
                 print_optional_line("命令策略状态", &repair_plan_command_strategy_label(plan));
+                print_optional_line(
+                    "命令策略有效性",
+                    &plan.repair_command_strategy_effectiveness,
+                );
+                print_optional_line(
+                    "命令策略有效性状态",
+                    &repair_plan_command_strategy_effectiveness_label(plan),
+                );
                 print_optional_line("行动轨迹", &plan.action_trace);
                 print_optional_line("行动轨迹JSON", &plan.action_trace_json);
                 print_optional_line("行动轨迹状态", &repair_plan_action_trace_label(plan));
@@ -4254,6 +4280,71 @@ fn repair_plan_command_strategy_label(plan: &RepairPlanReport) -> String {
         parts.push(format!(
             "next={} {}",
             kind, plan.repair_command_strategy_next_need_query
+        ));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_command_strategy_effectiveness_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan
+        .repair_command_strategy_effectiveness_used_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "used={}",
+            plan.repair_command_strategy_effectiveness_used_count
+        ));
+    }
+    if !plan
+        .repair_command_strategy_effectiveness_satisfied_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "satisfied={}",
+            plan.repair_command_strategy_effectiveness_satisfied_count
+        ));
+    }
+    if !plan
+        .repair_command_strategy_effectiveness_failed_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "failed={}",
+            plan.repair_command_strategy_effectiveness_failed_count
+        ));
+    }
+    if !plan
+        .repair_command_strategy_effectiveness_success_rate
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "success_rate={}",
+            plan.repair_command_strategy_effectiveness_success_rate
+        ));
+    }
+    if !plan
+        .repair_command_strategy_effectiveness_top_reuse
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "top_reuse={}",
+            plan.repair_command_strategy_effectiveness_top_reuse
+        ));
+    }
+    if !plan
+        .repair_command_strategy_effectiveness_top_avoid
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "top_avoid={}",
+            plan.repair_command_strategy_effectiveness_top_avoid
         ));
     }
     parts.join(" ")
@@ -9562,6 +9653,22 @@ fn repair_report(
                 shell_arg(&plan.repair_command_strategy_json)
             ));
         }
+        if !plan.repair_command_strategy_effectiveness.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.repair_command_strategy_effectiveness)
+            ));
+        }
+        if !plan
+            .repair_command_strategy_effectiveness_json
+            .trim()
+            .is_empty()
+        {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.repair_command_strategy_effectiveness_json)
+            ));
+        }
         if !plan.action_trace.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.action_trace)));
         }
@@ -10047,6 +10154,46 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         repair_command_strategy_next_need_query: metadata_value(
             metadata,
             "repair_command_strategy_next_need_query",
+        ),
+        repair_command_strategy_effectiveness: metadata_value(
+            metadata,
+            "repair_command_strategy_effectiveness",
+        ),
+        repair_command_strategy_effectiveness_json: metadata_value(
+            metadata,
+            "repair_command_strategy_effectiveness_json",
+        ),
+        repair_command_strategy_effectiveness_used_count: metadata_value(
+            metadata,
+            "repair_command_strategy_effectiveness_used_count",
+        ),
+        repair_command_strategy_effectiveness_satisfied_count: metadata_value(
+            metadata,
+            "repair_command_strategy_effectiveness_satisfied_count",
+        ),
+        repair_command_strategy_effectiveness_partial_count: metadata_value(
+            metadata,
+            "repair_command_strategy_effectiveness_partial_count",
+        ),
+        repair_command_strategy_effectiveness_failed_count: metadata_value(
+            metadata,
+            "repair_command_strategy_effectiveness_failed_count",
+        ),
+        repair_command_strategy_effectiveness_success_rate: metadata_value(
+            metadata,
+            "repair_command_strategy_effectiveness_success_rate",
+        ),
+        repair_command_strategy_effectiveness_failure_rate: metadata_value(
+            metadata,
+            "repair_command_strategy_effectiveness_failure_rate",
+        ),
+        repair_command_strategy_effectiveness_top_reuse: metadata_value(
+            metadata,
+            "repair_command_strategy_effectiveness_top_reuse",
+        ),
+        repair_command_strategy_effectiveness_top_avoid: metadata_value(
+            metadata,
+            "repair_command_strategy_effectiveness_top_avoid",
         ),
         action_trace: metadata_value(metadata, "action_trace"),
         action_trace_json: metadata_value(metadata, "action_trace_json"),
@@ -22369,6 +22516,22 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan
             .repair_command_strategy_json
             .ends_with("REPAIR_COMMAND_STRATEGY.json"));
+        assert!(plan
+            .repair_command_strategy_effectiveness
+            .ends_with("REPAIR_COMMAND_STRATEGY_EFFECTIVENESS.md"));
+        assert!(plan
+            .repair_command_strategy_effectiveness_json
+            .ends_with("REPAIR_COMMAND_STRATEGY_EFFECTIVENESS.json"));
+        assert_eq!(plan.repair_command_strategy_effectiveness_used_count, "0");
+        assert_eq!(
+            plan.repair_command_strategy_effectiveness_satisfied_count,
+            "0"
+        );
+        assert_eq!(plan.repair_command_strategy_effectiveness_failed_count, "0");
+        assert_eq!(
+            plan.repair_command_strategy_effectiveness_success_rate,
+            "0.00"
+        );
         assert_eq!(
             plan.repair_command_strategy_status,
             "collect_command_outcomes"
@@ -22515,6 +22678,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan_json.contains("\"harness_environment_drift_effectiveness\""));
         assert!(plan_json.contains("\"repair_command_effectiveness\""));
         assert!(plan_json.contains("\"repair_command_strategy\""));
+        assert!(plan_json.contains("\"repair_command_strategy_effectiveness\""));
         assert!(plan_json.contains("\"learned_reuse\""));
         assert!(plan_json.contains("repair partly improved Feed"));
         assert!(plan_json.contains("repair did not improve Feed"));
@@ -22553,6 +22717,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .contains("\"schema_version\": \"octopus-harness-repair-command-strategy-v1\""));
         assert!(command_strategy_json.contains("\"status\": \"collect_command_outcomes\""));
         assert!(command_strategy_json.contains("\"current_recipe\""));
+        let command_strategy_effectiveness_json =
+            fs::read_to_string(&plan.repair_command_strategy_effectiveness_json).unwrap();
+        assert!(command_strategy_effectiveness_json.contains(
+            "\"schema_version\": \"octopus-harness-repair-command-strategy-effectiveness-v1\""
+        ));
+        assert!(command_strategy_effectiveness_json.contains("\"used_count\": 0"));
         let profile_journal = fs::read_to_string(&plan.environment_profile_journal).unwrap();
         assert!(profile_journal.contains("octopus-harness-environment-profile-v1"));
         let adaptation_json = fs::read_to_string(&plan.harness_adaptation_json).unwrap();
@@ -22656,6 +22826,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("REPAIR_COMMAND_STRATEGY.json")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_COMMAND_STRATEGY_EFFECTIVENESS.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_COMMAND_STRATEGY_EFFECTIVENESS.json")));
         assert!(report
             .next
             .iter()
@@ -26371,6 +26549,30 @@ JSON
                     .unwrap_or(false)
         });
         assert!(command_effectiveness_found);
+        let command_strategy_effectiveness_found = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry
+                    .ok()?
+                    .path()
+                    .join("REPAIR_COMMAND_STRATEGY_EFFECTIVENESS.json");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains(
+                            "\"schema_version\": \"octopus-harness-repair-command-strategy-effectiveness-v1\"",
+                        ) && content.contains("\"used_count\": 1")
+                            && content.contains("\"satisfied_count\": 1")
+                            && content.contains("\"success_rate\": \"1.00\"")
+                            && content.contains("collect_command_outcomes")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(command_strategy_effectiveness_found);
         let command_strategy_found = workspace
             .join(".octopus/harness-repair")
             .read_dir()
@@ -26405,6 +26607,10 @@ JSON
             .feed
             .summary
             .contains("source=repair_command_strategy"));
+        assert!(strategy_report
+            .feed
+            .summary
+            .contains("command_strategy_effectiveness=1"));
         assert!(strategy_report
             .queued
             .iter()
