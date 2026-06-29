@@ -94,6 +94,11 @@ def normalized_outcome(item, origin):
         "action_trace_last_action": str(item.get("action_trace_last_action") or action_trace.get("last_action") or ""),
         "action_trace_repair_hint": str(item.get("action_trace_repair_hint") or action_trace.get("repair_hint") or ""),
         "action_trace_failed_stage": str(item.get("action_trace_failed_stage") or action_trace.get("failed_stage") or ""),
+        "action_trace_recall_count": str(item.get("action_trace_recall_count") or action_trace.get("recall_count") or ""),
+        "action_trace_recall_top_status": str(item.get("action_trace_recall_top_status") or action_trace.get("recall_top_status") or ""),
+        "action_trace_recall_top_score": str(item.get("action_trace_recall_top_score") or action_trace.get("recall_top_score") or ""),
+        "action_trace_recall_top_reasons": str(item.get("action_trace_recall_top_reasons") or action_trace.get("recall_top_reasons") or ""),
+        "action_trace_recall_top_summary": str(item.get("action_trace_recall_top_summary") or action_trace.get("recall_top_summary") or ""),
         "outcome_status": outcome_status(item),
         "summary": compact(item.get("summary") or item.get("content") or "", 500),
     }
@@ -130,6 +135,11 @@ def merge_repair_outcomes(state_items, journal_items, limit=8):
                     "action_trace_last_action",
                     "action_trace_repair_hint",
                     "action_trace_failed_stage",
+                    "action_trace_recall_count",
+                    "action_trace_recall_top_status",
+                    "action_trace_recall_top_score",
+                    "action_trace_recall_top_reasons",
+                    "action_trace_recall_top_summary",
                 ]:
                     if outcome.get(field) and not current.get(field):
                         current[field] = outcome[field]
@@ -197,11 +207,15 @@ def outcome_memory_markdown(outcomes, workspace, outcomes_file, repair_recall=No
         action_count = item.get("action_trace_stage_count") or "0"
         action_last = item.get("action_trace_last_action") or "none"
         action_hint = item.get("action_trace_repair_hint") or "none"
+        recall_count = item.get("action_trace_recall_count") or "0"
+        recall_status = item.get("action_trace_recall_top_status") or "none"
+        recall_reasons = item.get("action_trace_recall_top_reasons") or "none"
         lines.extend(
             [
                 f"- `{status}` target=`{target}` candidate=`{candidate}` origin=`{origin}` session=`{session}`",
                 f"  summary: {compact(item.get('summary', ''), 320)}",
                 f"  action_trace: status=`{action_status}` stages=`{action_count}` last=`{compact(action_last, 120)}` hint=`{compact(action_hint, 160)}`",
+                f"  recall_used: matches=`{recall_count}` top=`{compact(recall_status, 80)}` reasons=`{compact(recall_reasons, 160)}`",
             ]
         )
     return "\n".join(lines) + "\n"
@@ -910,7 +924,23 @@ def action_trace_record(
     draft,
     repair_plan,
 ):
-    recall_count = str(repair_recall.get("match_count") or 0)
+    recall_matches = repair_recall.get("matches") if isinstance(repair_recall.get("matches"), list) else []
+    recall_top = recall_matches[0] if recall_matches and isinstance(recall_matches[0], dict) else {}
+    recall_outcome = recall_top.get("outcome") if isinstance(recall_top.get("outcome"), dict) else {}
+    recall_reasons = recall_top.get("reasons") if isinstance(recall_top.get("reasons"), list) else []
+    recall_summary = {
+        "match_count": str(repair_recall.get("match_count") or len(recall_matches)),
+        "top_score": str(recall_top.get("score") or ""),
+        "top_status": str(recall_outcome.get("outcome_status") or ""),
+        "top_target": str(recall_outcome.get("target_tentacle") or ""),
+        "top_candidate": str(recall_outcome.get("candidate") or ""),
+        "top_reasons": compact(", ".join(str(reason) for reason in recall_reasons), 260),
+        "top_summary": compact(recall_outcome.get("summary") or "", 320),
+        "top_action_status": str(recall_outcome.get("action_trace_status") or ""),
+        "top_action_hint": compact(recall_outcome.get("action_trace_repair_hint") or "", 240),
+    }
+    recall_count = recall_summary["match_count"]
+    recall_top_status = recall_summary["top_status"] or "none"
     stages = [
         {
             "kind": "Need",
@@ -933,7 +963,7 @@ def action_trace_record(
         {
             "kind": "Action",
             "action": "merge field, recall, and outcome evidence",
-            "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']} recalled={recall_count}",
+            "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']} recalled={recall_count} top={recall_top_status}",
             "status": "satisfied",
         },
         {
@@ -965,6 +995,7 @@ def action_trace_record(
             "query": repair_hint if status == "missing_context" else need_query,
         },
         "repair_hint": repair_hint,
+        "repair_recall": recall_summary,
         "stages": stages,
     }
 
@@ -982,6 +1013,9 @@ def action_trace_markdown(record, workspace, repair_plan):
         f"session: `{record['session']}`",
         f"source: `{record['source']}`",
         f"repair_hint: `{record['repair_hint']}`",
+        f"recall_matches: `{record.get('repair_recall', {}).get('match_count', '0')}`",
+        f"recall_top: `{record.get('repair_recall', {}).get('top_status', 'none') or 'none'}`",
+        f"recall_reasons: `{record.get('repair_recall', {}).get('top_reasons', 'none') or 'none'}`",
         "",
         "## Need -> Tool -> Action -> Feed",
         "",
@@ -1536,6 +1570,11 @@ metadata = {
     "action_trace_stage_count": str(action_trace["stage_count"]),
     "action_trace_last_action": action_trace["last_action"],
     "action_trace_repair_hint": action_trace["repair_hint"],
+    "action_trace_recall_count": action_trace["repair_recall"]["match_count"],
+    "action_trace_recall_top_status": action_trace["repair_recall"]["top_status"],
+    "action_trace_recall_top_score": action_trace["repair_recall"]["top_score"],
+    "action_trace_recall_top_reasons": action_trace["repair_recall"]["top_reasons"],
+    "action_trace_recall_top_summary": action_trace["repair_recall"]["top_summary"],
     "repair_plan_status": repair_plan["status"],
     "code_context_tentacle": code_context["tentacle"],
     "code_context_tool": code_context["tool"],

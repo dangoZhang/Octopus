@@ -110,6 +110,7 @@
       "Keep provider repair drafts optional and reviewable.",
       "Record repair outcomes before using them as future repair evidence.",
       "Record ACTION_TRACE.json status, stage count, last action, and repair hint into repair outcomes.",
+      "Record ACTION_TRACE.json recall usage into repair outcomes before using those outcomes as future evidence.",
       "Select similar action-trace repair outcomes into REPAIR_RECALL.json before drafting the next repair session.",
       "Feed repair-session planning with local OUTCOME_MEMORY, never raw tool logs in clean-brain context.",
       "Feed repair-session planning with ADAPTER_CONTEXT from local command, provider, desktop, and GitHub adapter probes.",

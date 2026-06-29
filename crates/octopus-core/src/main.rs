@@ -4164,6 +4164,31 @@ fn write_repair_score_journal(
         .get("action_trace_repair_hint")
         .cloned()
         .unwrap_or_default();
+    let action_trace_recall_count = trace
+        .metadata
+        .get("action_trace_recall_count")
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_recall_top_status = trace
+        .metadata
+        .get("action_trace_recall_top_status")
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_recall_top_score = trace
+        .metadata
+        .get("action_trace_recall_top_score")
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_recall_top_reasons = trace
+        .metadata
+        .get("action_trace_recall_top_reasons")
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_recall_top_summary = trace
+        .metadata
+        .get("action_trace_recall_top_summary")
+        .cloned()
+        .unwrap_or_default();
     let timestamp_secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| error.to_string())?
@@ -4184,6 +4209,11 @@ fn write_repair_score_journal(
         "action_trace_stage_count": action_trace_stage_count,
         "action_trace_last_action": action_trace_last_action,
         "action_trace_repair_hint": action_trace_repair_hint,
+        "action_trace_recall_count": action_trace_recall_count,
+        "action_trace_recall_top_status": action_trace_recall_top_status,
+        "action_trace_recall_top_score": action_trace_recall_top_score,
+        "action_trace_recall_top_reasons": action_trace_recall_top_reasons,
+        "action_trace_recall_top_summary": action_trace_recall_top_summary,
         "outcome_status": status,
         "summary": truncate_chars(&outcome.summary, 500),
     });
@@ -4196,7 +4226,7 @@ fn write_repair_score_journal(
     fs::write(
         &outcome_path,
         format!(
-            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\n\n{}\n\njournal: `{}`\n",
+            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\naction_trace_recall: matches=`{}` top=`{}` reasons=`{}`\n\n{}\n\njournal: `{}`\n",
             status,
             display_path(&workspace, &session_path),
             record["target_tentacle"].as_str().unwrap_or("unknown"),
@@ -4206,6 +4236,9 @@ fn write_repair_score_journal(
             record["action_trace_status"].as_str().unwrap_or("unknown"),
             record["action_trace_stage_count"].as_str().unwrap_or(""),
             record["action_trace_last_action"].as_str().unwrap_or(""),
+            record["action_trace_recall_count"].as_str().unwrap_or(""),
+            record["action_trace_recall_top_status"].as_str().unwrap_or(""),
+            record["action_trace_recall_top_reasons"].as_str().unwrap_or(""),
             outcome.summary,
             display_path(&workspace, &outcomes_file)
         ),
@@ -24134,7 +24167,7 @@ JSON
         assert!(outcome_markdown.contains("action_trace_status: `satisfied`"));
         run(vec![
             "--state".to_string(),
-            state,
+            state.clone(),
             "need".to_string(),
             "execute".to_string(),
             workspace.to_string_lossy().to_string(),
@@ -24198,6 +24231,63 @@ JSON
             .repair_recall_top_reasons
             .contains("same target tentacle"));
         assert!(plan.repair_recall_top_summary.contains("repair improved"));
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "repair".to_string(),
+            "score".to_string(),
+            "2".to_string(),
+            "satisfied".to_string(),
+            "recall guided repair improved harness".to_string(),
+        ])
+        .unwrap();
+        let outcomes = fs::read_to_string(&outcomes_file).unwrap();
+        assert!(outcomes.contains("\"action_trace_recall_count\":\"1\""));
+        assert!(outcomes.contains("\"action_trace_recall_top_status\":\"satisfied\""));
+        assert!(outcomes.contains("same target tentacle"));
+        let outcome_has_recall_usage = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry.ok()?.path().join("OUTCOME.md");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains("action_trace_recall: matches=`1`")
+                            && content.contains("top=`satisfied`")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(outcome_has_recall_usage);
+        run(vec![
+            "--state".to_string(),
+            state,
+            "need".to_string(),
+            "execute".to_string(),
+            workspace.to_string_lossy().to_string(),
+        ])
+        .unwrap();
+        let memory_has_recall_usage = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry.ok()?.path().join("OUTCOME_MEMORY.md");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains("recall_used: matches=`1`")
+                            && content.contains("top=`satisfied`")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(memory_has_recall_usage);
         let _ = fs::remove_dir_all(workspace);
     }
 

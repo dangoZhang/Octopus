@@ -77,6 +77,7 @@ def action_trace_summary(workspace, session_path, session):
     )
     data = load_json(path) if path else {}
     next_need = data.get("next_need") if isinstance(data.get("next_need"), dict) else {}
+    repair_recall = data.get("repair_recall") if isinstance(data.get("repair_recall"), dict) else {}
     failed_stage = ""
     for stage in data.get("stages") if isinstance(data.get("stages"), list) else []:
         if not isinstance(stage, dict):
@@ -93,6 +94,12 @@ def action_trace_summary(workspace, session_path, session):
         "failed_stage": failed_stage,
         "next_need_kind": str(next_need.get("kind") or ""),
         "next_need_query": str(next_need.get("query") or ""),
+        "recall_count": str(repair_recall.get("match_count") or ""),
+        "recall_top_status": str(repair_recall.get("top_status") or ""),
+        "recall_top_score": str(repair_recall.get("top_score") or ""),
+        "recall_top_reasons": str(repair_recall.get("top_reasons") or ""),
+        "recall_top_summary": str(repair_recall.get("top_summary") or ""),
+        "recall_top_action_hint": str(repair_recall.get("top_action_hint") or ""),
     }
 
 
@@ -203,6 +210,12 @@ record = {
     "action_trace_last_action": action_trace["last_action"],
     "action_trace_repair_hint": action_trace["repair_hint"],
     "action_trace_failed_stage": action_trace["failed_stage"],
+    "action_trace_recall_count": action_trace["recall_count"],
+    "action_trace_recall_top_status": action_trace["recall_top_status"],
+    "action_trace_recall_top_score": action_trace["recall_top_score"],
+    "action_trace_recall_top_reasons": action_trace["recall_top_reasons"],
+    "action_trace_recall_top_summary": action_trace["recall_top_summary"],
+    "action_trace_recall_top_action_hint": action_trace["recall_top_action_hint"],
     "action_trace": action_trace,
     "outcome_status": outcome_status,
     "summary": compact(summary, 500),
@@ -225,6 +238,7 @@ outcome_md.write_text(
         f"action_trace_status: `{record['action_trace_status']}`",
         f"action_trace_stages: `{record['action_trace_stage_count'] or 'unknown'}`",
         f"action_trace_last: `{record['action_trace_last_action'] or 'unknown'}`",
+        f"action_trace_recall: matches=`{record['action_trace_recall_count'] or '0'}` top=`{record['action_trace_recall_top_status'] or 'none'}` reasons=`{record['action_trace_recall_top_reasons'] or 'none'}`",
         "",
         summary,
         "",
@@ -251,6 +265,9 @@ metadata = {
     "action_trace_status": record["action_trace_status"],
     "action_trace_stage_count": record["action_trace_stage_count"],
     "action_trace_last_action": record["action_trace_last_action"],
+    "action_trace_recall_count": record["action_trace_recall_count"],
+    "action_trace_recall_top_status": record["action_trace_recall_top_status"],
+    "action_trace_recall_top_reasons": record["action_trace_recall_top_reasons"],
     "next_need_kind": next_need_kind,
     "next_need_query": next_need_query,
 }
