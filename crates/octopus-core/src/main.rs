@@ -584,6 +584,7 @@ struct RepairPlanReport {
     action_trace_status: String,
     action_trace_stage_count: String,
     action_trace_last_action: String,
+    repair_recall: String,
     code_context: String,
     adapter_context: String,
     adapter_context_status: String,
@@ -3751,6 +3752,7 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("action_trace", &plan.action_trace);
                 print_optional_line("action_trace_json", &plan.action_trace_json);
                 print_optional_line("action_trace_status", &repair_plan_action_trace_label(plan));
+                print_optional_line("repair_recall", &plan.repair_recall);
                 print_optional_line("code_context", &plan.code_context);
                 print_optional_line("adapter_context", &plan.adapter_context);
                 print_optional_line("adapter_status", &repair_plan_adapter_label(plan));
@@ -3793,6 +3795,7 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("行动轨迹", &plan.action_trace);
                 print_optional_line("行动轨迹JSON", &plan.action_trace_json);
                 print_optional_line("行动轨迹状态", &repair_plan_action_trace_label(plan));
+                print_optional_line("修复召回", &plan.repair_recall);
                 print_optional_line("代码上下文", &plan.code_context);
                 print_optional_line("适配器上下文", &plan.adapter_context);
                 print_optional_line("适配器状态", &repair_plan_adapter_label(plan));
@@ -8398,6 +8401,9 @@ fn repair_report(
         if !plan.action_trace_json.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.action_trace_json)));
         }
+        if !plan.repair_recall.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.repair_recall)));
+        }
         if !plan.code_context.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.code_context)));
         }
@@ -8553,6 +8559,7 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         action_trace_status: metadata_value(metadata, "action_trace_status"),
         action_trace_stage_count: metadata_value(metadata, "action_trace_stage_count"),
         action_trace_last_action: metadata_value(metadata, "action_trace_last_action"),
+        repair_recall: metadata_value(metadata, "repair_recall"),
         code_context: metadata_value(metadata, "code_context"),
         adapter_context: metadata_value(metadata, "adapter_context"),
         adapter_context_status: metadata_value(metadata, "adapter_context_status"),
@@ -20496,6 +20503,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan
             .action_trace_last_action
             .contains("write reviewable repair plan"));
+        assert!(plan.repair_recall.ends_with("REPAIR_RECALL.json"));
         assert!(plan.code_context.ends_with("CODE_CONTEXT.md"));
         assert!(plan.adapter_context.ends_with("ADAPTER_CONTEXT.md"));
         assert_eq!(plan.adapter_context_status, "satisfied");
@@ -20523,6 +20531,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("ACTION_TRACE.json")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_RECALL.json")));
         assert!(report
             .next
             .iter()
@@ -24112,6 +24124,41 @@ JSON
                     .unwrap_or(false)
             });
         assert!(memory_has_action_trace);
+        let recall_found = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry.ok()?.path().join("REPAIR_RECALL.json");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains("\"match_count\": 1")
+                            && content.contains("same target tentacle")
+                            && content.contains("satisfied repair")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(recall_found);
+        let memory_has_recall = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry.ok()?.path().join("OUTCOME_MEMORY.md");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains("Similar Action Trace Experience")
+                            && content.contains("matches: `1`")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(memory_has_recall);
         let _ = fs::remove_dir_all(workspace);
     }
 

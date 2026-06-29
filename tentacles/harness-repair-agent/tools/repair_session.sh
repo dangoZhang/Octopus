@@ -101,28 +101,47 @@ def normalized_outcome(item, origin):
 
 def merge_repair_outcomes(state_items, journal_items, limit=8):
     merged = []
-    seen = set()
+    positions = {}
     for origin, items in [("state", state_items), ("journal", journal_items)]:
         for item in items if isinstance(items, list) else []:
             if not isinstance(item, dict):
                 continue
             outcome = normalized_outcome(item, origin)
+            trace_key = str(outcome["trace_index"] or outcome["session"] or f"{origin}:{len(merged)}")
             key = (
-                outcome["session"],
-                str(outcome["trace_index"]),
+                trace_key,
                 outcome["target_tentacle"],
                 outcome["candidate"],
                 outcome["outcome_status"],
                 outcome["summary"],
             )
-            if key in seen:
+            if key in positions:
+                current = merged[positions[key]]
+                for field in [
+                    "session",
+                    "timestamp",
+                    "tool",
+                    "source",
+                    "next_need",
+                    "draft_status",
+                    "action_trace_json",
+                    "action_trace_status",
+                    "action_trace_stage_count",
+                    "action_trace_last_action",
+                    "action_trace_repair_hint",
+                    "action_trace_failed_stage",
+                ]:
+                    if outcome.get(field) and not current.get(field):
+                        current[field] = outcome[field]
+                if origin == "journal":
+                    current["origin"] = "journal"
                 continue
-            seen.add(key)
+            positions[key] = len(merged)
             merged.append(outcome)
     return merged[-limit:]
 
 
-def outcome_memory_markdown(outcomes, workspace, outcomes_file):
+def outcome_memory_markdown(outcomes, workspace, outcomes_file, repair_recall=None):
     lines = [
         "# Harness Repair Outcome Memory",
         "",
@@ -132,9 +151,42 @@ def outcome_memory_markdown(outcomes, workspace, outcomes_file):
         f"count: `{len(outcomes)}`",
         "",
     ]
+    matches = (repair_recall or {}).get("matches") or []
+    if repair_recall:
+        target = repair_recall.get("target") or {}
+        lines.extend(
+            [
+                "## Similar Action Trace Experience",
+                "",
+                f"target: `{target.get('tentacle', 'unknown')}/{target.get('tool', 'unknown')}`",
+                f"field: `{target.get('field', 'none')}` mini_task: `{target.get('mini_task', 'none')}`",
+                f"matches: `{len(matches)}`",
+                "",
+            ]
+        )
+        if matches:
+            for match in matches:
+                item = match.get("outcome") or {}
+                lines.extend(
+                    [
+                        (
+                            f"- score=`{match.get('score', 0)}` "
+                            f"status=`{item.get('outcome_status') or 'unknown'}` "
+                            f"target=`{item.get('target_tentacle') or 'unknown'}` "
+                            f"candidate=`{item.get('candidate') or 'none'}`"
+                        ),
+                        f"  why: {compact(', '.join(match.get('reasons') or []), 220)}",
+                        f"  summary: {compact(item.get('summary', ''), 260)}",
+                        f"  action_trace: status=`{item.get('action_trace_status') or 'unknown'}` failed_stage=`{compact(item.get('action_trace_failed_stage') or 'none', 120)}` hint=`{compact(item.get('action_trace_repair_hint') or 'none', 160)}`",
+                    ]
+                )
+        else:
+            lines.append("No similar reviewed action-trace outcomes yet.")
+        lines.append("")
     if not outcomes:
         lines.append("No repair outcomes recorded yet.")
         return "\n".join(lines) + "\n"
+    lines.extend(["## Recent Repair Outcomes", ""])
     for item in outcomes[-8:]:
         session = item.get("session") or "none"
         target = item.get("target_tentacle") or "unknown"
@@ -153,6 +205,102 @@ def outcome_memory_markdown(outcomes, workspace, outcomes_file):
             ]
         )
     return "\n".join(lines) + "\n"
+
+
+def token_set(*values):
+    tokens = set()
+    for value in values:
+        for token in re.findall(r"[a-z0-9_/-]+", str(value or "").lower()):
+            if len(token) >= 3:
+                tokens.add(token)
+    return tokens
+
+
+def repair_recall_target(target_tentacle, target_tool, latest_trace, latest_check, field_trajectory):
+    metadata = metadata_of(latest_trace)
+    return {
+        "tentacle": target_tentacle or str(latest_trace.get("tentacle") or "unknown"),
+        "tool": target_tool or tool_from_trace(latest_trace) or tool_from_check(latest_check) or "unknown",
+        "field": field_trajectory.get("field") or str(latest_trace.get("field") or metadata.get("field_pack") or "none"),
+        "mini_task": field_trajectory.get("mini_task") or str(metadata.get("field_mini_task") or "none"),
+        "trace_status": str(latest_trace.get("status") or ""),
+        "trace_summary": compact(latest_trace.get("summary") or metadata.get("summary") or "", 400),
+        "check_status": str(latest_check.get("status") or ""),
+        "check_command": compact(latest_check.get("command") or "", 300),
+    }
+
+
+def score_repair_outcome(outcome, target):
+    score = 0
+    reasons = []
+    if outcome.get("target_tentacle") and outcome.get("target_tentacle") == target.get("tentacle"):
+        score += 5
+        reasons.append("same target tentacle")
+    if outcome.get("tool") and outcome.get("tool") == target.get("tool"):
+        score += 3
+        reasons.append("same tool")
+    if outcome.get("candidate") and outcome.get("candidate") not in {"none", "unknown"}:
+        score += 1
+        reasons.append("has candidate memory")
+    if outcome.get("outcome_status") == "satisfied":
+        score += 2
+        reasons.append("satisfied repair")
+    elif outcome.get("outcome_status") in {"partial", "failed"}:
+        score += 1
+        reasons.append("known failure mode")
+    action_status = outcome.get("action_trace_status") or ""
+    if action_status in {"failed", "missing_context", "partial"}:
+        score += 2
+        reasons.append(f"action trace blocker: {action_status}")
+    elif action_status == "satisfied":
+        score += 1
+        reasons.append("satisfied action trace")
+    field_tokens = token_set(target.get("field"), target.get("mini_task"))
+    outcome_tokens = token_set(
+        outcome.get("summary"),
+        outcome.get("source"),
+        outcome.get("next_need"),
+        outcome.get("action_trace_last_action"),
+        outcome.get("action_trace_repair_hint"),
+        outcome.get("action_trace_failed_stage"),
+    )
+    overlap = sorted(field_tokens & outcome_tokens)
+    if overlap:
+        score += min(3, len(overlap))
+        reasons.append("field overlap: " + ",".join(overlap[:4]))
+    signal_tokens = token_set(
+        target.get("trace_summary"),
+        target.get("check_command"),
+        target.get("trace_status"),
+        target.get("check_status"),
+    )
+    signal_overlap = sorted(signal_tokens & outcome_tokens)
+    if signal_overlap:
+        score += min(4, len(signal_overlap))
+        reasons.append("signal overlap: " + ",".join(signal_overlap[:4]))
+    return score, reasons
+
+
+def build_repair_recall(outcomes, target_tentacle, target_tool, latest_trace, latest_check, field_trajectory, limit=3):
+    target = repair_recall_target(target_tentacle, target_tool, latest_trace, latest_check, field_trajectory)
+    scored = []
+    for index, outcome in enumerate(outcomes):
+        score, reasons = score_repair_outcome(outcome, target)
+        if score <= 0:
+            continue
+        scored.append({
+            "score": score,
+            "recency": index,
+            "reasons": reasons,
+            "outcome": outcome,
+        })
+    scored.sort(key=lambda item: (item["score"], item["recency"]), reverse=True)
+    return {
+        "schema_version": "octopus-harness-repair-recall-v1",
+        "target": target,
+        "match_count": len(scored[:limit]),
+        "matches": scored[:limit],
+    }
 
 
 def read_text(path, limit=12000):
@@ -758,9 +906,11 @@ def action_trace_record(
     code_context,
     adapter_context,
     field_trajectory,
+    repair_recall,
     draft,
     repair_plan,
 ):
+    recall_count = str(repair_recall.get("match_count") or 0)
     stages = [
         {
             "kind": "Need",
@@ -782,8 +932,8 @@ def action_trace_record(
         },
         {
             "kind": "Action",
-            "action": "merge field and outcome evidence",
-            "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']}",
+            "action": "merge field, recall, and outcome evidence",
+            "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']} recalled={recall_count}",
             "status": "satisfied",
         },
         {
@@ -965,6 +1115,7 @@ review_md = session_dir / "REVIEW.md"
 next_need_json = session_dir / "NEXT_NEED.json"
 command_script = session_dir / "COMMANDS.sh"
 outcome_memory_md = session_dir / "OUTCOME_MEMORY.md"
+repair_recall_json = session_dir / "REPAIR_RECALL.json"
 adapter_context_md = session_dir / "ADAPTER_CONTEXT.md"
 code_context_md = session_dir / "CODE_CONTEXT.md"
 field_trajectory_md = session_dir / "FIELD_TRAJECTORY.md"
@@ -991,6 +1142,14 @@ adapter_context = build_adapter_context(
     repair_llm_prefix,
 )
 field_trajectory = build_field_trajectory_context(workspace, state, latest_trace)
+repair_recall = build_repair_recall(
+    repair_outcomes,
+    target_tentacle,
+    target_tool,
+    latest_trace,
+    latest_check,
+    field_trajectory,
+)
 session = {
     "schema_version": "octopus-harness-repair-session-v1",
     "workspace": str(workspace),
@@ -1001,6 +1160,7 @@ session = {
     "next_need": next_need,
     "commands": commands,
     "outcome_memory": rel(outcome_memory_md, workspace),
+    "repair_recall": rel(repair_recall_json, workspace),
     "adapter_context": rel(adapter_context_md, workspace),
     "code_context": rel(code_context_md, workspace),
     "field_trajectory": rel(field_trajectory_md, workspace),
@@ -1029,6 +1189,7 @@ session = {
         "verifier_status": field_trajectory["verifier_status"],
         "verifier_error": field_trajectory["verifier_error"],
     },
+    "repair_recall_target": repair_recall["target"],
     "signals": {
         "feed_traces": len(feed_traces),
         "check_history": len(check_history),
@@ -1052,8 +1213,12 @@ next_need_payload = {
 }
 session_json.write_text(json.dumps(session, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
 next_need_json.write_text(json.dumps(next_need_payload, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
+repair_recall_json.write_text(
+    json.dumps(repair_recall, ensure_ascii=True, indent=2) + "\n",
+    encoding="utf-8",
+)
 outcome_memory_md.write_text(
-    outcome_memory_markdown(repair_outcomes, workspace, outcomes_file),
+    outcome_memory_markdown(repair_outcomes, workspace, outcomes_file, repair_recall),
     encoding="utf-8",
 )
 adapter_context_md.write_text(adapter_context["markdown"], encoding="utf-8")
@@ -1077,6 +1242,7 @@ repair_plan = build_action_plan(
 )
 repair_plan["inputs"]["field_trajectory"] = rel(field_trajectory_md, workspace)
 repair_plan["inputs"]["adapter_context"] = rel(adapter_context_md, workspace)
+repair_plan["inputs"]["repair_recall"] = rel(repair_recall_json, workspace)
 repair_plan["inputs"]["action_trace"] = rel(action_trace_md, workspace)
 repair_plan["inputs"]["action_trace_json"] = rel(action_trace_json, workspace)
 repair_plan["field_trajectory_target"] = {
@@ -1086,7 +1252,8 @@ repair_plan["field_trajectory_target"] = {
     "verifier_status": field_trajectory["verifier_status"],
     "verifier_error": field_trajectory["verifier_error"],
 }
-repair_plan["review_boundary"] = "Review ACTION_TRACE.md, ACTION_TRACE.json, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
+repair_plan["repair_recall_target"] = repair_recall["target"]
+repair_plan["review_boundary"] = "Review ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_RECALL.json, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
 repair_plan_json.write_text(
     json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
     encoding="utf-8",
@@ -1117,6 +1284,15 @@ recent_outcome_lines = [
         f" {compact(item.get('summary', ''), 260)}"
     )
     for item in repair_outcomes[-4:]
+] or ["- none"]
+recalled_outcome_lines = [
+    (
+        f"- score={match.get('score', 0)}"
+        f" status={compact((match.get('outcome') or {}).get('outcome_status') or 'unknown')}"
+        f" target={compact((match.get('outcome') or {}).get('target_tentacle') or 'unknown')}"
+        f" reasons={compact(', '.join(match.get('reasons') or []), 180)}"
+    )
+    for match in repair_recall.get("matches", [])
 ] or ["- none"]
 prompt_md.write_text(
     "\n".join(
@@ -1151,6 +1327,11 @@ prompt_md.write_text(
             "repair outcome memory:",
             f"- memory artifact: `{rel(outcome_memory_md, workspace)}`",
             *recent_outcome_lines,
+            "",
+            "similar action-trace recall:",
+            f"- recall artifact: `{rel(repair_recall_json, workspace)}`",
+            f"- matches: `{repair_recall.get('match_count', 0)}`",
+            *recalled_outcome_lines,
             "",
             "code context:",
             f"- artifact: `{rel(code_context_md, workspace)}`",
@@ -1193,6 +1374,7 @@ prompt_md.write_text(
             f"- commands: `{rel(command_script, workspace)}`",
             f"- draft: `{rel(draft_md, workspace)}`",
             f"- outcome memory: `{rel(outcome_memory_md, workspace)}`",
+            f"- repair recall: `{rel(repair_recall_json, workspace)}`",
             f"- adapter context: `{rel(adapter_context_md, workspace)}`",
             f"- code context: `{rel(code_context_md, workspace)}`",
             f"- field trajectory: `{rel(field_trajectory_md, workspace)}`",
@@ -1215,6 +1397,7 @@ action_trace = action_trace_record(
         code_context,
         adapter_context,
         field_trajectory,
+        repair_recall,
         draft,
         repair_plan,
 )
@@ -1261,6 +1444,7 @@ review_md.write_text(
             f"- adapter context: `{rel(adapter_context_md, workspace)}`",
             f"- action trace: `{rel(action_trace_md, workspace)}`",
             f"- action trace json: `{rel(action_trace_json, workspace)}`",
+            f"- repair recall: `{rel(repair_recall_json, workspace)}`",
             f"- field trajectory: `{rel(field_trajectory_md, workspace)}`",
             f"- code context: `{rel(code_context_md, workspace)}`",
             f"- outcome memory: `{rel(outcome_memory_md, workspace)}`",
@@ -1311,6 +1495,7 @@ session_md.write_text(
             f"next need: `{rel(next_need_json, workspace)}`",
             f"commands: `{rel(command_script, workspace)}`",
             f"outcome memory: `{rel(outcome_memory_md, workspace)}`",
+            f"repair recall: `{rel(repair_recall_json, workspace)}`",
             f"adapter context: `{rel(adapter_context_md, workspace)}`",
             f"code context: `{rel(code_context_md, workspace)}`",
             f"field trajectory: `{rel(field_trajectory_md, workspace)}`",
@@ -1338,6 +1523,9 @@ metadata = {
     "next_need_file": rel(next_need_json, workspace),
     "command_script": rel(command_script, workspace),
     "outcome_memory": rel(outcome_memory_md, workspace),
+    "repair_recall": rel(repair_recall_json, workspace),
+    "repair_recall_count": str(repair_recall.get("match_count", 0)),
+    "repair_recall_target": json.dumps(repair_recall.get("target", {}), ensure_ascii=True, sort_keys=True),
     "adapter_context": rel(adapter_context_md, workspace),
     "code_context": rel(code_context_md, workspace),
     "field_trajectory": rel(field_trajectory_md, workspace),

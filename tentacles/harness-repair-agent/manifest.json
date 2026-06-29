@@ -42,9 +42,9 @@
     },
     {
       "id": "repair_session",
-      "description": "Write a reviewable self-repair session, local outcome memory, adapter context, target code context, field trajectory context, tool-side action trace, review bundle, action plan, and optional provider-generated repair draft from heartbeat, evolution, adapter, and reviewed-outcome signals.",
+      "description": "Write a reviewable self-repair session, local outcome memory, similar action-trace recall, adapter context, target code context, field trajectory context, tool-side action trace, review bundle, action plan, and optional provider-generated repair draft from heartbeat, evolution, adapter, and reviewed-outcome signals.",
       "input": "workspace root or octopus-json-v1 Need",
-      "output": "JSON Feed with SESSION, PROMPT, DRAFT, REVIEW, NEXT_NEED, COMMANDS, OUTCOME_MEMORY, ADAPTER_CONTEXT, CODE_CONTEXT, FIELD_TRAJECTORY, ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_PLAN paths, and the next repair Need",
+      "output": "JSON Feed with SESSION, PROMPT, DRAFT, REVIEW, NEXT_NEED, COMMANDS, OUTCOME_MEMORY, REPAIR_RECALL.json, ADAPTER_CONTEXT, CODE_CONTEXT, FIELD_TRAJECTORY, ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_PLAN paths, and the next repair Need",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/repair_session.sh",
@@ -110,6 +110,7 @@
       "Keep provider repair drafts optional and reviewable.",
       "Record repair outcomes before using them as future repair evidence.",
       "Record ACTION_TRACE.json status, stage count, last action, and repair hint into repair outcomes.",
+      "Select similar action-trace repair outcomes into REPAIR_RECALL.json before drafting the next repair session.",
       "Feed repair-session planning with local OUTCOME_MEMORY, never raw tool logs in clean-brain context.",
       "Feed repair-session planning with ADAPTER_CONTEXT from local command, provider, desktop, and GitHub adapter probes.",
       "Feed repair-session planning with CODE_CONTEXT from the target tentacle manifest and tool code.",

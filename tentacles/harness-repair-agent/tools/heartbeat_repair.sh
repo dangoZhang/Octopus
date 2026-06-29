@@ -357,6 +357,7 @@ if latest_repair_plan:
     adapter_context = str(inputs.get("adapter_context") or "")
     draft = str(inputs.get("draft") or "")
     code_context = str(inputs.get("code_context") or "")
+    repair_recall = str(inputs.get("repair_recall") or "")
     action_trace = str(inputs.get("action_trace") or "")
     action_trace_json = str(inputs.get("action_trace_json") or "")
     draft_metadata = repair_draft_metadata(root, draft)
@@ -484,6 +485,7 @@ if latest_repair_plan:
         "review": str(inputs.get("review") or ""),
         "draft": draft,
         "code_context": code_context,
+        "repair_recall": repair_recall,
         "action_trace": action_trace,
         "action_trace_json": action_trace_json or action_metadata.get("action_trace_json", ""),
         "adapter_context": adapter_context,
