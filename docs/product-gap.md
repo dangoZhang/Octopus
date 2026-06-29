@@ -34,6 +34,7 @@ Updated: 2026-06-29
 - `report` now includes a first-class field pool block and `field_parallel_pool` capability: eight peer field slots, completed count, sampled slot, and worker-slot policy are visible without reading raw field traces.
 - `preflight` now has a required `field_parallel_pool` check, so release readiness proves the eight peer field slots exist before benchmark/provider gates are considered enough.
 - `preflight script` and `preflight record` now include `fields summary`, so real-machine release evidence captures the parallel field pool directly instead of relying on a hidden JSON check.
+- Real-machine record templates and audits now include a required `Field pool` result, so release evidence must state whether the eight peer field slots were observed.
 - Initial agent tentacles are common tool combinations: SWE repo tools, computer-use tools, repo-maintainer, harness-repair diagnostics, and a write-and-run harness.
 - Seed profile data now lives in `tentacles/profile-registry/default.json`; startup materializes `.octopus/profile-registry/default.json`, and the Rust kernel can load `OCTOPUS_PROFILE_REGISTRY` or the state-local registry instead of hard-coding starter prompt/tool/check/policy data in `lib.rs`. This is a developer/harness flow, not the public product bridge.
 - Profile registry source/path/parse observation now lives in `profile_registry.rs` instead of the CLI aggregation file.

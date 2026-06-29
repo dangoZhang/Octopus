@@ -86,7 +86,7 @@ Octopus/
 | --- | --- | --- | ---: |
 | Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, evolution data | `crates/octopus-core/src/lib.rs` | 17,577 |
 | Field adaptation core | Field-pack loading, matching, Need annotation, trace metadata, sampled field execution slots, verifier results, field trajectory summaries, live field mini task loader, editable repair templates, and compile/execute template checks | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 3,606 |
-| CLI and product backend | Command dispatch, Goal/chat/brain, provider setup, doctor/report/preflight aggregation, starter/install/check flows | `crates/octopus-core/src/main.rs` | 23,698 |
+| CLI and product backend | Command dispatch, Goal/chat/brain, provider setup, doctor/report/preflight aggregation, starter/install/check flows | `crates/octopus-core/src/main.rs` | 23,702 |
 | Local app bridge | Local HTTP/SSE server, app policy, command allow-list, static app/docs/demo fallback | `app_bridge.rs`, `docs/app.html` | 2,348 |
 | Release and install gates | Release records, benchmark evidence, download/install manifest, real-machine checks | `release_gate.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 1,022 |
 | Pet and visual state | Pixel Octopus state, SVG/export helpers, native read-only observer, HTML preview | `pet.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 1,505 |
@@ -176,7 +176,7 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 12 | 44,617 |
+| `crates/octopus-core/src` | 12 | 44,621 |
 | `crates/octopus-core/examples` | 1 | 27 |
 | `tentacles` | 66 | 6,950 |
 | `field-packs` | 12 | 487 |
@@ -189,7 +189,7 @@ field-packs/
 
 | File | Lines |
 | --- | ---: |
-| `main.rs` | 23,698 |
+| `main.rs` | 23,702 |
 | `lib.rs` | 17,577 |
 | `app_bridge.rs` | 1,125 |
 | `release_gate.rs` | 514 |

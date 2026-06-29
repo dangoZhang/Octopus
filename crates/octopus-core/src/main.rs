@@ -9462,6 +9462,7 @@ Append the completed result to `docs/real-machine-test.md` after the run.
 - Download artifacts:
 - Core loop:
 - Product bridge:
+- Field pool:
 - Start/app:
 - Live provider:
 - Benchmark evidence:
@@ -9508,6 +9509,7 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
         &["Download artifacts"],
         &["Core loop"],
         &["Product bridge"],
+        &["Field pool"],
         &["Start/app", "Bridge/app"],
         &["Live provider"],
         &["Benchmark evidence"],
@@ -9567,7 +9569,7 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
             } else {
                 format!("missing {}", missing_results.join(", "))
             },
-            "fill Install, Download artifacts, Core loop, Product bridge, Start/app, Live provider, Benchmark evidence, and PR dry run results",
+            "fill Install, Download artifacts, Core loop, Product bridge, Field pool, Start/app, Live provider, Benchmark evidence, and PR dry run results",
         ),
         preflight_check(
             "pass_decision",
@@ -22062,6 +22064,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("/download.json"));
         assert!(record.contains("/install.sh"));
         assert!(record.contains("Download artifacts"));
+        assert!(record.contains("Field pool"));
         assert!(record.contains("bridge_goal_surface"));
         assert!(record.contains("provider matrix"));
         assert!(record.contains("provider matrix run"));
@@ -22087,6 +22090,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .replace("- Download artifacts:", "- Download artifacts: pass")
             .replace("- Core loop:", "- Core loop: pass")
             .replace("- Product bridge:", "- Product bridge: pass")
+            .replace("- Field pool:", "- Field pool: pass")
             .replace("- Start/app:", "- Start/app: pass")
             .replace("- Live provider:", "- Live provider: pass")
             .replace("- Benchmark evidence:", "- Benchmark evidence: pass")
