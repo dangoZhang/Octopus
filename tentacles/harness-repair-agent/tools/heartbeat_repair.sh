@@ -170,7 +170,7 @@ def adapter_context_metadata(root, value, target):
         if not raw:
             continue
         target_key = key_map.get(key.strip())
-        if target_key and not metadata[target_key]:
+        if target_key:
             metadata[target_key] = clean_adapter_value(
                 raw,
                 keep_missing=target_key == "adapter_context_provider_env",
@@ -289,6 +289,15 @@ if latest_repair_plan:
     )
     outcome_metadata = repair_outcome_metadata(root, latest_repair_plan, repair_plan)
     has_outcome = bool(outcome_metadata.get("outcome"))
+    adapter_status = adapter_metadata.get("adapter_context_status", "")
+    adapter_missing_core = adapter_metadata.get("adapter_context_missing_core", "")
+    adapter_blocked = (
+        not has_outcome
+        and (
+            adapter_status in {"failed", "partial"}
+            or bool(adapter_missing_core)
+        )
+    )
     if has_outcome:
         outcome_status = outcome_metadata.get("outcome_status", "reviewed")
         plan_status = f"outcome_{outcome_status}"
@@ -305,6 +314,20 @@ if latest_repair_plan:
         output = (
             f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
             f"outcome={outcome_metadata.get('outcome')}; status={outcome_status}; "
+            f"target={target_tentacle}/{target_tool}; next={next_need_kind} {next_need_query}"
+        )
+        checks = []
+        suggested = []
+    elif adapter_blocked:
+        plan_status = "adapter_blocked"
+        status = "partial"
+        missing = adapter_missing_core or "core adapters"
+        next_need = f"repair adapter context: {missing}"
+        next_need_kind = "execute"
+        next_need_query = f"install missing core adapters: {missing}"
+        output = (
+            f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
+            f"adapter_status={adapter_status or 'unknown'}; missing_core={missing}; "
             f"target={target_tentacle}/{target_tool}; next={next_need_kind} {next_need_query}"
         )
         checks = []
@@ -331,9 +354,10 @@ if latest_repair_plan:
         "candidate": candidate,
         "review_boundary": str(repair_plan.get("review_boundary") or ""),
         "check_command": " && ".join(checks),
-        "grant_command": "" if has_outcome else command_value(commands, "grant"),
-        "apply_command": "" if has_outcome else command_value(commands, "apply"),
-        "score_command": "" if has_outcome else command_value(commands, "score"),
+        "adapter_blocker": adapter_missing_core if adapter_blocked else "",
+        "grant_command": "" if has_outcome or adapter_blocked else command_value(commands, "grant"),
+        "apply_command": "" if has_outcome or adapter_blocked else command_value(commands, "apply"),
+        "score_command": "" if has_outcome or adapter_blocked else command_value(commands, "score"),
         "suggested_commands": " && ".join(suggested),
     }
     repair_metadata.update(adapter_metadata)
