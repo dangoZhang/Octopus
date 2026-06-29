@@ -328,6 +328,13 @@ if latest_repair_plan:
             or bool(adapter_missing_core)
         )
     )
+    draft_status = draft_metadata.get("draft_status", "")
+    draft_prefix = draft_metadata.get("draft_prefix", "")
+    draft_blocked = (
+        not has_outcome
+        and not adapter_blocked
+        and draft_status in {"missing_config", "failed"}
+    )
     if has_outcome:
         outcome_status = outcome_metadata.get("outcome_status", "reviewed")
         plan_status = f"outcome_{outcome_status}"
@@ -362,6 +369,20 @@ if latest_repair_plan:
         )
         checks = []
         suggested = []
+    elif draft_blocked:
+        plan_status = "draft_blocked"
+        status = "partial"
+        prefix = draft_prefix or "repair provider"
+        next_need = f"repair provider draft: {draft_status}"
+        next_need_kind = "execute"
+        next_need_query = f"configure repair provider draft: {prefix}"
+        output = (
+            f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
+            f"draft_status={draft_status}; prefix={prefix}; "
+            f"target={target_tentacle}/{target_tool}; next={next_need_kind} {next_need_query}"
+        )
+        checks = []
+        suggested = []
     else:
         status = "satisfied"
         next_need = "review latest repair action plan"
@@ -387,9 +408,10 @@ if latest_repair_plan:
         "review_boundary": str(repair_plan.get("review_boundary") or ""),
         "check_command": " && ".join(checks),
         "adapter_blocker": adapter_missing_core if adapter_blocked else "",
-        "grant_command": "" if has_outcome or adapter_blocked else command_value(commands, "grant"),
-        "apply_command": "" if has_outcome or adapter_blocked else command_value(commands, "apply"),
-        "score_command": "" if has_outcome or adapter_blocked else command_value(commands, "score"),
+        "draft_blocker": draft_status if draft_blocked else "",
+        "grant_command": "" if has_outcome or adapter_blocked or draft_blocked else command_value(commands, "grant"),
+        "apply_command": "" if has_outcome or adapter_blocked or draft_blocked else command_value(commands, "apply"),
+        "score_command": "" if has_outcome or adapter_blocked or draft_blocked else command_value(commands, "score"),
         "suggested_commands": " && ".join(suggested),
     }
     repair_metadata.update(draft_metadata)

@@ -20530,6 +20530,75 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     }
 
     #[test]
+    fn cli_repair_report_blocks_on_missing_repair_draft_config() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-repair-draft-block-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+        let state = state_path.to_string_lossy().to_string();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "install".to_string(),
+            "harness-repair-agent".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state,
+            "need".to_string(),
+            "execute".to_string(),
+            dir.to_string_lossy().to_string(),
+        ])
+        .unwrap();
+
+        let repair_root = dir.join(".octopus/harness-repair");
+        let session_dir = fs::read_dir(&repair_root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| path.join("REPAIR_PLAN.json").exists())
+            .expect("repair session dir");
+        fs::write(
+            session_dir.join("DRAFT.md"),
+            "# Harness Repair Draft\n\nstatus: `missing_config`\nprefix: `OCTOPUS_LLM`\n\nOCTOPUS_LLM_MODEL is required.\n",
+        )
+        .unwrap();
+
+        let mut restored = HarnessState::load(&state_path).unwrap();
+        let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        let plan = report.repair_plan.expect("repair plan report");
+
+        assert_eq!(report.feed.status, Status::Partial);
+        assert_eq!(plan.status, "draft_blocked");
+        assert_eq!(plan.draft_status, "missing_config");
+        assert_eq!(plan.draft_prefix, "OCTOPUS_LLM");
+        assert!(plan.grant_command.is_empty());
+        assert!(plan.apply_command.is_empty());
+        assert!(plan.score_command.is_empty());
+        assert!(report.queued.iter().any(|item| item
+            .need
+            .query
+            .contains("configure repair provider draft: OCTOPUS_LLM")));
+        assert!(!report
+            .next
+            .iter()
+            .any(|command| command.contains("harness:write")));
+        assert!(!report
+            .next
+            .iter()
+            .any(|command| command.contains("repair score")));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn cli_repair_report_uses_reviewed_repair_outcome() {
         let _env = env_guard();
         let _cwd = CwdGuard::new();
