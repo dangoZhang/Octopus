@@ -827,6 +827,7 @@ def build_harness_adaptation(
     code_context,
     adapter_context,
     harness_environment_profile,
+    harness_environment_drift,
     field_trajectory,
     repair_recall,
     repair_lessons,
@@ -842,6 +843,9 @@ def build_harness_adaptation(
     execution_mode = str(harness_environment_profile.get("execution_mode") or "")
     profile_capabilities = ",".join(harness_environment_profile.get("capabilities") or [])
     profile_constraints = ",".join(harness_environment_profile.get("constraints") or [])
+    drift_status = str(harness_environment_drift.get("status") or "")
+    drift_detail = str(harness_environment_drift.get("detail") or "")
+    drift_next = harness_environment_drift.get("next_need") if isinstance(harness_environment_drift.get("next_need"), dict) else {}
     field_status = str(field_trajectory.get("verifier_status") or "").lower()
     field = field_trajectory.get("field") or ""
     mini_task = field_trajectory.get("mini_task") or ""
@@ -863,6 +867,13 @@ def build_harness_adaptation(
         next_need = {
             "kind": "verify",
             "query": "inspect latest Feed trace and check history for repair target",
+        }
+    elif drift_status == "degraded" and drift_next.get("query"):
+        status = "environment_drift"
+        focus = f"repair harness environment drift: {drift_detail}"
+        next_need = {
+            "kind": drift_next.get("kind") or "execute",
+            "query": drift_next.get("query") or "repair harness environment drift",
         }
     elif field and mini_task and field_status in {"failed", "partial"}:
         status = "field_runtime"
@@ -910,6 +921,8 @@ def build_harness_adaptation(
             "execution_mode": execution_mode,
             "profile_capabilities": profile_capabilities,
             "profile_constraints": profile_constraints,
+            "drift_status": drift_status,
+            "drift_detail": drift_detail,
             "provider_env": adapter_context.get("provider_env") or "",
             "provider_keys": adapter_context.get("provider_keys") or "",
             "desktop_adapters": adapter_context.get("desktop_adapters") or "",
@@ -939,6 +952,7 @@ def build_harness_adaptation(
         "review_targets": [
             "HARNESS_ADAPTATION.md",
             "HARNESS_ENVIRONMENT_PROFILE.md",
+            "HARNESS_ENVIRONMENT_DRIFT.md",
             "ADAPTER_CONTEXT.md",
             "FIELD_TRAJECTORY.md",
             "CODE_CONTEXT.md",
@@ -983,6 +997,8 @@ def harness_adaptation_markdown(adaptation, workspace, adaptation_json):
         f"- execution_mode: `{environment.get('execution_mode') or 'none'}`",
         f"- profile_capabilities: `{environment.get('profile_capabilities') or 'none'}`",
         f"- profile_constraints: `{environment.get('profile_constraints') or 'none'}`",
+        f"- drift_status: `{environment.get('drift_status') or 'none'}`",
+        f"- drift_detail: {compact(environment.get('drift_detail'), 260) or 'none'}",
         f"- provider_env: `{environment.get('provider_env') or 'missing'}`",
         f"- provider_keys: `{environment.get('provider_keys') or 'none'}`",
         f"- desktop_adapters: `{environment.get('desktop_adapters') or 'none'}`",
@@ -1518,6 +1534,211 @@ def harness_environment_profile_markdown(profile, workspace, profile_json):
         f"- adaptation_top_reuse: {compact(memory.get('adaptation_top_reuse'), 260) or 'none'}",
         f"- adaptation_top_avoid: {compact(memory.get('adaptation_top_avoid'), 260) or 'none'}",
     ]
+    return "\n".join(lines) + "\n"
+
+
+def load_profile_history(path, limit=12):
+    if not path.exists():
+        return []
+    rows = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict) and item.get("schema_version") == "octopus-harness-environment-profile-v1":
+            rows.append(item)
+    return rows[-limit:]
+
+
+def append_profile_history(path, profile, limit=24):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = load_profile_history(path, limit - 1)
+    rows.append(profile)
+    path.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=True, sort_keys=True) for row in rows[-limit:]) + "\n",
+        encoding="utf-8",
+    )
+
+
+def list_delta(before, after):
+    before_set = set(before or [])
+    after_set = set(after or [])
+    gained = sorted(after_set - before_set)
+    lost = sorted(before_set - after_set)
+    return gained, lost
+
+
+def build_harness_environment_drift(workspace, drift_json, profile, history):
+    previous = history[-1] if history else {}
+    if not previous:
+        return {
+            "schema_version": "octopus-harness-environment-drift-v1",
+            "status": "baseline",
+            "summary": "first observed harness environment profile",
+            "detail": "no previous profile",
+            "workspace": str(workspace),
+            "json": rel(drift_json, workspace),
+            "history_count": 0,
+            "current_profile_id": profile.get("profile_id") or "",
+            "previous_profile_id": "",
+            "changes": [],
+            "gained_count": 0,
+            "lost_count": 0,
+            "lost_capabilities": [],
+            "gained_capabilities": [],
+            "gained_missing_core": [],
+            "removed_constraints": [],
+            "next_need": {
+                "kind": "verify",
+                "query": "review harness environment baseline",
+            },
+            "context_boundary": "Clean brain sees Goal + Mem + Need + Feed. Environment drift stays inside the harness tentacle.",
+        }
+    changes = []
+    gains = []
+    losses = []
+    for key in ["execution_mode", "provider_mode", "desktop_mode", "status"]:
+        before = str(previous.get(key) or "")
+        after = str(profile.get(key) or "")
+        if previous and before != after:
+            changes.append({
+                "field": key,
+                "from": before,
+                "to": after,
+                "direction": "changed",
+            })
+    for key in [
+        "available_commands",
+        "missing_core",
+        "provider_keys",
+        "desktop_adapters",
+        "installed_profiles",
+        "capabilities",
+        "constraints",
+    ]:
+        gained, lost = list_delta(previous.get(key) if previous else [], profile.get(key) or [])
+        for value in gained:
+            change = {"field": key, "value": value, "direction": "gained"}
+            changes.append(change)
+            gains.append(change)
+        for value in lost:
+            change = {"field": key, "value": value, "direction": "lost"}
+            changes.append(change)
+            losses.append(change)
+    lost_capabilities = [item["value"] for item in losses if item["field"] == "capabilities"]
+    gained_missing_core = [item["value"] for item in gains if item["field"] == "missing_core"]
+    lost_provider = [item["value"] for item in losses if item["field"] == "provider_keys"]
+    lost_desktop = [item["value"] for item in losses if item["field"] == "desktop_adapters"]
+    removed_constraints = [item["value"] for item in losses if item["field"] == "constraints"]
+    gained_capabilities = [item["value"] for item in gains if item["field"] == "capabilities"]
+    if gained_missing_core or lost_capabilities:
+        status = "degraded"
+        summary = "environment lost core capability"
+    elif lost_provider or lost_desktop:
+        status = "changed"
+        summary = "provider or desktop adapter availability changed"
+    elif removed_constraints or gained_capabilities:
+        status = "improved"
+        summary = "environment gained capability or removed constraint"
+    elif changes:
+        status = "changed"
+        summary = "environment profile changed"
+    else:
+        status = "stable"
+        summary = "environment profile matches previous run"
+    if gained_missing_core:
+        detail = f"missing_core gained {','.join(gained_missing_core)}"
+    elif lost_capabilities:
+        detail = f"capability lost {','.join(lost_capabilities)}"
+    elif gained_capabilities:
+        detail = f"capability gained {','.join(gained_capabilities)}"
+    elif removed_constraints:
+        detail = f"constraint removed {','.join(removed_constraints)}"
+    elif changes:
+        detail = ", ".join(
+            compact(
+                f"{item.get('field')} {item.get('direction')} {item.get('value') or item.get('from', '')}->{item.get('to', '')}",
+                120,
+            )
+            for item in changes[:3]
+        )
+    else:
+        detail = "no change"
+    next_need = (
+        {
+            "kind": "execute",
+            "query": f"repair harness environment drift: {detail}",
+        }
+        if status == "degraded"
+        else {
+            "kind": "verify",
+            "query": f"review harness environment drift: {detail}",
+        }
+    )
+    return {
+        "schema_version": "octopus-harness-environment-drift-v1",
+        "status": status,
+        "summary": compact(summary, 260),
+        "detail": compact(detail, 320),
+        "workspace": str(workspace),
+        "json": rel(drift_json, workspace),
+        "history_count": len(history),
+        "current_profile_id": profile.get("profile_id") or "",
+        "previous_profile_id": previous.get("profile_id") or "",
+        "changes": changes[:24],
+        "gained_count": len(gains),
+        "lost_count": len(losses),
+        "lost_capabilities": lost_capabilities,
+        "gained_capabilities": gained_capabilities,
+        "gained_missing_core": gained_missing_core,
+        "removed_constraints": removed_constraints,
+        "next_need": next_need,
+        "context_boundary": "Clean brain sees Goal + Mem + Need + Feed. Environment drift stays inside the harness tentacle.",
+    }
+
+
+def harness_environment_drift_markdown(drift, workspace, drift_json, profile_journal):
+    next_need = drift.get("next_need") if isinstance(drift.get("next_need"), dict) else {}
+    lines = [
+        "# Harness Environment Drift",
+        "",
+        "This file compares the current harness environment profile with prior local profiles.",
+        "It is Feed evidence for harness adaptation, not clean-brain context.",
+        "",
+        f"json: `{rel(drift_json, workspace)}`",
+        f"profile_journal: `{rel(profile_journal, workspace)}`",
+        f"status: `{drift.get('status')}`",
+        f"summary: {compact(drift.get('summary'), 260)}",
+        f"detail: {compact(drift.get('detail'), 320)}",
+        f"history_count: `{drift.get('history_count')}`",
+        f"current_profile_id: `{drift.get('current_profile_id') or 'none'}`",
+        f"previous_profile_id: `{drift.get('previous_profile_id') or 'none'}`",
+        f"next_need: `{next_need.get('kind') or 'verify'} {next_need.get('query') or ''}`",
+        "",
+        "## Change Counts",
+        "",
+        f"- gained: `{drift.get('gained_count', 0)}`",
+        f"- lost: `{drift.get('lost_count', 0)}`",
+        f"- gained_missing_core: `{','.join(drift.get('gained_missing_core') or []) or 'none'}`",
+        f"- lost_capabilities: `{','.join(drift.get('lost_capabilities') or []) or 'none'}`",
+        f"- gained_capabilities: `{','.join(drift.get('gained_capabilities') or []) or 'none'}`",
+        f"- removed_constraints: `{','.join(drift.get('removed_constraints') or []) or 'none'}`",
+        "",
+        "## Changes",
+        "",
+    ]
+    if not drift.get("changes"):
+        lines.append("- none")
+    for item in drift.get("changes", [])[:12]:
+        if item.get("direction") == "changed":
+            lines.append(
+                f"- `{item.get('field')}` changed `{item.get('from') or 'none'}` -> `{item.get('to') or 'none'}`"
+            )
+        else:
+            lines.append(
+                f"- `{item.get('field')}` {item.get('direction')} `{item.get('value')}`"
+            )
     return "\n".join(lines) + "\n"
 
 
@@ -2123,6 +2344,8 @@ harness_adaptation_effectiveness_json = session_dir / "HARNESS_ADAPTATION_EFFECT
 harness_adaptation_effectiveness_md = session_dir / "HARNESS_ADAPTATION_EFFECTIVENESS.md"
 harness_environment_profile_json = session_dir / "HARNESS_ENVIRONMENT_PROFILE.json"
 harness_environment_profile_md = session_dir / "HARNESS_ENVIRONMENT_PROFILE.md"
+harness_environment_drift_json = session_dir / "HARNESS_ENVIRONMENT_DRIFT.json"
+harness_environment_drift_md = session_dir / "HARNESS_ENVIRONMENT_DRIFT.md"
 harness_adaptation_json = session_dir / "HARNESS_ADAPTATION.json"
 harness_adaptation_md = session_dir / "HARNESS_ADAPTATION.md"
 adapter_context_md = session_dir / "ADAPTER_CONTEXT.md"
@@ -2131,6 +2354,7 @@ field_trajectory_md = session_dir / "FIELD_TRAJECTORY.md"
 action_trace_md = session_dir / "ACTION_TRACE.md"
 action_trace_json = session_dir / "ACTION_TRACE.json"
 repair_plan_json = session_dir / "REPAIR_PLAN.json"
+environment_profile_journal = repair_root / "environment-profiles.jsonl"
 outcome_command = (
     "octopus repair score <trace-index> satisfied \"repair improved Feed\""
 )
@@ -2177,6 +2401,13 @@ harness_environment_profile = build_harness_environment_profile(
     repair_outcomes,
     harness_adaptation_effectiveness,
 )
+profile_history = load_profile_history(environment_profile_journal)
+harness_environment_drift = build_harness_environment_drift(
+    workspace,
+    harness_environment_drift_json,
+    harness_environment_profile,
+    profile_history,
+)
 repair_decision = build_repair_decision(
     repair_lessons,
     repair_lesson_effectiveness,
@@ -2190,6 +2421,7 @@ harness_adaptation = build_harness_adaptation(
     code_context,
     adapter_context,
     harness_environment_profile,
+    harness_environment_drift,
     field_trajectory,
     repair_recall,
     repair_lessons,
@@ -2218,6 +2450,9 @@ session = {
     "harness_adaptation_effectiveness_json": rel(harness_adaptation_effectiveness_json, workspace),
     "harness_environment_profile": rel(harness_environment_profile_md, workspace),
     "harness_environment_profile_json": rel(harness_environment_profile_json, workspace),
+    "harness_environment_drift": rel(harness_environment_drift_md, workspace),
+    "harness_environment_drift_json": rel(harness_environment_drift_json, workspace),
+    "environment_profile_journal": rel(environment_profile_journal, workspace),
     "harness_adaptation": rel(harness_adaptation_md, workspace),
     "harness_adaptation_json": rel(harness_adaptation_json, workspace),
     "adapter_context": rel(adapter_context_md, workspace),
@@ -2287,6 +2522,15 @@ session = {
         "capabilities": harness_environment_profile["capabilities"],
         "constraints": harness_environment_profile["constraints"],
         "next_need": harness_environment_profile["next_need"],
+    },
+    "harness_environment_drift_summary": {
+        "status": harness_environment_drift["status"],
+        "summary": harness_environment_drift["summary"],
+        "detail": harness_environment_drift["detail"],
+        "history_count": harness_environment_drift["history_count"],
+        "gained_count": harness_environment_drift["gained_count"],
+        "lost_count": harness_environment_drift["lost_count"],
+        "next_need": harness_environment_drift["next_need"],
     },
     "harness_adaptation_summary": {
         "status": harness_adaptation["status"],
@@ -2372,6 +2616,20 @@ harness_environment_profile_md.write_text(
     ),
     encoding="utf-8",
 )
+harness_environment_drift_json.write_text(
+    json.dumps(harness_environment_drift, ensure_ascii=True, indent=2) + "\n",
+    encoding="utf-8",
+)
+harness_environment_drift_md.write_text(
+    harness_environment_drift_markdown(
+        harness_environment_drift,
+        workspace,
+        harness_environment_drift_json,
+        environment_profile_journal,
+    ),
+    encoding="utf-8",
+)
+append_profile_history(environment_profile_journal, harness_environment_profile)
 harness_adaptation_json.write_text(
     json.dumps(harness_adaptation, ensure_ascii=True, indent=2) + "\n",
     encoding="utf-8",
@@ -2416,6 +2674,9 @@ repair_plan["inputs"]["harness_adaptation_effectiveness"] = rel(harness_adaptati
 repair_plan["inputs"]["harness_adaptation_effectiveness_json"] = rel(harness_adaptation_effectiveness_json, workspace)
 repair_plan["inputs"]["harness_environment_profile"] = rel(harness_environment_profile_md, workspace)
 repair_plan["inputs"]["harness_environment_profile_json"] = rel(harness_environment_profile_json, workspace)
+repair_plan["inputs"]["harness_environment_drift"] = rel(harness_environment_drift_md, workspace)
+repair_plan["inputs"]["harness_environment_drift_json"] = rel(harness_environment_drift_json, workspace)
+repair_plan["inputs"]["environment_profile_journal"] = rel(environment_profile_journal, workspace)
 repair_plan["inputs"]["harness_adaptation"] = rel(harness_adaptation_md, workspace)
 repair_plan["inputs"]["harness_adaptation_json"] = rel(harness_adaptation_json, workspace)
 repair_plan["inputs"]["action_trace"] = rel(action_trace_md, workspace)
@@ -2433,8 +2694,9 @@ repair_plan["repair_lesson_effectiveness_summary"] = session["repair_lesson_effe
 repair_plan["repair_decision_summary"] = session["repair_decision_summary"]
 repair_plan["harness_adaptation_effectiveness_summary"] = session["harness_adaptation_effectiveness_summary"]
 repair_plan["harness_environment_profile_summary"] = session["harness_environment_profile_summary"]
+repair_plan["harness_environment_drift_summary"] = session["harness_environment_drift_summary"]
 repair_plan["harness_adaptation_summary"] = session["harness_adaptation_summary"]
-repair_plan["review_boundary"] = "Review HARNESS_ADAPTATION, HARNESS_ENVIRONMENT_PROFILE, HARNESS_ADAPTATION_EFFECTIVENESS, ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_RECALL.json, REPAIR_LESSONS, REPAIR_LESSON_EFFECTIVENESS, REPAIR_DECISION, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
+repair_plan["review_boundary"] = "Review HARNESS_ADAPTATION, HARNESS_ENVIRONMENT_PROFILE, HARNESS_ENVIRONMENT_DRIFT, HARNESS_ADAPTATION_EFFECTIVENESS, ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_RECALL.json, REPAIR_LESSONS, REPAIR_LESSON_EFFECTIVENESS, REPAIR_DECISION, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
 repair_plan_json.write_text(
     json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
     encoding="utf-8",
@@ -2572,6 +2834,13 @@ prompt_md.write_text(
             f"- capabilities: `{','.join(harness_environment_profile.get('capabilities') or []) or 'none'}`",
             f"- constraints: `{','.join(harness_environment_profile.get('constraints') or []) or 'none'}`",
             "",
+            "harness environment drift:",
+            f"- drift artifact: `{rel(harness_environment_drift_md, workspace)}`",
+            f"- drift json: `{rel(harness_environment_drift_json, workspace)}`",
+            f"- journal: `{rel(environment_profile_journal, workspace)}`",
+            f"- status: `{harness_environment_drift.get('status')}` detail: {compact(harness_environment_drift.get('detail'), 260)}",
+            f"- history_count: `{harness_environment_drift.get('history_count')}` gained: `{harness_environment_drift.get('gained_count')}` lost: `{harness_environment_drift.get('lost_count')}`",
+            "",
             "repair decision:",
             f"- decision artifact: `{rel(repair_decision_md, workspace)}`",
             f"- decision json: `{rel(repair_decision_json, workspace)}`",
@@ -2638,6 +2907,9 @@ prompt_md.write_text(
             f"- harness adaptation effectiveness json: `{rel(harness_adaptation_effectiveness_json, workspace)}`",
             f"- harness environment profile: `{rel(harness_environment_profile_md, workspace)}`",
             f"- harness environment profile json: `{rel(harness_environment_profile_json, workspace)}`",
+            f"- harness environment drift: `{rel(harness_environment_drift_md, workspace)}`",
+            f"- harness environment drift json: `{rel(harness_environment_drift_json, workspace)}`",
+            f"- environment profile journal: `{rel(environment_profile_journal, workspace)}`",
             f"- harness adaptation: `{rel(harness_adaptation_md, workspace)}`",
             f"- harness adaptation json: `{rel(harness_adaptation_json, workspace)}`",
             f"- adapter context: `{rel(adapter_context_md, workspace)}`",
@@ -2716,6 +2988,8 @@ review_md.write_text(
             f"- harness adaptation effectiveness json: `{rel(harness_adaptation_effectiveness_json, workspace)}`",
             f"- harness environment profile: `{rel(harness_environment_profile_md, workspace)}`",
             f"- harness environment profile json: `{rel(harness_environment_profile_json, workspace)}`",
+            f"- harness environment drift: `{rel(harness_environment_drift_md, workspace)}`",
+            f"- harness environment drift json: `{rel(harness_environment_drift_json, workspace)}`",
             f"- adapter context: `{rel(adapter_context_md, workspace)}`",
             f"- action trace: `{rel(action_trace_md, workspace)}`",
             f"- action trace json: `{rel(action_trace_json, workspace)}`",
@@ -2789,6 +3063,9 @@ session_md.write_text(
             f"harness adaptation effectiveness json: `{rel(harness_adaptation_effectiveness_json, workspace)}`",
             f"harness environment profile: `{rel(harness_environment_profile_md, workspace)}`",
             f"harness environment profile json: `{rel(harness_environment_profile_json, workspace)}`",
+            f"harness environment drift: `{rel(harness_environment_drift_md, workspace)}`",
+            f"harness environment drift json: `{rel(harness_environment_drift_json, workspace)}`",
+            f"environment profile journal: `{rel(environment_profile_journal, workspace)}`",
             f"harness adaptation: `{rel(harness_adaptation_md, workspace)}`",
             f"harness adaptation json: `{rel(harness_adaptation_json, workspace)}`",
             f"adapter context: `{rel(adapter_context_md, workspace)}`",
@@ -2869,6 +3146,17 @@ metadata = {
     "harness_environment_profile_installed_profiles": ",".join(harness_environment_profile.get("installed_profiles") or []),
     "harness_environment_profile_next_need_kind": harness_environment_profile.get("next_need", {}).get("kind", ""),
     "harness_environment_profile_next_need_query": harness_environment_profile.get("next_need", {}).get("query", ""),
+    "harness_environment_drift": rel(harness_environment_drift_md, workspace),
+    "harness_environment_drift_json": rel(harness_environment_drift_json, workspace),
+    "harness_environment_drift_status": harness_environment_drift.get("status", ""),
+    "harness_environment_drift_summary": harness_environment_drift.get("summary", ""),
+    "harness_environment_drift_detail": harness_environment_drift.get("detail", ""),
+    "harness_environment_drift_history_count": str(harness_environment_drift.get("history_count", 0)),
+    "harness_environment_drift_gained_count": str(harness_environment_drift.get("gained_count", 0)),
+    "harness_environment_drift_lost_count": str(harness_environment_drift.get("lost_count", 0)),
+    "harness_environment_drift_next_need_kind": harness_environment_drift.get("next_need", {}).get("kind", ""),
+    "harness_environment_drift_next_need_query": harness_environment_drift.get("next_need", {}).get("query", ""),
+    "environment_profile_journal": rel(environment_profile_journal, workspace),
     "harness_adaptation": rel(harness_adaptation_md, workspace),
     "harness_adaptation_json": rel(harness_adaptation_json, workspace),
     "harness_adaptation_status": harness_adaptation.get("status", ""),

@@ -650,6 +650,17 @@ struct RepairPlanReport {
     harness_environment_profile_installed_profiles: String,
     harness_environment_profile_next_need_kind: String,
     harness_environment_profile_next_need_query: String,
+    harness_environment_drift: String,
+    harness_environment_drift_json: String,
+    harness_environment_drift_status: String,
+    harness_environment_drift_summary: String,
+    harness_environment_drift_detail: String,
+    harness_environment_drift_history_count: String,
+    harness_environment_drift_gained_count: String,
+    harness_environment_drift_lost_count: String,
+    harness_environment_drift_next_need_kind: String,
+    harness_environment_drift_next_need_query: String,
+    environment_profile_journal: String,
     harness_adaptation: String,
     harness_adaptation_json: String,
     harness_adaptation_status: String,
@@ -3821,6 +3832,15 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                     "harness_environment_profile_status",
                     &repair_plan_environment_profile_label(plan),
                 );
+                print_optional_line("harness_environment_drift", &plan.harness_environment_drift);
+                print_optional_line(
+                    "harness_environment_drift_status",
+                    &repair_plan_environment_drift_label(plan),
+                );
+                print_optional_line(
+                    "environment_profile_journal",
+                    &plan.environment_profile_journal,
+                );
                 print_optional_line("harness_adaptation", &plan.harness_adaptation);
                 print_optional_line(
                     "harness_adaptation_status",
@@ -3892,6 +3912,12 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                     "Harness环境Profile状态",
                     &repair_plan_environment_profile_label(plan),
                 );
+                print_optional_line("Harness环境漂移", &plan.harness_environment_drift);
+                print_optional_line(
+                    "Harness环境漂移状态",
+                    &repair_plan_environment_drift_label(plan),
+                );
+                print_optional_line("环境Profile日志", &plan.environment_profile_journal);
                 print_optional_line("Harness适应", &plan.harness_adaptation);
                 print_optional_line("Harness适应状态", &repair_plan_adaptation_label(plan));
                 print_optional_line("代码上下文", &plan.code_context);
@@ -4255,6 +4281,62 @@ fn repair_plan_environment_profile_label(plan: &RepairPlanReport) -> String {
         parts.push(format!(
             "next={kind} {}",
             plan.harness_environment_profile_next_need_query
+        ));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_environment_drift_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan.harness_environment_drift_status.trim().is_empty() {
+        parts.push(plan.harness_environment_drift_status.trim().to_string());
+    }
+    if !plan
+        .harness_environment_drift_history_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "history={}",
+            plan.harness_environment_drift_history_count
+        ));
+    }
+    if !plan
+        .harness_environment_drift_gained_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "gained={}",
+            plan.harness_environment_drift_gained_count
+        ));
+    }
+    if !plan.harness_environment_drift_lost_count.trim().is_empty() {
+        parts.push(format!(
+            "lost={}",
+            plan.harness_environment_drift_lost_count
+        ));
+    }
+    if !plan.harness_environment_drift_detail.trim().is_empty() {
+        parts.push(format!("detail={}", plan.harness_environment_drift_detail));
+    }
+    if !plan
+        .harness_environment_drift_next_need_query
+        .trim()
+        .is_empty()
+    {
+        let kind = if plan
+            .harness_environment_drift_next_need_kind
+            .trim()
+            .is_empty()
+        {
+            "verify"
+        } else {
+            plan.harness_environment_drift_next_need_kind.trim()
+        };
+        parts.push(format!(
+            "next={kind} {}",
+            plan.harness_environment_drift_next_need_query
         ));
     }
     parts.join(" ")
@@ -8958,6 +9040,24 @@ fn repair_report(
                 shell_arg(&plan.harness_environment_profile_json)
             ));
         }
+        if !plan.harness_environment_drift.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.harness_environment_drift)
+            ));
+        }
+        if !plan.harness_environment_drift_json.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.harness_environment_drift_json)
+            ));
+        }
+        if !plan.environment_profile_journal.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.environment_profile_journal)
+            ));
+        }
         if !plan.harness_adaptation.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.harness_adaptation)));
         }
@@ -9410,6 +9510,41 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
             metadata,
             "harness_environment_profile_next_need_query",
         ),
+        harness_environment_drift: metadata_value(metadata, "harness_environment_drift"),
+        harness_environment_drift_json: metadata_value(metadata, "harness_environment_drift_json"),
+        harness_environment_drift_status: metadata_value(
+            metadata,
+            "harness_environment_drift_status",
+        ),
+        harness_environment_drift_summary: metadata_value(
+            metadata,
+            "harness_environment_drift_summary",
+        ),
+        harness_environment_drift_detail: metadata_value(
+            metadata,
+            "harness_environment_drift_detail",
+        ),
+        harness_environment_drift_history_count: metadata_value(
+            metadata,
+            "harness_environment_drift_history_count",
+        ),
+        harness_environment_drift_gained_count: metadata_value(
+            metadata,
+            "harness_environment_drift_gained_count",
+        ),
+        harness_environment_drift_lost_count: metadata_value(
+            metadata,
+            "harness_environment_drift_lost_count",
+        ),
+        harness_environment_drift_next_need_kind: metadata_value(
+            metadata,
+            "harness_environment_drift_next_need_kind",
+        ),
+        harness_environment_drift_next_need_query: metadata_value(
+            metadata,
+            "harness_environment_drift_next_need_query",
+        ),
+        environment_profile_journal: metadata_value(metadata, "environment_profile_journal"),
         harness_adaptation: metadata_value(metadata, "harness_adaptation"),
         harness_adaptation_json: metadata_value(metadata, "harness_adaptation_json"),
         harness_adaptation_status: metadata_value(metadata, "harness_adaptation_status"),
@@ -21515,6 +21650,19 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan
             .harness_environment_profile_installed_profiles
             .contains("harness-repair-agent"));
+        assert!(plan
+            .harness_environment_drift
+            .ends_with("HARNESS_ENVIRONMENT_DRIFT.md"));
+        assert!(plan
+            .harness_environment_drift_json
+            .ends_with("HARNESS_ENVIRONMENT_DRIFT.json"));
+        assert_eq!(plan.harness_environment_drift_status, "baseline");
+        assert_eq!(plan.harness_environment_drift_history_count, "0");
+        assert_eq!(plan.harness_environment_drift_gained_count, "0");
+        assert_eq!(plan.harness_environment_drift_lost_count, "0");
+        assert!(plan
+            .environment_profile_journal
+            .ends_with("environment-profiles.jsonl"));
         assert!(plan.harness_adaptation.ends_with("HARNESS_ADAPTATION.md"));
         assert!(plan
             .harness_adaptation_json
@@ -21578,6 +21726,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan_json.contains("\"harness_adaptation\""));
         assert!(plan_json.contains("\"harness_adaptation_effectiveness\""));
         assert!(plan_json.contains("\"harness_environment_profile\""));
+        assert!(plan_json.contains("\"harness_environment_drift\""));
         assert!(plan_json.contains("repair partly improved Feed"));
         assert!(plan_json.contains("repair did not improve Feed"));
         let adaptation_effectiveness_json =
@@ -21589,10 +21738,18 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(environment_profile_json
             .contains("\"schema_version\": \"octopus-harness-environment-profile-v1\""));
         assert!(environment_profile_json.contains("\"execution_mode\""));
+        let environment_drift_json =
+            fs::read_to_string(&plan.harness_environment_drift_json).unwrap();
+        assert!(environment_drift_json
+            .contains("\"schema_version\": \"octopus-harness-environment-drift-v1\""));
+        assert!(environment_drift_json.contains("\"status\": \"baseline\""));
+        let profile_journal = fs::read_to_string(&plan.environment_profile_journal).unwrap();
+        assert!(profile_journal.contains("octopus-harness-environment-profile-v1"));
         let adaptation_json = fs::read_to_string(&plan.harness_adaptation_json).unwrap();
         assert!(adaptation_json.contains("\"schema_version\": \"octopus-harness-adaptation-v1\""));
         assert!(adaptation_json.contains("\"status\": \"decision_guided\""));
         assert!(adaptation_json.contains("\"profile_status\": \"satisfied\""));
+        assert!(adaptation_json.contains("\"drift_status\": \"baseline\""));
         assert!(report
             .next
             .iter()
@@ -21609,6 +21766,18 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("HARNESS_ENVIRONMENT_PROFILE.json")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("HARNESS_ENVIRONMENT_DRIFT.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("HARNESS_ENVIRONMENT_DRIFT.json")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("environment-profiles.jsonl")));
         assert!(report
             .next
             .iter()
@@ -25310,6 +25479,35 @@ JSON
                     .unwrap_or(false)
             });
         assert!(adaptation_effectiveness_found);
+        let drift_history_found = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry.ok()?.path().join("HARNESS_ENVIRONMENT_DRIFT.json");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains(
+                            "\"schema_version\": \"octopus-harness-environment-drift-v1\"",
+                        ) && content.contains("\"history_count\": 1")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(drift_history_found);
+        let profile_journal = fs::read_to_string(
+            workspace.join(".octopus/harness-repair/environment-profiles.jsonl"),
+        )
+        .unwrap();
+        assert!(
+            profile_journal
+                .lines()
+                .filter(|line| line.contains("octopus-harness-environment-profile-v1"))
+                .count()
+                >= 2
+        );
         let lessons_found = workspace
             .join(".octopus/harness-repair")
             .read_dir()
