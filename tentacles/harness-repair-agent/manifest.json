@@ -31,9 +31,9 @@
     },
     {
       "id": "heartbeat_repair",
-      "description": "Inspect the latest repair-session action plan, similar action-trace recall, repair lesson effectiveness, repair effectiveness rollup adaptation, repair effectiveness rollup effectiveness, repair effectiveness rollup, repair decision, and tool-side action trace, then write a repair queue brief before suggesting the next review, grant, apply, or score action.",
+      "description": "Inspect the latest repair-session action plan, similar action-trace recall, repair lesson effectiveness, repair queue brief effectiveness, repair effectiveness rollup adaptation, repair effectiveness rollup effectiveness, repair effectiveness rollup, repair decision, and tool-side action trace, then write a repair queue brief before suggesting the next review, grant, apply, or score action.",
       "input": "octopus-json-v1 tool call or workspace root",
-      "output": "JSON Feed with latest REPAIR_PLAN, REPAIR_QUEUE_BRIEF.md/json, REPAIR_RECALL.json signal, REPAIR_LESSON_EFFECTIVENESS, REPAIR_EFFECTIVENESS_ROLLUP, REPAIR_EFFECTIVENESS_ROLLUP_EFFECTIVENESS, REPAIR_EFFECTIVENESS_ROLLUP_ADAPTATION, REPAIR_DECISION, ACTION_TRACE.md, ACTION_TRACE.json, review boundary, grant/apply/score commands, next_need_kind, and next_need_query",
+      "output": "JSON Feed with latest REPAIR_PLAN, REPAIR_QUEUE_BRIEF.md/json, REPAIR_QUEUE_BRIEF_EFFECTIVENESS.md/json, REPAIR_RECALL.json signal, REPAIR_LESSON_EFFECTIVENESS, REPAIR_EFFECTIVENESS_ROLLUP, REPAIR_EFFECTIVENESS_ROLLUP_EFFECTIVENESS, REPAIR_EFFECTIVENESS_ROLLUP_ADAPTATION, REPAIR_DECISION, ACTION_TRACE.md, ACTION_TRACE.json, review boundary, grant/apply/score commands, next_need_kind, and next_need_query",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/heartbeat_repair.sh",
@@ -42,9 +42,9 @@
     },
     {
       "id": "repair_session",
-      "description": "Write a reviewable self-repair session, local outcome memory, similar action-trace recall, reusable repair lessons, measured lesson effectiveness, repair effectiveness rollup adaptation, repair effectiveness rollup effectiveness, repair effectiveness rollup, local repair decision, adapter context, target code context, field trajectory context, tool-side action trace, review bundle, action plan, and optional provider-generated repair draft from heartbeat, evolution, adapter, and reviewed-outcome signals.",
+      "description": "Write a reviewable self-repair session, local outcome memory, similar action-trace recall, reusable repair lessons, measured lesson effectiveness, repair queue brief effectiveness, repair effectiveness rollup adaptation, repair effectiveness rollup effectiveness, repair effectiveness rollup, local repair decision, adapter context, target code context, field trajectory context, tool-side action trace, review bundle, action plan, and optional provider-generated repair draft from heartbeat, evolution, adapter, and reviewed-outcome signals.",
       "input": "workspace root or octopus-json-v1 Need",
-      "output": "JSON Feed with SESSION, PROMPT, DRAFT, REVIEW, NEXT_NEED, COMMANDS, OUTCOME_MEMORY, REPAIR_RECALL.json, REPAIR_LESSONS.md/json, REPAIR_LESSON_EFFECTIVENESS.md/json, REPAIR_EFFECTIVENESS_ROLLUP.md/json, REPAIR_EFFECTIVENESS_ROLLUP_EFFECTIVENESS.md/json, REPAIR_EFFECTIVENESS_ROLLUP_ADAPTATION.md/json, REPAIR_DECISION.md/json, ADAPTER_CONTEXT, CODE_CONTEXT, FIELD_TRAJECTORY, ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_PLAN paths, and the next repair Need",
+      "output": "JSON Feed with SESSION, PROMPT, DRAFT, REVIEW, NEXT_NEED, COMMANDS, OUTCOME_MEMORY, REPAIR_RECALL.json, REPAIR_LESSONS.md/json, REPAIR_LESSON_EFFECTIVENESS.md/json, REPAIR_QUEUE_BRIEF_EFFECTIVENESS.md/json, REPAIR_EFFECTIVENESS_ROLLUP.md/json, REPAIR_EFFECTIVENESS_ROLLUP_EFFECTIVENESS.md/json, REPAIR_EFFECTIVENESS_ROLLUP_ADAPTATION.md/json, REPAIR_DECISION.md/json, ADAPTER_CONTEXT, CODE_CONTEXT, FIELD_TRAJECTORY, ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_PLAN paths, and the next repair Need",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/repair_session.sh",
@@ -53,9 +53,9 @@
     },
     {
       "id": "repair_outcome",
-      "description": "Record a reviewed harness repair session outcome, including action-trace, recall, lesson, and repair-effectiveness-rollup usage memory, so future repair sessions can learn from it.",
+      "description": "Record a reviewed harness repair session outcome, including action-trace, recall, lesson, repair-queue-brief, and repair-effectiveness-rollup usage memory, so future repair sessions can learn from it.",
       "input": "workspace root, SESSION.json path, outcome status, and summary, or octopus-json-v1 Need",
-      "output": "JSON Feed with OUTCOME.md, outcomes.jsonl path, action-trace and repair-effectiveness-rollup outcome memory, and next Need",
+      "output": "JSON Feed with OUTCOME.md, outcomes.jsonl path, action-trace, repair-queue-brief, and repair-effectiveness-rollup outcome memory, and next Need",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/repair_outcome.sh",
@@ -113,7 +113,9 @@
       "Record ACTION_TRACE.json recall usage into repair outcomes before using those outcomes as future evidence.",
       "Record ACTION_TRACE.json lesson usage into repair outcomes before using those outcomes as future evidence.",
       "Record REPAIR_EFFECTIVENESS_ROLLUP usage into repair outcomes before using rollup guidance as future evidence.",
+      "Record REPAIR_QUEUE_BRIEF usage into repair outcomes before using queue selection as future evidence.",
       "Measure repair effectiveness rollup usage before compressing the next repair effectiveness rollup.",
+      "Measure repair queue brief usage before compressing the next repair effectiveness rollup.",
       "Write REPAIR_EFFECTIVENESS_ROLLUP_ADAPTATION before drafting the next repair session.",
       "Select similar action-trace repair outcomes into REPAIR_RECALL.json before drafting the next repair session.",
       "Compress reviewed outcomes and similar recall into REPAIR_LESSONS before drafting the next repair session.",
@@ -133,6 +135,7 @@
       "Let heartbeat_repair read REPAIR_EFFECTIVENESS_ROLLUP_EFFECTIVENESS and expose rollup guidance success before grant/apply/score.",
       "Let heartbeat_repair read REPAIR_EFFECTIVENESS_ROLLUP_ADAPTATION and queue its next Need only when rollup guidance itself is unreliable.",
       "Let heartbeat_repair write REPAIR_QUEUE_BRIEF.md/json before returning queued Need metadata.",
+      "Let heartbeat_repair read REPAIR_QUEUE_BRIEF_EFFECTIVENESS and expose queue-source success before grant/apply/score.",
       "Let heartbeat_repair read REPAIR_DECISION and expose the local harness focus before grant/apply/score.",
       "Let heartbeat_repair queue REPAIR_DECISION next Need when adapter, draft, action trace, and reviewed outcome are not blocking.",
       "Expose provider DRAFT and CODE_CONTEXT as repair-plan Feed metadata before grant, apply, or score.",

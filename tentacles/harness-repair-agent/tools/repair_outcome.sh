@@ -158,6 +158,28 @@ def repair_effectiveness_rollup_summary(workspace, session_path, session):
     }
 
 
+def repair_queue_brief_summary(workspace, session_path, session):
+    path = resolve_session_artifact(
+        workspace,
+        session_path,
+        session.get("repair_queue_brief_json"),
+        "REPAIR_QUEUE_BRIEF.json",
+    )
+    data = load_json(path) if path else {}
+    next_need = data.get("next_need") if isinstance(data.get("next_need"), dict) else {}
+    blockers = data.get("blockers") if isinstance(data.get("blockers"), list) else []
+    return {
+        "json": rel(path, workspace) if path else "",
+        "status": str(data.get("status") or ""),
+        "plan_status": str(data.get("plan_status") or ""),
+        "source": str(data.get("source") or ""),
+        "blockers": ",".join(str(item) for item in blockers if str(item).strip()),
+        "review_first": str(data.get("review_first") or ""),
+        "next_need_kind": str(next_need.get("kind") or ""),
+        "next_need_query": str(next_need.get("query") or ""),
+    }
+
+
 def repair_plan_commands(workspace, session_path, session):
     path = resolve_session_artifact(
         workspace,
@@ -270,6 +292,7 @@ if outcome_status is None:
 session = load_json(session_path)
 action_trace = action_trace_summary(workspace, session_path, session)
 repair_effectiveness_rollup = repair_effectiveness_rollup_summary(workspace, session_path, session)
+repair_queue_brief = repair_queue_brief_summary(workspace, session_path, session)
 draft = session.get("draft") if isinstance(session.get("draft"), dict) else {}
 repair_commands = repair_plan_commands(workspace, session_path, session)
 record = {
@@ -306,6 +329,15 @@ record = {
     "repair_effectiveness_rollup_next_need_kind": repair_effectiveness_rollup["next_need_kind"],
     "repair_effectiveness_rollup_next_need_query": repair_effectiveness_rollup["next_need_query"],
     "repair_effectiveness_rollup": repair_effectiveness_rollup,
+    "repair_queue_brief_json": repair_queue_brief["json"],
+    "repair_queue_brief_status": repair_queue_brief["status"],
+    "repair_queue_brief_plan_status": repair_queue_brief["plan_status"],
+    "repair_queue_brief_source": repair_queue_brief["source"],
+    "repair_queue_brief_blockers": repair_queue_brief["blockers"],
+    "repair_queue_brief_review_first": repair_queue_brief["review_first"],
+    "repair_queue_brief_next_need_kind": repair_queue_brief["next_need_kind"],
+    "repair_queue_brief_next_need_query": repair_queue_brief["next_need_query"],
+    "repair_queue_brief": repair_queue_brief,
     "action_trace_json": action_trace["json"],
     "action_trace_status": action_trace["status"],
     "action_trace_stage_count": action_trace["stage_count"],
@@ -366,6 +398,9 @@ outcome_md.write_text(
         f"repair_effectiveness_rollup_json: `{record['repair_effectiveness_rollup_json'] or 'missing'}`",
         f"repair_effectiveness_rollup: status=`{record['repair_effectiveness_rollup_status'] or 'none'}` active_sources=`{record['repair_effectiveness_rollup_active_source_count'] or '0'}` used=`{record['repair_effectiveness_rollup_used_count'] or '0'}` failed=`{record['repair_effectiveness_rollup_failed_count'] or '0'}` success_rate=`{record['repair_effectiveness_rollup_success_rate'] or '0.00'}` weakest=`{record['repair_effectiveness_rollup_weakest_source'] or 'none'}`",
         f"repair_effectiveness_rollup_next: `{record['repair_effectiveness_rollup_next_need_kind'] or 'verify'} {record['repair_effectiveness_rollup_next_need_query'] or ''}`",
+        f"repair_queue_brief_json: `{record['repair_queue_brief_json'] or 'missing'}`",
+        f"repair_queue_brief: status=`{record['repair_queue_brief_status'] or 'none'}` plan_status=`{record['repair_queue_brief_plan_status'] or 'none'}` source=`{record['repair_queue_brief_source'] or 'none'}` blockers=`{record['repair_queue_brief_blockers'] or 'none'}`",
+        f"repair_queue_brief_next: `{record['repair_queue_brief_next_need_kind'] or 'verify'} {record['repair_queue_brief_next_need_query'] or ''}`",
         f"action_trace_json: `{record['action_trace_json'] or 'missing'}`",
         f"action_trace_status: `{record['action_trace_status']}`",
         f"action_trace_stages: `{record['action_trace_stage_count'] or 'unknown'}`",
@@ -421,6 +456,14 @@ metadata = {
     "repair_effectiveness_rollup_top_avoid": record["repair_effectiveness_rollup_top_avoid"],
     "repair_effectiveness_rollup_next_need_kind": record["repair_effectiveness_rollup_next_need_kind"],
     "repair_effectiveness_rollup_next_need_query": record["repair_effectiveness_rollup_next_need_query"],
+    "repair_queue_brief_json": record["repair_queue_brief_json"],
+    "repair_queue_brief_status": record["repair_queue_brief_status"],
+    "repair_queue_brief_plan_status": record["repair_queue_brief_plan_status"],
+    "repair_queue_brief_source": record["repair_queue_brief_source"],
+    "repair_queue_brief_blockers": record["repair_queue_brief_blockers"],
+    "repair_queue_brief_review_first": record["repair_queue_brief_review_first"],
+    "repair_queue_brief_next_need_kind": record["repair_queue_brief_next_need_kind"],
+    "repair_queue_brief_next_need_query": record["repair_queue_brief_next_need_query"],
     "action_trace_json": record["action_trace_json"],
     "action_trace_status": record["action_trace_status"],
     "action_trace_stage_count": record["action_trace_stage_count"],

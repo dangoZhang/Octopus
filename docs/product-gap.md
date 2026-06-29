@@ -48,6 +48,7 @@ Updated: 2026-06-29
 - `repair score latest` now resolves the newest Feed trace, matching `feedback latest` and `fields score latest` so the repair feedback loop can be scored without copying a trace id.
 - Repair reports now include a direct `octopus repair continue <workspace>` next step whenever heartbeat queues a repair Need, while keeping the queue item visible for review.
 - Repair heartbeat now writes `REPAIR_QUEUE_BRIEF.md/json` beside the latest repair plan, so the queued self-repair Need has a reviewable source, blocker list, first artifact to inspect, and clean-brain boundary note.
+- Repair outcomes now preserve `REPAIR_QUEUE_BRIEF` usage, and repair sessions write `REPAIR_QUEUE_BRIEF_EFFECTIVENESS.md/json` so heartbeat can learn which queue sources lead to useful self-repair.
 - `repair continue [query] --score <status> [summary]` can now continue the queued repair Need and record the human-selected repair outcome in one command, while leaving unscored continue as the default.
 - Unscored `repair continue` now returns satisfied, partial, and failed repair-score commands for the continued Feed trace, so human review can feed the harness without a satisfied-only prompt.
 - Repair plan reports now derive `score_commands` from the concrete plan trace and add satisfied, partial, and failed options to `next`, while blocked plans still suppress scoring.
