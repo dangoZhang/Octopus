@@ -8738,11 +8738,9 @@ fn repair_continue_report(
     let trace_index = feedback_trace_index(&feedback);
     *state = harness.state;
     state.save(state_path).map_err(|error| error.to_string())?;
-    let mut next = vec![
-        repair_score_command(trace_index.as_deref()),
-        "octopus report".to_string(),
-        "octopus beat 200".to_string(),
-    ];
+    let mut next = repair_score_commands(trace_index.as_deref());
+    next.push("octopus report".to_string());
+    next.push("octopus beat 200".to_string());
     if let Some(index) = trace_index {
         next.insert(
             0,
@@ -8768,6 +8766,15 @@ fn feedback_trace_index(feedback: &Feedback) -> Option<String> {
 fn repair_score_command(trace_index: Option<&str>) -> String {
     let index = trace_index.unwrap_or("<trace-index>");
     format!("octopus repair score {index} satisfied \"repair improved harness\"")
+}
+
+fn repair_score_commands(trace_index: Option<&str>) -> Vec<String> {
+    let index = trace_index.unwrap_or("<trace-index>");
+    vec![
+        repair_score_command(trace_index),
+        format!("octopus repair score {index} partial \"repair partly improved harness\""),
+        format!("octopus repair score {index} failed \"repair did not improve harness\""),
+    ]
 }
 
 fn parse_repair_continue_args(args: &[String]) -> Result<RepairContinueArgs, String> {
@@ -20898,6 +20905,18 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("repair score 2")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("repair score 2 satisfied")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("repair score 2 partial")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("repair score 2 failed")));
         assert!(!report
             .next
             .iter()
