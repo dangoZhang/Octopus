@@ -711,6 +711,44 @@ def repair_patch_strategy_metadata(root, value, json_value=""):
     return metadata
 
 
+def repair_patch_strategy_effectiveness_metadata(root, value, json_value=""):
+    path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
+    metadata = {
+        "repair_patch_strategy_effectiveness": rel(path, root) if path else "",
+        "repair_patch_strategy_effectiveness_json": rel(json_path, root) if json_path else "",
+        "repair_patch_strategy_effectiveness_used_count": "",
+        "repair_patch_strategy_effectiveness_satisfied_count": "",
+        "repair_patch_strategy_effectiveness_partial_count": "",
+        "repair_patch_strategy_effectiveness_failed_count": "",
+        "repair_patch_strategy_effectiveness_success_rate": "",
+        "repair_patch_strategy_effectiveness_failure_rate": "",
+        "repair_patch_strategy_effectiveness_top_reuse": "",
+        "repair_patch_strategy_effectiveness_top_avoid": "",
+        "repair_patch_strategy_effectiveness_preview": "",
+    }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        metadata.update({
+            "repair_patch_strategy_effectiveness_used_count": str(data.get("used_count") or 0),
+            "repair_patch_strategy_effectiveness_satisfied_count": str(data.get("satisfied_count") or 0),
+            "repair_patch_strategy_effectiveness_partial_count": str(data.get("partial_count") or 0),
+            "repair_patch_strategy_effectiveness_failed_count": str(data.get("failed_count") or 0),
+            "repair_patch_strategy_effectiveness_success_rate": str(data.get("success_rate") or "0.00"),
+            "repair_patch_strategy_effectiveness_failure_rate": str(data.get("failure_rate") or "0.00"),
+            "repair_patch_strategy_effectiveness_top_reuse": compact(data.get("top_reuse") or "", 320),
+            "repair_patch_strategy_effectiveness_top_avoid": compact(data.get("top_avoid") or "", 320),
+            "repair_patch_strategy_effectiveness_preview": compact(json.dumps(data, sort_keys=True), 700),
+        })
+    if path and path.exists() and not metadata["repair_patch_strategy_effectiveness_preview"]:
+        metadata["repair_patch_strategy_effectiveness_preview"] = compact(path.read_text(encoding="utf-8", errors="replace"), 700)
+    return metadata
+
+
 def repair_command_strategy_effectiveness_metadata(root, value, json_value=""):
     path = resolve_artifact(root, value)
     json_path = resolve_artifact(root, json_value)
@@ -1361,6 +1399,8 @@ if latest_repair_plan:
     repair_patch_learning_effectiveness_json = str(inputs.get("repair_patch_learning_effectiveness_json") or "")
     repair_patch_strategy = str(inputs.get("repair_patch_strategy") or "")
     repair_patch_strategy_json = str(inputs.get("repair_patch_strategy_json") or "")
+    repair_patch_strategy_effectiveness = str(inputs.get("repair_patch_strategy_effectiveness") or "")
+    repair_patch_strategy_effectiveness_json = str(inputs.get("repair_patch_strategy_effectiveness_json") or "")
     repair_command_effectiveness = str(inputs.get("repair_command_effectiveness") or "")
     repair_command_effectiveness_json = str(inputs.get("repair_command_effectiveness_json") or "")
     repair_command_strategy = str(inputs.get("repair_command_strategy") or "")
@@ -1446,6 +1486,11 @@ if latest_repair_plan:
         root,
         repair_patch_strategy,
         repair_patch_strategy_json,
+    )
+    patch_strategy_effectiveness_metadata = repair_patch_strategy_effectiveness_metadata(
+        root,
+        repair_patch_strategy_effectiveness,
+        repair_patch_strategy_effectiveness_json,
     )
     command_effectiveness_metadata = repair_command_effectiveness_metadata(
         root,
@@ -1573,6 +1618,8 @@ if latest_repair_plan:
     patch_strategy_focus = patch_strategy_metadata.get("repair_patch_strategy_focus", "")
     patch_strategy_next_kind = patch_strategy_metadata.get("repair_patch_strategy_next_need_kind", "")
     patch_strategy_next_query = patch_strategy_metadata.get("repair_patch_strategy_next_need_query", "")
+    patch_strategy_effectiveness_used = patch_strategy_effectiveness_metadata.get("repair_patch_strategy_effectiveness_used_count", "")
+    patch_strategy_effectiveness_success = patch_strategy_effectiveness_metadata.get("repair_patch_strategy_effectiveness_success_rate", "")
     command_effectiveness_used = command_effectiveness_metadata.get("repair_command_effectiveness_used_count", "")
     command_effectiveness_success = command_effectiveness_metadata.get("repair_command_effectiveness_success_rate", "")
     command_strategy_status = command_strategy_metadata.get("repair_command_strategy_status", "")
@@ -1831,6 +1878,7 @@ if latest_repair_plan:
             f"patch_learning={patch_learning_status or 'none'} used={patch_learning_used or '0'} verified={patch_learning_verified or '0'} verified_success_rate={patch_learning_verified_success or '0.00'}; "
             f"patch_learning_effectiveness={patch_learning_effectiveness_used or '0'} success_rate={patch_learning_effectiveness_success or '0.00'}; "
             f"patch_strategy={patch_strategy_status or 'none'} focus={patch_strategy_focus or 'none'}; "
+            f"patch_strategy_effectiveness={patch_strategy_effectiveness_used or '0'} success_rate={patch_strategy_effectiveness_success or '0.00'}; "
             f"command_effectiveness={command_effectiveness_used or '0'} success_rate={command_effectiveness_success or '0.00'}; "
             f"command_strategy={command_strategy_status or 'none'} focus={command_strategy_focus or 'none'}; "
             f"command_strategy_effectiveness={command_strategy_effectiveness_used or '0'} success_rate={command_strategy_effectiveness_success or '0.00'}; "
@@ -1880,6 +1928,8 @@ if latest_repair_plan:
         "repair_patch_learning_effectiveness_json": repair_patch_learning_effectiveness_json,
         "repair_patch_strategy": repair_patch_strategy,
         "repair_patch_strategy_json": repair_patch_strategy_json,
+        "repair_patch_strategy_effectiveness": repair_patch_strategy_effectiveness,
+        "repair_patch_strategy_effectiveness_json": repair_patch_strategy_effectiveness_json,
         "repair_command_effectiveness": repair_command_effectiveness,
         "repair_command_effectiveness_json": repair_command_effectiveness_json,
         "repair_command_strategy": repair_command_strategy,
@@ -1938,6 +1988,7 @@ if latest_repair_plan:
     repair_metadata.update(patch_learning_metadata)
     repair_metadata.update(patch_learning_effectiveness_metadata)
     repair_metadata.update(patch_strategy_metadata)
+    repair_metadata.update(patch_strategy_effectiveness_metadata)
     repair_metadata.update(command_effectiveness_metadata)
     repair_metadata.update(command_strategy_metadata)
     repair_metadata.update(command_strategy_effectiveness_metadata)

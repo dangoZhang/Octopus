@@ -78,6 +78,7 @@ Updated: 2026-06-29
 - Harness repair now writes `REPAIR_PATCH_LEARNING.md/json`, so scored apply+verify outcomes become compact reuse/avoid/observe evidence for the next tool-side repair session.
 - Harness repair now writes `REPAIR_PATCH_LEARNING_EFFECTIVENESS.md/json`, so outcomes that used verified-patch learning can teach whether that learning should be reused or avoided.
 - Harness repair now writes `REPAIR_PATCH_STRATEGY.md/json`, so patch draft/review/apply/verify/learning evidence can drive the next heartbeat repair Need without adding patch mechanics to the clean brain.
+- Harness repair now writes `REPAIR_PATCH_STRATEGY_EFFECTIVENESS.md/json`, so reviewed outcomes teach whether patch strategy choices should be reused, tightened, or inspected.
 - Harness repair now writes `REPAIR_COMMAND_EFFECTIVENESS.md/json`, so scored outcomes teach which reviewable check/grant/apply/score command recipes should be reused or avoided.
 - Harness repair now writes `REPAIR_COMMAND_STRATEGY_EFFECTIVENESS.md/json`, so reviewed outcomes can teach whether command-strategy choices themselves help future repair sessions.
 - Harness repair now writes `REPAIR_DECISION_EFFECTIVENESS.md/json`, so reviewed outcomes teach whether the repair decision itself helped later repair sessions.
