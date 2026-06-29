@@ -694,6 +694,19 @@ struct RepairPlanReport {
     repair_patch_verify_target: String,
     repair_patch_verify_command: String,
     repair_patch_verify_summary: String,
+    repair_patch_learning: String,
+    repair_patch_learning_json: String,
+    repair_patch_learning_status: String,
+    repair_patch_learning_used_count: String,
+    repair_patch_learning_verified_count: String,
+    repair_patch_learning_verified_satisfied_count: String,
+    repair_patch_learning_verified_failed_count: String,
+    repair_patch_learning_success_rate: String,
+    repair_patch_learning_verified_success_rate: String,
+    repair_patch_learning_top_reuse: String,
+    repair_patch_learning_top_avoid: String,
+    repair_patch_learning_next_need_kind: String,
+    repair_patch_learning_next_need_query: String,
     repair_command_effectiveness: String,
     repair_command_effectiveness_json: String,
     repair_command_effectiveness_used_count: String,
@@ -4040,6 +4053,11 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                     "repair_patch_verify_status",
                     &repair_plan_patch_verify_label(plan),
                 );
+                print_optional_line("repair_patch_learning", &plan.repair_patch_learning);
+                print_optional_line(
+                    "repair_patch_learning_status",
+                    &repair_plan_patch_learning_label(plan),
+                );
                 print_optional_line(
                     "repair_command_effectiveness",
                     &plan.repair_command_effectiveness,
@@ -4197,6 +4215,8 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("补丁应用状态", &repair_plan_patch_apply_label(plan));
                 print_optional_line("补丁验证", &plan.repair_patch_verify);
                 print_optional_line("补丁验证状态", &repair_plan_patch_verify_label(plan));
+                print_optional_line("补丁学习", &plan.repair_patch_learning);
+                print_optional_line("补丁学习状态", &repair_plan_patch_learning_label(plan));
                 print_optional_line("命令有效性", &plan.repair_command_effectiveness);
                 print_optional_line(
                     "命令有效性状态",
@@ -4634,6 +4654,56 @@ fn repair_plan_patch_verify_label(plan: &RepairPlanReport) -> String {
     }
     if !plan.repair_patch_verify_summary.trim().is_empty() {
         parts.push(format!("summary={}", plan.repair_patch_verify_summary));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_patch_learning_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan.repair_patch_learning_status.trim().is_empty() {
+        parts.push(plan.repair_patch_learning_status.trim().to_string());
+    }
+    if !plan.repair_patch_learning_used_count.trim().is_empty() {
+        parts.push(format!("used={}", plan.repair_patch_learning_used_count));
+    }
+    if !plan.repair_patch_learning_verified_count.trim().is_empty() {
+        parts.push(format!(
+            "verified={}",
+            plan.repair_patch_learning_verified_count
+        ));
+    }
+    if !plan
+        .repair_patch_learning_verified_success_rate
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "verified_success_rate={}",
+            plan.repair_patch_learning_verified_success_rate
+        ));
+    }
+    if !plan.repair_patch_learning_top_reuse.trim().is_empty() {
+        parts.push(format!(
+            "top_reuse={}",
+            plan.repair_patch_learning_top_reuse
+        ));
+    }
+    if !plan.repair_patch_learning_top_avoid.trim().is_empty() {
+        parts.push(format!(
+            "top_avoid={}",
+            plan.repair_patch_learning_top_avoid
+        ));
+    }
+    if !plan.repair_patch_learning_next_need_query.trim().is_empty() {
+        parts.push(format!(
+            "next={} {}",
+            if plan.repair_patch_learning_next_need_kind.trim().is_empty() {
+                "remember"
+            } else {
+                plan.repair_patch_learning_next_need_kind.trim()
+            },
+            plan.repair_patch_learning_next_need_query.trim()
+        ));
     }
     parts.join(" ")
 }
@@ -5855,6 +5925,60 @@ fn write_repair_score_journal(
         .or_else(|| trace.metadata.get("repair_patch_review_summary"))
         .cloned()
         .unwrap_or_default();
+    let action_trace_repair_patch_apply_status = trace
+        .metadata
+        .get("action_trace_repair_patch_apply_status")
+        .or_else(|| trace.metadata.get("repair_patch_apply_status"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_repair_patch_apply_applied = trace
+        .metadata
+        .get("action_trace_repair_patch_apply_applied")
+        .or_else(|| trace.metadata.get("repair_patch_apply_applied"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_repair_patch_apply_target = trace
+        .metadata
+        .get("action_trace_repair_patch_apply_target")
+        .or_else(|| trace.metadata.get("repair_patch_apply_target"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_repair_patch_apply_summary = trace
+        .metadata
+        .get("action_trace_repair_patch_apply_summary")
+        .or_else(|| trace.metadata.get("repair_patch_apply_summary"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_repair_patch_verify_status = trace
+        .metadata
+        .get("action_trace_repair_patch_verify_status")
+        .or_else(|| trace.metadata.get("repair_patch_verify_status"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_repair_patch_verify_passed = trace
+        .metadata
+        .get("action_trace_repair_patch_verify_passed")
+        .or_else(|| trace.metadata.get("repair_patch_verify_passed"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_repair_patch_verify_target = trace
+        .metadata
+        .get("action_trace_repair_patch_verify_target")
+        .or_else(|| trace.metadata.get("repair_patch_verify_target"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_repair_patch_verify_command = trace
+        .metadata
+        .get("action_trace_repair_patch_verify_command")
+        .or_else(|| trace.metadata.get("repair_patch_verify_command"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_repair_patch_verify_summary = trace
+        .metadata
+        .get("action_trace_repair_patch_verify_summary")
+        .or_else(|| trace.metadata.get("repair_patch_verify_summary"))
+        .cloned()
+        .unwrap_or_default();
     let action_trace_repair_decision = trace
         .metadata
         .get("action_trace_repair_decision")
@@ -6058,6 +6182,42 @@ fn write_repair_score_journal(
             serde_json::Value::String(action_trace_repair_patch_review_summary),
         );
         record.insert(
+            "action_trace_repair_patch_apply_status".to_string(),
+            serde_json::Value::String(action_trace_repair_patch_apply_status),
+        );
+        record.insert(
+            "action_trace_repair_patch_apply_applied".to_string(),
+            serde_json::Value::String(action_trace_repair_patch_apply_applied),
+        );
+        record.insert(
+            "action_trace_repair_patch_apply_target".to_string(),
+            serde_json::Value::String(action_trace_repair_patch_apply_target),
+        );
+        record.insert(
+            "action_trace_repair_patch_apply_summary".to_string(),
+            serde_json::Value::String(action_trace_repair_patch_apply_summary),
+        );
+        record.insert(
+            "action_trace_repair_patch_verify_status".to_string(),
+            serde_json::Value::String(action_trace_repair_patch_verify_status),
+        );
+        record.insert(
+            "action_trace_repair_patch_verify_passed".to_string(),
+            serde_json::Value::String(action_trace_repair_patch_verify_passed),
+        );
+        record.insert(
+            "action_trace_repair_patch_verify_target".to_string(),
+            serde_json::Value::String(action_trace_repair_patch_verify_target),
+        );
+        record.insert(
+            "action_trace_repair_patch_verify_command".to_string(),
+            serde_json::Value::String(action_trace_repair_patch_verify_command),
+        );
+        record.insert(
+            "action_trace_repair_patch_verify_summary".to_string(),
+            serde_json::Value::String(action_trace_repair_patch_verify_summary),
+        );
+        record.insert(
             "action_trace_repair_decision".to_string(),
             serde_json::Value::String(action_trace_repair_decision),
         );
@@ -6075,7 +6235,7 @@ fn write_repair_score_journal(
     fs::write(
         &outcome_path,
         format!(
-            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\ndraft_prefix: `{}`\ndraft_model: `{}`\nrepair_command_check: `{}`\nrepair_command_apply: `{}`\nrepair_command_score: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\naction_trace_recall: matches=`{}` top=`{}` reasons=`{}`\naction_trace_lessons: count=`{}` reuse=`{}` avoid=`{}` top_reuse=`{}` top_avoid=`{}`\naction_trace_command_strategy: status=`{}` focus=`{}` next=`{} {}`\naction_trace_repair_patch_draft: status=`{}` has_patch=`{}` target=`{}`\naction_trace_repair_patch_review: status=`{}` check=`{}` has_patch=`{}` target=`{}` summary=`{}`\naction_trace_repair_decision: decision=`{}` focus=`{}`\naction_trace_harness_environment_drift: status=`{}` detail=`{}` history=`{}` next=`{} {}`\naction_trace_harness_adaptation: status=`{}` focus=`{}`\n\n{}\n\njournal: `{}`\n",
+            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\ndraft_prefix: `{}`\ndraft_model: `{}`\nrepair_command_check: `{}`\nrepair_command_apply: `{}`\nrepair_command_score: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\naction_trace_recall: matches=`{}` top=`{}` reasons=`{}`\naction_trace_lessons: count=`{}` reuse=`{}` avoid=`{}` top_reuse=`{}` top_avoid=`{}`\naction_trace_command_strategy: status=`{}` focus=`{}` next=`{} {}`\naction_trace_repair_patch_draft: status=`{}` has_patch=`{}` target=`{}`\naction_trace_repair_patch_review: status=`{}` check=`{}` has_patch=`{}` target=`{}` summary=`{}`\naction_trace_repair_patch_apply: status=`{}` applied=`{}` target=`{}` summary=`{}`\naction_trace_repair_patch_verify: status=`{}` passed=`{}` target=`{}` command=`{}` summary=`{}`\naction_trace_repair_decision: decision=`{}` focus=`{}`\naction_trace_harness_environment_drift: status=`{}` detail=`{}` history=`{}` next=`{} {}`\naction_trace_harness_adaptation: status=`{}` focus=`{}`\n\n{}\n\njournal: `{}`\n",
             status,
             display_path(&workspace, &session_path),
             record["target_tentacle"].as_str().unwrap_or("unknown"),
@@ -6132,6 +6292,33 @@ fn write_repair_score_journal(
                 .as_str()
                 .unwrap_or(""),
             record["action_trace_repair_patch_review_summary"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_repair_patch_apply_status"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_repair_patch_apply_applied"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_repair_patch_apply_target"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_repair_patch_apply_summary"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_repair_patch_verify_status"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_repair_patch_verify_passed"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_repair_patch_verify_target"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_repair_patch_verify_command"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_repair_patch_verify_summary"]
                 .as_str()
                 .unwrap_or(""),
             record["action_trace_repair_decision"]
@@ -10481,6 +10668,15 @@ fn repair_report(
                 shell_arg(&plan.repair_patch_verify_json)
             ));
         }
+        if !plan.repair_patch_learning.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.repair_patch_learning)));
+        }
+        if !plan.repair_patch_learning_json.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.repair_patch_learning_json)
+            ));
+        }
         let patch_apply_status = plan.repair_patch_apply_status.trim();
         if plan.repair_patch_review_status == "check_passed"
             && plan.repair_patch_apply_applied != "true"
@@ -11683,6 +11879,49 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         repair_patch_verify_target: metadata_value(metadata, "repair_patch_verify_target"),
         repair_patch_verify_command: metadata_value(metadata, "repair_patch_verify_command"),
         repair_patch_verify_summary: metadata_value(metadata, "repair_patch_verify_summary"),
+        repair_patch_learning: metadata_value(metadata, "repair_patch_learning"),
+        repair_patch_learning_json: metadata_value(metadata, "repair_patch_learning_json"),
+        repair_patch_learning_status: metadata_value(metadata, "repair_patch_learning_status"),
+        repair_patch_learning_used_count: metadata_value(
+            metadata,
+            "repair_patch_learning_used_count",
+        ),
+        repair_patch_learning_verified_count: metadata_value(
+            metadata,
+            "repair_patch_learning_verified_count",
+        ),
+        repair_patch_learning_verified_satisfied_count: metadata_value(
+            metadata,
+            "repair_patch_learning_verified_satisfied_count",
+        ),
+        repair_patch_learning_verified_failed_count: metadata_value(
+            metadata,
+            "repair_patch_learning_verified_failed_count",
+        ),
+        repair_patch_learning_success_rate: metadata_value(
+            metadata,
+            "repair_patch_learning_success_rate",
+        ),
+        repair_patch_learning_verified_success_rate: metadata_value(
+            metadata,
+            "repair_patch_learning_verified_success_rate",
+        ),
+        repair_patch_learning_top_reuse: metadata_value(
+            metadata,
+            "repair_patch_learning_top_reuse",
+        ),
+        repair_patch_learning_top_avoid: metadata_value(
+            metadata,
+            "repair_patch_learning_top_avoid",
+        ),
+        repair_patch_learning_next_need_kind: metadata_value(
+            metadata,
+            "repair_patch_learning_next_need_kind",
+        ),
+        repair_patch_learning_next_need_query: metadata_value(
+            metadata,
+            "repair_patch_learning_next_need_query",
+        ),
         repair_command_effectiveness: metadata_value(metadata, "repair_command_effectiveness"),
         repair_command_effectiveness_json: metadata_value(
             metadata,
@@ -24233,6 +24472,22 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .repair_patch_verify_command
             .contains("harness-repair-agent"));
         assert!(plan
+            .repair_patch_learning
+            .ends_with("REPAIR_PATCH_LEARNING.md"));
+        assert!(plan
+            .repair_patch_learning_json
+            .ends_with("REPAIR_PATCH_LEARNING.json"));
+        assert_eq!(
+            plan.repair_patch_learning_status,
+            "collect_verified_patch_outcomes"
+        );
+        assert_eq!(plan.repair_patch_learning_used_count, "0");
+        assert_eq!(plan.repair_patch_learning_verified_count, "0");
+        assert_eq!(plan.repair_patch_learning_verified_success_rate, "0.00");
+        assert!(plan
+            .repair_patch_learning_next_need_query
+            .contains("collect scored repair patch verification outcomes"));
+        assert!(plan
             .repair_command_effectiveness
             .ends_with("REPAIR_COMMAND_EFFECTIVENESS.md"));
         assert!(plan
@@ -24425,6 +24680,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan_json.contains("\"repair_patch_review_effectiveness\""));
         assert!(plan_json.contains("\"repair_patch_apply\""));
         assert!(plan_json.contains("\"repair_patch_verify\""));
+        assert!(plan_json.contains("\"repair_patch_learning\""));
         assert!(plan_json.contains("\"repair_command_strategy\""));
         assert!(plan_json.contains("\"repair_command_strategy_effectiveness\""));
         assert!(plan_json.contains("\"repair_decision_effectiveness\""));
@@ -24488,6 +24744,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .contains("\"schema_version\": \"octopus-harness-repair-patch-verify-v1\""));
         assert!(patch_verify_json.contains("\"status\": \"waiting_for_patch_apply\""));
         assert!(patch_verify_json.contains("\"passed\": false"));
+        let patch_learning_json = fs::read_to_string(&plan.repair_patch_learning_json).unwrap();
+        assert!(patch_learning_json
+            .contains("\"schema_version\": \"octopus-harness-repair-patch-learning-v1\""));
+        assert!(patch_learning_json.contains("\"used_count\": 0"));
+        assert!(patch_learning_json.contains("\"verified_count\": 0"));
         let command_effectiveness_json =
             fs::read_to_string(&plan.repair_command_effectiveness_json).unwrap();
         assert!(command_effectiveness_json
@@ -24660,6 +24921,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(report
             .next
             .iter()
+            .any(|command| command.contains("REPAIR_PATCH_LEARNING.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_PATCH_LEARNING.json")));
+        assert!(report
+            .next
+            .iter()
             .any(|command| command.contains("REPAIR_COMMAND_EFFECTIVENESS.md")));
         assert!(report
             .next
@@ -24817,6 +25086,13 @@ JSON
         assert!(plan
             .repair_patch_verify_command
             .contains("harness-repair-agent"));
+        assert!(plan
+            .repair_patch_learning
+            .ends_with("REPAIR_PATCH_LEARNING.md"));
+        assert_eq!(
+            plan.repair_patch_learning_status,
+            "collect_verified_patch_outcomes"
+        );
         let patch_draft_json = fs::read_to_string(&plan.repair_patch_draft_json).unwrap();
         assert!(patch_draft_json
             .contains("\"schema_version\": \"octopus-harness-repair-patch-draft-v1\""));
@@ -24836,6 +25112,9 @@ JSON
         assert!(patch_verify_json
             .contains("\"schema_version\": \"octopus-harness-repair-patch-verify-v1\""));
         assert!(patch_verify_json.contains("\"status\": \"waiting_for_patch_apply\""));
+        let patch_learning_json = fs::read_to_string(&plan.repair_patch_learning_json).unwrap();
+        assert!(patch_learning_json
+            .contains("\"schema_version\": \"octopus-harness-repair-patch-learning-v1\""));
         assert!(report
             .next
             .iter()
@@ -24852,6 +25131,10 @@ JSON
             .next
             .iter()
             .any(|command| command.contains("REPAIR_PATCH_VERIFY.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_PATCH_LEARNING.md")));
         assert!(report
             .next
             .iter()
@@ -28530,6 +28813,42 @@ JSON
             "action_trace_repair_patch_review_summary".to_string(),
             "provider patch applies cleanly".to_string(),
         );
+        seeded.feed_traces[0].metadata.insert(
+            "action_trace_repair_patch_apply_status".to_string(),
+            "applied".to_string(),
+        );
+        seeded.feed_traces[0].metadata.insert(
+            "action_trace_repair_patch_apply_applied".to_string(),
+            "true".to_string(),
+        );
+        seeded.feed_traces[0].metadata.insert(
+            "action_trace_repair_patch_apply_target".to_string(),
+            "swe-agent/read".to_string(),
+        );
+        seeded.feed_traces[0].metadata.insert(
+            "action_trace_repair_patch_apply_summary".to_string(),
+            "patch applied with harness write grant".to_string(),
+        );
+        seeded.feed_traces[0].metadata.insert(
+            "action_trace_repair_patch_verify_status".to_string(),
+            "passed".to_string(),
+        );
+        seeded.feed_traces[0].metadata.insert(
+            "action_trace_repair_patch_verify_passed".to_string(),
+            "true".to_string(),
+        );
+        seeded.feed_traces[0].metadata.insert(
+            "action_trace_repair_patch_verify_target".to_string(),
+            "swe-agent/read".to_string(),
+        );
+        seeded.feed_traces[0].metadata.insert(
+            "action_trace_repair_patch_verify_command".to_string(),
+            "octopus check swe-agent".to_string(),
+        );
+        seeded.feed_traces[0].metadata.insert(
+            "action_trace_repair_patch_verify_summary".to_string(),
+            "target tentacle check passed".to_string(),
+        );
         seeded.save(&path).unwrap();
         run(vec![
             "--state".to_string(),
@@ -28612,6 +28931,14 @@ JSON
         assert!(outcomes.contains("\"action_trace_repair_patch_review_status\":\"check_passed\""));
         assert!(outcomes.contains("\"action_trace_repair_patch_review_check_status\":\"passed\""));
         assert!(outcomes.contains("\"action_trace_repair_patch_review_target\":\"swe-agent/read\""));
+        assert!(outcomes.contains("\"action_trace_repair_patch_apply_status\":\"applied\""));
+        assert!(outcomes.contains("\"action_trace_repair_patch_apply_applied\":\"true\""));
+        assert!(outcomes.contains("\"action_trace_repair_patch_apply_target\":\"swe-agent/read\""));
+        assert!(outcomes.contains("\"action_trace_repair_patch_verify_status\":\"passed\""));
+        assert!(outcomes.contains("\"action_trace_repair_patch_verify_passed\":\"true\""));
+        assert!(outcomes.contains("\"action_trace_repair_patch_verify_target\":\"swe-agent/read\""));
+        assert!(outcomes
+            .contains("\"action_trace_repair_patch_verify_command\":\"octopus check swe-agent\""));
         assert!(outcomes.contains("\"action_trace_repair_decision\":\"collect_repair_outcomes\""));
         assert!(outcomes.contains("\"action_trace_harness_environment_drift_status\":\"baseline\""));
         assert!(outcomes.contains("\"action_trace_harness_adaptation_status\":\"decision_guided\""));
@@ -28641,6 +28968,10 @@ JSON
             .contains("action_trace_repair_patch_draft: status=`patch_attached` has_patch=`true`"));
         assert!(outcome_markdown
             .contains("action_trace_repair_patch_review: status=`check_passed` check=`passed`"));
+        assert!(outcome_markdown
+            .contains("action_trace_repair_patch_apply: status=`applied` applied=`true`"));
+        assert!(outcome_markdown
+            .contains("action_trace_repair_patch_verify: status=`passed` passed=`true`"));
         assert!(outcome_markdown
             .contains("action_trace_repair_decision: decision=`collect_repair_outcomes`"));
         assert!(
@@ -28775,8 +29106,31 @@ JSON
                             && content.contains("swe-agent/read")
                     })
                     .unwrap_or(false)
-            });
+        });
         assert!(patch_review_effectiveness_found);
+        let patch_learning_found = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry.ok()?.path().join("REPAIR_PATCH_LEARNING.json");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains(
+                            "\"schema_version\": \"octopus-harness-repair-patch-learning-v1\"",
+                        ) && content.contains("\"status\": \"reuse_verified_patch\"")
+                            && content.contains("\"used_count\": 1")
+                            && content.contains("\"verified_count\": 1")
+                            && content.contains("\"verified_success_rate\": \"1.00\"")
+                            && content.contains("verify=passed")
+                            && content.contains("swe-agent/read")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(patch_learning_found);
         let action_trace_effectiveness_found = workspace
             .join(".octopus/harness-repair")
             .read_dir()
