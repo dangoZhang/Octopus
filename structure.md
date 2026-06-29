@@ -84,7 +84,7 @@ Octopus/
 
 | Module | Role | Main files | Lines |
 | --- | --- | --- | ---: |
-| Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, evolution data, field-pool status snapshots, resolved field-pack evolution targets, harder-layer recommendation routing, and provider patch target checks | `crates/octopus-core/src/lib.rs` | 18,301 |
+| Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, evolution data, field-pool status snapshots, resolved field-pack evolution targets, harder-layer recommendation routing, and provider patch target checks | `crates/octopus-core/src/lib.rs` | 18,386 |
 | Field adaptation core | Field-pack loading, matching, editable aliases, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, field trajectory summaries, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, and compile/execute template checks | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 3,852 |
 | CLI and product backend | Command dispatch, Goal/chat/brain, provider setup, doctor/report/preflight aggregation, starter/install/check flows | `crates/octopus-core/src/main.rs` | 34,923 |
 | Local app bridge | Local HTTP/SSE server, app policy, command allow-list, static app/docs/demo fallback, field activity observer | `app_bridge.rs`, `docs/app.html` | 2,430 |
@@ -182,7 +182,7 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 12 | 57,130 |
+| `crates/octopus-core/src` | 12 | 57,215 |
 | `crates/octopus-core/examples` | 1 | 27 |
 | `tentacles` | 66 | 17,242 |
 | `field-packs` | 12 | 499 |
@@ -196,7 +196,7 @@ field-packs/
 | File | Lines |
 | --- | ---: |
 | `main.rs` | 34,923 |
-| `lib.rs` | 18,301 |
+| `lib.rs` | 18,386 |
 | `app_bridge.rs` | 1,144 |
 | `release_gate.rs` | 622 |
 | `field_pack.rs` | 741 |

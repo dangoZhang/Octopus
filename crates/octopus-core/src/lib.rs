@@ -5183,6 +5183,23 @@ impl HarnessState {
             .find(|task| self.field_mini_task_status(&pack.id, &task.id) != Some(Status::Satisfied))
     }
 
+    fn field_parallel_worker_ready(&self, catalog: &FieldPackCatalog, field: &str) -> bool {
+        let has_pending_mini_task = catalog
+            .packs
+            .iter()
+            .find(|pack| pack.id == field)
+            .and_then(|pack| self.next_field_mini_task(pack))
+            .is_some_and(|task| {
+                self.field_mini_task_status(field, &task.id) != Some(Status::Satisfied)
+            });
+        has_pending_mini_task || self.latest_field_verifier_status(field) != Some(Status::Satisfied)
+    }
+
+    fn field_allowed_by_objective_pool(pool: Option<&[String]>, field: &str) -> bool {
+        pool.map(|fields| fields.iter().any(|candidate| candidate == field))
+            .unwrap_or(true)
+    }
+
     fn has_active_parallel_field_goal(&self) -> bool {
         self.goal.as_ref().is_some_and(|goal| {
             let objective = goal.objective.to_ascii_lowercase();
@@ -5251,14 +5268,16 @@ impl HarnessState {
         let limit = worker_limit.clamp(1, 8);
         let mut fields = Vec::new();
         let objective_fields = fields_mentioned_in_text(&objective);
-        let objective_pool = if objective_fields.len() == 1 {
-            push_unique_limited(&mut fields, objective_fields[0].clone(), limit);
+        let objective_pool = if objective_fields.is_empty() {
             None
-        } else if objective_fields.len() > 1 {
-            Some(objective_fields.clone())
         } else {
-            None
+            Some(objective_fields.clone())
         };
+        if objective_fields.len() == 1
+            && self.field_parallel_worker_ready(&catalog, &objective_fields[0])
+        {
+            push_unique_limited(&mut fields, objective_fields[0].clone(), limit);
+        }
         if fields.len() < limit {
             for result in self.field_verifier_results.iter().rev() {
                 if matches!(
@@ -5267,10 +5286,10 @@ impl HarnessState {
                 ) && self.latest_field_verifier_status(&result.field)
                     == Some(result.status.clone())
                     && self.field_verifier_result_has_real_mini_task(result)
-                    && objective_pool
-                        .as_ref()
-                        .map(|pool| pool.iter().any(|field| field == &result.field))
-                        .unwrap_or(true)
+                    && Self::field_allowed_by_objective_pool(
+                        objective_pool.as_deref(),
+                        &result.field,
+                    )
                 {
                     push_unique_limited(&mut fields, result.field.clone(), limit);
                 }
@@ -5285,17 +5304,7 @@ impl HarnessState {
                 self.next_parallel_evolution_run_index,
                 objective_pool.as_deref(),
             ) {
-                let has_pending_task = catalog
-                    .packs
-                    .iter()
-                    .find(|pack| pack.id == field)
-                    .and_then(|pack| self.next_field_mini_task(pack))
-                    .is_some_and(|task| {
-                        self.field_mini_task_status(&field, &task.id) != Some(Status::Satisfied)
-                    });
-                if has_pending_task
-                    || self.latest_field_verifier_status(&field) != Some(Status::Satisfied)
-                {
+                if self.field_parallel_worker_ready(&catalog, &field) {
                     push_unique_limited(&mut fields, field, limit);
                 }
                 if fields.len() >= limit {
@@ -5305,14 +5314,22 @@ impl HarnessState {
         }
         for trace in self.feed_traces.iter().rev() {
             if let Some(field) = &trace.field {
-                push_unique_limited(&mut fields, field.clone(), limit);
+                if Self::field_allowed_by_objective_pool(objective_pool.as_deref(), field)
+                    && self.field_parallel_worker_ready(&catalog, field)
+                {
+                    push_unique_limited(&mut fields, field.clone(), limit);
+                }
             }
             if fields.len() >= limit {
                 break;
             }
         }
         for pack in &catalog.packs {
-            push_unique_limited(&mut fields, pack.id.clone(), limit);
+            if Self::field_allowed_by_objective_pool(objective_pool.as_deref(), &pack.id)
+                && self.field_parallel_worker_ready(&catalog, &pack.id)
+            {
+                push_unique_limited(&mut fields, pack.id.clone(), limit);
+            }
             if fields.len() >= limit {
                 break;
             }
@@ -8729,7 +8746,12 @@ fn harder_layer_field_pack_candidate(
         || objective.contains("harder task")
         || objective.contains("next harder")
         || objective.contains("mini task layer");
-    let names_field_packs = objective.contains("field pack") || objective.contains("peer field");
+    let names_field_packs = objective.contains("field pack")
+        || objective.contains("field-pack")
+        || objective.contains("field_pack")
+        || objective.contains("peer field")
+        || objective.contains("field-mini-task")
+        || fields_mentioned_in_text(&objective).len() == 1;
     if !(names_harder_layer && names_field_packs) {
         return None;
     }
@@ -13107,6 +13129,49 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
     }
 
     #[test]
+    fn parallel_evolution_does_not_queue_completed_single_field_without_next_task() {
+        let mut state = HarnessState::default();
+        let catalog = default_field_pack_catalog().unwrap();
+        let math = catalog
+            .packs
+            .iter()
+            .find(|pack| pack.id == "math")
+            .expect("math field pack");
+        for task in &math.mini_tasks {
+            let trace = state.record_feed_trace_from_feed(&Feed {
+                need: Need::new(NeedKind::Verify, format!("Run math mini task {}", task.id)),
+                status: Status::Satisfied,
+                evidence: vec![Evidence::new("field-mini-task", "pass evidence")],
+                summary: format!("{} satisfied", task.id),
+                metadata: BTreeMap::from([
+                    ("tentacle".to_string(), "field-mini-task".to_string()),
+                    ("tool".to_string(), "run_field_mini_task".to_string()),
+                    ("field_pack".to_string(), "math".to_string()),
+                    ("field_mini_task".to_string(), task.id.clone()),
+                ]),
+            });
+            state
+                .record_field_verifier_result(
+                    trace.index,
+                    Status::Satisfied,
+                    None,
+                    None,
+                    format!("{} verifier passed", task.id),
+                )
+                .unwrap();
+        }
+
+        let run = state
+            .start_parallel_evolution("math next harder mini task", 1)
+            .unwrap();
+
+        assert_eq!(run.candidate_fields, vec!["math".to_string()]);
+        assert_eq!(run.worker_count, 0);
+        assert!(run.workers.is_empty());
+        assert_eq!(state.pending_need_queue_count(), 0);
+    }
+
+    #[test]
     fn parallel_evolution_queues_one_need_per_worker_slot() {
         let mut state = HarnessState::default();
         let run = state
@@ -15478,6 +15543,26 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
             .target_files
             .iter()
             .any(|path| path.ends_with("field-packs/index.json")));
+        assert!(recommendation.reason.contains("harder mini task layer"));
+    }
+
+    #[test]
+    fn field_specific_harder_layer_recommendation_selects_field_pack_tasks() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let state = HarnessState::default();
+        let proposal = propose_tentacle_evolution(
+            &root,
+            "field-mini-task",
+            "add the next harder math mini task to editable field-mini-task harness",
+        )
+        .unwrap();
+
+        let recommendation = recommend_tentacle_evolution_apply(&proposal, &state).unwrap();
+
+        assert_eq!(recommendation.surface_id, "field_pack_tasks");
+        assert_eq!(recommendation.candidate_id, "04-field-pack-tasks");
         assert!(recommendation.reason.contains("harder mini task layer"));
     }
 
