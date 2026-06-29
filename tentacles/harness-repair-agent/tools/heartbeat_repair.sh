@@ -346,6 +346,59 @@ def repair_decision_metadata(root, value, json_value=""):
     return metadata
 
 
+def harness_adaptation_metadata(root, value, json_value=""):
+    path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
+    metadata = {
+        "harness_adaptation": rel(path, root) if path else "",
+        "harness_adaptation_json": rel(json_path, root) if json_path else "",
+        "harness_adaptation_status": "",
+        "harness_adaptation_focus": "",
+        "harness_adaptation_next_need_kind": "",
+        "harness_adaptation_next_need_query": "",
+        "harness_adaptation_target": "",
+        "harness_adaptation_environment": "",
+        "harness_adaptation_preview": "",
+    }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        next_need = data.get("next_need") if isinstance(data.get("next_need"), dict) else {}
+        target = data.get("target") if isinstance(data.get("target"), dict) else {}
+        environment = data.get("environment") if isinstance(data.get("environment"), dict) else {}
+        target_label = "/".join(
+            item for item in [
+                str(target.get("tentacle") or ""),
+                str(target.get("tool") or ""),
+            ]
+            if item
+        )
+        environment_label = " ".join(
+            item for item in [
+                f"adapter={environment.get('adapter_status')}" if environment.get("adapter_status") else "",
+                f"missing={environment.get('adapter_missing_core')}" if environment.get("adapter_missing_core") else "",
+                f"field={environment.get('field')}/{environment.get('mini_task')}" if environment.get("field") or environment.get("mini_task") else "",
+                f"verifier={environment.get('verifier_status')}" if environment.get("verifier_status") else "",
+            ]
+            if item
+        )
+        metadata.update({
+            "harness_adaptation_status": str(data.get("status") or ""),
+            "harness_adaptation_focus": compact(data.get("focus") or "", 320),
+            "harness_adaptation_next_need_kind": str(next_need.get("kind") or ""),
+            "harness_adaptation_next_need_query": compact(next_need.get("query") or "", 320),
+            "harness_adaptation_target": compact(target_label, 220),
+            "harness_adaptation_environment": compact(environment_label, 320),
+            "harness_adaptation_preview": compact(json.dumps(data, sort_keys=True), 700),
+        })
+    if path and path.exists() and not metadata["harness_adaptation_preview"]:
+        metadata["harness_adaptation_preview"] = compact(path.read_text(encoding="utf-8", errors="replace"), 700)
+    return metadata
+
+
 def action_trace_metadata(root, value, json_value=""):
     path = resolve_artifact(root, value)
     json_path = resolve_artifact(root, json_value)
@@ -509,6 +562,8 @@ if latest_repair_plan:
     repair_lesson_effectiveness_json = str(inputs.get("repair_lesson_effectiveness_json") or "")
     repair_decision = str(inputs.get("repair_decision") or "")
     repair_decision_json = str(inputs.get("repair_decision_json") or "")
+    harness_adaptation = str(inputs.get("harness_adaptation") or "")
+    harness_adaptation_json = str(inputs.get("harness_adaptation_json") or "")
     action_trace = str(inputs.get("action_trace") or "")
     action_trace_json = str(inputs.get("action_trace_json") or "")
     draft_metadata = repair_draft_metadata(root, draft)
@@ -523,6 +578,11 @@ if latest_repair_plan:
         root,
         repair_decision,
         repair_decision_json,
+    )
+    adaptation_metadata = harness_adaptation_metadata(
+        root,
+        harness_adaptation,
+        harness_adaptation_json,
     )
     action_metadata = action_trace_metadata(root, action_trace, action_trace_json)
     adapter_metadata = adapter_context_metadata(
@@ -573,6 +633,8 @@ if latest_repair_plan:
     decision_focus = decision_metadata.get("repair_decision_focus", "")
     decision_next_kind = decision_metadata.get("repair_decision_next_need_kind", "")
     decision_next_query = decision_metadata.get("repair_decision_next_need_query", "")
+    adaptation_status = adaptation_metadata.get("harness_adaptation_status", "")
+    adaptation_focus = adaptation_metadata.get("harness_adaptation_focus", "")
     if decision_next_query:
         next_need_kind = decision_next_kind or "verify"
         next_need_query = decision_next_query
@@ -662,6 +724,7 @@ if latest_repair_plan:
             f"lessons={lesson_count or '0'} reuse={lesson_reuse or '0'} avoid={lesson_avoid or '0'}; "
             f"effectiveness={effectiveness_used or '0'} success_rate={effectiveness_success or '0.00'}; "
             f"decision={decision_kind or 'none'} focus={decision_focus or 'none'}; "
+            f"adaptation={adaptation_status or 'none'} focus={adaptation_focus or 'none'}; "
             "review before grant/apply/score"
         )
     repair_metadata = {
@@ -679,6 +742,8 @@ if latest_repair_plan:
         "repair_lesson_effectiveness_json": repair_lesson_effectiveness_json,
         "repair_decision": repair_decision,
         "repair_decision_json": repair_decision_json,
+        "harness_adaptation": harness_adaptation,
+        "harness_adaptation_json": harness_adaptation_json,
         "action_trace": action_trace,
         "action_trace_json": action_trace_json or action_metadata.get("action_trace_json", ""),
         "adapter_context": adapter_context,
@@ -702,6 +767,7 @@ if latest_repair_plan:
     repair_metadata.update(lessons_metadata)
     repair_metadata.update(effectiveness_metadata)
     repair_metadata.update(decision_metadata)
+    repair_metadata.update(adaptation_metadata)
     repair_metadata.update(action_metadata)
     repair_metadata.update(adapter_metadata)
     repair_metadata.update(field_metadata)

@@ -628,6 +628,14 @@ struct RepairPlanReport {
     repair_decision_focus: String,
     repair_decision_next_need_kind: String,
     repair_decision_next_need_query: String,
+    harness_adaptation: String,
+    harness_adaptation_json: String,
+    harness_adaptation_status: String,
+    harness_adaptation_focus: String,
+    harness_adaptation_next_need_kind: String,
+    harness_adaptation_next_need_query: String,
+    harness_adaptation_target: String,
+    harness_adaptation_environment: String,
     code_context: String,
     adapter_context: String,
     adapter_context_status: String,
@@ -3775,6 +3783,11 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 );
                 print_optional_line("repair_decision", &plan.repair_decision);
                 print_optional_line("repair_decision_status", &repair_plan_decision_label(plan));
+                print_optional_line("harness_adaptation", &plan.harness_adaptation);
+                print_optional_line(
+                    "harness_adaptation_status",
+                    &repair_plan_adaptation_label(plan),
+                );
                 print_optional_line("code_context", &plan.code_context);
                 print_optional_line("adapter_context", &plan.adapter_context);
                 print_optional_line("adapter_status", &repair_plan_adapter_label(plan));
@@ -3831,6 +3844,8 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 );
                 print_optional_line("修复决策", &plan.repair_decision);
                 print_optional_line("修复决策状态", &repair_plan_decision_label(plan));
+                print_optional_line("Harness适应", &plan.harness_adaptation);
+                print_optional_line("Harness适应状态", &repair_plan_adaptation_label(plan));
                 print_optional_line("代码上下文", &plan.code_context);
                 print_optional_line("适配器上下文", &plan.adapter_context);
                 print_optional_line("适配器状态", &repair_plan_adapter_label(plan));
@@ -4050,6 +4065,34 @@ fn repair_plan_decision_label(plan: &RepairPlanReport) -> String {
         parts.push(format!(
             "next={kind} {}",
             plan.repair_decision_next_need_query
+        ));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_adaptation_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan.harness_adaptation_status.trim().is_empty() {
+        parts.push(plan.harness_adaptation_status.trim().to_string());
+    }
+    if !plan.harness_adaptation_focus.trim().is_empty() {
+        parts.push(format!("focus={}", plan.harness_adaptation_focus));
+    }
+    if !plan.harness_adaptation_target.trim().is_empty() {
+        parts.push(format!("target={}", plan.harness_adaptation_target));
+    }
+    if !plan.harness_adaptation_environment.trim().is_empty() {
+        parts.push(format!("env={}", plan.harness_adaptation_environment));
+    }
+    if !plan.harness_adaptation_next_need_query.trim().is_empty() {
+        let kind = if plan.harness_adaptation_next_need_kind.trim().is_empty() {
+            "verify"
+        } else {
+            plan.harness_adaptation_next_need_kind.trim()
+        };
+        parts.push(format!(
+            "next={kind} {}",
+            plan.harness_adaptation_next_need_query
         ));
     }
     parts.join(" ")
@@ -4357,6 +4400,17 @@ fn write_repair_score_journal(
         .get("action_trace_lesson_top_avoid")
         .cloned()
         .unwrap_or_default();
+    let action_trace_harness_adaptation_status = trace
+        .metadata
+        .get("action_trace_harness_adaptation")
+        .or_else(|| trace.metadata.get("action_trace_harness_adaptation_status"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_harness_adaptation_focus = trace
+        .metadata
+        .get("action_trace_harness_adaptation_focus")
+        .cloned()
+        .unwrap_or_default();
     let timestamp_secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| error.to_string())?
@@ -4387,6 +4441,8 @@ fn write_repair_score_journal(
         "action_trace_lesson_avoid_count": action_trace_lesson_avoid_count,
         "action_trace_lesson_top_reuse": action_trace_lesson_top_reuse,
         "action_trace_lesson_top_avoid": action_trace_lesson_top_avoid,
+        "action_trace_harness_adaptation_status": action_trace_harness_adaptation_status,
+        "action_trace_harness_adaptation_focus": action_trace_harness_adaptation_focus,
         "outcome_status": status,
         "summary": truncate_chars(&outcome.summary, 500),
     });
@@ -4399,7 +4455,7 @@ fn write_repair_score_journal(
     fs::write(
         &outcome_path,
         format!(
-            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\naction_trace_recall: matches=`{}` top=`{}` reasons=`{}`\naction_trace_lessons: count=`{}` reuse=`{}` avoid=`{}` top_reuse=`{}` top_avoid=`{}`\n\n{}\n\njournal: `{}`\n",
+            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\naction_trace_recall: matches=`{}` top=`{}` reasons=`{}`\naction_trace_lessons: count=`{}` reuse=`{}` avoid=`{}` top_reuse=`{}` top_avoid=`{}`\naction_trace_harness_adaptation: status=`{}` focus=`{}`\n\n{}\n\njournal: `{}`\n",
             status,
             display_path(&workspace, &session_path),
             record["target_tentacle"].as_str().unwrap_or("unknown"),
@@ -4417,6 +4473,12 @@ fn write_repair_score_journal(
             record["action_trace_lesson_avoid_count"].as_str().unwrap_or(""),
             record["action_trace_lesson_top_reuse"].as_str().unwrap_or(""),
             record["action_trace_lesson_top_avoid"].as_str().unwrap_or(""),
+            record["action_trace_harness_adaptation_status"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_harness_adaptation_focus"]
+                .as_str()
+                .unwrap_or(""),
             outcome.summary,
             display_path(&workspace, &outcomes_file)
         ),
@@ -8682,6 +8744,15 @@ fn repair_report(
         if !plan.repair_decision.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.repair_decision)));
         }
+        if !plan.harness_adaptation.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.harness_adaptation)));
+        }
+        if !plan.harness_adaptation_json.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.harness_adaptation_json)
+            ));
+        }
         if !plan.code_context.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.code_context)));
         }
@@ -9043,6 +9114,20 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
             metadata,
             "repair_decision_next_need_query",
         ),
+        harness_adaptation: metadata_value(metadata, "harness_adaptation"),
+        harness_adaptation_json: metadata_value(metadata, "harness_adaptation_json"),
+        harness_adaptation_status: metadata_value(metadata, "harness_adaptation_status"),
+        harness_adaptation_focus: metadata_value(metadata, "harness_adaptation_focus"),
+        harness_adaptation_next_need_kind: metadata_value(
+            metadata,
+            "harness_adaptation_next_need_kind",
+        ),
+        harness_adaptation_next_need_query: metadata_value(
+            metadata,
+            "harness_adaptation_next_need_query",
+        ),
+        harness_adaptation_target: metadata_value(metadata, "harness_adaptation_target"),
+        harness_adaptation_environment: metadata_value(metadata, "harness_adaptation_environment"),
         code_context: metadata_value(metadata, "code_context"),
         adapter_context: metadata_value(metadata, "adapter_context"),
         adapter_context_status: metadata_value(metadata, "adapter_context_status"),
@@ -21072,7 +21157,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan.action_trace.ends_with("ACTION_TRACE.md"));
         assert!(plan.action_trace_json.ends_with("ACTION_TRACE.json"));
         assert_eq!(plan.action_trace_status, "satisfied");
-        assert_eq!(plan.action_trace_stage_count, "6");
+        assert_eq!(plan.action_trace_stage_count, "7");
         assert!(plan
             .action_trace_last_action
             .contains("write reviewable repair plan"));
@@ -21100,6 +21185,23 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan
             .repair_decision_next_need_query
             .contains("collect repair outcome memory"));
+        assert!(plan.harness_adaptation.ends_with("HARNESS_ADAPTATION.md"));
+        assert!(plan
+            .harness_adaptation_json
+            .ends_with("HARNESS_ADAPTATION.json"));
+        assert_eq!(plan.harness_adaptation_status, "decision_guided");
+        assert!(plan
+            .harness_adaptation_focus
+            .contains("collect reviewed repair outcomes"));
+        assert!(plan
+            .harness_adaptation_next_need_query
+            .contains("collect repair outcome memory"));
+        assert!(plan
+            .harness_adaptation_target
+            .contains("harness-repair-agent/repair_session"));
+        assert!(plan
+            .harness_adaptation_environment
+            .contains("adapter=satisfied"));
         assert!(report.queued.iter().any(|item| {
             item.need.kind == NeedKind::Verify
                 && item.need.query.contains("collect repair outcome memory")
@@ -21143,8 +21245,20 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .any(|command| command.contains("<trace-index>")));
         let plan_json = fs::read_to_string(&plan.path).unwrap();
         assert!(plan_json.contains("\"score_options\""));
+        assert!(plan_json.contains("\"harness_adaptation\""));
         assert!(plan_json.contains("repair partly improved Feed"));
         assert!(plan_json.contains("repair did not improve Feed"));
+        let adaptation_json = fs::read_to_string(&plan.harness_adaptation_json).unwrap();
+        assert!(adaptation_json.contains("\"schema_version\": \"octopus-harness-adaptation-v1\""));
+        assert!(adaptation_json.contains("\"status\": \"decision_guided\""));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("HARNESS_ADAPTATION.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("HARNESS_ADAPTATION.json")));
         assert!(report
             .next
             .iter()
@@ -24737,7 +24851,8 @@ JSON
         assert!(outcomes.contains("\"target_tentacle\":\"swe-agent\""));
         assert!(outcomes.contains("\"candidate\":\"03-runtime-code\""));
         assert!(outcomes.contains("\"action_trace_status\":\"satisfied\""));
-        assert!(outcomes.contains("\"action_trace_stage_count\":\"6\""));
+        assert!(outcomes.contains("\"action_trace_stage_count\":\"7\""));
+        assert!(outcomes.contains("\"action_trace_harness_adaptation_status\":\"decision_guided\""));
         assert!(outcomes.contains("\"action_trace_json\":\".octopus/harness-repair/"));
         assert!(outcomes.contains("repair improved harness"));
         let outcome_markdown = workspace
@@ -24753,6 +24868,9 @@ JSON
         let outcome_markdown = fs::read_to_string(outcome_markdown).unwrap();
         assert!(outcome_markdown.contains("repair improved harness"));
         assert!(outcome_markdown.contains("action_trace_status: `satisfied`"));
+        assert!(
+            outcome_markdown.contains("action_trace_harness_adaptation: status=`decision_guided`")
+        );
         run(vec![
             "--state".to_string(),
             state.clone(),

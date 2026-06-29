@@ -79,6 +79,7 @@ def action_trace_summary(workspace, session_path, session):
     next_need = data.get("next_need") if isinstance(data.get("next_need"), dict) else {}
     repair_recall = data.get("repair_recall") if isinstance(data.get("repair_recall"), dict) else {}
     repair_lessons = data.get("repair_lessons") if isinstance(data.get("repair_lessons"), dict) else {}
+    harness_adaptation = data.get("harness_adaptation") if isinstance(data.get("harness_adaptation"), dict) else {}
     failed_stage = ""
     for stage in data.get("stages") if isinstance(data.get("stages"), list) else []:
         if not isinstance(stage, dict):
@@ -106,6 +107,10 @@ def action_trace_summary(workspace, session_path, session):
         "lesson_avoid_count": str(repair_lessons.get("avoid_count") or ""),
         "lesson_top_reuse": str(repair_lessons.get("top_reuse") or ""),
         "lesson_top_avoid": str(repair_lessons.get("top_avoid") or ""),
+        "harness_adaptation_status": str(harness_adaptation.get("status") or ""),
+        "harness_adaptation_focus": str(harness_adaptation.get("focus") or ""),
+        "harness_adaptation_next_need_kind": str(harness_adaptation.get("next_need_kind") or ""),
+        "harness_adaptation_next_need_query": str(harness_adaptation.get("next_need_query") or ""),
     }
 
 
@@ -227,6 +232,10 @@ record = {
     "action_trace_lesson_avoid_count": action_trace["lesson_avoid_count"],
     "action_trace_lesson_top_reuse": action_trace["lesson_top_reuse"],
     "action_trace_lesson_top_avoid": action_trace["lesson_top_avoid"],
+    "action_trace_harness_adaptation_status": action_trace["harness_adaptation_status"],
+    "action_trace_harness_adaptation_focus": action_trace["harness_adaptation_focus"],
+    "action_trace_harness_adaptation_next_need_kind": action_trace["harness_adaptation_next_need_kind"],
+    "action_trace_harness_adaptation_next_need_query": action_trace["harness_adaptation_next_need_query"],
     "action_trace": action_trace,
     "outcome_status": outcome_status,
     "summary": compact(summary, 500),
@@ -251,6 +260,7 @@ outcome_md.write_text(
         f"action_trace_last: `{record['action_trace_last_action'] or 'unknown'}`",
         f"action_trace_recall: matches=`{record['action_trace_recall_count'] or '0'}` top=`{record['action_trace_recall_top_status'] or 'none'}` reasons=`{record['action_trace_recall_top_reasons'] or 'none'}`",
         f"action_trace_lessons: count=`{record['action_trace_lesson_count'] or '0'}` reuse=`{record['action_trace_lesson_reuse_count'] or '0'}` avoid=`{record['action_trace_lesson_avoid_count'] or '0'}` top_reuse=`{record['action_trace_lesson_top_reuse'] or 'none'}` top_avoid=`{record['action_trace_lesson_top_avoid'] or 'none'}`",
+        f"action_trace_harness_adaptation: status=`{record['action_trace_harness_adaptation_status'] or 'none'}` focus=`{record['action_trace_harness_adaptation_focus'] or 'none'}` next=`{record['action_trace_harness_adaptation_next_need_kind'] or 'verify'} {record['action_trace_harness_adaptation_next_need_query'] or ''}`",
         "",
         summary,
         "",
@@ -283,6 +293,8 @@ metadata = {
     "action_trace_lesson_count": record["action_trace_lesson_count"],
     "action_trace_lesson_reuse_count": record["action_trace_lesson_reuse_count"],
     "action_trace_lesson_avoid_count": record["action_trace_lesson_avoid_count"],
+    "action_trace_harness_adaptation_status": record["action_trace_harness_adaptation_status"],
+    "action_trace_harness_adaptation_focus": record["action_trace_harness_adaptation_focus"],
     "next_need_kind": next_need_kind,
     "next_need_query": next_need_query,
 }

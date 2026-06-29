@@ -104,6 +104,8 @@ def normalized_outcome(item, origin):
         "action_trace_lesson_avoid_count": str(item.get("action_trace_lesson_avoid_count") or action_trace.get("lesson_avoid_count") or ""),
         "action_trace_lesson_top_reuse": str(item.get("action_trace_lesson_top_reuse") or action_trace.get("lesson_top_reuse") or ""),
         "action_trace_lesson_top_avoid": str(item.get("action_trace_lesson_top_avoid") or action_trace.get("lesson_top_avoid") or ""),
+        "action_trace_harness_adaptation_status": str(item.get("action_trace_harness_adaptation_status") or action_trace.get("harness_adaptation_status") or ""),
+        "action_trace_harness_adaptation_focus": str(item.get("action_trace_harness_adaptation_focus") or action_trace.get("harness_adaptation_focus") or ""),
         "outcome_status": outcome_status(item),
         "summary": compact(item.get("summary") or item.get("content") or "", 500),
     }
@@ -150,6 +152,8 @@ def merge_repair_outcomes(state_items, journal_items, limit=8):
                     "action_trace_lesson_avoid_count",
                     "action_trace_lesson_top_reuse",
                     "action_trace_lesson_top_avoid",
+                    "action_trace_harness_adaptation_status",
+                    "action_trace_harness_adaptation_focus",
                 ]:
                     if outcome.get(field) and not current.get(field):
                         current[field] = outcome[field]
@@ -224,6 +228,8 @@ def outcome_memory_markdown(outcomes, workspace, outcomes_file, repair_recall=No
         lesson_reuse = item.get("action_trace_lesson_reuse_count") or "0"
         lesson_avoid = item.get("action_trace_lesson_avoid_count") or "0"
         lesson_top = item.get("action_trace_lesson_top_reuse") or item.get("action_trace_lesson_top_avoid") or "none"
+        adaptation_status = item.get("action_trace_harness_adaptation_status") or "none"
+        adaptation_focus = item.get("action_trace_harness_adaptation_focus") or "none"
         lines.extend(
             [
                 f"- `{status}` target=`{target}` candidate=`{candidate}` origin=`{origin}` session=`{session}`",
@@ -231,6 +237,7 @@ def outcome_memory_markdown(outcomes, workspace, outcomes_file, repair_recall=No
                 f"  action_trace: status=`{action_status}` stages=`{action_count}` last=`{compact(action_last, 120)}` hint=`{compact(action_hint, 160)}`",
                 f"  recall_used: matches=`{recall_count}` top=`{compact(recall_status, 80)}` reasons=`{compact(recall_reasons, 160)}`",
                 f"  lesson_used: count=`{lesson_count}` reuse=`{lesson_reuse}` avoid=`{lesson_avoid}` top=`{compact(lesson_top, 160)}`",
+                f"  adaptation_used: status=`{adaptation_status}` focus=`{compact(adaptation_focus, 180)}`",
             ]
         )
     return "\n".join(lines) + "\n"
@@ -700,6 +707,164 @@ def repair_decision_markdown(decision, workspace, decision_json):
         f"- failure_rate: `{evidence.get('effectiveness_failure_rate', '0.00')}`",
         f"- top_reuse: {compact(evidence.get('top_reuse'), 260) or 'none'}",
         f"- top_avoid: {compact(evidence.get('top_avoid'), 260) or 'none'}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def build_harness_adaptation(
+    workspace,
+    adaptation_json,
+    code_context,
+    adapter_context,
+    field_trajectory,
+    repair_recall,
+    repair_lessons,
+    repair_lesson_effectiveness,
+    repair_decision,
+):
+    decision_next = repair_decision.get("next_need") if isinstance(repair_decision.get("next_need"), dict) else {}
+    adapter_missing = adapter_context.get("missing_core") or ""
+    adapter_status = str(adapter_context.get("status") or "")
+    field_status = str(field_trajectory.get("verifier_status") or "").lower()
+    field = field_trajectory.get("field") or ""
+    mini_task = field_trajectory.get("mini_task") or ""
+    if adapter_missing or adapter_status in {"failed", "partial"}:
+        status = "adapter_substrate"
+        focus = f"restore local tool substrate: {adapter_missing or adapter_status}"
+        next_need = {
+            "kind": "execute",
+            "query": f"install missing core adapters: {adapter_missing or adapter_status}",
+        }
+    elif code_context.get("tentacle") == "unknown":
+        status = "target_context"
+        focus = "locate editable harness target before repair"
+        next_need = {
+            "kind": "verify",
+            "query": "inspect latest Feed trace and check history for repair target",
+        }
+    elif field and mini_task and field_status in {"failed", "partial"}:
+        status = "field_runtime"
+        focus = f"adapt field template for {field}/{mini_task}"
+        next_need = {
+            "kind": "execute",
+            "query": f"evolve recommend {code_context.get('tentacle') or 'field-mini-task'} after {field}/{mini_task}",
+        }
+    elif decision_next.get("query"):
+        status = "decision_guided"
+        focus = repair_decision.get("focus") or "follow repair decision"
+        next_need = {
+            "kind": decision_next.get("kind") or "verify",
+            "query": decision_next.get("query") or "review repair decision",
+        }
+    else:
+        status = "review_required"
+        focus = "review repair plan and collect outcome"
+        next_need = {"kind": "verify", "query": "review repair plan and score outcome"}
+    return {
+        "schema_version": "octopus-harness-adaptation-v1",
+        "status": status,
+        "focus": compact(focus, 320),
+        "workspace": str(workspace),
+        "json": rel(adaptation_json, workspace),
+        "target": {
+            "tentacle": code_context.get("tentacle") or "unknown",
+            "tool": code_context.get("tool") or "unknown",
+            "tool_path": code_context.get("tool_path") or "",
+            "manifest": code_context.get("manifest") or "",
+        },
+        "environment": {
+            "adapter_status": adapter_status,
+            "adapter_available": adapter_context.get("available") or "",
+            "adapter_missing_core": adapter_missing,
+            "provider_env": adapter_context.get("provider_env") or "",
+            "provider_keys": adapter_context.get("provider_keys") or "",
+            "desktop_adapters": adapter_context.get("desktop_adapters") or "",
+            "field": field,
+            "mini_task": mini_task,
+            "verifier_status": field_trajectory.get("verifier_status") or "",
+            "verifier_error": field_trajectory.get("verifier_error") or "",
+        },
+        "memory": {
+            "recall_matches": str(repair_recall.get("match_count") or 0),
+            "lesson_count": str(repair_lessons.get("lesson_count") or 0),
+            "lesson_reuse_count": str(repair_lessons.get("reuse_count") or 0),
+            "lesson_avoid_count": str(repair_lessons.get("avoid_count") or 0),
+            "effectiveness_used_count": str(repair_lesson_effectiveness.get("used_count") or 0),
+            "effectiveness_success_rate": repair_lesson_effectiveness.get("success_rate") or "0.00",
+        },
+        "decision": {
+            "status": repair_decision.get("status") or "",
+            "kind": repair_decision.get("decision") or "",
+            "focus": repair_decision.get("focus") or "",
+        },
+        "next_need": next_need,
+        "review_targets": [
+            "HARNESS_ADAPTATION.md",
+            "ADAPTER_CONTEXT.md",
+            "FIELD_TRAJECTORY.md",
+            "CODE_CONTEXT.md",
+            "ACTION_TRACE.md",
+            "REPAIR_PLAN.json",
+        ],
+        "context_boundary": "Clean brain sees Goal + Mem + Need + Feed. This adaptation plan stays inside the harness tentacle.",
+    }
+
+
+def harness_adaptation_markdown(adaptation, workspace, adaptation_json):
+    target = adaptation.get("target") if isinstance(adaptation.get("target"), dict) else {}
+    environment = adaptation.get("environment") if isinstance(adaptation.get("environment"), dict) else {}
+    memory = adaptation.get("memory") if isinstance(adaptation.get("memory"), dict) else {}
+    decision = adaptation.get("decision") if isinstance(adaptation.get("decision"), dict) else {}
+    next_need = adaptation.get("next_need") if isinstance(adaptation.get("next_need"), dict) else {}
+    lines = [
+        "# Harness Adaptation Plan",
+        "",
+        "This is the repair tentacle's local environment adaptation plan.",
+        "It is Feed evidence for heartbeat repair, not clean-brain context.",
+        "",
+        f"json: `{rel(adaptation_json, workspace)}`",
+        f"status: `{adaptation.get('status')}`",
+        f"focus: {compact(adaptation.get('focus'), 320)}",
+        f"next_need: `{next_need.get('kind') or 'verify'} {next_need.get('query') or ''}`",
+        "",
+        "## Target",
+        "",
+        f"- tentacle: `{target.get('tentacle') or 'unknown'}`",
+        f"- tool: `{target.get('tool') or 'unknown'}`",
+        f"- tool_path: `{target.get('tool_path') or 'missing'}`",
+        f"- manifest: `{target.get('manifest') or 'missing'}`",
+        "",
+        "## Environment",
+        "",
+        f"- adapter_status: `{environment.get('adapter_status') or 'unknown'}`",
+        f"- adapter_available: `{environment.get('adapter_available') or 'none'}`",
+        f"- adapter_missing_core: `{environment.get('adapter_missing_core') or 'none'}`",
+        f"- provider_env: `{environment.get('provider_env') or 'missing'}`",
+        f"- provider_keys: `{environment.get('provider_keys') or 'none'}`",
+        f"- desktop_adapters: `{environment.get('desktop_adapters') or 'none'}`",
+        f"- field: `{environment.get('field') or 'none'}`",
+        f"- mini_task: `{environment.get('mini_task') or 'none'}`",
+        f"- verifier_status: `{environment.get('verifier_status') or 'none'}`",
+        f"- verifier_error: `{environment.get('verifier_error') or 'none'}`",
+        "",
+        "## Harness Memory",
+        "",
+        f"- recall_matches: `{memory.get('recall_matches') or '0'}`",
+        f"- lesson_count: `{memory.get('lesson_count') or '0'}`",
+        f"- lesson_reuse_count: `{memory.get('lesson_reuse_count') or '0'}`",
+        f"- lesson_avoid_count: `{memory.get('lesson_avoid_count') or '0'}`",
+        f"- effectiveness_used_count: `{memory.get('effectiveness_used_count') or '0'}`",
+        f"- effectiveness_success_rate: `{memory.get('effectiveness_success_rate') or '0.00'}`",
+        "",
+        "## Repair Decision",
+        "",
+        f"- status: `{decision.get('status') or 'unknown'}`",
+        f"- decision: `{decision.get('kind') or 'none'}`",
+        f"- focus: {compact(decision.get('focus'), 260) or 'none'}",
+        "",
+        "## Review Targets",
+        "",
+        *[f"- `{target}`" for target in adaptation.get("review_targets", [])],
     ]
     return "\n".join(lines) + "\n"
 
@@ -1316,6 +1481,7 @@ def action_trace_record(
     repair_lessons,
     repair_lesson_effectiveness,
     repair_decision,
+    harness_adaptation,
     draft,
     repair_plan,
 ):
@@ -1359,6 +1525,13 @@ def action_trace_record(
         "next_need_kind": str(decision_next.get("kind") or ""),
         "next_need_query": compact(decision_next.get("query") or "", 240),
     }
+    adaptation_next = harness_adaptation.get("next_need") if isinstance(harness_adaptation.get("next_need"), dict) else {}
+    adaptation_summary = {
+        "status": str(harness_adaptation.get("status") or ""),
+        "focus": compact(harness_adaptation.get("focus") or "", 260),
+        "next_need_kind": str(adaptation_next.get("kind") or ""),
+        "next_need_query": compact(adaptation_next.get("query") or "", 260),
+    }
     stages = [
         {
             "kind": "Need",
@@ -1382,6 +1555,12 @@ def action_trace_record(
             "kind": "Action",
             "action": "merge field, recall, lessons, effectiveness, decision, and outcome evidence",
             "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']} recalled={recall_count} top={recall_top_status} lessons={lessons_summary['lesson_count']} effectiveness_used={effectiveness_summary['used_count']} success_rate={effectiveness_summary['success_rate']} decision={decision_summary['decision']}",
+            "status": "satisfied",
+        },
+        {
+            "kind": "Action",
+            "action": "choose harness adaptation focus",
+            "result": f"status={adaptation_summary['status']} focus={adaptation_summary['focus']} next={adaptation_summary['next_need_kind']} {adaptation_summary['next_need_query']}",
             "status": "satisfied",
         },
         {
@@ -1417,6 +1596,7 @@ def action_trace_record(
         "repair_lessons": lessons_summary,
         "repair_lesson_effectiveness": effectiveness_summary,
         "repair_decision": decision_summary,
+        "harness_adaptation": adaptation_summary,
         "stages": stages,
     }
 
@@ -1444,6 +1624,8 @@ def action_trace_markdown(record, workspace, repair_plan):
         f"lesson_effectiveness_success_rate: `{record.get('repair_lesson_effectiveness', {}).get('success_rate', '0.00')}`",
         f"repair_decision: `{record.get('repair_decision', {}).get('decision', 'none') or 'none'}`",
         f"repair_decision_focus: `{record.get('repair_decision', {}).get('focus', 'none') or 'none'}`",
+        f"harness_adaptation: `{record.get('harness_adaptation', {}).get('status', 'none') or 'none'}`",
+        f"harness_adaptation_focus: `{record.get('harness_adaptation', {}).get('focus', 'none') or 'none'}`",
         "",
         "## Need -> Tool -> Action -> Feed",
         "",
@@ -1584,6 +1766,8 @@ repair_lesson_effectiveness_json = session_dir / "REPAIR_LESSON_EFFECTIVENESS.js
 repair_lesson_effectiveness_md = session_dir / "REPAIR_LESSON_EFFECTIVENESS.md"
 repair_decision_json = session_dir / "REPAIR_DECISION.json"
 repair_decision_md = session_dir / "REPAIR_DECISION.md"
+harness_adaptation_json = session_dir / "HARNESS_ADAPTATION.json"
+harness_adaptation_md = session_dir / "HARNESS_ADAPTATION.md"
 adapter_context_md = session_dir / "ADAPTER_CONTEXT.md"
 code_context_md = session_dir / "CODE_CONTEXT.md"
 field_trajectory_md = session_dir / "FIELD_TRAJECTORY.md"
@@ -1632,6 +1816,17 @@ repair_decision = build_repair_decision(
     target_tentacle,
     target_tool,
 )
+harness_adaptation = build_harness_adaptation(
+    workspace,
+    harness_adaptation_json,
+    code_context,
+    adapter_context,
+    field_trajectory,
+    repair_recall,
+    repair_lessons,
+    repair_lesson_effectiveness,
+    repair_decision,
+)
 session = {
     "schema_version": "octopus-harness-repair-session-v1",
     "workspace": str(workspace),
@@ -1649,6 +1844,8 @@ session = {
     "repair_lesson_effectiveness_json": rel(repair_lesson_effectiveness_json, workspace),
     "repair_decision": rel(repair_decision_md, workspace),
     "repair_decision_json": rel(repair_decision_json, workspace),
+    "harness_adaptation": rel(harness_adaptation_md, workspace),
+    "harness_adaptation_json": rel(harness_adaptation_json, workspace),
     "adapter_context": rel(adapter_context_md, workspace),
     "code_context": rel(code_context_md, workspace),
     "field_trajectory": rel(field_trajectory_md, workspace),
@@ -1698,6 +1895,11 @@ session = {
         "decision": repair_decision["decision"],
         "focus": repair_decision["focus"],
         "next_need": repair_decision["next_need"],
+    },
+    "harness_adaptation_summary": {
+        "status": harness_adaptation["status"],
+        "focus": harness_adaptation["focus"],
+        "next_need": harness_adaptation["next_need"],
     },
     "signals": {
         "feed_traces": len(feed_traces),
@@ -1754,6 +1956,14 @@ repair_decision_md.write_text(
     repair_decision_markdown(repair_decision, workspace, repair_decision_json),
     encoding="utf-8",
 )
+harness_adaptation_json.write_text(
+    json.dumps(harness_adaptation, ensure_ascii=True, indent=2) + "\n",
+    encoding="utf-8",
+)
+harness_adaptation_md.write_text(
+    harness_adaptation_markdown(harness_adaptation, workspace, harness_adaptation_json),
+    encoding="utf-8",
+)
 outcome_memory_md.write_text(
     outcome_memory_markdown(repair_outcomes, workspace, outcomes_file, repair_recall),
     encoding="utf-8",
@@ -1786,6 +1996,8 @@ repair_plan["inputs"]["repair_lesson_effectiveness"] = rel(repair_lesson_effecti
 repair_plan["inputs"]["repair_lesson_effectiveness_json"] = rel(repair_lesson_effectiveness_json, workspace)
 repair_plan["inputs"]["repair_decision"] = rel(repair_decision_md, workspace)
 repair_plan["inputs"]["repair_decision_json"] = rel(repair_decision_json, workspace)
+repair_plan["inputs"]["harness_adaptation"] = rel(harness_adaptation_md, workspace)
+repair_plan["inputs"]["harness_adaptation_json"] = rel(harness_adaptation_json, workspace)
 repair_plan["inputs"]["action_trace"] = rel(action_trace_md, workspace)
 repair_plan["inputs"]["action_trace_json"] = rel(action_trace_json, workspace)
 repair_plan["field_trajectory_target"] = {
@@ -1799,7 +2011,8 @@ repair_plan["repair_recall_target"] = repair_recall["target"]
 repair_plan["repair_lessons_summary"] = session["repair_lessons_summary"]
 repair_plan["repair_lesson_effectiveness_summary"] = session["repair_lesson_effectiveness_summary"]
 repair_plan["repair_decision_summary"] = session["repair_decision_summary"]
-repair_plan["review_boundary"] = "Review ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_RECALL.json, REPAIR_LESSONS, REPAIR_LESSON_EFFECTIVENESS, REPAIR_DECISION, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
+repair_plan["harness_adaptation_summary"] = session["harness_adaptation_summary"]
+repair_plan["review_boundary"] = "Review HARNESS_ADAPTATION, ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_RECALL.json, REPAIR_LESSONS, REPAIR_LESSON_EFFECTIVENESS, REPAIR_DECISION, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
 repair_plan_json.write_text(
     json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
     encoding="utf-8",
@@ -1920,6 +2133,13 @@ prompt_md.write_text(
             f"- focus: {compact(repair_decision.get('focus'), 260)}",
             f"- decision next Need: `{decision_next.get('kind') or 'verify'} {decision_next.get('query') or ''}`",
             "",
+            "harness adaptation:",
+            f"- adaptation artifact: `{rel(harness_adaptation_md, workspace)}`",
+            f"- adaptation json: `{rel(harness_adaptation_json, workspace)}`",
+            f"- status: `{harness_adaptation.get('status')}`",
+            f"- focus: {compact(harness_adaptation.get('focus'), 260)}",
+            f"- adaptation next Need: `{harness_adaptation.get('next_need', {}).get('kind') or 'verify'} {harness_adaptation.get('next_need', {}).get('query') or ''}`",
+            "",
             "code context:",
             f"- artifact: `{rel(code_context_md, workspace)}`",
             f"- tentacle: `{code_context['tentacle']}`",
@@ -1968,6 +2188,8 @@ prompt_md.write_text(
             f"- repair lesson effectiveness json: `{rel(repair_lesson_effectiveness_json, workspace)}`",
             f"- repair decision: `{rel(repair_decision_md, workspace)}`",
             f"- repair decision json: `{rel(repair_decision_json, workspace)}`",
+            f"- harness adaptation: `{rel(harness_adaptation_md, workspace)}`",
+            f"- harness adaptation json: `{rel(harness_adaptation_json, workspace)}`",
             f"- adapter context: `{rel(adapter_context_md, workspace)}`",
             f"- code context: `{rel(code_context_md, workspace)}`",
             f"- field trajectory: `{rel(field_trajectory_md, workspace)}`",
@@ -1994,6 +2216,7 @@ action_trace = action_trace_record(
         repair_lessons,
         repair_lesson_effectiveness,
         repair_decision,
+        harness_adaptation,
         draft,
         repair_plan,
 )
@@ -2037,6 +2260,8 @@ review_md.write_text(
             "",
             "## Evidence",
             "",
+            f"- harness adaptation: `{rel(harness_adaptation_md, workspace)}`",
+            f"- harness adaptation json: `{rel(harness_adaptation_json, workspace)}`",
             f"- adapter context: `{rel(adapter_context_md, workspace)}`",
             f"- action trace: `{rel(action_trace_md, workspace)}`",
             f"- action trace json: `{rel(action_trace_json, workspace)}`",
@@ -2106,6 +2331,8 @@ session_md.write_text(
             f"repair lesson effectiveness json: `{rel(repair_lesson_effectiveness_json, workspace)}`",
             f"repair decision: `{rel(repair_decision_md, workspace)}`",
             f"repair decision json: `{rel(repair_decision_json, workspace)}`",
+            f"harness adaptation: `{rel(harness_adaptation_md, workspace)}`",
+            f"harness adaptation json: `{rel(harness_adaptation_json, workspace)}`",
             f"adapter context: `{rel(adapter_context_md, workspace)}`",
             f"code context: `{rel(code_context_md, workspace)}`",
             f"field trajectory: `{rel(field_trajectory_md, workspace)}`",
@@ -2162,6 +2389,12 @@ metadata = {
     "repair_decision_focus": repair_decision.get("focus", ""),
     "repair_decision_next_need_kind": repair_decision.get("next_need", {}).get("kind", ""),
     "repair_decision_next_need_query": repair_decision.get("next_need", {}).get("query", ""),
+    "harness_adaptation": rel(harness_adaptation_md, workspace),
+    "harness_adaptation_json": rel(harness_adaptation_json, workspace),
+    "harness_adaptation_status": harness_adaptation.get("status", ""),
+    "harness_adaptation_focus": harness_adaptation.get("focus", ""),
+    "harness_adaptation_next_need_kind": harness_adaptation.get("next_need", {}).get("kind", ""),
+    "harness_adaptation_next_need_query": harness_adaptation.get("next_need", {}).get("query", ""),
     "adapter_context": rel(adapter_context_md, workspace),
     "code_context": rel(code_context_md, workspace),
     "field_trajectory": rel(field_trajectory_md, workspace),
@@ -2184,6 +2417,8 @@ metadata = {
     "action_trace_lesson_top_avoid": action_trace["repair_lessons"]["top_avoid"],
     "action_trace_repair_decision": action_trace["repair_decision"]["decision"],
     "action_trace_repair_decision_focus": action_trace["repair_decision"]["focus"],
+    "action_trace_harness_adaptation": action_trace["harness_adaptation"]["status"],
+    "action_trace_harness_adaptation_focus": action_trace["harness_adaptation"]["focus"],
     "repair_plan_status": repair_plan["status"],
     "code_context_tentacle": code_context["tentacle"],
     "code_context_tool": code_context["tool"],
