@@ -960,6 +960,18 @@ struct RepairPlanReport {
     repair_queue_brief_effectiveness_failure_rate: String,
     repair_queue_brief_effectiveness_top_reuse: String,
     repair_queue_brief_effectiveness_top_avoid: String,
+    repair_queue_brief_adaptation: String,
+    repair_queue_brief_adaptation_json: String,
+    repair_queue_brief_adaptation_status: String,
+    repair_queue_brief_adaptation_focus: String,
+    repair_queue_brief_adaptation_queue_used_count: String,
+    repair_queue_brief_adaptation_queue_satisfied_count: String,
+    repair_queue_brief_adaptation_queue_partial_count: String,
+    repair_queue_brief_adaptation_queue_failed_count: String,
+    repair_queue_brief_adaptation_queue_success_rate: String,
+    repair_queue_brief_adaptation_queue_failure_rate: String,
+    repair_queue_brief_adaptation_next_need_kind: String,
+    repair_queue_brief_adaptation_next_need_query: String,
     environment_profile_journal: String,
     harness_adaptation: String,
     harness_adaptation_json: String,
@@ -4356,6 +4368,14 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                     &repair_plan_queue_brief_effectiveness_label(plan),
                 );
                 print_optional_line(
+                    "repair_queue_brief_adaptation",
+                    &plan.repair_queue_brief_adaptation,
+                );
+                print_optional_line(
+                    "repair_queue_brief_adaptation_status",
+                    &repair_plan_queue_brief_adaptation_label(plan),
+                );
+                print_optional_line(
                     "environment_profile_journal",
                     &plan.environment_profile_journal,
                 );
@@ -4549,6 +4569,11 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line(
                     "修复队列摘要有效性状态",
                     &repair_plan_queue_brief_effectiveness_label(plan),
+                );
+                print_optional_line("修复队列摘要适应", &plan.repair_queue_brief_adaptation);
+                print_optional_line(
+                    "修复队列摘要适应状态",
+                    &repair_plan_queue_brief_adaptation_label(plan),
                 );
                 print_optional_line("环境Profile日志", &plan.environment_profile_journal);
                 print_optional_line("Harness适应", &plan.harness_adaptation);
@@ -5834,6 +5859,51 @@ fn repair_plan_queue_brief_effectiveness_label(plan: &RepairPlanReport) -> Strin
             plan.repair_queue_brief_effectiveness_top_avoid.as_str(),
         ),
     ])
+}
+
+fn repair_plan_queue_brief_adaptation_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan.repair_queue_brief_adaptation_status.trim().is_empty() {
+        parts.push(plan.repair_queue_brief_adaptation_status.trim().to_string());
+    }
+    let queue_used = plan.repair_queue_brief_adaptation_queue_used_count.trim();
+    let queue_used = if queue_used.is_empty() {
+        "0"
+    } else {
+        queue_used
+    };
+    let failed = plan.repair_queue_brief_adaptation_queue_failed_count.trim();
+    let failed = if failed.is_empty() { "0" } else { failed };
+    let success_rate = plan.repair_queue_brief_adaptation_queue_success_rate.trim();
+    let success_rate = if success_rate.is_empty() {
+        "0"
+    } else {
+        success_rate
+    };
+    parts.push(format!("queue_used={queue_used}"));
+    parts.push(format!("failed={failed}"));
+    parts.push(format!("success_rate={success_rate}"));
+    if !plan
+        .repair_queue_brief_adaptation_next_need_query
+        .trim()
+        .is_empty()
+    {
+        let next_kind = if plan
+            .repair_queue_brief_adaptation_next_need_kind
+            .trim()
+            .is_empty()
+        {
+            "verify"
+        } else {
+            plan.repair_queue_brief_adaptation_next_need_kind.trim()
+        };
+        parts.push(format!(
+            "next={} {}",
+            next_kind,
+            plan.repair_queue_brief_adaptation_next_need_query.trim()
+        ));
+    }
+    parts.join(" ")
 }
 
 fn repair_plan_adaptation_label(plan: &RepairPlanReport) -> String {
@@ -12133,6 +12203,18 @@ fn repair_report(
                 shell_arg(&plan.repair_queue_brief_effectiveness_json)
             ));
         }
+        if !plan.repair_queue_brief_adaptation.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.repair_queue_brief_adaptation)
+            ));
+        }
+        if !plan.repair_queue_brief_adaptation_json.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.repair_queue_brief_adaptation_json)
+            ));
+        }
         if !plan.environment_profile_journal.trim().is_empty() {
             next.push(format!(
                 "review {}",
@@ -14073,6 +14155,51 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         repair_queue_brief_effectiveness_top_avoid: metadata_value(
             metadata,
             "repair_queue_brief_effectiveness_top_avoid",
+        ),
+        repair_queue_brief_adaptation: metadata_value(metadata, "repair_queue_brief_adaptation"),
+        repair_queue_brief_adaptation_json: metadata_value(
+            metadata,
+            "repair_queue_brief_adaptation_json",
+        ),
+        repair_queue_brief_adaptation_status: metadata_value(
+            metadata,
+            "repair_queue_brief_adaptation_status",
+        ),
+        repair_queue_brief_adaptation_focus: metadata_value(
+            metadata,
+            "repair_queue_brief_adaptation_focus",
+        ),
+        repair_queue_brief_adaptation_queue_used_count: metadata_value(
+            metadata,
+            "repair_queue_brief_adaptation_queue_used_count",
+        ),
+        repair_queue_brief_adaptation_queue_satisfied_count: metadata_value(
+            metadata,
+            "repair_queue_brief_adaptation_queue_satisfied_count",
+        ),
+        repair_queue_brief_adaptation_queue_partial_count: metadata_value(
+            metadata,
+            "repair_queue_brief_adaptation_queue_partial_count",
+        ),
+        repair_queue_brief_adaptation_queue_failed_count: metadata_value(
+            metadata,
+            "repair_queue_brief_adaptation_queue_failed_count",
+        ),
+        repair_queue_brief_adaptation_queue_success_rate: metadata_value(
+            metadata,
+            "repair_queue_brief_adaptation_queue_success_rate",
+        ),
+        repair_queue_brief_adaptation_queue_failure_rate: metadata_value(
+            metadata,
+            "repair_queue_brief_adaptation_queue_failure_rate",
+        ),
+        repair_queue_brief_adaptation_next_need_kind: metadata_value(
+            metadata,
+            "repair_queue_brief_adaptation_next_need_kind",
+        ),
+        repair_queue_brief_adaptation_next_need_query: metadata_value(
+            metadata,
+            "repair_queue_brief_adaptation_next_need_query",
         ),
         environment_profile_journal: metadata_value(metadata, "environment_profile_journal"),
         harness_adaptation: metadata_value(metadata, "harness_adaptation"),
@@ -26557,6 +26684,22 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(plan.repair_queue_brief_effectiveness_failed_count, "0");
         assert_eq!(plan.repair_queue_brief_effectiveness_success_rate, "0.00");
         assert!(plan
+            .repair_queue_brief_adaptation
+            .ends_with("REPAIR_QUEUE_BRIEF_ADAPTATION.md"));
+        assert!(plan
+            .repair_queue_brief_adaptation_json
+            .ends_with("REPAIR_QUEUE_BRIEF_ADAPTATION.json"));
+        assert_eq!(
+            plan.repair_queue_brief_adaptation_status,
+            "collect_queue_brief_outcomes"
+        );
+        assert_eq!(plan.repair_queue_brief_adaptation_queue_used_count, "0");
+        assert_eq!(plan.repair_queue_brief_adaptation_queue_failed_count, "0");
+        assert_eq!(
+            plan.repair_queue_brief_adaptation_queue_success_rate,
+            "0.00"
+        );
+        assert!(plan
             .environment_profile_journal
             .ends_with("environment-profiles.jsonl"));
         assert!(plan.harness_adaptation.ends_with("HARNESS_ADAPTATION.md"));
@@ -26631,6 +26774,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan_json.contains("\"repair_effectiveness_rollup_effectiveness\""));
         assert!(plan_json.contains("\"repair_effectiveness_rollup_adaptation\""));
         assert!(plan_json.contains("\"repair_queue_brief_effectiveness\""));
+        assert!(plan_json.contains("\"repair_queue_brief_adaptation\""));
         assert!(plan_json.contains("\"repair_command_effectiveness\""));
         assert!(plan_json.contains("\"repair_patch_draft\""));
         assert!(plan_json.contains("\"repair_patch_draft_effectiveness\""));
@@ -26703,6 +26847,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "\"schema_version\": \"octopus-harness-repair-queue-brief-effectiveness-v1\""
         ));
         assert!(repair_queue_brief_effectiveness_json.contains("\"used_count\": 0"));
+        let repair_queue_brief_adaptation_json =
+            fs::read_to_string(&plan.repair_queue_brief_adaptation_json).unwrap();
+        assert!(repair_queue_brief_adaptation_json
+            .contains("\"schema_version\": \"octopus-harness-repair-queue-brief-adaptation-v1\""));
+        assert!(repair_queue_brief_adaptation_json
+            .contains("\"status\": \"collect_queue_brief_outcomes\""));
         let draft_effectiveness_json =
             fs::read_to_string(&plan.repair_draft_effectiveness_json).unwrap();
         assert!(draft_effectiveness_json
@@ -26888,6 +27038,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("REPAIR_QUEUE_BRIEF_EFFECTIVENESS.json")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_QUEUE_BRIEF_ADAPTATION.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_QUEUE_BRIEF_ADAPTATION.json")));
         assert!(report
             .next
             .iter()
@@ -27202,6 +27360,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(plan.repair_queue_brief_effectiveness_used_count, "0");
         assert_eq!(plan.repair_queue_brief_effectiveness_failed_count, "0");
         assert_eq!(plan.repair_queue_brief_effectiveness_success_rate, "0.00");
+        assert_eq!(
+            plan.repair_queue_brief_adaptation_status,
+            "collect_queue_brief_outcomes"
+        );
         assert!(report
             .next
             .iter()
@@ -27245,6 +27407,22 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         .unwrap();
         let mut restored = HarnessState::load(&state_path).unwrap();
         let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        assert_eq!(
+            report
+                .feed
+                .metadata
+                .get("next_need_source")
+                .map(String::as_str),
+            Some("repair_queue_brief_adaptation")
+        );
+        assert!(report
+            .feed
+            .summary
+            .contains("source=repair_queue_brief_adaptation"));
+        assert!(report
+            .feed
+            .summary
+            .contains("queue_brief_adaptation=repair_queue_selection"));
         let plan = report
             .repair_plan
             .expect("repair plan report after queue score");
@@ -27259,6 +27437,24 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(queue_effectiveness_json.contains("\"used_count\": 1"));
         assert!(queue_effectiveness_json.contains("\"failed_count\": 1"));
         assert!(queue_effectiveness_json.contains("source=repair_effectiveness_rollup_adaptation"));
+        assert_eq!(
+            plan.repair_queue_brief_adaptation_status,
+            "repair_queue_selection"
+        );
+        assert_eq!(plan.repair_queue_brief_adaptation_queue_used_count, "1");
+        assert_eq!(plan.repair_queue_brief_adaptation_queue_failed_count, "1");
+        assert_eq!(
+            plan.repair_queue_brief_adaptation_queue_success_rate,
+            "0.00"
+        );
+        assert!(plan
+            .repair_queue_brief_adaptation_next_need_query
+            .contains("repair heartbeat repair queue source selection"));
+        let queue_adaptation_json =
+            fs::read_to_string(&plan.repair_queue_brief_adaptation_json).unwrap();
+        assert!(queue_adaptation_json
+            .contains("\"schema_version\": \"octopus-harness-repair-queue-brief-adaptation-v1\""));
+        assert!(queue_adaptation_json.contains("\"status\": \"repair_queue_selection\""));
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
