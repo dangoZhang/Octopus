@@ -533,7 +533,21 @@ struct RepairContinueReport {
     repair: RepairReport,
     taken: Option<NeedQueueTakeReport>,
     feedback: Option<Feedback>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    score: Option<RepairScoreReport>,
     next: Vec<String>,
+}
+
+#[derive(Debug)]
+struct RepairContinueArgs {
+    query: String,
+    score: Option<RepairContinueScoreArgs>,
+}
+
+#[derive(Debug)]
+struct RepairContinueScoreArgs {
+    status: Status,
+    summary: String,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -949,64 +963,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     .map(|values| values.join(" "))
                     .unwrap_or_else(|| "recorded repair outcome".to_string());
                 let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-                let trace_index = rest
-                    .get(2)
-                    .ok_or_else(|| "repair score requires a feed trace index".to_string())
-                    .and_then(|value| resolve_feed_trace_selector(value, &loaded))?;
-                let trace = loaded
-                    .feed_traces
-                    .iter()
-                    .find(|trace| trace.index == trace_index)
-                    .cloned();
-                let outcome = loaded.record_repair_outcome(Some(trace_index), status, summary)?;
-                let evolution =
-                    mirror_repair_score_to_evolution_outcome(&mut loaded, trace.as_ref(), &outcome);
                 let cwd = env::current_dir().map_err(|error| error.to_string())?;
-                let journal = write_repair_score_journal(&cwd, trace.as_ref(), &outcome)?;
-                let mut next = vec![
-                    "octopus repair .".to_string(),
-                    "octopus report".to_string(),
-                    "octopus beat 200".to_string(),
-                ];
-                let mut recommendation = None;
-                let mut apply_artifact = None;
-                let mut evolution_artifact = None;
-                let mut recommendation_error = None;
-                if let Some(evolution) = &evolution {
-                    let followup = evolution_score_report(
-                        &evolution.tentacle_id,
-                        &evolution.summary,
-                        &loaded,
-                        &cwd,
-                        evolution.clone(),
-                    );
-                    if followup.recommendation.is_some() {
-                        next = followup.next.clone();
-                    } else {
-                        next.insert(
-                            0,
-                            format!(
-                                "octopus evolve recommend {}",
-                                shell_arg(&evolution.tentacle_id)
-                            ),
-                        );
-                    }
-                    recommendation = followup.recommendation;
-                    apply_artifact = followup.apply_artifact;
-                    evolution_artifact = followup.evolution_artifact;
-                    recommendation_error = followup.recommendation_error;
-                }
-                let report = RepairScoreReport {
-                    outcome,
-                    journal,
-                    recent: loaded.recent_repair_outcomes(5),
-                    evolution,
-                    recommendation,
-                    apply_artifact,
-                    evolution_artifact,
-                    recommendation_error,
-                    next,
-                };
+                let trace_selector = rest
+                    .get(2)
+                    .ok_or_else(|| "repair score requires a feed trace index".to_string())?;
+                let report =
+                    repair_score_report(&mut loaded, trace_selector, status, summary, &cwd)?;
                 loaded.save(&state).map_err(|error| error.to_string())?;
                 if json {
                     println!(
@@ -1019,13 +981,29 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 return Ok(());
             }
             if rest.get(1).map(String::as_str) == Some("continue") {
-                let query = rest
-                    .get(2..)
-                    .filter(|values| !values.is_empty())
-                    .map(|values| values.join(" "))
-                    .unwrap_or_else(|| ".".to_string());
+                let parsed = parse_repair_continue_args(rest.get(2..).unwrap_or(&[]))?;
                 let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-                let report = repair_continue_report(&state, &mut loaded, query)?;
+                let mut report = repair_continue_report(&state, &mut loaded, parsed.query)?;
+                if let Some(score_args) = parsed.score {
+                    let trace_index = report
+                        .feedback
+                        .as_ref()
+                        .and_then(feedback_trace_index)
+                        .ok_or_else(|| {
+                            "repair continue --score requires a continued Feed trace".to_string()
+                        })?;
+                    let cwd = env::current_dir().map_err(|error| error.to_string())?;
+                    let score_report = repair_score_report(
+                        &mut loaded,
+                        &trace_index,
+                        score_args.status,
+                        score_args.summary,
+                        &cwd,
+                    )?;
+                    report.next = score_report.next.clone();
+                    report.score = Some(score_report);
+                    loaded.save(&state).map_err(|error| error.to_string())?;
+                }
                 if json {
                     println!(
                         "{}",
@@ -4099,6 +4077,11 @@ fn print_repair_continue_report(report: &RepairContinueReport, language: Languag
                     println!("continued_status: {:?} {}", feed.status, feed.summary);
                 }
             }
+            if let Some(score) = &report.score {
+                println!("continued_score: #{}", score.outcome.index);
+                println!("continued_score_status: {:?}", score.outcome.status);
+                println!("continued_score_summary: {}", score.outcome.summary);
+            }
             println!("continue_next: {}", join_or_none(&report.next));
         }
         Language::Zh => {
@@ -4115,6 +4098,11 @@ fn print_repair_continue_report(report: &RepairContinueReport, language: Languag
                     }
                     println!("继续状态: {:?} {}", feed.status, feed.summary);
                 }
+            }
+            if let Some(score) = &report.score {
+                println!("继续评分: #{}", score.outcome.index);
+                println!("继续评分状态: {:?}", score.outcome.status);
+                println!("继续评分摘要: {}", score.outcome.summary);
             }
             println!("继续下一步: {}", join_or_none(&report.next));
         }
@@ -8734,6 +8722,7 @@ fn repair_continue_report(
             repair,
             taken: None,
             feedback: None,
+            score: None,
             next: vec![
                 "octopus repair .".to_string(),
                 "octopus report".to_string(),
@@ -8764,6 +8753,7 @@ fn repair_continue_report(
         repair,
         taken: Some(taken),
         feedback: Some(feedback),
+        score: None,
         next,
     })
 }
@@ -8778,6 +8768,93 @@ fn feedback_trace_index(feedback: &Feedback) -> Option<String> {
 fn repair_score_command(trace_index: Option<&str>) -> String {
     let index = trace_index.unwrap_or("<trace-index>");
     format!("octopus repair score {index} satisfied \"repair improved harness\"")
+}
+
+fn parse_repair_continue_args(args: &[String]) -> Result<RepairContinueArgs, String> {
+    let score_index = args.iter().position(|value| value == "--score");
+    let query_parts = score_index.map_or(args, |index| &args[..index]);
+    let query = if query_parts.is_empty() {
+        ".".to_string()
+    } else {
+        query_parts.join(" ")
+    };
+    let score = if let Some(index) = score_index {
+        let status = args
+            .get(index + 1)
+            .ok_or_else(|| "repair continue --score requires a status".to_string())
+            .and_then(|value| parse_status(value))?;
+        let summary = args
+            .get(index + 2..)
+            .filter(|values| !values.is_empty())
+            .map(|values| values.join(" "))
+            .unwrap_or_else(|| "continued repair Feed worked".to_string());
+        Some(RepairContinueScoreArgs { status, summary })
+    } else {
+        None
+    };
+    Ok(RepairContinueArgs { query, score })
+}
+
+fn repair_score_report(
+    state: &mut HarnessState,
+    trace_selector: &str,
+    status: Status,
+    summary: String,
+    cwd: &Path,
+) -> Result<RepairScoreReport, String> {
+    let trace_index = resolve_feed_trace_selector(trace_selector, state)?;
+    let trace = state
+        .feed_traces
+        .iter()
+        .find(|trace| trace.index == trace_index)
+        .cloned();
+    let outcome = state.record_repair_outcome(Some(trace_index), status, summary)?;
+    let evolution = mirror_repair_score_to_evolution_outcome(state, trace.as_ref(), &outcome);
+    let journal = write_repair_score_journal(cwd, trace.as_ref(), &outcome)?;
+    let mut next = vec![
+        "octopus repair .".to_string(),
+        "octopus report".to_string(),
+        "octopus beat 200".to_string(),
+    ];
+    let mut recommendation = None;
+    let mut apply_artifact = None;
+    let mut evolution_artifact = None;
+    let mut recommendation_error = None;
+    if let Some(evolution) = &evolution {
+        let followup = evolution_score_report(
+            &evolution.tentacle_id,
+            &evolution.summary,
+            state,
+            cwd,
+            evolution.clone(),
+        );
+        if followup.recommendation.is_some() {
+            next = followup.next.clone();
+        } else {
+            next.insert(
+                0,
+                format!(
+                    "octopus evolve recommend {}",
+                    shell_arg(&evolution.tentacle_id)
+                ),
+            );
+        }
+        recommendation = followup.recommendation;
+        apply_artifact = followup.apply_artifact;
+        evolution_artifact = followup.evolution_artifact;
+        recommendation_error = followup.recommendation_error;
+    }
+    Ok(RepairScoreReport {
+        outcome,
+        journal,
+        recent: state.recent_repair_outcomes(5),
+        evolution,
+        recommendation,
+        apply_artifact,
+        evolution_artifact,
+        recommendation_error,
+        next,
+    })
 }
 
 fn latest_repair_plan_in_workspace(workspace: &Path) -> Option<PathBuf> {
@@ -16401,7 +16478,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair continue [query] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers n]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state]|pet desktop [--workers n]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers n] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair continue [query] [--score status [summary]] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers n]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state]|pet desktop [--workers n]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers n] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -19770,7 +19847,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "needs [run [index|latest|all|--workers n]|take|drop|script [path]|session [--live] [prompt]]"
         ));
         assert!(usage().contains("repair [query]"));
-        assert!(usage().contains("repair continue [query]"));
+        assert!(usage().contains("repair continue [query] [--score status [summary]]"));
         assert!(usage().contains("repair score <trace-index|latest>"));
         assert!(usage().contains("context [kind query]"));
         assert!(usage().contains("provider save <profile>"));
@@ -20825,6 +20902,52 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("<trace-index>")));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_repair_continue_can_score_continued_feed() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-repair-continue-score-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+        let state = state_path.to_string_lossy().to_string();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "repair".to_string(),
+            "continue".to_string(),
+            ".".to_string(),
+            "--score".to_string(),
+            "satisfied".to_string(),
+            "continued repair improved harness".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert_eq!(restored.feed_traces.len(), 2);
+        assert_eq!(restored.repair_outcomes.len(), 1);
+        assert_eq!(restored.repair_outcomes[0].trace_index, Some(2));
+        assert_eq!(restored.repair_outcomes[0].status, Status::Satisfied);
+        assert_eq!(
+            restored.repair_outcomes[0].summary,
+            "continued repair improved harness"
+        );
+        assert_eq!(
+            restored.last_pet_event.as_ref().unwrap().source,
+            "repair score"
+        );
+        assert_eq!(restored.last_pet_event.as_ref().unwrap().state, "harness");
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
