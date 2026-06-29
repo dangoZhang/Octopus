@@ -540,6 +540,7 @@ latest_repair_plan = newest(
 )
 repair_plan = load_json(latest_repair_plan) if latest_repair_plan else {}
 repair_metadata = {}
+next_need_source = "heartbeat_repair"
 
 if latest_repair_plan:
     commands = repair_plan.get("commands") if isinstance(repair_plan.get("commands"), dict) else {}
@@ -635,9 +636,17 @@ if latest_repair_plan:
     decision_next_query = decision_metadata.get("repair_decision_next_need_query", "")
     adaptation_status = adaptation_metadata.get("harness_adaptation_status", "")
     adaptation_focus = adaptation_metadata.get("harness_adaptation_focus", "")
-    if decision_next_query:
+    adaptation_next_kind = adaptation_metadata.get("harness_adaptation_next_need_kind", "")
+    adaptation_next_query = adaptation_metadata.get("harness_adaptation_next_need_query", "")
+    next_need_source = "repair_plan"
+    if adaptation_next_query:
+        next_need_kind = adaptation_next_kind or "verify"
+        next_need_query = adaptation_next_query
+        next_need_source = "harness_adaptation"
+    elif decision_next_query:
         next_need_kind = decision_next_kind or "verify"
         next_need_query = decision_next_query
+        next_need_source = "repair_decision"
     action_trace_blocked = (
         not has_outcome
         and not adapter_blocked
@@ -652,11 +661,13 @@ if latest_repair_plan:
             next_need = f"continue repair after {outcome_status} outcome"
             next_need_kind = "execute"
             next_need_query = f"octopus repair . after {outcome_status} repair outcome"
+            next_need_source = "repair_outcome"
         else:
             status = "satisfied"
             next_need = "retain reviewed repair outcome"
             next_need_kind = "verify"
             next_need_query = "harness repair outcome retained"
+            next_need_source = "repair_outcome"
         output = (
             f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
             f"outcome={outcome_metadata.get('outcome')}; status={outcome_status}; "
@@ -671,6 +682,7 @@ if latest_repair_plan:
         next_need = f"repair adapter context: {missing}"
         next_need_kind = "execute"
         next_need_query = f"install missing core adapters: {missing}"
+        next_need_source = "adapter_context"
         output = (
             f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
             f"adapter_status={adapter_status or 'unknown'}; missing_core={missing}; "
@@ -685,6 +697,7 @@ if latest_repair_plan:
         next_need = f"repair provider draft: {draft_status}"
         next_need_kind = "execute"
         next_need_query = f"configure repair provider draft: {prefix}"
+        next_need_source = "provider_draft"
         output = (
             f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
             f"draft_status={draft_status}; prefix={prefix}; "
@@ -699,6 +712,7 @@ if latest_repair_plan:
         next_need = action_metadata.get("action_trace_repair_hint") or f"repair tool-side action trace: {blocker}"
         next_need_kind = action_metadata.get("action_trace_next_need_kind") or "execute"
         next_need_query = action_metadata.get("action_trace_next_need_query") or f"repair harness action trace: {blocker}"
+        next_need_source = "action_trace"
         output = (
             f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
             f"action_trace_status={blocker}; "
@@ -710,14 +724,16 @@ if latest_repair_plan:
     else:
         status = "satisfied"
         next_need = (
-            f"follow repair decision: {decision_kind}"
+            f"follow harness adaptation: {adaptation_status}"
+            if adaptation_status and adaptation_next_query
+            else f"follow repair decision: {decision_kind}"
             if decision_kind and decision_next_query
             else "review latest repair action plan"
         )
         output = (
             f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
             f"status={plan_status}; target={target_tentacle}/{target_tool}; "
-            f"next={next_need_kind} {next_need_query}; "
+            f"next={next_need_kind} {next_need_query}; source={next_need_source}; "
             f"field={field_label or 'none'}; action_trace={action_trace_status or 'none'}; "
             f"recall={recall_count or '0'} top={recall_top_status or 'none'} "
             f"reason={recall_top_reason or 'none'}; "
@@ -761,6 +777,7 @@ if latest_repair_plan:
         "score_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked else command_value(commands, "score"),
         "score_commands": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked else command_lines(commands, "score_options"),
         "suggested_commands": " && ".join(suggested),
+        "next_need_source": next_need_source,
     }
     repair_metadata.update(draft_metadata)
     repair_metadata.update(recall_metadata)
@@ -777,12 +794,14 @@ elif not tentacles:
     next_need = "run beat after failed check or scored Feed"
     next_need_kind = "execute"
     next_need_query = "octopus beat 200 after failed check or scored Feed"
+    next_need_source = "heartbeat_repair"
     output = "heartbeat repair: no evolution artifacts yet; collect failed or partial feedback, then run octopus beat 200"
 else:
     status = "satisfied"
     next_need = "review harness apply plan"
     next_need_kind = "verify"
     next_need_query = "review harness apply plan"
+    next_need_source = "harness_apply_plan"
     output = (
         f"heartbeat repair: tentacles={','.join(tentacles)}; "
         f"plans={len(plans)}; recommendations={len(recommendations)}; "
@@ -797,6 +816,7 @@ metadata = {
     "next_need": next_need,
     "next_need_kind": next_need_kind,
     "next_need_query": next_need_query,
+    "next_need_source": next_need_source,
     "grant_boundary": "octopus oauth octopus evolve:<tentacle> harness:write",
 }
 metadata.update(repair_metadata)

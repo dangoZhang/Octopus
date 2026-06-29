@@ -21148,6 +21148,15 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             report.feed.metadata.get("tool").map(String::as_str),
             Some("heartbeat_repair")
         );
+        assert_eq!(
+            report
+                .feed
+                .metadata
+                .get("next_need_source")
+                .map(String::as_str),
+            Some("harness_adaptation")
+        );
+        assert!(report.feed.summary.contains("source=harness_adaptation"));
         let plan = report.repair_plan.expect("repair plan report");
         assert!(plan.path.ends_with("REPAIR_PLAN.json"));
         assert!(plan.review.ends_with("REVIEW.md"));
