@@ -148,7 +148,7 @@ Updated: 2026-06-29
 - Product reports remain CLI/internal observation data; the native app keeps the first product page focused on Goal, Need, Feed, pet, and Output.
 - `preflight [--live]` turns the `0.1.0` readiness gate into CLI and JSON checks without live provider calls unless requested.
 - `preflight script [path]` writes a reviewable local release-gate script that starts from `first-run`, then runs context, thinking, trace, repair, check, route, beat, pet, report, and optional live provider/PR dry-run gates.
-- `preflight record [path]` writes a real-machine evidence template with GitHub install, download artifacts, core loop, `start --check`, start/app, live provider, and PR dry-run commands; `preflight record check [path]` audits completed fields before appending it.
+- `preflight record [path]` writes a real-machine evidence template with GitHub install, download artifacts, core loop, field pool, `start --check`, start/app, live provider, and PR dry-run commands; `preflight record check [path]` audits completed fields before appending it.
 - Real-machine records now include a Product bridge result and a `bridge_goal_surface` command so the brain-goal input boundary is signed off on real machines.
 - `preflight record append [path] [log]` appends a passed real-machine record to `docs/real-machine-test.md` idempotently, and the native app exposes the same default-path action.
 - Real-machine record audit accepts the current `Start/app` result field while keeping legacy `Bridge/app` records valid.
