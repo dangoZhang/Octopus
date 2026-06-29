@@ -31,9 +31,9 @@
     },
     {
       "id": "heartbeat_repair",
-      "description": "Inspect the latest repair-session action plan, then harness-beat evolution artifacts, and suggest the next review, grant, apply, or score action.",
+      "description": "Inspect the latest repair-session action plan and tool-side action trace, then harness-beat evolution artifacts, and suggest the next review, grant, apply, or score action.",
       "input": "octopus-json-v1 tool call or workspace root",
-      "output": "JSON Feed with latest REPAIR_PLAN, review boundary, grant/apply/score commands, next_need_kind, and next_need_query",
+      "output": "JSON Feed with latest REPAIR_PLAN, ACTION_TRACE, review boundary, grant/apply/score commands, next_need_kind, and next_need_query",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/heartbeat_repair.sh",
@@ -42,9 +42,9 @@
     },
     {
       "id": "repair_session",
-      "description": "Write a reviewable self-repair session, local outcome memory, adapter context, target code context, field trajectory context, review bundle, action plan, and optional provider-generated repair draft from heartbeat, evolution, adapter, and reviewed-outcome signals.",
+      "description": "Write a reviewable self-repair session, local outcome memory, adapter context, target code context, field trajectory context, tool-side action trace, review bundle, action plan, and optional provider-generated repair draft from heartbeat, evolution, adapter, and reviewed-outcome signals.",
       "input": "workspace root or octopus-json-v1 Need",
-      "output": "JSON Feed with SESSION, PROMPT, DRAFT, REVIEW, NEXT_NEED, COMMANDS, OUTCOME_MEMORY, ADAPTER_CONTEXT, CODE_CONTEXT, FIELD_TRAJECTORY, REPAIR_PLAN paths, and the next repair Need",
+      "output": "JSON Feed with SESSION, PROMPT, DRAFT, REVIEW, NEXT_NEED, COMMANDS, OUTCOME_MEMORY, ADAPTER_CONTEXT, CODE_CONTEXT, FIELD_TRAJECTORY, ACTION_TRACE, REPAIR_PLAN paths, and the next repair Need",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/repair_session.sh",
@@ -117,7 +117,9 @@
       "Keep REPAIR_PLAN commands reviewable and grant-bound before any harness write.",
       "Let heartbeat_repair read the latest REPAIR_PLAN before older evolution artifacts.",
       "Expose provider DRAFT and CODE_CONTEXT as repair-plan Feed metadata before grant, apply, or score.",
+      "Expose ACTION_TRACE as repair-plan Feed metadata before grant, apply, or score.",
       "When provider DRAFT is failed or missing configuration, return a provider repair Need and stop grant/apply/score commands.",
+      "When ACTION_TRACE is failed or missing context, return an action-trace repair Need and stop grant/apply/score commands.",
       "When ADAPTER_CONTEXT reports missing core adapters, return an adapter repair Need and stop grant/apply/score commands.",
       "Expose FIELD_TRAJECTORY as repair-plan Feed metadata before grant, apply, or score.",
       "When OUTCOME.md exists, return the reviewed outcome and stop repeating stale grant/apply/score commands.",

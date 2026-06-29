@@ -205,6 +205,33 @@ def repair_draft_metadata(root, value):
     return metadata
 
 
+def action_trace_metadata(root, value):
+    path = resolve_artifact(root, value)
+    metadata = {
+        "action_trace_status": "",
+        "action_trace_stage_count": "",
+        "action_trace_last_action": "",
+        "action_trace_preview": "",
+    }
+    if not path or not path.exists():
+        return metadata
+    text = path.read_text(encoding="utf-8", errors="replace")
+    metadata["action_trace_preview"] = compact(text, 600)
+    key_map = {
+        "status": "action_trace_status",
+        "stage_count": "action_trace_stage_count",
+        "last_action": "action_trace_last_action",
+    }
+    for line in text.splitlines():
+        key, _, raw = line.partition(":")
+        if not raw:
+            continue
+        target_key = key_map.get(key.strip().lower())
+        if target_key and not metadata[target_key]:
+            metadata[target_key] = clean_markdown_value(raw)
+    return metadata
+
+
 def repair_outcome_metadata(root, latest_repair_plan, repair_plan):
     session_path = resolve_artifact(root, repair_plan.get("session"))
     if not session_path and latest_repair_plan:
@@ -299,7 +326,9 @@ if latest_repair_plan:
     adapter_context = str(inputs.get("adapter_context") or "")
     draft = str(inputs.get("draft") or "")
     code_context = str(inputs.get("code_context") or "")
+    action_trace = str(inputs.get("action_trace") or "")
     draft_metadata = repair_draft_metadata(root, draft)
+    action_metadata = action_trace_metadata(root, action_trace)
     adapter_metadata = adapter_context_metadata(
         root,
         adapter_context,
@@ -334,6 +363,13 @@ if latest_repair_plan:
         not has_outcome
         and not adapter_blocked
         and draft_status in {"missing_config", "failed"}
+    )
+    action_trace_status = action_metadata.get("action_trace_status", "")
+    action_trace_blocked = (
+        not has_outcome
+        and not adapter_blocked
+        and not draft_blocked
+        and action_trace_status in {"failed", "missing_context"}
     )
     if has_outcome:
         outcome_status = outcome_metadata.get("outcome_status", "reviewed")
@@ -383,6 +419,20 @@ if latest_repair_plan:
         )
         checks = []
         suggested = []
+    elif action_trace_blocked:
+        plan_status = "action_trace_blocked"
+        status = "partial"
+        blocker = action_trace_status or "failed"
+        next_need = f"repair tool-side action trace: {blocker}"
+        next_need_kind = "execute"
+        next_need_query = f"repair harness action trace: {blocker}"
+        output = (
+            f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
+            f"action_trace_status={blocker}; "
+            f"target={target_tentacle}/{target_tool}; next={next_need_kind} {next_need_query}"
+        )
+        checks = []
+        suggested = []
     else:
         status = "satisfied"
         next_need = "review latest repair action plan"
@@ -390,7 +440,8 @@ if latest_repair_plan:
             f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
             f"status={plan_status}; target={target_tentacle}/{target_tool}; "
             f"next={next_need_kind} {next_need_query}; "
-            f"field={field_label or 'none'}; review before grant/apply/score"
+            f"field={field_label or 'none'}; action_trace={action_trace_status or 'none'}; "
+            "review before grant/apply/score"
         )
     repair_metadata = {
         "repair_plan": rel(latest_repair_plan, root),
@@ -400,6 +451,7 @@ if latest_repair_plan:
         "review": str(inputs.get("review") or ""),
         "draft": draft,
         "code_context": code_context,
+        "action_trace": action_trace,
         "adapter_context": adapter_context,
         "field_trajectory": field_trajectory,
         "target_tentacle": target_tentacle,
@@ -409,12 +461,14 @@ if latest_repair_plan:
         "check_command": " && ".join(checks),
         "adapter_blocker": adapter_missing_core if adapter_blocked else "",
         "draft_blocker": draft_status if draft_blocked else "",
-        "grant_command": "" if has_outcome or adapter_blocked or draft_blocked else command_value(commands, "grant"),
-        "apply_command": "" if has_outcome or adapter_blocked or draft_blocked else command_value(commands, "apply"),
-        "score_command": "" if has_outcome or adapter_blocked or draft_blocked else command_value(commands, "score"),
+        "action_trace_blocker": action_trace_status if action_trace_blocked else "",
+        "grant_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked else command_value(commands, "grant"),
+        "apply_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked else command_value(commands, "apply"),
+        "score_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked else command_value(commands, "score"),
         "suggested_commands": " && ".join(suggested),
     }
     repair_metadata.update(draft_metadata)
+    repair_metadata.update(action_metadata)
     repair_metadata.update(adapter_metadata)
     repair_metadata.update(field_metadata)
     repair_metadata.update(outcome_metadata)

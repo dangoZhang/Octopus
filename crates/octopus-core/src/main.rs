@@ -579,6 +579,10 @@ struct RepairPlanReport {
     draft_status: String,
     draft_prefix: String,
     draft_model: String,
+    action_trace: String,
+    action_trace_status: String,
+    action_trace_stage_count: String,
+    action_trace_last_action: String,
     code_context: String,
     adapter_context: String,
     adapter_context_status: String,
@@ -3743,6 +3747,8 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("outcome_status", &plan.outcome_status);
                 print_optional_line("draft", &plan.draft);
                 print_optional_line("draft_status", &repair_plan_draft_label(plan));
+                print_optional_line("action_trace", &plan.action_trace);
+                print_optional_line("action_trace_status", &repair_plan_action_trace_label(plan));
                 print_optional_line("code_context", &plan.code_context);
                 print_optional_line("adapter_context", &plan.adapter_context);
                 print_optional_line("adapter_status", &repair_plan_adapter_label(plan));
@@ -3782,6 +3788,8 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("结果状态", &plan.outcome_status);
                 print_optional_line("草稿", &plan.draft);
                 print_optional_line("草稿状态", &repair_plan_draft_label(plan));
+                print_optional_line("行动轨迹", &plan.action_trace);
+                print_optional_line("行动轨迹状态", &repair_plan_action_trace_label(plan));
                 print_optional_line("代码上下文", &plan.code_context);
                 print_optional_line("适配器上下文", &plan.adapter_context);
                 print_optional_line("适配器状态", &repair_plan_adapter_label(plan));
@@ -3866,6 +3874,20 @@ fn repair_plan_draft_label(plan: &RepairPlanReport) -> String {
     }
     if !plan.draft_model.trim().is_empty() {
         parts.push(format!("model={}", plan.draft_model));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_action_trace_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan.action_trace_status.trim().is_empty() {
+        parts.push(plan.action_trace_status.trim().to_string());
+    }
+    if !plan.action_trace_stage_count.trim().is_empty() {
+        parts.push(format!("stages={}", plan.action_trace_stage_count));
+    }
+    if !plan.action_trace_last_action.trim().is_empty() {
+        parts.push(format!("last={}", plan.action_trace_last_action));
     }
     parts.join(" ")
 }
@@ -8333,6 +8355,9 @@ fn repair_report(
         if !plan.draft.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.draft)));
         }
+        if !plan.action_trace.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.action_trace)));
+        }
         if !plan.code_context.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.code_context)));
         }
@@ -8483,6 +8508,10 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         draft_status: metadata_value(metadata, "draft_status"),
         draft_prefix: metadata_value(metadata, "draft_prefix"),
         draft_model: metadata_value(metadata, "draft_model"),
+        action_trace: metadata_value(metadata, "action_trace"),
+        action_trace_status: metadata_value(metadata, "action_trace_status"),
+        action_trace_stage_count: metadata_value(metadata, "action_trace_stage_count"),
+        action_trace_last_action: metadata_value(metadata, "action_trace_last_action"),
         code_context: metadata_value(metadata, "code_context"),
         adapter_context: metadata_value(metadata, "adapter_context"),
         adapter_context_status: metadata_value(metadata, "adapter_context_status"),
@@ -20419,6 +20448,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan.draft.ends_with("DRAFT.md"));
         assert_eq!(plan.draft_status, "disabled");
         assert_eq!(plan.draft_prefix, "OCTOPUS_LLM");
+        assert!(plan.action_trace.ends_with("ACTION_TRACE.md"));
+        assert_eq!(plan.action_trace_status, "satisfied");
+        assert_eq!(plan.action_trace_stage_count, "6");
+        assert!(plan
+            .action_trace_last_action
+            .contains("write reviewable repair plan"));
         assert!(plan.code_context.ends_with("CODE_CONTEXT.md"));
         assert!(plan.adapter_context.ends_with("ADAPTER_CONTEXT.md"));
         assert_eq!(plan.adapter_context_status, "satisfied");
@@ -20438,6 +20473,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("DRAFT.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("ACTION_TRACE.md")));
         assert!(report
             .next
             .iter()
@@ -20585,6 +20624,80 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .need
             .query
             .contains("configure repair provider draft: OCTOPUS_LLM")));
+        assert!(!report
+            .next
+            .iter()
+            .any(|command| command.contains("harness:write")));
+        assert!(!report
+            .next
+            .iter()
+            .any(|command| command.contains("repair score")));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_repair_report_blocks_on_failed_action_trace() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-repair-action-trace-block-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+        let state = state_path.to_string_lossy().to_string();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "install".to_string(),
+            "harness-repair-agent".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state,
+            "need".to_string(),
+            "execute".to_string(),
+            dir.to_string_lossy().to_string(),
+        ])
+        .unwrap();
+
+        let repair_root = dir.join(".octopus/harness-repair");
+        let session_dir = fs::read_dir(&repair_root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| path.join("REPAIR_PLAN.json").exists())
+            .expect("repair session dir");
+        fs::write(
+            session_dir.join("ACTION_TRACE.md"),
+            "# Tool-Side Action Trace\n\nstatus: `failed`\nstage_count: `2`\nlast_action: `provider draft missing evidence`\n",
+        )
+        .unwrap();
+
+        let mut restored = HarnessState::load(&state_path).unwrap();
+        let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        let plan = report.repair_plan.expect("repair plan report");
+
+        assert_eq!(report.feed.status, Status::Partial);
+        assert_eq!(plan.status, "action_trace_blocked");
+        assert_eq!(plan.action_trace_status, "failed");
+        assert_eq!(plan.action_trace_stage_count, "2");
+        assert!(plan
+            .action_trace_last_action
+            .contains("provider draft missing evidence"));
+        assert!(plan.grant_command.is_empty());
+        assert!(plan.apply_command.is_empty());
+        assert!(plan.score_command.is_empty());
+        assert!(report.queued.iter().any(|item| item
+            .need
+            .query
+            .contains("repair harness action trace: failed")));
         assert!(!report
             .next
             .iter()
