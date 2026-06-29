@@ -8624,6 +8624,7 @@ fn repair_report(
     } else {
         query.clone()
     };
+    let continue_query = need_query.clone();
     let need = Need::new(need_kind, need_query);
     let mut feed =
         feed_tentacle_with_llm_factory(&root, tentacle_id, &need, llm_factory, &state.grants)?;
@@ -8648,6 +8649,12 @@ fn repair_report(
         .iter()
         .map(|item| format!("octopus needs take {}", item.index))
         .collect::<Vec<_>>();
+    if !queued.is_empty() {
+        next.push(format!(
+            "octopus repair continue {}",
+            shell_arg(&continue_query)
+        ));
+    }
     if let Some(plan) = &repair_plan {
         if !plan.review.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.review)));
@@ -20686,6 +20693,13 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(queued.source, "harness-repair-agent");
         assert_eq!(queued.need.kind, NeedKind::Verify);
         assert!(queued.need.query.contains("Feed trace"));
+        let mut restored = HarnessState::load(&state).unwrap();
+        let report = repair_report(&PathBuf::from(&state), &mut restored, ".".to_string()).unwrap();
+        let continue_command = format!("octopus repair continue {}", shell_arg("."));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command == &continue_command));
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
     }
