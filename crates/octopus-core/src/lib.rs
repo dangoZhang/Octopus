@@ -6756,14 +6756,17 @@ impl ManifestTentacle {
             Ok(output) => output,
             Err(error) => return ToolResult::failed(format!("{} failed: {error}", tool.id)),
         };
-        let text = trim_output(&String::from_utf8_lossy(if output.stdout.is_empty() {
+        let raw_text = String::from_utf8_lossy(if output.stdout.is_empty() {
             &output.stderr
         } else {
             &output.stdout
-        }));
+        })
+        .to_string();
+        let text = trim_output(&raw_text);
         let mut result = if output.status.success() {
             if uses_json_contract {
-                tool_result_from_json(&tool.id, &text)
+                tool_result_from_json(&tool.id, raw_text.trim())
+                    .or_else(|| tool_result_from_json(&tool.id, &text))
                     .unwrap_or_else(|| ToolResult::satisfied(&tool.id, text))
             } else {
                 ToolResult::satisfied(&tool.id, text)
@@ -11331,17 +11334,10 @@ fn is_clipboard_query(query: &str) -> bool {
 
 fn is_repair_outcome_query(query: &str) -> bool {
     let query = query.to_lowercase();
-    query.contains("repair")
-        && [
-            "outcome",
-            "score",
-            "review",
-            "satisfied",
-            "partial",
-            "failed",
-        ]
-        .iter()
-        .any(|word| query.contains(word))
+    query.starts_with("repair score")
+        || query.starts_with("octopus repair score")
+        || query.contains("repair outcome")
+        || query.contains("score repair outcome")
 }
 
 fn is_browser_observe(query: &str) -> bool {

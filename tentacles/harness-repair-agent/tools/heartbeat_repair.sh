@@ -313,6 +313,39 @@ def repair_lesson_effectiveness_metadata(root, value, json_value=""):
     return metadata
 
 
+def repair_decision_metadata(root, value, json_value=""):
+    path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
+    metadata = {
+        "repair_decision": rel(path, root) if path else "",
+        "repair_decision_json": rel(json_path, root) if json_path else "",
+        "repair_decision_status": "",
+        "repair_decision_kind": "",
+        "repair_decision_focus": "",
+        "repair_decision_next_need_kind": "",
+        "repair_decision_next_need_query": "",
+        "repair_decision_preview": "",
+    }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        next_need = data.get("next_need") if isinstance(data.get("next_need"), dict) else {}
+        metadata.update({
+            "repair_decision_status": str(data.get("status") or ""),
+            "repair_decision_kind": str(data.get("decision") or ""),
+            "repair_decision_focus": compact(data.get("focus") or "", 320),
+            "repair_decision_next_need_kind": str(next_need.get("kind") or ""),
+            "repair_decision_next_need_query": compact(next_need.get("query") or "", 320),
+            "repair_decision_preview": compact(json.dumps(data, sort_keys=True), 700),
+        })
+    if path and path.exists() and not metadata["repair_decision_preview"]:
+        metadata["repair_decision_preview"] = compact(path.read_text(encoding="utf-8", errors="replace"), 700)
+    return metadata
+
+
 def action_trace_metadata(root, value, json_value=""):
     path = resolve_artifact(root, value)
     json_path = resolve_artifact(root, json_value)
@@ -470,6 +503,8 @@ if latest_repair_plan:
     repair_lessons_json = str(inputs.get("repair_lessons_json") or "")
     repair_lesson_effectiveness = str(inputs.get("repair_lesson_effectiveness") or "")
     repair_lesson_effectiveness_json = str(inputs.get("repair_lesson_effectiveness_json") or "")
+    repair_decision = str(inputs.get("repair_decision") or "")
+    repair_decision_json = str(inputs.get("repair_decision_json") or "")
     action_trace = str(inputs.get("action_trace") or "")
     action_trace_json = str(inputs.get("action_trace_json") or "")
     draft_metadata = repair_draft_metadata(root, draft)
@@ -479,6 +514,11 @@ if latest_repair_plan:
         root,
         repair_lesson_effectiveness,
         repair_lesson_effectiveness_json,
+    )
+    decision_metadata = repair_decision_metadata(
+        root,
+        repair_decision,
+        repair_decision_json,
     )
     action_metadata = action_trace_metadata(root, action_trace, action_trace_json)
     adapter_metadata = adapter_context_metadata(
@@ -525,6 +565,8 @@ if latest_repair_plan:
     lesson_avoid = lessons_metadata.get("repair_lessons_avoid_count", "")
     effectiveness_used = effectiveness_metadata.get("repair_lesson_effectiveness_used_count", "")
     effectiveness_success = effectiveness_metadata.get("repair_lesson_effectiveness_success_rate", "")
+    decision_kind = decision_metadata.get("repair_decision_kind", "")
+    decision_focus = decision_metadata.get("repair_decision_focus", "")
     action_trace_blocked = (
         not has_outcome
         and not adapter_blocked
@@ -606,6 +648,7 @@ if latest_repair_plan:
             f"reason={recall_top_reason or 'none'}; "
             f"lessons={lesson_count or '0'} reuse={lesson_reuse or '0'} avoid={lesson_avoid or '0'}; "
             f"effectiveness={effectiveness_used or '0'} success_rate={effectiveness_success or '0.00'}; "
+            f"decision={decision_kind or 'none'} focus={decision_focus or 'none'}; "
             "review before grant/apply/score"
         )
     repair_metadata = {
@@ -621,6 +664,8 @@ if latest_repair_plan:
         "repair_lessons_json": repair_lessons_json,
         "repair_lesson_effectiveness": repair_lesson_effectiveness,
         "repair_lesson_effectiveness_json": repair_lesson_effectiveness_json,
+        "repair_decision": repair_decision,
+        "repair_decision_json": repair_decision_json,
         "action_trace": action_trace,
         "action_trace_json": action_trace_json or action_metadata.get("action_trace_json", ""),
         "adapter_context": adapter_context,
@@ -642,6 +687,7 @@ if latest_repair_plan:
     repair_metadata.update(recall_metadata)
     repair_metadata.update(lessons_metadata)
     repair_metadata.update(effectiveness_metadata)
+    repair_metadata.update(decision_metadata)
     repair_metadata.update(action_metadata)
     repair_metadata.update(adapter_metadata)
     repair_metadata.update(field_metadata)

@@ -607,6 +607,13 @@ struct RepairPlanReport {
     repair_lesson_effectiveness_failure_rate: String,
     repair_lesson_effectiveness_top_reuse: String,
     repair_lesson_effectiveness_top_avoid: String,
+    repair_decision: String,
+    repair_decision_json: String,
+    repair_decision_status: String,
+    repair_decision_kind: String,
+    repair_decision_focus: String,
+    repair_decision_next_need_kind: String,
+    repair_decision_next_need_query: String,
     code_context: String,
     adapter_context: String,
     adapter_context_status: String,
@@ -3786,6 +3793,8 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                     "repair_lesson_effectiveness_status",
                     &repair_plan_lesson_effectiveness_label(plan),
                 );
+                print_optional_line("repair_decision", &plan.repair_decision);
+                print_optional_line("repair_decision_status", &repair_plan_decision_label(plan));
                 print_optional_line("code_context", &plan.code_context);
                 print_optional_line("adapter_context", &plan.adapter_context);
                 print_optional_line("adapter_status", &repair_plan_adapter_label(plan));
@@ -3837,6 +3846,8 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                     "教训有效性状态",
                     &repair_plan_lesson_effectiveness_label(plan),
                 );
+                print_optional_line("修复决策", &plan.repair_decision);
+                print_optional_line("修复决策状态", &repair_plan_decision_label(plan));
                 print_optional_line("代码上下文", &plan.code_context);
                 print_optional_line("适配器上下文", &plan.adapter_context);
                 print_optional_line("适配器状态", &repair_plan_adapter_label(plan));
@@ -4028,6 +4039,31 @@ fn repair_plan_lesson_effectiveness_label(plan: &RepairPlanReport) -> String {
         parts.push(format!(
             "top_avoid={}",
             plan.repair_lesson_effectiveness_top_avoid
+        ));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_decision_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan.repair_decision_status.trim().is_empty() {
+        parts.push(plan.repair_decision_status.trim().to_string());
+    }
+    if !plan.repair_decision_kind.trim().is_empty() {
+        parts.push(format!("decision={}", plan.repair_decision_kind));
+    }
+    if !plan.repair_decision_focus.trim().is_empty() {
+        parts.push(format!("focus={}", plan.repair_decision_focus));
+    }
+    if !plan.repair_decision_next_need_query.trim().is_empty() {
+        let kind = if plan.repair_decision_next_need_kind.trim().is_empty() {
+            "verify"
+        } else {
+            plan.repair_decision_next_need_kind.trim()
+        };
+        parts.push(format!(
+            "next={kind} {}",
+            plan.repair_decision_next_need_query
         ));
     }
     parts.join(" ")
@@ -8559,12 +8595,36 @@ fn repair_report(
     } else {
         None
     };
-    let need_kind = if latest_repair_plan_for_query(&query).is_some() {
+    let query_workspace = repair_workspace_from_query(&query).ok();
+    let query_has_plan = query_workspace
+        .as_deref()
+        .and_then(latest_repair_plan_in_workspace)
+        .is_some();
+    let state_workspace = repair_workspace_from_state_path(state_path);
+    let state_has_plan = !query_has_plan
+        && state_workspace
+            .as_deref()
+            .and_then(latest_repair_plan_in_workspace)
+            .is_some();
+    let need_kind = if query_has_plan || state_has_plan {
         NeedKind::Verify
     } else {
         NeedKind::Observe
     };
-    let need = Need::new(need_kind, query.clone());
+    let need_query = if query_has_plan {
+        query_workspace
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string())
+            .unwrap_or_else(|| query.clone())
+    } else if state_has_plan {
+        state_workspace
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string())
+            .unwrap_or_else(|| query.clone())
+    } else {
+        query.clone()
+    };
+    let need = Need::new(need_kind, need_query);
     let mut feed =
         feed_tentacle_with_llm_factory(&root, tentacle_id, &need, llm_factory, &state.grants)?;
     feed.metadata
@@ -8615,6 +8675,9 @@ fn repair_report(
                 "review {}",
                 shell_arg(&plan.repair_lesson_effectiveness)
             ));
+        }
+        if !plan.repair_decision.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.repair_decision)));
         }
         if !plan.code_context.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.code_context)));
@@ -8705,8 +8768,7 @@ fn feedback_trace_index(feedback: &Feedback) -> Option<String> {
         .find_map(|feed| feed.metadata.get("feed_trace_index").cloned())
 }
 
-fn latest_repair_plan_for_query(query: &str) -> Option<PathBuf> {
-    let workspace = repair_workspace_from_query(query).ok()?;
+fn latest_repair_plan_in_workspace(workspace: &Path) -> Option<PathBuf> {
     let repair_root = workspace.join(".octopus/harness-repair");
     let mut latest: Option<(SystemTime, PathBuf)> = None;
     for entry in fs::read_dir(repair_root).ok()? {
@@ -8722,6 +8784,20 @@ fn latest_repair_plan_for_query(query: &str) -> Option<PathBuf> {
         }
     }
     latest.map(|(_, path)| path)
+}
+
+fn repair_workspace_from_state_path(state_path: &Path) -> Option<PathBuf> {
+    let parent = state_path.parent()?;
+    let workspace = if parent.file_name().is_some_and(|name| name == ".octopus") {
+        parent.parent().unwrap_or(parent)
+    } else {
+        parent
+    };
+    Some(
+        workspace
+            .canonicalize()
+            .unwrap_or_else(|_| workspace.to_path_buf()),
+    )
 }
 
 fn repair_workspace_from_query(query: &str) -> Result<PathBuf, String> {
@@ -8820,6 +8896,16 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         repair_lesson_effectiveness_top_avoid: metadata_value(
             metadata,
             "repair_lesson_effectiveness_top_avoid",
+        ),
+        repair_decision: metadata_value(metadata, "repair_decision"),
+        repair_decision_json: metadata_value(metadata, "repair_decision_json"),
+        repair_decision_status: metadata_value(metadata, "repair_decision_status"),
+        repair_decision_kind: metadata_value(metadata, "repair_decision_kind"),
+        repair_decision_focus: metadata_value(metadata, "repair_decision_focus"),
+        repair_decision_next_need_kind: metadata_value(metadata, "repair_decision_next_need_kind"),
+        repair_decision_next_need_query: metadata_value(
+            metadata,
+            "repair_decision_next_need_query",
         ),
         code_context: metadata_value(metadata, "code_context"),
         adapter_context: metadata_value(metadata, "adapter_context"),
@@ -20781,6 +20867,13 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(plan.repair_lesson_effectiveness_satisfied_count, "0");
         assert_eq!(plan.repair_lesson_effectiveness_failed_count, "0");
         assert_eq!(plan.repair_lesson_effectiveness_success_rate, "0.00");
+        assert!(plan.repair_decision.ends_with("REPAIR_DECISION.md"));
+        assert!(plan.repair_decision_json.ends_with("REPAIR_DECISION.json"));
+        assert_eq!(plan.repair_decision_status, "observe");
+        assert_eq!(plan.repair_decision_kind, "collect_repair_outcomes");
+        assert!(plan
+            .repair_decision_next_need_query
+            .contains("collect repair outcome memory"));
         assert!(plan.code_context.ends_with("CODE_CONTEXT.md"));
         assert!(plan.adapter_context.ends_with("ADAPTER_CONTEXT.md"));
         assert_eq!(plan.adapter_context_status, "satisfied");
@@ -20820,6 +20913,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("REPAIR_LESSON_EFFECTIVENESS.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_DECISION.md")));
         assert!(report
             .next
             .iter()
@@ -24462,19 +24559,25 @@ JSON
                     .unwrap_or(false)
             });
         assert!(lessons_found);
-        let mut restored = HarnessState::load(&path).unwrap();
-        let report = repair_report(&path, &mut restored, ".".to_string()).unwrap();
-        let plan = report.repair_plan.expect("repair recall plan report");
-        assert_eq!(plan.repair_recall_match_count, "1");
-        assert_eq!(plan.repair_recall_top_status, "satisfied");
-        assert!(plan
-            .repair_recall_top_reasons
-            .contains("same target tentacle"));
-        assert!(plan.repair_recall_top_summary.contains("repair improved"));
-        assert_eq!(plan.repair_lessons_count, "1");
-        assert_eq!(plan.repair_lessons_reuse_count, "1");
-        assert_eq!(plan.repair_lessons_avoid_count, "0");
-        assert!(plan.repair_lessons_top_reuse.contains("repair improved"));
+        let decision_collect_found = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry.ok()?.path().join("REPAIR_DECISION.json");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains("\"decision\": \"collect_lesson_outcomes\"")
+                            && content.contains("\"status\": \"observe\"")
+                            && content.contains("\"lesson_count\": 1")
+                            && content.contains("score repair outcomes that used lessons")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(decision_collect_found);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -24558,18 +24661,27 @@ JSON
                     .unwrap_or(false)
             });
         assert!(effectiveness_found);
-        let mut restored = HarnessState::load(&path).unwrap();
-        let report = repair_report(&path, &mut restored, ".".to_string()).unwrap();
-        let plan = report
-            .repair_plan
-            .expect("repair lesson effectiveness plan report");
-        assert_eq!(plan.repair_lesson_effectiveness_used_count, "1");
-        assert_eq!(plan.repair_lesson_effectiveness_satisfied_count, "1");
-        assert_eq!(plan.repair_lesson_effectiveness_failed_count, "0");
-        assert_eq!(plan.repair_lesson_effectiveness_success_rate, "1.00");
-        assert!(plan
-            .repair_lesson_effectiveness_top_reuse
-            .contains("repair improved harness"));
+        let decision_effective_found = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry.ok()?.path().join("REPAIR_DECISION.json");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains("\"decision\": \"reuse_effective_lessons\"")
+                            && content.contains("\"status\": \"satisfied\"")
+                            && content.contains("\"effectiveness_used_count\": 1")
+                            && content.contains("\"effectiveness_satisfied_count\": 1")
+                            && content.contains("repair improved harness")
+                            && content.contains("review repair plan with effective lessons")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(decision_effective_found);
         let _ = fs::remove_dir_all(workspace);
     }
 
