@@ -357,6 +357,44 @@ def repair_command_strategy_effectiveness_metadata(root, value, json_value=""):
     return metadata
 
 
+def repair_decision_effectiveness_metadata(root, value, json_value=""):
+    path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
+    metadata = {
+        "repair_decision_effectiveness": rel(path, root) if path else "",
+        "repair_decision_effectiveness_json": rel(json_path, root) if json_path else "",
+        "repair_decision_effectiveness_used_count": "",
+        "repair_decision_effectiveness_satisfied_count": "",
+        "repair_decision_effectiveness_partial_count": "",
+        "repair_decision_effectiveness_failed_count": "",
+        "repair_decision_effectiveness_success_rate": "",
+        "repair_decision_effectiveness_failure_rate": "",
+        "repair_decision_effectiveness_top_reuse": "",
+        "repair_decision_effectiveness_top_avoid": "",
+        "repair_decision_effectiveness_preview": "",
+    }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        metadata.update({
+            "repair_decision_effectiveness_used_count": str(data.get("used_count") or 0),
+            "repair_decision_effectiveness_satisfied_count": str(data.get("satisfied_count") or 0),
+            "repair_decision_effectiveness_partial_count": str(data.get("partial_count") or 0),
+            "repair_decision_effectiveness_failed_count": str(data.get("failed_count") or 0),
+            "repair_decision_effectiveness_success_rate": str(data.get("success_rate") or "0.00"),
+            "repair_decision_effectiveness_failure_rate": str(data.get("failure_rate") or "0.00"),
+            "repair_decision_effectiveness_top_reuse": compact(data.get("top_reuse") or "", 320),
+            "repair_decision_effectiveness_top_avoid": compact(data.get("top_avoid") or "", 320),
+            "repair_decision_effectiveness_preview": compact(json.dumps(data, sort_keys=True), 700),
+        })
+    if path and path.exists() and not metadata["repair_decision_effectiveness_preview"]:
+        metadata["repair_decision_effectiveness_preview"] = compact(path.read_text(encoding="utf-8", errors="replace"), 700)
+    return metadata
+
+
 def repair_recall_metadata(root, value):
     path = resolve_artifact(root, value)
     metadata = {
@@ -919,6 +957,8 @@ if latest_repair_plan:
     repair_command_strategy_json = str(inputs.get("repair_command_strategy_json") or "")
     repair_command_strategy_effectiveness = str(inputs.get("repair_command_strategy_effectiveness") or "")
     repair_command_strategy_effectiveness_json = str(inputs.get("repair_command_strategy_effectiveness_json") or "")
+    repair_decision_effectiveness = str(inputs.get("repair_decision_effectiveness") or "")
+    repair_decision_effectiveness_json = str(inputs.get("repair_decision_effectiveness_json") or "")
     repair_decision = str(inputs.get("repair_decision") or "")
     repair_decision_json = str(inputs.get("repair_decision_json") or "")
     harness_adaptation_effectiveness = str(inputs.get("harness_adaptation_effectiveness") or "")
@@ -966,6 +1006,11 @@ if latest_repair_plan:
         root,
         repair_command_strategy_effectiveness,
         repair_command_strategy_effectiveness_json,
+    )
+    decision_effectiveness_metadata = repair_decision_effectiveness_metadata(
+        root,
+        repair_decision_effectiveness,
+        repair_decision_effectiveness_json,
     )
     adaptation_effectiveness_metadata = harness_adaptation_effectiveness_metadata(
         root,
@@ -1054,6 +1099,8 @@ if latest_repair_plan:
     command_strategy_next_query = command_strategy_metadata.get("repair_command_strategy_next_need_query", "")
     command_strategy_effectiveness_used = command_strategy_effectiveness_metadata.get("repair_command_strategy_effectiveness_used_count", "")
     command_strategy_effectiveness_success = command_strategy_effectiveness_metadata.get("repair_command_strategy_effectiveness_success_rate", "")
+    decision_effectiveness_used = decision_effectiveness_metadata.get("repair_decision_effectiveness_used_count", "")
+    decision_effectiveness_success = decision_effectiveness_metadata.get("repair_decision_effectiveness_success_rate", "")
     decision_kind = decision_metadata.get("repair_decision_kind", "")
     decision_focus = decision_metadata.get("repair_decision_focus", "")
     decision_next_kind = decision_metadata.get("repair_decision_next_need_kind", "")
@@ -1186,6 +1233,7 @@ if latest_repair_plan:
             f"command_strategy={command_strategy_status or 'none'} focus={command_strategy_focus or 'none'}; "
             f"command_strategy_effectiveness={command_strategy_effectiveness_used or '0'} success_rate={command_strategy_effectiveness_success or '0.00'}; "
             f"decision={decision_kind or 'none'} focus={decision_focus or 'none'}; "
+            f"decision_effectiveness={decision_effectiveness_used or '0'} success_rate={decision_effectiveness_success or '0.00'}; "
             f"environment_profile={environment_profile_status or 'none'} mode={environment_profile_mode or 'none'} "
             f"capabilities={environment_profile_capabilities or 'none'} constraints={environment_profile_constraints or 'none'}; "
             f"environment_drift={environment_drift_status or 'none'} history={environment_drift_history or '0'} "
@@ -1218,6 +1266,8 @@ if latest_repair_plan:
         "repair_command_strategy_json": repair_command_strategy_json,
         "repair_command_strategy_effectiveness": repair_command_strategy_effectiveness,
         "repair_command_strategy_effectiveness_json": repair_command_strategy_effectiveness_json,
+        "repair_decision_effectiveness": repair_decision_effectiveness,
+        "repair_decision_effectiveness_json": repair_decision_effectiveness_json,
         "repair_decision": repair_decision,
         "repair_decision_json": repair_decision_json,
         "harness_adaptation_effectiveness": harness_adaptation_effectiveness,
@@ -1259,6 +1309,7 @@ if latest_repair_plan:
     repair_metadata.update(command_effectiveness_metadata)
     repair_metadata.update(command_strategy_metadata)
     repair_metadata.update(command_strategy_effectiveness_metadata)
+    repair_metadata.update(decision_effectiveness_metadata)
     repair_metadata.update(adaptation_effectiveness_metadata)
     repair_metadata.update(environment_profile_metadata)
     repair_metadata.update(environment_drift_metadata)

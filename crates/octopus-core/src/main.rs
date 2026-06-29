@@ -677,6 +677,16 @@ struct RepairPlanReport {
     repair_decision_focus: String,
     repair_decision_next_need_kind: String,
     repair_decision_next_need_query: String,
+    repair_decision_effectiveness: String,
+    repair_decision_effectiveness_json: String,
+    repair_decision_effectiveness_used_count: String,
+    repair_decision_effectiveness_satisfied_count: String,
+    repair_decision_effectiveness_partial_count: String,
+    repair_decision_effectiveness_failed_count: String,
+    repair_decision_effectiveness_success_rate: String,
+    repair_decision_effectiveness_failure_rate: String,
+    repair_decision_effectiveness_top_reuse: String,
+    repair_decision_effectiveness_top_avoid: String,
     harness_adaptation_effectiveness: String,
     harness_adaptation_effectiveness_json: String,
     harness_adaptation_effectiveness_used_count: String,
@@ -3913,6 +3923,14 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("repair_decision", &plan.repair_decision);
                 print_optional_line("repair_decision_status", &repair_plan_decision_label(plan));
                 print_optional_line(
+                    "repair_decision_effectiveness",
+                    &plan.repair_decision_effectiveness,
+                );
+                print_optional_line(
+                    "repair_decision_effectiveness_status",
+                    &repair_plan_decision_effectiveness_label(plan),
+                );
+                print_optional_line(
                     "harness_adaptation_effectiveness",
                     &plan.harness_adaptation_effectiveness,
                 );
@@ -4031,6 +4049,11 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 );
                 print_optional_line("修复决策", &plan.repair_decision);
                 print_optional_line("修复决策状态", &repair_plan_decision_label(plan));
+                print_optional_line("修复决策有效性", &plan.repair_decision_effectiveness);
+                print_optional_line(
+                    "修复决策有效性状态",
+                    &repair_plan_decision_effectiveness_label(plan),
+                );
                 print_optional_line("Harness适应有效性", &plan.harness_adaptation_effectiveness);
                 print_optional_line(
                     "Harness适应有效性状态",
@@ -4554,6 +4577,71 @@ fn repair_plan_decision_label(plan: &RepairPlanReport) -> String {
         parts.push(format!(
             "next={kind} {}",
             plan.repair_decision_next_need_query
+        ));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_decision_effectiveness_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan
+        .repair_decision_effectiveness_used_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "used={}",
+            plan.repair_decision_effectiveness_used_count
+        ));
+    }
+    if !plan
+        .repair_decision_effectiveness_satisfied_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "satisfied={}",
+            plan.repair_decision_effectiveness_satisfied_count
+        ));
+    }
+    if !plan
+        .repair_decision_effectiveness_failed_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "failed={}",
+            plan.repair_decision_effectiveness_failed_count
+        ));
+    }
+    if !plan
+        .repair_decision_effectiveness_success_rate
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "success_rate={}",
+            plan.repair_decision_effectiveness_success_rate
+        ));
+    }
+    if !plan
+        .repair_decision_effectiveness_top_reuse
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "top_reuse={}",
+            plan.repair_decision_effectiveness_top_reuse
+        ));
+    }
+    if !plan
+        .repair_decision_effectiveness_top_avoid
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "top_avoid={}",
+            plan.repair_decision_effectiveness_top_avoid
         ));
     }
     parts.join(" ")
@@ -5229,6 +5317,18 @@ fn write_repair_score_journal(
         })
         .cloned()
         .unwrap_or_default();
+    let action_trace_repair_decision = trace
+        .metadata
+        .get("action_trace_repair_decision")
+        .or_else(|| trace.metadata.get("repair_decision_kind"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_repair_decision_focus = trace
+        .metadata
+        .get("action_trace_repair_decision_focus")
+        .or_else(|| trace.metadata.get("repair_decision_focus"))
+        .cloned()
+        .unwrap_or_default();
     let action_trace_harness_environment_drift_status = trace
         .metadata
         .get("action_trace_harness_environment_drift_status")
@@ -5383,6 +5483,14 @@ fn write_repair_score_journal(
             "action_trace_command_strategy_next_need_query".to_string(),
             serde_json::Value::String(action_trace_command_strategy_next_need_query),
         );
+        record.insert(
+            "action_trace_repair_decision".to_string(),
+            serde_json::Value::String(action_trace_repair_decision),
+        );
+        record.insert(
+            "action_trace_repair_decision_focus".to_string(),
+            serde_json::Value::String(action_trace_repair_decision_focus),
+        );
     }
     let mut handle = fs::OpenOptions::new()
         .create(true)
@@ -5393,7 +5501,7 @@ fn write_repair_score_journal(
     fs::write(
         &outcome_path,
         format!(
-            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\ndraft_prefix: `{}`\ndraft_model: `{}`\nrepair_command_check: `{}`\nrepair_command_apply: `{}`\nrepair_command_score: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\naction_trace_recall: matches=`{}` top=`{}` reasons=`{}`\naction_trace_lessons: count=`{}` reuse=`{}` avoid=`{}` top_reuse=`{}` top_avoid=`{}`\naction_trace_command_strategy: status=`{}` focus=`{}` next=`{} {}`\naction_trace_harness_environment_drift: status=`{}` detail=`{}` history=`{}` next=`{} {}`\naction_trace_harness_adaptation: status=`{}` focus=`{}`\n\n{}\n\njournal: `{}`\n",
+            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\ndraft_prefix: `{}`\ndraft_model: `{}`\nrepair_command_check: `{}`\nrepair_command_apply: `{}`\nrepair_command_score: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\naction_trace_recall: matches=`{}` top=`{}` reasons=`{}`\naction_trace_lessons: count=`{}` reuse=`{}` avoid=`{}` top_reuse=`{}` top_avoid=`{}`\naction_trace_command_strategy: status=`{}` focus=`{}` next=`{} {}`\naction_trace_repair_decision: decision=`{}` focus=`{}`\naction_trace_harness_environment_drift: status=`{}` detail=`{}` history=`{}` next=`{} {}`\naction_trace_harness_adaptation: status=`{}` focus=`{}`\n\n{}\n\njournal: `{}`\n",
             status,
             display_path(&workspace, &session_path),
             record["target_tentacle"].as_str().unwrap_or("unknown"),
@@ -5426,6 +5534,12 @@ fn write_repair_score_journal(
                 .as_str()
                 .unwrap_or(""),
             record["action_trace_command_strategy_next_need_query"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_repair_decision"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_repair_decision_focus"]
                 .as_str()
                 .unwrap_or(""),
             record["action_trace_harness_environment_drift_status"]
@@ -9775,6 +9889,18 @@ fn repair_report(
                 shell_arg(&plan.repair_lesson_effectiveness)
             ));
         }
+        if !plan.repair_decision_effectiveness.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.repair_decision_effectiveness)
+            ));
+        }
+        if !plan.repair_decision_effectiveness_json.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.repair_decision_effectiveness_json)
+            ));
+        }
         if !plan.repair_decision.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.repair_decision)));
         }
@@ -10384,6 +10510,43 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         repair_decision_next_need_query: metadata_value(
             metadata,
             "repair_decision_next_need_query",
+        ),
+        repair_decision_effectiveness: metadata_value(metadata, "repair_decision_effectiveness"),
+        repair_decision_effectiveness_json: metadata_value(
+            metadata,
+            "repair_decision_effectiveness_json",
+        ),
+        repair_decision_effectiveness_used_count: metadata_value(
+            metadata,
+            "repair_decision_effectiveness_used_count",
+        ),
+        repair_decision_effectiveness_satisfied_count: metadata_value(
+            metadata,
+            "repair_decision_effectiveness_satisfied_count",
+        ),
+        repair_decision_effectiveness_partial_count: metadata_value(
+            metadata,
+            "repair_decision_effectiveness_partial_count",
+        ),
+        repair_decision_effectiveness_failed_count: metadata_value(
+            metadata,
+            "repair_decision_effectiveness_failed_count",
+        ),
+        repair_decision_effectiveness_success_rate: metadata_value(
+            metadata,
+            "repair_decision_effectiveness_success_rate",
+        ),
+        repair_decision_effectiveness_failure_rate: metadata_value(
+            metadata,
+            "repair_decision_effectiveness_failure_rate",
+        ),
+        repair_decision_effectiveness_top_reuse: metadata_value(
+            metadata,
+            "repair_decision_effectiveness_top_reuse",
+        ),
+        repair_decision_effectiveness_top_avoid: metadata_value(
+            metadata,
+            "repair_decision_effectiveness_top_avoid",
         ),
         harness_adaptation_effectiveness: metadata_value(
             metadata,
@@ -22689,6 +22852,16 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .repair_decision_next_need_query
             .contains("collect repair outcome memory"));
         assert!(plan
+            .repair_decision_effectiveness
+            .ends_with("REPAIR_DECISION_EFFECTIVENESS.md"));
+        assert!(plan
+            .repair_decision_effectiveness_json
+            .ends_with("REPAIR_DECISION_EFFECTIVENESS.json"));
+        assert_eq!(plan.repair_decision_effectiveness_used_count, "0");
+        assert_eq!(plan.repair_decision_effectiveness_satisfied_count, "0");
+        assert_eq!(plan.repair_decision_effectiveness_failed_count, "0");
+        assert_eq!(plan.repair_decision_effectiveness_success_rate, "0.00");
+        assert!(plan
             .harness_adaptation_effectiveness
             .ends_with("HARNESS_ADAPTATION_EFFECTIVENESS.md"));
         assert!(plan
@@ -22814,6 +22987,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan_json.contains("\"repair_command_effectiveness\""));
         assert!(plan_json.contains("\"repair_command_strategy\""));
         assert!(plan_json.contains("\"repair_command_strategy_effectiveness\""));
+        assert!(plan_json.contains("\"repair_decision_effectiveness\""));
         assert!(plan_json.contains("\"learned_reuse\""));
         assert!(plan_json.contains("repair partly improved Feed"));
         assert!(plan_json.contains("repair did not improve Feed"));
@@ -22858,6 +23032,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "\"schema_version\": \"octopus-harness-repair-command-strategy-effectiveness-v1\""
         ));
         assert!(command_strategy_effectiveness_json.contains("\"used_count\": 0"));
+        let decision_effectiveness_json =
+            fs::read_to_string(&plan.repair_decision_effectiveness_json).unwrap();
+        assert!(decision_effectiveness_json
+            .contains("\"schema_version\": \"octopus-harness-repair-decision-effectiveness-v1\""));
+        assert!(decision_effectiveness_json.contains("\"used_count\": 0"));
         let action_trace_effectiveness_json =
             fs::read_to_string(&plan.action_trace_effectiveness_json).unwrap();
         assert!(action_trace_effectiveness_json
@@ -22982,6 +23161,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("REPAIR_COMMAND_STRATEGY_EFFECTIVENESS.json")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_DECISION_EFFECTIVENESS.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_DECISION_EFFECTIVENESS.json")));
         assert!(report
             .next
             .iter()
@@ -26565,6 +26752,7 @@ JSON
         assert!(outcomes.contains("\"action_trace_stage_count\":\"7\""));
         assert!(outcomes
             .contains("\"action_trace_command_strategy_status\":\"collect_command_outcomes\""));
+        assert!(outcomes.contains("\"action_trace_repair_decision\":\"collect_repair_outcomes\""));
         assert!(outcomes.contains("\"action_trace_harness_environment_drift_status\":\"baseline\""));
         assert!(outcomes.contains("\"action_trace_harness_adaptation_status\":\"decision_guided\""));
         assert!(outcomes.contains("\"action_trace_json\":\".octopus/harness-repair/"));
@@ -26589,6 +26777,8 @@ JSON
         assert!(outcome_markdown.contains("action_trace_status: `satisfied`"));
         assert!(outcome_markdown
             .contains("action_trace_command_strategy: status=`collect_command_outcomes`"));
+        assert!(outcome_markdown
+            .contains("action_trace_repair_decision: decision=`collect_repair_outcomes`"));
         assert!(
             outcome_markdown.contains("action_trace_harness_adaptation: status=`decision_guided`")
         );
@@ -26740,8 +26930,32 @@ JSON
                             && content.contains("collect_command_outcomes")
                     })
                     .unwrap_or(false)
-            });
+        });
         assert!(command_strategy_effectiveness_found);
+        let decision_effectiveness_found = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry
+                    .ok()?
+                    .path()
+                    .join("REPAIR_DECISION_EFFECTIVENESS.json");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains(
+                            "\"schema_version\": \"octopus-harness-repair-decision-effectiveness-v1\"",
+                        ) && content.contains("\"used_count\": 1")
+                            && content.contains("\"satisfied_count\": 1")
+                            && content.contains("\"success_rate\": \"1.00\"")
+                            && content.contains("collect_repair_outcomes")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(decision_effectiveness_found);
         let command_strategy_found = workspace
             .join(".octopus/harness-repair")
             .read_dir()
@@ -26780,6 +26994,10 @@ JSON
             .feed
             .summary
             .contains("command_strategy_effectiveness=1"));
+        assert!(strategy_report
+            .feed
+            .summary
+            .contains("decision_effectiveness=1"));
         assert!(strategy_report
             .feed
             .summary

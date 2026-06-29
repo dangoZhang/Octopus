@@ -75,6 +75,7 @@ Updated: 2026-06-29
 - Harness repair now writes `REPAIR_DRAFT_EFFECTIVENESS.md/json`, so provider-generated repair drafts get scored into future repair prompts instead of staying one-off text.
 - Harness repair now writes `REPAIR_COMMAND_EFFECTIVENESS.md/json`, so scored outcomes teach which reviewable check/grant/apply/score command recipes should be reused or avoided.
 - Harness repair now writes `REPAIR_COMMAND_STRATEGY_EFFECTIVENESS.md/json`, so reviewed outcomes can teach whether command-strategy choices themselves help future repair sessions.
+- Harness repair now writes `REPAIR_DECISION_EFFECTIVENESS.md/json`, so reviewed outcomes teach whether the repair decision itself helped later repair sessions.
 - Harness repair now writes `REPAIR_COMMAND_STRATEGY.md/json`, so command effectiveness becomes a reviewable next-Need strategy for the repair tentacle instead of passive evidence.
 - LLM adapters support backend-aware providers for chat goal refinement, clean-brain Goal/Intent/Brief/Align/Clarify/Agenda/Scout/Deliberate/Council/Synthesize/Explore/Rewrite/Queue/Memory jobs, manifest tool planning, and harness evolution candidate generation.
 - `providers` and provider env support Codex CLI OAuth, API-key clouds, Z.AI/BigModel, local servers, LiteLLM gateway, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.
