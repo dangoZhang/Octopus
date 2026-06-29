@@ -8402,6 +8402,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         .filter(|manifest| !manifest.missing_entrypoints.is_empty())
         .map(|manifest| manifest.id.clone())
         .collect::<Vec<_>>();
+    let broken_installed_seed_sources = collect_broken_installed_seed_sources(state);
     let runtime_kinds = manifests
         .iter()
         .flat_map(|manifest| manifest.runtime_kinds.iter().cloned())
@@ -8785,6 +8786,16 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
             "broken_manifests",
             format!("missing entrypoints: {}", broken_manifests.join(", ")),
             "octopus manifests",
+        ));
+    }
+    if !broken_installed_seed_sources.is_empty() {
+        gaps.push(product_gap(
+            "broken_installed_seed_sources",
+            format!(
+                "installed seed sources need repair: {}",
+                broken_installed_seed_sources.join(", ")
+            ),
+            format!("octopus{state_args} beat 200"),
         ));
     }
     if !provider_ready {
@@ -13317,6 +13328,25 @@ fn installed_tentacle_missing_entrypoints(tentacle: &InstalledTentacle) -> Vec<S
         }
     }
     missing
+}
+
+fn collect_broken_installed_seed_sources(state: &HarnessState) -> Vec<String> {
+    let mut broken = state
+        .installed_tentacles
+        .iter()
+        .filter(|tentacle| seed_id(&tentacle.id))
+        .filter_map(|tentacle| {
+            let missing = installed_tentacle_missing_entrypoints(tentacle);
+            if missing.is_empty() {
+                None
+            } else {
+                Some(format!("{} ({})", tentacle.id, missing.join(", ")))
+            }
+        })
+        .collect::<Vec<_>>();
+    broken.sort();
+    broken.dedup();
+    broken
 }
 
 fn repo_root() -> PathBuf {
@@ -19350,6 +19380,45 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .broken_manifests
             .iter()
             .any(|item| item.contains("field-mini-task")));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn product_report_exposes_broken_installed_seed_source_without_repairing() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-report-installed-broken-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_seed_tentacle(&dir, "bash-only");
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+        let mut state = HarnessState::default();
+        state
+            .installed_tentacles
+            .push(broken_installed_bash_only(&dir));
+
+        let product = product_report(&state, &state_path).unwrap();
+        let gap = product
+            .gaps
+            .iter()
+            .find(|gap| gap.id == "broken_installed_seed_sources")
+            .expect("broken installed seed source should be visible");
+        let bash = state
+            .installed_tentacles
+            .iter()
+            .find(|tentacle| tentacle.id == "bash-only")
+            .unwrap();
+
+        assert!(gap.impact.contains("bash-only"));
+        assert!(gap.impact.contains("tools/write_and_run.sh"));
+        assert!(gap.next.contains("beat 200"));
+        assert!(!bash.source.contains(".octopus/bundled-tentacles"));
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
