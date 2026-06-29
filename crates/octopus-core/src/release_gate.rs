@@ -109,6 +109,7 @@ pub(crate) fn preflight_script_commands() -> Vec<String> {
         "octopus --state \"$STATE\" traces",
         "octopus --state \"$STATE\" repair .",
         "octopus --state \"$STATE\" needs",
+        "octopus --state \"$STATE\" fields summary",
         "octopus --state \"$STATE\" check swe-agent",
         "octopus --state \"$STATE\" routes observe README.md",
         "octopus --state \"$STATE\" beat 200",

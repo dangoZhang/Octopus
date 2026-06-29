@@ -9586,13 +9586,14 @@ fn check_preflight_record(path: &Path) -> Result<PreflightRecordCheckReport, Str
                 && content.contains("provider matrix")
                 && content.contains("provider matrix run")
                 && content.contains("provider matrix check")
+                && content.contains("fields summary")
                 && content.contains("benchmark record")
                 && content.contains("benchmark check")
                 && content.contains("preflight --live")
                 && content.contains("start --check")
                 && content.contains("self-iterate pr"),
             true,
-            "record should include first-run, download artifacts, bridge_goal_surface, provider matrix run/check, live provider, benchmark record/check, start --check, and PR dry-run commands",
+            "record should include first-run, download artifacts, bridge_goal_surface, provider matrix run/check, field pool summary, live provider, benchmark record/check, start --check, and PR dry-run commands",
             "regenerate with octopus preflight record",
         ),
     ];
@@ -22050,6 +22051,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .any(|item| item.contains("preflight --live")));
         let script = fs::read_to_string(&script_path).unwrap();
         assert!(script.contains("octopus --state \"$STATE\" first-run"));
+        assert!(script.contains("octopus --state \"$STATE\" fields summary"));
         assert!(script.contains("OCTOPUS_PREFLIGHT_LIVE"));
         let record = fs::read_to_string(&record_path).unwrap();
         assert!(record.contains("# Real-Machine Record"));
@@ -22064,6 +22066,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("provider matrix"));
         assert!(record.contains("provider matrix run"));
         assert!(record.contains("provider matrix check"));
+        assert!(record.contains("fields summary"));
         assert!(record.contains("benchmark record"));
         assert!(record.contains("benchmark check"));
         assert!(record.contains("Benchmark evidence"));
