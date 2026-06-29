@@ -129,6 +129,35 @@ def action_trace_summary(workspace, session_path, session):
     }
 
 
+def repair_effectiveness_rollup_summary(workspace, session_path, session):
+    path = resolve_session_artifact(
+        workspace,
+        session_path,
+        session.get("repair_effectiveness_rollup_json"),
+        "REPAIR_EFFECTIVENESS_ROLLUP.json",
+    )
+    data = load_json(path) if path else {}
+    next_need = data.get("next_need") if isinstance(data.get("next_need"), dict) else {}
+    return {
+        "json": rel(path, workspace) if path else "",
+        "status": str(data.get("status") or ""),
+        "source_count": str(data.get("source_count") or ""),
+        "active_source_count": str(data.get("active_source_count") or ""),
+        "used_count": str(data.get("used_count") or ""),
+        "satisfied_count": str(data.get("satisfied_count") or ""),
+        "partial_count": str(data.get("partial_count") or ""),
+        "failed_count": str(data.get("failed_count") or ""),
+        "success_rate": str(data.get("success_rate") or ""),
+        "failure_rate": str(data.get("failure_rate") or ""),
+        "strongest_source": str(data.get("strongest_source") or ""),
+        "weakest_source": str(data.get("weakest_source") or ""),
+        "top_reuse": str(data.get("top_reuse") or ""),
+        "top_avoid": str(data.get("top_avoid") or ""),
+        "next_need_kind": str(next_need.get("kind") or ""),
+        "next_need_query": str(next_need.get("query") or ""),
+    }
+
+
 def repair_plan_commands(workspace, session_path, session):
     path = resolve_session_artifact(
         workspace,
@@ -240,6 +269,7 @@ if outcome_status is None:
 
 session = load_json(session_path)
 action_trace = action_trace_summary(workspace, session_path, session)
+repair_effectiveness_rollup = repair_effectiveness_rollup_summary(workspace, session_path, session)
 draft = session.get("draft") if isinstance(session.get("draft"), dict) else {}
 repair_commands = repair_plan_commands(workspace, session_path, session)
 record = {
@@ -259,6 +289,23 @@ record = {
     "repair_command_apply": repair_commands["apply"],
     "repair_command_score": repair_commands["score"],
     "repair_command_score_options": repair_commands["score_options"],
+    "repair_effectiveness_rollup_json": repair_effectiveness_rollup["json"],
+    "repair_effectiveness_rollup_status": repair_effectiveness_rollup["status"],
+    "repair_effectiveness_rollup_source_count": repair_effectiveness_rollup["source_count"],
+    "repair_effectiveness_rollup_active_source_count": repair_effectiveness_rollup["active_source_count"],
+    "repair_effectiveness_rollup_used_count": repair_effectiveness_rollup["used_count"],
+    "repair_effectiveness_rollup_satisfied_count": repair_effectiveness_rollup["satisfied_count"],
+    "repair_effectiveness_rollup_partial_count": repair_effectiveness_rollup["partial_count"],
+    "repair_effectiveness_rollup_failed_count": repair_effectiveness_rollup["failed_count"],
+    "repair_effectiveness_rollup_success_rate": repair_effectiveness_rollup["success_rate"],
+    "repair_effectiveness_rollup_failure_rate": repair_effectiveness_rollup["failure_rate"],
+    "repair_effectiveness_rollup_strongest_source": repair_effectiveness_rollup["strongest_source"],
+    "repair_effectiveness_rollup_weakest_source": repair_effectiveness_rollup["weakest_source"],
+    "repair_effectiveness_rollup_top_reuse": repair_effectiveness_rollup["top_reuse"],
+    "repair_effectiveness_rollup_top_avoid": repair_effectiveness_rollup["top_avoid"],
+    "repair_effectiveness_rollup_next_need_kind": repair_effectiveness_rollup["next_need_kind"],
+    "repair_effectiveness_rollup_next_need_query": repair_effectiveness_rollup["next_need_query"],
+    "repair_effectiveness_rollup": repair_effectiveness_rollup,
     "action_trace_json": action_trace["json"],
     "action_trace_status": action_trace["status"],
     "action_trace_stage_count": action_trace["stage_count"],
@@ -316,6 +363,9 @@ outcome_md.write_text(
         f"repair_command_check: `{record['repair_command_check'] or 'none'}`",
         f"repair_command_apply: `{record['repair_command_apply'] or 'none'}`",
         f"repair_command_score: `{record['repair_command_score'] or 'none'}`",
+        f"repair_effectiveness_rollup_json: `{record['repair_effectiveness_rollup_json'] or 'missing'}`",
+        f"repair_effectiveness_rollup: status=`{record['repair_effectiveness_rollup_status'] or 'none'}` active_sources=`{record['repair_effectiveness_rollup_active_source_count'] or '0'}` used=`{record['repair_effectiveness_rollup_used_count'] or '0'}` failed=`{record['repair_effectiveness_rollup_failed_count'] or '0'}` success_rate=`{record['repair_effectiveness_rollup_success_rate'] or '0.00'}` weakest=`{record['repair_effectiveness_rollup_weakest_source'] or 'none'}`",
+        f"repair_effectiveness_rollup_next: `{record['repair_effectiveness_rollup_next_need_kind'] or 'verify'} {record['repair_effectiveness_rollup_next_need_query'] or ''}`",
         f"action_trace_json: `{record['action_trace_json'] or 'missing'}`",
         f"action_trace_status: `{record['action_trace_status']}`",
         f"action_trace_stages: `{record['action_trace_stage_count'] or 'unknown'}`",
@@ -355,6 +405,22 @@ metadata = {
     "repair_command_apply": record["repair_command_apply"],
     "repair_command_score": record["repair_command_score"],
     "repair_command_score_options": record["repair_command_score_options"],
+    "repair_effectiveness_rollup_json": record["repair_effectiveness_rollup_json"],
+    "repair_effectiveness_rollup_status": record["repair_effectiveness_rollup_status"],
+    "repair_effectiveness_rollup_source_count": record["repair_effectiveness_rollup_source_count"],
+    "repair_effectiveness_rollup_active_source_count": record["repair_effectiveness_rollup_active_source_count"],
+    "repair_effectiveness_rollup_used_count": record["repair_effectiveness_rollup_used_count"],
+    "repair_effectiveness_rollup_satisfied_count": record["repair_effectiveness_rollup_satisfied_count"],
+    "repair_effectiveness_rollup_partial_count": record["repair_effectiveness_rollup_partial_count"],
+    "repair_effectiveness_rollup_failed_count": record["repair_effectiveness_rollup_failed_count"],
+    "repair_effectiveness_rollup_success_rate": record["repair_effectiveness_rollup_success_rate"],
+    "repair_effectiveness_rollup_failure_rate": record["repair_effectiveness_rollup_failure_rate"],
+    "repair_effectiveness_rollup_strongest_source": record["repair_effectiveness_rollup_strongest_source"],
+    "repair_effectiveness_rollup_weakest_source": record["repair_effectiveness_rollup_weakest_source"],
+    "repair_effectiveness_rollup_top_reuse": record["repair_effectiveness_rollup_top_reuse"],
+    "repair_effectiveness_rollup_top_avoid": record["repair_effectiveness_rollup_top_avoid"],
+    "repair_effectiveness_rollup_next_need_kind": record["repair_effectiveness_rollup_next_need_kind"],
+    "repair_effectiveness_rollup_next_need_query": record["repair_effectiveness_rollup_next_need_query"],
     "action_trace_json": record["action_trace_json"],
     "action_trace_status": record["action_trace_status"],
     "action_trace_stage_count": record["action_trace_stage_count"],

@@ -5942,6 +5942,86 @@ fn write_repair_score_journal(
         .get("score_commands")
         .cloned()
         .unwrap_or_default();
+    let repair_effectiveness_rollup_json = trace
+        .metadata
+        .get("repair_effectiveness_rollup_json")
+        .cloned()
+        .unwrap_or_default();
+    let repair_effectiveness_rollup_status = trace
+        .metadata
+        .get("repair_effectiveness_rollup_status")
+        .cloned()
+        .unwrap_or_default();
+    let repair_effectiveness_rollup_source_count = trace
+        .metadata
+        .get("repair_effectiveness_rollup_source_count")
+        .cloned()
+        .unwrap_or_default();
+    let repair_effectiveness_rollup_active_source_count = trace
+        .metadata
+        .get("repair_effectiveness_rollup_active_source_count")
+        .cloned()
+        .unwrap_or_default();
+    let repair_effectiveness_rollup_used_count = trace
+        .metadata
+        .get("repair_effectiveness_rollup_used_count")
+        .cloned()
+        .unwrap_or_default();
+    let repair_effectiveness_rollup_satisfied_count = trace
+        .metadata
+        .get("repair_effectiveness_rollup_satisfied_count")
+        .cloned()
+        .unwrap_or_default();
+    let repair_effectiveness_rollup_partial_count = trace
+        .metadata
+        .get("repair_effectiveness_rollup_partial_count")
+        .cloned()
+        .unwrap_or_default();
+    let repair_effectiveness_rollup_failed_count = trace
+        .metadata
+        .get("repair_effectiveness_rollup_failed_count")
+        .cloned()
+        .unwrap_or_default();
+    let repair_effectiveness_rollup_success_rate = trace
+        .metadata
+        .get("repair_effectiveness_rollup_success_rate")
+        .cloned()
+        .unwrap_or_default();
+    let repair_effectiveness_rollup_failure_rate = trace
+        .metadata
+        .get("repair_effectiveness_rollup_failure_rate")
+        .cloned()
+        .unwrap_or_default();
+    let repair_effectiveness_rollup_strongest_source = trace
+        .metadata
+        .get("repair_effectiveness_rollup_strongest_source")
+        .cloned()
+        .unwrap_or_default();
+    let repair_effectiveness_rollup_weakest_source = trace
+        .metadata
+        .get("repair_effectiveness_rollup_weakest_source")
+        .cloned()
+        .unwrap_or_default();
+    let repair_effectiveness_rollup_top_reuse = trace
+        .metadata
+        .get("repair_effectiveness_rollup_top_reuse")
+        .cloned()
+        .unwrap_or_default();
+    let repair_effectiveness_rollup_top_avoid = trace
+        .metadata
+        .get("repair_effectiveness_rollup_top_avoid")
+        .cloned()
+        .unwrap_or_default();
+    let repair_effectiveness_rollup_next_need_kind = trace
+        .metadata
+        .get("repair_effectiveness_rollup_next_need_kind")
+        .cloned()
+        .unwrap_or_default();
+    let repair_effectiveness_rollup_next_need_query = trace
+        .metadata
+        .get("repair_effectiveness_rollup_next_need_query")
+        .cloned()
+        .unwrap_or_default();
     let action_trace_json = trace
         .metadata
         .get("action_trace_json")
@@ -6492,6 +6572,70 @@ fn write_repair_score_journal(
             serde_json::Value::String(repair_command_score_options),
         );
         record.insert(
+            "repair_effectiveness_rollup_json".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_json),
+        );
+        record.insert(
+            "repair_effectiveness_rollup_status".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_status),
+        );
+        record.insert(
+            "repair_effectiveness_rollup_source_count".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_source_count),
+        );
+        record.insert(
+            "repair_effectiveness_rollup_active_source_count".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_active_source_count),
+        );
+        record.insert(
+            "repair_effectiveness_rollup_used_count".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_used_count),
+        );
+        record.insert(
+            "repair_effectiveness_rollup_satisfied_count".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_satisfied_count),
+        );
+        record.insert(
+            "repair_effectiveness_rollup_partial_count".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_partial_count),
+        );
+        record.insert(
+            "repair_effectiveness_rollup_failed_count".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_failed_count),
+        );
+        record.insert(
+            "repair_effectiveness_rollup_success_rate".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_success_rate),
+        );
+        record.insert(
+            "repair_effectiveness_rollup_failure_rate".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_failure_rate),
+        );
+        record.insert(
+            "repair_effectiveness_rollup_strongest_source".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_strongest_source),
+        );
+        record.insert(
+            "repair_effectiveness_rollup_weakest_source".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_weakest_source),
+        );
+        record.insert(
+            "repair_effectiveness_rollup_top_reuse".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_top_reuse),
+        );
+        record.insert(
+            "repair_effectiveness_rollup_top_avoid".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_top_avoid),
+        );
+        record.insert(
+            "repair_effectiveness_rollup_next_need_kind".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_next_need_kind),
+        );
+        record.insert(
+            "repair_effectiveness_rollup_next_need_query".to_string(),
+            serde_json::Value::String(repair_effectiveness_rollup_next_need_query),
+        );
+        record.insert(
             "action_trace_repair_draft_strategy_status".to_string(),
             serde_json::Value::String(action_trace_repair_draft_strategy_status),
         );
@@ -6711,7 +6855,7 @@ fn write_repair_score_journal(
     fs::write(
         &outcome_path,
         format!(
-            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\ndraft_prefix: `{}`\ndraft_model: `{}`\nrepair_command_check: `{}`\nrepair_command_apply: `{}`\nrepair_command_score: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\naction_trace_recall: matches=`{}` top=`{}` reasons=`{}`\naction_trace_lessons: count=`{}` reuse=`{}` avoid=`{}` top_reuse=`{}` top_avoid=`{}`\naction_trace_repair_draft_strategy: status=`{}` focus=`{}` reuse=`{}` avoid=`{}` next=`{} {}`\naction_trace_repair_draft_strategy_effectiveness: used=`{}` success_rate=`{}`\naction_trace_command_strategy: status=`{}` focus=`{}` next=`{} {}`\naction_trace_repair_patch_draft: status=`{}` has_patch=`{}` target=`{}`\naction_trace_repair_patch_review: status=`{}` check=`{}` has_patch=`{}` target=`{}` summary=`{}`\naction_trace_repair_patch_apply: status=`{}` applied=`{}` target=`{}` summary=`{}`\naction_trace_repair_patch_apply_effectiveness: used=`{}` success_rate=`{}`\naction_trace_repair_patch_verify: status=`{}` passed=`{}` target=`{}` command=`{}` summary=`{}`\naction_trace_repair_patch_verify_effectiveness: used=`{}` success_rate=`{}`\naction_trace_repair_patch_learning: status=`{}` used=`{}` verified=`{}` verified_success_rate=`{}` top_reuse=`{}` top_avoid=`{}`\naction_trace_repair_patch_strategy: status=`{}` focus=`{}` next=`{} {}`\naction_trace_repair_decision: decision=`{}` focus=`{}`\naction_trace_harness_environment_drift: status=`{}` detail=`{}` history=`{}` next=`{} {}`\naction_trace_harness_adaptation: status=`{}` focus=`{}`\n\n{}\n\njournal: `{}`\n",
+            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\ndraft_prefix: `{}`\ndraft_model: `{}`\nrepair_command_check: `{}`\nrepair_command_apply: `{}`\nrepair_command_score: `{}`\nrepair_effectiveness_rollup_json: `{}`\nrepair_effectiveness_rollup: status=`{}` active_sources=`{}` used=`{}` failed=`{}` success_rate=`{}` weakest=`{}`\nrepair_effectiveness_rollup_next: `{} {}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\naction_trace_recall: matches=`{}` top=`{}` reasons=`{}`\naction_trace_lessons: count=`{}` reuse=`{}` avoid=`{}` top_reuse=`{}` top_avoid=`{}`\naction_trace_repair_draft_strategy: status=`{}` focus=`{}` reuse=`{}` avoid=`{}` next=`{} {}`\naction_trace_repair_draft_strategy_effectiveness: used=`{}` success_rate=`{}`\naction_trace_command_strategy: status=`{}` focus=`{}` next=`{} {}`\naction_trace_repair_patch_draft: status=`{}` has_patch=`{}` target=`{}`\naction_trace_repair_patch_review: status=`{}` check=`{}` has_patch=`{}` target=`{}` summary=`{}`\naction_trace_repair_patch_apply: status=`{}` applied=`{}` target=`{}` summary=`{}`\naction_trace_repair_patch_apply_effectiveness: used=`{}` success_rate=`{}`\naction_trace_repair_patch_verify: status=`{}` passed=`{}` target=`{}` command=`{}` summary=`{}`\naction_trace_repair_patch_verify_effectiveness: used=`{}` success_rate=`{}`\naction_trace_repair_patch_learning: status=`{}` used=`{}` verified=`{}` verified_success_rate=`{}` top_reuse=`{}` top_avoid=`{}`\naction_trace_repair_patch_strategy: status=`{}` focus=`{}` next=`{} {}`\naction_trace_repair_decision: decision=`{}` focus=`{}`\naction_trace_harness_environment_drift: status=`{}` detail=`{}` history=`{}` next=`{} {}`\naction_trace_harness_adaptation: status=`{}` focus=`{}`\n\n{}\n\njournal: `{}`\n",
             status,
             display_path(&workspace, &session_path),
             record["target_tentacle"].as_str().unwrap_or("unknown"),
@@ -6722,6 +6866,33 @@ fn write_repair_score_journal(
             record["repair_command_check"].as_str().unwrap_or(""),
             record["repair_command_apply"].as_str().unwrap_or(""),
             record["repair_command_score"].as_str().unwrap_or(""),
+            record["repair_effectiveness_rollup_json"]
+                .as_str()
+                .unwrap_or(""),
+            record["repair_effectiveness_rollup_status"]
+                .as_str()
+                .unwrap_or(""),
+            record["repair_effectiveness_rollup_active_source_count"]
+                .as_str()
+                .unwrap_or(""),
+            record["repair_effectiveness_rollup_used_count"]
+                .as_str()
+                .unwrap_or(""),
+            record["repair_effectiveness_rollup_failed_count"]
+                .as_str()
+                .unwrap_or(""),
+            record["repair_effectiveness_rollup_success_rate"]
+                .as_str()
+                .unwrap_or(""),
+            record["repair_effectiveness_rollup_weakest_source"]
+                .as_str()
+                .unwrap_or(""),
+            record["repair_effectiveness_rollup_next_need_kind"]
+                .as_str()
+                .unwrap_or(""),
+            record["repair_effectiveness_rollup_next_need_query"]
+                .as_str()
+                .unwrap_or(""),
             record["action_trace_json"].as_str().unwrap_or(""),
             record["action_trace_status"].as_str().unwrap_or("unknown"),
             record["action_trace_stage_count"].as_str().unwrap_or(""),
@@ -25682,7 +25853,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .repair_effectiveness_rollup_json
             .ends_with("REPAIR_EFFECTIVENESS_ROLLUP.json"));
         assert_eq!(plan.repair_effectiveness_rollup_status, "collect_outcomes");
-        assert_eq!(plan.repair_effectiveness_rollup_source_count, "15");
+        assert_eq!(plan.repair_effectiveness_rollup_source_count, "16");
         assert_eq!(plan.repair_effectiveness_rollup_active_source_count, "0");
         assert_eq!(plan.repair_effectiveness_rollup_used_count, "0");
         assert_eq!(plan.repair_effectiveness_rollup_satisfied_count, "0");
@@ -25807,7 +25978,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(repair_effectiveness_rollup_json
             .contains("\"schema_version\": \"octopus-harness-repair-effectiveness-rollup-v1\""));
         assert!(repair_effectiveness_rollup_json.contains("\"status\": \"collect_outcomes\""));
-        assert!(repair_effectiveness_rollup_json.contains("\"source_count\": 15"));
+        assert!(repair_effectiveness_rollup_json.contains("\"source_count\": 16"));
         assert!(repair_effectiveness_rollup_json.contains("\"active_source_count\": 0"));
         let draft_effectiveness_json =
             fs::read_to_string(&plan.repair_draft_effectiveness_json).unwrap();
@@ -30240,6 +30411,11 @@ JSON
         assert!(outcomes.contains("\"action_trace_repair_decision\":\"collect_repair_outcomes\""));
         assert!(outcomes.contains("\"action_trace_harness_environment_drift_status\":\"baseline\""));
         assert!(outcomes.contains("\"action_trace_harness_adaptation_status\":\"decision_guided\""));
+        assert!(outcomes.contains("\"repair_effectiveness_rollup_status\":\"collect_outcomes\""));
+        assert!(outcomes.contains("\"repair_effectiveness_rollup_source_count\":\"16\""));
+        assert!(outcomes.contains(
+            "\"repair_effectiveness_rollup_next_need_query\":\"collect scored repair outcomes"
+        ));
         assert!(outcomes.contains("\"action_trace_json\":\".octopus/harness-repair/"));
         assert!(outcomes.contains("repair improved harness"));
         let outcome_markdown = workspace
@@ -30283,6 +30459,7 @@ JSON
         assert!(
             outcome_markdown.contains("action_trace_harness_environment_drift: status=`baseline`")
         );
+        assert!(outcome_markdown.contains("repair_effectiveness_rollup: status=`collect_outcomes`"));
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -30305,6 +30482,22 @@ JSON
                     .unwrap_or(false)
             });
         assert!(memory_has_action_trace);
+        let memory_has_rollup = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry.ok()?.path().join("OUTCOME_MEMORY.md");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains("effectiveness_rollup_used: status=`collect_outcomes`")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(memory_has_rollup);
         let recall_found = workspace
             .join(".octopus/harness-repair")
             .read_dir()
@@ -30722,6 +30915,24 @@ JSON
                     .unwrap_or(false)
             });
         assert!(action_trace_effectiveness_found);
+        let rollup_effectiveness_found = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry.ok()?.path().join("REPAIR_EFFECTIVENESS_ROLLUP.json");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains("\"source\": \"repair_effectiveness_rollup\"")
+                            && content.contains("\"used_count\": 1")
+                            && content.contains("status=collect_outcomes")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(rollup_effectiveness_found);
         let command_effectiveness_found = workspace
             .join(".octopus/harness-repair")
             .read_dir()

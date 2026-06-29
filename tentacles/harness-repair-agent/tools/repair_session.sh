@@ -84,6 +84,8 @@ def normalized_outcome(item, origin):
     action_draft_strategy = action_trace.get("repair_draft_strategy") if isinstance(action_trace.get("repair_draft_strategy"), dict) else {}
     action_draft_strategy_effectiveness = action_trace.get("repair_draft_strategy_effectiveness") if isinstance(action_trace.get("repair_draft_strategy_effectiveness"), dict) else {}
     action_patch_strategy = action_trace.get("repair_patch_strategy") if isinstance(action_trace.get("repair_patch_strategy"), dict) else {}
+    repair_effectiveness_rollup = item.get("repair_effectiveness_rollup") if isinstance(item.get("repair_effectiveness_rollup"), dict) else {}
+    rollup_next = repair_effectiveness_rollup.get("next_need") if isinstance(repair_effectiveness_rollup.get("next_need"), dict) else {}
     return {
         "origin": origin,
         "index": item.get("index", ""),
@@ -105,6 +107,22 @@ def normalized_outcome(item, origin):
         "repair_command_apply": str(item.get("repair_command_apply") or ""),
         "repair_command_score": str(item.get("repair_command_score") or ""),
         "repair_command_score_options": str(item.get("repair_command_score_options") or ""),
+        "repair_effectiveness_rollup_json": str(item.get("repair_effectiveness_rollup_json") or repair_effectiveness_rollup.get("json") or ""),
+        "repair_effectiveness_rollup_status": str(item.get("repair_effectiveness_rollup_status") or repair_effectiveness_rollup.get("status") or ""),
+        "repair_effectiveness_rollup_source_count": str(item.get("repair_effectiveness_rollup_source_count") or repair_effectiveness_rollup.get("source_count") or ""),
+        "repair_effectiveness_rollup_active_source_count": str(item.get("repair_effectiveness_rollup_active_source_count") or repair_effectiveness_rollup.get("active_source_count") or ""),
+        "repair_effectiveness_rollup_used_count": str(item.get("repair_effectiveness_rollup_used_count") or repair_effectiveness_rollup.get("used_count") or ""),
+        "repair_effectiveness_rollup_satisfied_count": str(item.get("repair_effectiveness_rollup_satisfied_count") or repair_effectiveness_rollup.get("satisfied_count") or ""),
+        "repair_effectiveness_rollup_partial_count": str(item.get("repair_effectiveness_rollup_partial_count") or repair_effectiveness_rollup.get("partial_count") or ""),
+        "repair_effectiveness_rollup_failed_count": str(item.get("repair_effectiveness_rollup_failed_count") or repair_effectiveness_rollup.get("failed_count") or ""),
+        "repair_effectiveness_rollup_success_rate": str(item.get("repair_effectiveness_rollup_success_rate") or repair_effectiveness_rollup.get("success_rate") or ""),
+        "repair_effectiveness_rollup_failure_rate": str(item.get("repair_effectiveness_rollup_failure_rate") or repair_effectiveness_rollup.get("failure_rate") or ""),
+        "repair_effectiveness_rollup_strongest_source": str(item.get("repair_effectiveness_rollup_strongest_source") or repair_effectiveness_rollup.get("strongest_source") or ""),
+        "repair_effectiveness_rollup_weakest_source": str(item.get("repair_effectiveness_rollup_weakest_source") or repair_effectiveness_rollup.get("weakest_source") or ""),
+        "repair_effectiveness_rollup_top_reuse": str(item.get("repair_effectiveness_rollup_top_reuse") or repair_effectiveness_rollup.get("top_reuse") or ""),
+        "repair_effectiveness_rollup_top_avoid": str(item.get("repair_effectiveness_rollup_top_avoid") or repair_effectiveness_rollup.get("top_avoid") or ""),
+        "repair_effectiveness_rollup_next_need_kind": str(item.get("repair_effectiveness_rollup_next_need_kind") or rollup_next.get("kind") or ""),
+        "repair_effectiveness_rollup_next_need_query": str(item.get("repair_effectiveness_rollup_next_need_query") or rollup_next.get("query") or ""),
         "action_trace_json": str(item.get("action_trace_json") or action_trace.get("json") or ""),
         "action_trace_status": str(item.get("action_trace_status") or action_trace.get("status") or ""),
         "action_trace_stage_count": str(item.get("action_trace_stage_count") or action_trace.get("stage_count") or ""),
@@ -215,6 +233,22 @@ def merge_repair_outcomes(state_items, journal_items, limit=8):
                     "repair_command_apply",
                     "repair_command_score",
                     "repair_command_score_options",
+                    "repair_effectiveness_rollup_json",
+                    "repair_effectiveness_rollup_status",
+                    "repair_effectiveness_rollup_source_count",
+                    "repair_effectiveness_rollup_active_source_count",
+                    "repair_effectiveness_rollup_used_count",
+                    "repair_effectiveness_rollup_satisfied_count",
+                    "repair_effectiveness_rollup_partial_count",
+                    "repair_effectiveness_rollup_failed_count",
+                    "repair_effectiveness_rollup_success_rate",
+                    "repair_effectiveness_rollup_failure_rate",
+                    "repair_effectiveness_rollup_strongest_source",
+                    "repair_effectiveness_rollup_weakest_source",
+                    "repair_effectiveness_rollup_top_reuse",
+                    "repair_effectiveness_rollup_top_avoid",
+                    "repair_effectiveness_rollup_next_need_kind",
+                    "repair_effectiveness_rollup_next_need_query",
                     "action_trace_json",
                     "action_trace_status",
                     "action_trace_stage_count",
@@ -374,6 +408,12 @@ def outcome_memory_markdown(outcomes, workspace, outcomes_file, repair_recall=No
         patch_strategy_focus = item.get("action_trace_repair_patch_strategy_focus") or "none"
         command_strategy_status = item.get("action_trace_command_strategy_status") or "none"
         command_strategy_focus = item.get("action_trace_command_strategy_focus") or "none"
+        rollup_status = item.get("repair_effectiveness_rollup_status") or "none"
+        rollup_active_sources = item.get("repair_effectiveness_rollup_active_source_count") or "0"
+        rollup_used = item.get("repair_effectiveness_rollup_used_count") or "0"
+        rollup_failed = item.get("repair_effectiveness_rollup_failed_count") or "0"
+        rollup_weakest = item.get("repair_effectiveness_rollup_weakest_source") or "none"
+        rollup_next = item.get("repair_effectiveness_rollup_next_need_query") or ""
         adaptation_status = item.get("action_trace_harness_adaptation_status") or "none"
         adaptation_focus = item.get("action_trace_harness_adaptation_focus") or "none"
         drift_status = item.get("action_trace_harness_environment_drift_status") or "none"
@@ -390,6 +430,7 @@ def outcome_memory_markdown(outcomes, workspace, outcomes_file, repair_recall=No
                 f"  lesson_used: count=`{lesson_count}` reuse=`{lesson_reuse}` avoid=`{lesson_avoid}` top=`{compact(lesson_top, 160)}`",
                 f"  patch_strategy_used: status=`{patch_strategy_status}` focus=`{compact(patch_strategy_focus, 180)}`",
                 f"  command_strategy_used: status=`{command_strategy_status}` focus=`{compact(command_strategy_focus, 180)}`",
+                f"  effectiveness_rollup_used: status=`{rollup_status}` active_sources=`{rollup_active_sources}` used=`{rollup_used}` failed=`{rollup_failed}` weakest=`{compact(rollup_weakest, 120)}` next=`{compact(rollup_next, 180)}`",
                 f"  adaptation_used: status=`{adaptation_status}` focus=`{compact(adaptation_focus, 180)}`",
                 f"  environment_drift_used: status=`{drift_status}` history=`{drift_history}` detail=`{compact(drift_detail, 180)}`",
             ]
@@ -453,6 +494,9 @@ def score_repair_outcome(outcome, target):
         outcome.get("action_trace_last_action"),
         outcome.get("action_trace_repair_hint"),
         outcome.get("action_trace_failed_stage"),
+        outcome.get("repair_effectiveness_rollup_status"),
+        outcome.get("repair_effectiveness_rollup_weakest_source"),
+        outcome.get("repair_effectiveness_rollup_next_need_query"),
     )
     overlap = sorted(field_tokens & outcome_tokens)
     if overlap:
@@ -2135,6 +2179,102 @@ def count_value(value):
         return int(value or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def build_repair_effectiveness_rollup_effectiveness(outcomes):
+    used = []
+    hints = {}
+    counts = {
+        "satisfied": 0,
+        "partial": 0,
+        "failed": 0,
+        "unknown": 0,
+    }
+    for outcome in outcomes:
+        rollup_status = str(outcome.get("repair_effectiveness_rollup_status") or "").strip()
+        strongest = outcome.get("repair_effectiveness_rollup_strongest_source") or ""
+        weakest = outcome.get("repair_effectiveness_rollup_weakest_source") or ""
+        top_reuse = outcome.get("repair_effectiveness_rollup_top_reuse") or ""
+        top_avoid = outcome.get("repair_effectiveness_rollup_top_avoid") or ""
+        next_query = outcome.get("repair_effectiveness_rollup_next_need_query") or ""
+        active_sources = outcome.get("repair_effectiveness_rollup_active_source_count") or ""
+        if not any([rollup_status, strongest, weakest, top_reuse, top_avoid, next_query]):
+            continue
+        rollup_hint = compact(
+            " | ".join(
+                part
+                for part in [
+                    f"status={rollup_status}" if rollup_status else "",
+                    f"active_sources={active_sources}" if active_sources else "",
+                    f"strongest={strongest}" if strongest else "",
+                    f"weakest={weakest}" if weakest else "",
+                    top_reuse,
+                    top_avoid,
+                    next_query,
+                ]
+                if part
+            ),
+            360,
+        )
+        if not rollup_hint:
+            continue
+        status = outcome.get("outcome_status") or "unknown"
+        if status not in counts:
+            status = "unknown"
+        counts[status] += 1
+        used.append(outcome)
+        if status == "satisfied":
+            direction = "reuse"
+        elif status in {"partial", "failed"}:
+            direction = "avoid"
+        else:
+            direction = "observe"
+        add_effectiveness_hint(
+            hints,
+            direction,
+            rollup_hint,
+            status,
+            outcome,
+        )
+    used_count = len(used)
+    hint_rows = []
+    for record in hints.values():
+        record["success_rate"] = rate_label(record["satisfied_count"], record["used_count"])
+        record["failure_rate"] = rate_label(record["failed_count"], record["used_count"])
+        hint_rows.append(record)
+    hint_rows.sort(
+        key=lambda item: (
+            item["satisfied_count"],
+            item["used_count"],
+            -item["failed_count"],
+            item["hint"],
+        ),
+        reverse=True,
+    )
+    reuse = [item for item in hint_rows if item["direction"] == "reuse"]
+    avoid = [item for item in hint_rows if item["direction"] == "avoid"]
+    avoid.sort(
+        key=lambda item: (
+            item["failed_count"] + item["partial_count"],
+            item["used_count"],
+            item["hint"],
+        ),
+        reverse=True,
+    )
+    return {
+        "schema_version": "octopus-harness-repair-effectiveness-rollup-effectiveness-v1",
+        "used_count": used_count,
+        "satisfied_count": counts["satisfied"],
+        "partial_count": counts["partial"],
+        "failed_count": counts["failed"],
+        "unknown_count": counts["unknown"],
+        "success_rate": rate_label(counts["satisfied"], used_count),
+        "partial_rate": rate_label(counts["partial"], used_count),
+        "failure_rate": rate_label(counts["failed"], used_count),
+        "top_reuse": reuse[0]["hint"] if reuse else "",
+        "top_avoid": avoid[0]["hint"] if avoid else "",
+        "hints": hint_rows[:8],
+    }
 
 
 def build_repair_effectiveness_rollup(sources):
@@ -5735,6 +5875,7 @@ repair_command_strategy = build_repair_command_strategy(
 )
 harness_adaptation_effectiveness = build_harness_adaptation_effectiveness(repair_outcomes)
 harness_environment_drift_effectiveness = build_harness_environment_drift_effectiveness(repair_outcomes)
+repair_effectiveness_rollup_effectiveness = build_repair_effectiveness_rollup_effectiveness(repair_outcomes)
 repair_effectiveness_rollup = build_repair_effectiveness_rollup([
     ("repair_lesson", "repair lesson", repair_lesson_effectiveness),
     ("action_trace", "action trace", action_trace_effectiveness),
@@ -5751,6 +5892,7 @@ repair_effectiveness_rollup = build_repair_effectiveness_rollup([
     ("repair_decision", "repair decision", repair_decision_effectiveness),
     ("harness_adaptation", "harness adaptation", harness_adaptation_effectiveness),
     ("harness_environment_drift", "harness environment drift", harness_environment_drift_effectiveness),
+    ("repair_effectiveness_rollup", "repair effectiveness rollup", repair_effectiveness_rollup_effectiveness),
 ])
 harness_environment_profile = build_harness_environment_profile(
     workspace,
