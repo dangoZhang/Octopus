@@ -628,6 +628,16 @@ struct RepairPlanReport {
     repair_decision_focus: String,
     repair_decision_next_need_kind: String,
     repair_decision_next_need_query: String,
+    harness_adaptation_effectiveness: String,
+    harness_adaptation_effectiveness_json: String,
+    harness_adaptation_effectiveness_used_count: String,
+    harness_adaptation_effectiveness_satisfied_count: String,
+    harness_adaptation_effectiveness_partial_count: String,
+    harness_adaptation_effectiveness_failed_count: String,
+    harness_adaptation_effectiveness_success_rate: String,
+    harness_adaptation_effectiveness_failure_rate: String,
+    harness_adaptation_effectiveness_top_reuse: String,
+    harness_adaptation_effectiveness_top_avoid: String,
     harness_adaptation: String,
     harness_adaptation_json: String,
     harness_adaptation_status: String,
@@ -3783,6 +3793,14 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 );
                 print_optional_line("repair_decision", &plan.repair_decision);
                 print_optional_line("repair_decision_status", &repair_plan_decision_label(plan));
+                print_optional_line(
+                    "harness_adaptation_effectiveness",
+                    &plan.harness_adaptation_effectiveness,
+                );
+                print_optional_line(
+                    "harness_adaptation_effectiveness_status",
+                    &repair_plan_adaptation_effectiveness_label(plan),
+                );
                 print_optional_line("harness_adaptation", &plan.harness_adaptation);
                 print_optional_line(
                     "harness_adaptation_status",
@@ -3844,6 +3862,11 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 );
                 print_optional_line("修复决策", &plan.repair_decision);
                 print_optional_line("修复决策状态", &repair_plan_decision_label(plan));
+                print_optional_line("Harness适应有效性", &plan.harness_adaptation_effectiveness);
+                print_optional_line(
+                    "Harness适应有效性状态",
+                    &repair_plan_adaptation_effectiveness_label(plan),
+                );
                 print_optional_line("Harness适应", &plan.harness_adaptation);
                 print_optional_line("Harness适应状态", &repair_plan_adaptation_label(plan));
                 print_optional_line("代码上下文", &plan.code_context);
@@ -4065,6 +4088,71 @@ fn repair_plan_decision_label(plan: &RepairPlanReport) -> String {
         parts.push(format!(
             "next={kind} {}",
             plan.repair_decision_next_need_query
+        ));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_adaptation_effectiveness_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan
+        .harness_adaptation_effectiveness_used_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "used={}",
+            plan.harness_adaptation_effectiveness_used_count
+        ));
+    }
+    if !plan
+        .harness_adaptation_effectiveness_satisfied_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "satisfied={}",
+            plan.harness_adaptation_effectiveness_satisfied_count
+        ));
+    }
+    if !plan
+        .harness_adaptation_effectiveness_failed_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "failed={}",
+            plan.harness_adaptation_effectiveness_failed_count
+        ));
+    }
+    if !plan
+        .harness_adaptation_effectiveness_success_rate
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "success_rate={}",
+            plan.harness_adaptation_effectiveness_success_rate
+        ));
+    }
+    if !plan
+        .harness_adaptation_effectiveness_top_reuse
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "top_reuse={}",
+            plan.harness_adaptation_effectiveness_top_reuse
+        ));
+    }
+    if !plan
+        .harness_adaptation_effectiveness_top_avoid
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "top_avoid={}",
+            plan.harness_adaptation_effectiveness_top_avoid
         ));
     }
     parts.join(" ")
@@ -8744,6 +8832,18 @@ fn repair_report(
         if !plan.repair_decision.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.repair_decision)));
         }
+        if !plan.harness_adaptation_effectiveness.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.harness_adaptation_effectiveness)
+            ));
+        }
+        if !plan.harness_adaptation_effectiveness_json.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.harness_adaptation_effectiveness_json)
+            ));
+        }
         if !plan.harness_adaptation.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.harness_adaptation)));
         }
@@ -9113,6 +9213,46 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         repair_decision_next_need_query: metadata_value(
             metadata,
             "repair_decision_next_need_query",
+        ),
+        harness_adaptation_effectiveness: metadata_value(
+            metadata,
+            "harness_adaptation_effectiveness",
+        ),
+        harness_adaptation_effectiveness_json: metadata_value(
+            metadata,
+            "harness_adaptation_effectiveness_json",
+        ),
+        harness_adaptation_effectiveness_used_count: metadata_value(
+            metadata,
+            "harness_adaptation_effectiveness_used_count",
+        ),
+        harness_adaptation_effectiveness_satisfied_count: metadata_value(
+            metadata,
+            "harness_adaptation_effectiveness_satisfied_count",
+        ),
+        harness_adaptation_effectiveness_partial_count: metadata_value(
+            metadata,
+            "harness_adaptation_effectiveness_partial_count",
+        ),
+        harness_adaptation_effectiveness_failed_count: metadata_value(
+            metadata,
+            "harness_adaptation_effectiveness_failed_count",
+        ),
+        harness_adaptation_effectiveness_success_rate: metadata_value(
+            metadata,
+            "harness_adaptation_effectiveness_success_rate",
+        ),
+        harness_adaptation_effectiveness_failure_rate: metadata_value(
+            metadata,
+            "harness_adaptation_effectiveness_failure_rate",
+        ),
+        harness_adaptation_effectiveness_top_reuse: metadata_value(
+            metadata,
+            "harness_adaptation_effectiveness_top_reuse",
+        ),
+        harness_adaptation_effectiveness_top_avoid: metadata_value(
+            metadata,
+            "harness_adaptation_effectiveness_top_avoid",
         ),
         harness_adaptation: metadata_value(metadata, "harness_adaptation"),
         harness_adaptation_json: metadata_value(metadata, "harness_adaptation_json"),
@@ -21194,6 +21334,16 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan
             .repair_decision_next_need_query
             .contains("collect repair outcome memory"));
+        assert!(plan
+            .harness_adaptation_effectiveness
+            .ends_with("HARNESS_ADAPTATION_EFFECTIVENESS.md"));
+        assert!(plan
+            .harness_adaptation_effectiveness_json
+            .ends_with("HARNESS_ADAPTATION_EFFECTIVENESS.json"));
+        assert_eq!(plan.harness_adaptation_effectiveness_used_count, "0");
+        assert_eq!(plan.harness_adaptation_effectiveness_satisfied_count, "0");
+        assert_eq!(plan.harness_adaptation_effectiveness_failed_count, "0");
+        assert_eq!(plan.harness_adaptation_effectiveness_success_rate, "0.00");
         assert!(plan.harness_adaptation.ends_with("HARNESS_ADAPTATION.md"));
         assert!(plan
             .harness_adaptation_json
@@ -21255,11 +21405,24 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let plan_json = fs::read_to_string(&plan.path).unwrap();
         assert!(plan_json.contains("\"score_options\""));
         assert!(plan_json.contains("\"harness_adaptation\""));
+        assert!(plan_json.contains("\"harness_adaptation_effectiveness\""));
         assert!(plan_json.contains("repair partly improved Feed"));
         assert!(plan_json.contains("repair did not improve Feed"));
+        let adaptation_effectiveness_json =
+            fs::read_to_string(&plan.harness_adaptation_effectiveness_json).unwrap();
+        assert!(adaptation_effectiveness_json
+            .contains("\"schema_version\": \"octopus-harness-adaptation-effectiveness-v1\""));
         let adaptation_json = fs::read_to_string(&plan.harness_adaptation_json).unwrap();
         assert!(adaptation_json.contains("\"schema_version\": \"octopus-harness-adaptation-v1\""));
         assert!(adaptation_json.contains("\"status\": \"decision_guided\""));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("HARNESS_ADAPTATION_EFFECTIVENESS.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("HARNESS_ADAPTATION_EFFECTIVENESS.json")));
         assert!(report
             .next
             .iter()
@@ -24937,6 +25100,30 @@ JSON
                     .unwrap_or(false)
             });
         assert!(memory_has_recall);
+        let adaptation_effectiveness_found = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry
+                    .ok()?
+                    .path()
+                    .join("HARNESS_ADAPTATION_EFFECTIVENESS.json");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains(
+                            "\"schema_version\": \"octopus-harness-adaptation-effectiveness-v1\"",
+                        ) && content.contains("\"used_count\": 1")
+                            && content.contains("\"satisfied_count\": 1")
+                            && content.contains("\"success_rate\": \"1.00\"")
+                            && content.contains("collect reviewed repair outcomes")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(adaptation_effectiveness_found);
         let lessons_found = workspace
             .join(".octopus/harness-repair")
             .read_dir()

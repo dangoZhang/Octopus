@@ -313,6 +313,44 @@ def repair_lesson_effectiveness_metadata(root, value, json_value=""):
     return metadata
 
 
+def harness_adaptation_effectiveness_metadata(root, value, json_value=""):
+    path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
+    metadata = {
+        "harness_adaptation_effectiveness": rel(path, root) if path else "",
+        "harness_adaptation_effectiveness_json": rel(json_path, root) if json_path else "",
+        "harness_adaptation_effectiveness_used_count": "",
+        "harness_adaptation_effectiveness_satisfied_count": "",
+        "harness_adaptation_effectiveness_partial_count": "",
+        "harness_adaptation_effectiveness_failed_count": "",
+        "harness_adaptation_effectiveness_success_rate": "",
+        "harness_adaptation_effectiveness_failure_rate": "",
+        "harness_adaptation_effectiveness_top_reuse": "",
+        "harness_adaptation_effectiveness_top_avoid": "",
+        "harness_adaptation_effectiveness_preview": "",
+    }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        metadata.update({
+            "harness_adaptation_effectiveness_used_count": str(data.get("used_count") or 0),
+            "harness_adaptation_effectiveness_satisfied_count": str(data.get("satisfied_count") or 0),
+            "harness_adaptation_effectiveness_partial_count": str(data.get("partial_count") or 0),
+            "harness_adaptation_effectiveness_failed_count": str(data.get("failed_count") or 0),
+            "harness_adaptation_effectiveness_success_rate": str(data.get("success_rate") or "0.00"),
+            "harness_adaptation_effectiveness_failure_rate": str(data.get("failure_rate") or "0.00"),
+            "harness_adaptation_effectiveness_top_reuse": compact(data.get("top_reuse") or "", 320),
+            "harness_adaptation_effectiveness_top_avoid": compact(data.get("top_avoid") or "", 320),
+            "harness_adaptation_effectiveness_preview": compact(json.dumps(data, sort_keys=True), 700),
+        })
+    if path and path.exists() and not metadata["harness_adaptation_effectiveness_preview"]:
+        metadata["harness_adaptation_effectiveness_preview"] = compact(path.read_text(encoding="utf-8", errors="replace"), 700)
+    return metadata
+
+
 def repair_decision_metadata(root, value, json_value=""):
     path = resolve_artifact(root, value)
     json_path = resolve_artifact(root, json_value)
@@ -563,6 +601,8 @@ if latest_repair_plan:
     repair_lesson_effectiveness_json = str(inputs.get("repair_lesson_effectiveness_json") or "")
     repair_decision = str(inputs.get("repair_decision") or "")
     repair_decision_json = str(inputs.get("repair_decision_json") or "")
+    harness_adaptation_effectiveness = str(inputs.get("harness_adaptation_effectiveness") or "")
+    harness_adaptation_effectiveness_json = str(inputs.get("harness_adaptation_effectiveness_json") or "")
     harness_adaptation = str(inputs.get("harness_adaptation") or "")
     harness_adaptation_json = str(inputs.get("harness_adaptation_json") or "")
     action_trace = str(inputs.get("action_trace") or "")
@@ -574,6 +614,11 @@ if latest_repair_plan:
         root,
         repair_lesson_effectiveness,
         repair_lesson_effectiveness_json,
+    )
+    adaptation_effectiveness_metadata = harness_adaptation_effectiveness_metadata(
+        root,
+        harness_adaptation_effectiveness,
+        harness_adaptation_effectiveness_json,
     )
     decision_metadata = repair_decision_metadata(
         root,
@@ -636,6 +681,8 @@ if latest_repair_plan:
     decision_next_query = decision_metadata.get("repair_decision_next_need_query", "")
     adaptation_status = adaptation_metadata.get("harness_adaptation_status", "")
     adaptation_focus = adaptation_metadata.get("harness_adaptation_focus", "")
+    adaptation_effectiveness_used = adaptation_effectiveness_metadata.get("harness_adaptation_effectiveness_used_count", "")
+    adaptation_effectiveness_success = adaptation_effectiveness_metadata.get("harness_adaptation_effectiveness_success_rate", "")
     adaptation_next_kind = adaptation_metadata.get("harness_adaptation_next_need_kind", "")
     adaptation_next_query = adaptation_metadata.get("harness_adaptation_next_need_query", "")
     next_need_source = "repair_plan"
@@ -740,7 +787,8 @@ if latest_repair_plan:
             f"lessons={lesson_count or '0'} reuse={lesson_reuse or '0'} avoid={lesson_avoid or '0'}; "
             f"effectiveness={effectiveness_used or '0'} success_rate={effectiveness_success or '0.00'}; "
             f"decision={decision_kind or 'none'} focus={decision_focus or 'none'}; "
-            f"adaptation={adaptation_status or 'none'} focus={adaptation_focus or 'none'}; "
+            f"adaptation={adaptation_status or 'none'} focus={adaptation_focus or 'none'} "
+            f"adaptation_effectiveness={adaptation_effectiveness_used or '0'} success_rate={adaptation_effectiveness_success or '0.00'}; "
             "review before grant/apply/score"
         )
     repair_metadata = {
@@ -758,6 +806,8 @@ if latest_repair_plan:
         "repair_lesson_effectiveness_json": repair_lesson_effectiveness_json,
         "repair_decision": repair_decision,
         "repair_decision_json": repair_decision_json,
+        "harness_adaptation_effectiveness": harness_adaptation_effectiveness,
+        "harness_adaptation_effectiveness_json": harness_adaptation_effectiveness_json,
         "harness_adaptation": harness_adaptation,
         "harness_adaptation_json": harness_adaptation_json,
         "action_trace": action_trace,
@@ -783,6 +833,7 @@ if latest_repair_plan:
     repair_metadata.update(recall_metadata)
     repair_metadata.update(lessons_metadata)
     repair_metadata.update(effectiveness_metadata)
+    repair_metadata.update(adaptation_effectiveness_metadata)
     repair_metadata.update(decision_metadata)
     repair_metadata.update(adaptation_metadata)
     repair_metadata.update(action_metadata)
