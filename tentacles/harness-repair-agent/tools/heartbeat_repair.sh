@@ -442,6 +442,10 @@ def command_value(commands, key):
     return " && ".join(values)
 
 
+def command_lines(commands, key):
+    return "\n".join(as_list(commands.get(key)))
+
+
 def plan_next_need(plan):
     next_need = plan.get("next_need") or {}
     if isinstance(next_need, dict):
@@ -690,6 +694,7 @@ if latest_repair_plan:
         "grant_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked else command_value(commands, "grant"),
         "apply_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked else command_value(commands, "apply"),
         "score_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked else command_value(commands, "score"),
+        "score_commands": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked else command_lines(commands, "score_options"),
         "suggested_commands": " && ".join(suggested),
     }
     repair_metadata.update(draft_metadata)

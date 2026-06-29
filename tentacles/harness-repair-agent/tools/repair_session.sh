@@ -1154,6 +1154,11 @@ def build_action_plan(
             "grant": grant_command,
             "apply": apply_command,
             "score": "octopus repair score <trace-index> satisfied \"repair improved Feed\"",
+            "score_options": [
+                "octopus repair score <trace-index> satisfied \"repair improved Feed\"",
+                "octopus repair score <trace-index> partial \"repair partly improved Feed\"",
+                "octopus repair score <trace-index> failed \"repair did not improve Feed\"",
+            ],
             "suggested": commands,
         },
     }
@@ -1588,6 +1593,11 @@ repair_plan_json = session_dir / "REPAIR_PLAN.json"
 outcome_command = (
     "octopus repair score <trace-index> satisfied \"repair improved Feed\""
 )
+outcome_commands = [
+    outcome_command,
+    "octopus repair score <trace-index> partial \"repair partly improved Feed\"",
+    "octopus repair score <trace-index> failed \"repair did not improve Feed\"",
+]
 next_need_kind, next_need_query = need_parts(next_need)
 outcome_sources = sorted({str(item.get("origin") or "unknown") for item in repair_outcomes})
 code_context = build_code_context(
@@ -1804,7 +1814,8 @@ command_script.write_text(
             *commands,
             "",
             "# After review, record the outcome so later repair sessions can learn from it.",
-            outcome_command,
+            "# Choose one:",
+            *[f"# {command}" for command in outcome_commands],
             "",
         ]
     ),
@@ -2054,6 +2065,8 @@ review_md.write_text(
             f"- grant: `{repair_plan['commands']['grant']}`",
             f"- apply: `{repair_plan['commands']['apply']}`",
             f"- score: `{repair_plan['commands']['score']}`",
+            "score options:",
+            *[f"- `{command}`" for command in repair_plan["commands"].get("score_options", [])],
             "",
             "## Draft Status",
             "",
@@ -2100,6 +2113,8 @@ session_md.write_text(
             f"action trace json: `{rel(action_trace_json, workspace)}`",
             f"repair plan: `{rel(repair_plan_json, workspace)}`",
             f"outcome command: `{outcome_command}`",
+            "outcome options:",
+            *[f"- `{command}`" for command in outcome_commands],
         ]
     )
     + "\n",

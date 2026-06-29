@@ -8966,7 +8966,8 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         .get("feed_trace_index")
         .map(|index| score_command.replace("<trace-index>", index))
         .unwrap_or(score_command);
-    let score_commands = repair_score_commands_from_plan(&score_command);
+    let score_commands = repair_score_commands_from_metadata(metadata)
+        .unwrap_or_else(|| repair_score_commands_from_plan(&score_command));
     Some(RepairPlanReport {
         path,
         review: metadata_value(metadata, "review"),
@@ -9080,6 +9081,22 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
 
 fn metadata_value(metadata: &BTreeMap<String, String>, key: &str) -> String {
     metadata.get(key).cloned().unwrap_or_default()
+}
+
+fn repair_score_commands_from_metadata(metadata: &BTreeMap<String, String>) -> Option<Vec<String>> {
+    let value = metadata.get("score_commands")?;
+    let commands = value
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            metadata
+                .get("feed_trace_index")
+                .map(|index| line.replace("<trace-index>", index))
+                .unwrap_or_else(|| line.to_string())
+        })
+        .collect::<Vec<_>>();
+    (!commands.is_empty()).then_some(commands)
 }
 
 fn repair_next_need_from_feed(feed: &Feed) -> Option<GoalNeedSuggestion> {
@@ -21112,10 +21129,22 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .score_commands
             .iter()
             .any(|command| command.contains("repair score 2 failed")));
+        assert!(plan
+            .score_commands
+            .iter()
+            .any(|command| command.contains("repair partly improved Feed")));
+        assert!(plan
+            .score_commands
+            .iter()
+            .any(|command| command.contains("repair did not improve Feed")));
         assert!(!plan
             .score_commands
             .iter()
             .any(|command| command.contains("<trace-index>")));
+        let plan_json = fs::read_to_string(&plan.path).unwrap();
+        assert!(plan_json.contains("\"score_options\""));
+        assert!(plan_json.contains("repair partly improved Feed"));
+        assert!(plan_json.contains("repair did not improve Feed"));
         assert!(report
             .next
             .iter()
