@@ -651,6 +651,8 @@ struct RepairPlanReport {
     grant_command: String,
     apply_command: String,
     score_command: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    score_commands: Vec<String>,
     suggested_commands: String,
     next_need_kind: String,
     next_need_query: String,
@@ -3785,6 +3787,9 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("grant", &plan.grant_command);
                 print_optional_line("apply", &plan.apply_command);
                 print_optional_line("score", &plan.score_command);
+                if !plan.score_commands.is_empty() {
+                    println!("score_options: {}", join_or_none(&plan.score_commands));
+                }
             }
             println!("queued: {}", report.queued.len());
             for item in &report.queued {
@@ -3838,6 +3843,9 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("授权", &plan.grant_command);
                 print_optional_line("应用", &plan.apply_command);
                 print_optional_line("评分", &plan.score_command);
+                if !plan.score_commands.is_empty() {
+                    println!("评分选项: {}", join_or_none(&plan.score_commands));
+                }
             }
             println!("排队Need: {}", report.queued.len());
             for item in &report.queued {
@@ -8687,8 +8695,12 @@ fn repair_report(
             &plan.check_command,
             &plan.grant_command,
             &plan.apply_command,
-            &plan.score_command,
         ] {
+            if !command.trim().is_empty() {
+                next.push(command.to_string());
+            }
+        }
+        for command in &plan.score_commands {
             if !command.trim().is_empty() {
                 next.push(command.to_string());
             }
@@ -8775,6 +8787,29 @@ fn repair_score_commands(trace_index: Option<&str>) -> Vec<String> {
         format!("octopus repair score {index} partial \"repair partly improved harness\""),
         format!("octopus repair score {index} failed \"repair did not improve harness\""),
     ]
+}
+
+fn repair_score_commands_from_plan(command: &str) -> Vec<String> {
+    let command = command.trim();
+    if command.is_empty() {
+        return Vec::new();
+    }
+    let Some(index) = repair_score_command_index(command) else {
+        return vec![command.to_string()];
+    };
+    vec![
+        command.to_string(),
+        format!("octopus repair score {index} partial \"repair partly improved Feed\""),
+        format!("octopus repair score {index} failed \"repair did not improve Feed\""),
+    ]
+}
+
+fn repair_score_command_index(command: &str) -> Option<&str> {
+    let mut parts = command.split_whitespace();
+    match (parts.next()?, parts.next()?, parts.next()?) {
+        ("octopus", "repair", "score") => parts.next(),
+        _ => None,
+    }
 }
 
 fn parse_repair_continue_args(args: &[String]) -> Result<RepairContinueArgs, String> {
@@ -8928,6 +8963,7 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         .get("feed_trace_index")
         .map(|index| score_command.replace("<trace-index>", index))
         .unwrap_or(score_command);
+    let score_commands = repair_score_commands_from_plan(&score_command);
     Some(RepairPlanReport {
         path,
         review: metadata_value(metadata, "review"),
@@ -9032,6 +9068,7 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         grant_command: metadata_value(metadata, "grant_command"),
         apply_command: metadata_value(metadata, "apply_command"),
         score_command,
+        score_commands,
         suggested_commands: metadata_value(metadata, "suggested_commands"),
         next_need_kind: metadata_value(metadata, "next_need_kind"),
         next_need_query: metadata_value(metadata, "next_need_query"),
@@ -21059,6 +21096,23 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan.grant_command.contains("harness:write"));
         assert!(plan.score_command.contains("repair score 2"));
         assert!(!plan.score_command.contains("<trace-index>"));
+        assert_eq!(plan.score_commands.len(), 3);
+        assert!(plan
+            .score_commands
+            .iter()
+            .any(|command| command.contains("repair score 2 satisfied")));
+        assert!(plan
+            .score_commands
+            .iter()
+            .any(|command| command.contains("repair score 2 partial")));
+        assert!(plan
+            .score_commands
+            .iter()
+            .any(|command| command.contains("repair score 2 failed")));
+        assert!(!plan
+            .score_commands
+            .iter()
+            .any(|command| command.contains("<trace-index>")));
         assert!(report
             .next
             .iter()
@@ -21107,6 +21161,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command == &plan.grant_command));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("repair score 2 partial")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("repair score 2 failed")));
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
     }
@@ -21165,6 +21227,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan.grant_command.is_empty());
         assert!(plan.apply_command.is_empty());
         assert!(plan.score_command.is_empty());
+        assert!(plan.score_commands.is_empty());
         assert!(report.queued.iter().any(|item| item
             .need
             .query
