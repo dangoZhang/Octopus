@@ -644,8 +644,20 @@ struct RepairPlanReport {
     repair_draft_strategy_focus: String,
     repair_draft_strategy_learned_reuse: String,
     repair_draft_strategy_learned_avoid: String,
+    repair_draft_strategy_strategy_learned_reuse: String,
+    repair_draft_strategy_strategy_learned_avoid: String,
     repair_draft_strategy_next_need_kind: String,
     repair_draft_strategy_next_need_query: String,
+    repair_draft_strategy_effectiveness: String,
+    repair_draft_strategy_effectiveness_json: String,
+    repair_draft_strategy_effectiveness_used_count: String,
+    repair_draft_strategy_effectiveness_satisfied_count: String,
+    repair_draft_strategy_effectiveness_partial_count: String,
+    repair_draft_strategy_effectiveness_failed_count: String,
+    repair_draft_strategy_effectiveness_success_rate: String,
+    repair_draft_strategy_effectiveness_failure_rate: String,
+    repair_draft_strategy_effectiveness_top_reuse: String,
+    repair_draft_strategy_effectiveness_top_avoid: String,
     repair_patch_draft: String,
     repair_patch_draft_json: String,
     repair_patch_draft_status: String,
@@ -4058,6 +4070,14 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                     "repair_draft_strategy_status",
                     &repair_plan_draft_strategy_label(plan),
                 );
+                print_optional_line(
+                    "repair_draft_strategy_effectiveness",
+                    &plan.repair_draft_strategy_effectiveness,
+                );
+                print_optional_line(
+                    "repair_draft_strategy_effectiveness_status",
+                    &repair_plan_draft_strategy_effectiveness_label(plan),
+                );
                 print_optional_line("repair_patch_draft", &plan.repair_patch_draft);
                 print_optional_line(
                     "repair_patch_draft_status",
@@ -4261,6 +4281,11 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 );
                 print_optional_line("草稿策略", &plan.repair_draft_strategy);
                 print_optional_line("草稿策略状态", &repair_plan_draft_strategy_label(plan));
+                print_optional_line("草稿策略有效性", &plan.repair_draft_strategy_effectiveness);
+                print_optional_line(
+                    "草稿策略有效性状态",
+                    &repair_plan_draft_strategy_effectiveness_label(plan),
+                );
                 print_optional_line("补丁草稿", &plan.repair_patch_draft);
                 print_optional_line("补丁草稿状态", &repair_plan_patch_draft_label(plan));
                 print_optional_line("补丁草稿有效性", &plan.repair_patch_draft_effectiveness);
@@ -4522,6 +4547,26 @@ fn repair_plan_draft_strategy_label(plan: &RepairPlanReport) -> String {
             plan.repair_draft_strategy_learned_avoid
         ));
     }
+    if !plan
+        .repair_draft_strategy_strategy_learned_reuse
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "strategy_reuse={}",
+            plan.repair_draft_strategy_strategy_learned_reuse
+        ));
+    }
+    if !plan
+        .repair_draft_strategy_strategy_learned_avoid
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "strategy_avoid={}",
+            plan.repair_draft_strategy_strategy_learned_avoid
+        ));
+    }
     if !plan.repair_draft_strategy_next_need_query.trim().is_empty() {
         let kind = if plan.repair_draft_strategy_next_need_kind.trim().is_empty() {
             "verify"
@@ -4531,6 +4576,71 @@ fn repair_plan_draft_strategy_label(plan: &RepairPlanReport) -> String {
         parts.push(format!(
             "next={} {}",
             kind, plan.repair_draft_strategy_next_need_query
+        ));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_draft_strategy_effectiveness_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan
+        .repair_draft_strategy_effectiveness_used_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "used={}",
+            plan.repair_draft_strategy_effectiveness_used_count
+        ));
+    }
+    if !plan
+        .repair_draft_strategy_effectiveness_satisfied_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "satisfied={}",
+            plan.repair_draft_strategy_effectiveness_satisfied_count
+        ));
+    }
+    if !plan
+        .repair_draft_strategy_effectiveness_failed_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "failed={}",
+            plan.repair_draft_strategy_effectiveness_failed_count
+        ));
+    }
+    if !plan
+        .repair_draft_strategy_effectiveness_success_rate
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "success_rate={}",
+            plan.repair_draft_strategy_effectiveness_success_rate
+        ));
+    }
+    if !plan
+        .repair_draft_strategy_effectiveness_top_reuse
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "top_reuse={}",
+            plan.repair_draft_strategy_effectiveness_top_reuse
+        ));
+    }
+    if !plan
+        .repair_draft_strategy_effectiveness_top_avoid
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "top_avoid={}",
+            plan.repair_draft_strategy_effectiveness_top_avoid
         ));
     }
     parts.join(" ")
@@ -6117,6 +6227,18 @@ fn write_repair_score_journal(
         .or_else(|| trace.metadata.get("repair_draft_strategy_focus"))
         .cloned()
         .unwrap_or_default();
+    let action_trace_repair_draft_strategy_learned_reuse = trace
+        .metadata
+        .get("action_trace_repair_draft_strategy_learned_reuse")
+        .or_else(|| trace.metadata.get("repair_draft_strategy_learned_reuse"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_repair_draft_strategy_learned_avoid = trace
+        .metadata
+        .get("action_trace_repair_draft_strategy_learned_avoid")
+        .or_else(|| trace.metadata.get("repair_draft_strategy_learned_avoid"))
+        .cloned()
+        .unwrap_or_default();
     let action_trace_repair_draft_strategy_next_need_kind = trace
         .metadata
         .get("action_trace_repair_draft_strategy_next_need_kind")
@@ -6127,6 +6249,26 @@ fn write_repair_score_journal(
         .metadata
         .get("action_trace_repair_draft_strategy_next_need_query")
         .or_else(|| trace.metadata.get("repair_draft_strategy_next_need_query"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_repair_draft_strategy_effectiveness_used_count = trace
+        .metadata
+        .get("action_trace_repair_draft_strategy_effectiveness_used_count")
+        .or_else(|| {
+            trace
+                .metadata
+                .get("repair_draft_strategy_effectiveness_used_count")
+        })
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_repair_draft_strategy_effectiveness_success_rate = trace
+        .metadata
+        .get("action_trace_repair_draft_strategy_effectiveness_success_rate")
+        .or_else(|| {
+            trace
+                .metadata
+                .get("repair_draft_strategy_effectiveness_success_rate")
+        })
         .cloned()
         .unwrap_or_default();
     let action_trace_command_strategy_status = trace
@@ -6516,12 +6658,30 @@ fn write_repair_score_journal(
             serde_json::Value::String(action_trace_repair_draft_strategy_focus),
         );
         record.insert(
+            "action_trace_repair_draft_strategy_learned_reuse".to_string(),
+            serde_json::Value::String(action_trace_repair_draft_strategy_learned_reuse),
+        );
+        record.insert(
+            "action_trace_repair_draft_strategy_learned_avoid".to_string(),
+            serde_json::Value::String(action_trace_repair_draft_strategy_learned_avoid),
+        );
+        record.insert(
             "action_trace_repair_draft_strategy_next_need_kind".to_string(),
             serde_json::Value::String(action_trace_repair_draft_strategy_next_need_kind),
         );
         record.insert(
             "action_trace_repair_draft_strategy_next_need_query".to_string(),
             serde_json::Value::String(action_trace_repair_draft_strategy_next_need_query),
+        );
+        record.insert(
+            "action_trace_repair_draft_strategy_effectiveness_used_count".to_string(),
+            serde_json::Value::String(action_trace_repair_draft_strategy_effectiveness_used_count),
+        );
+        record.insert(
+            "action_trace_repair_draft_strategy_effectiveness_success_rate".to_string(),
+            serde_json::Value::String(
+                action_trace_repair_draft_strategy_effectiveness_success_rate,
+            ),
         );
         record.insert(
             "action_trace_command_strategy_status".to_string(),
@@ -6693,7 +6853,7 @@ fn write_repair_score_journal(
     fs::write(
         &outcome_path,
         format!(
-            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\ndraft_prefix: `{}`\ndraft_model: `{}`\nrepair_command_check: `{}`\nrepair_command_apply: `{}`\nrepair_command_score: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\naction_trace_recall: matches=`{}` top=`{}` reasons=`{}`\naction_trace_lessons: count=`{}` reuse=`{}` avoid=`{}` top_reuse=`{}` top_avoid=`{}`\naction_trace_repair_draft_strategy: status=`{}` focus=`{}` next=`{} {}`\naction_trace_command_strategy: status=`{}` focus=`{}` next=`{} {}`\naction_trace_repair_patch_draft: status=`{}` has_patch=`{}` target=`{}`\naction_trace_repair_patch_review: status=`{}` check=`{}` has_patch=`{}` target=`{}` summary=`{}`\naction_trace_repair_patch_apply: status=`{}` applied=`{}` target=`{}` summary=`{}`\naction_trace_repair_patch_verify: status=`{}` passed=`{}` target=`{}` command=`{}` summary=`{}`\naction_trace_repair_patch_learning: status=`{}` used=`{}` verified=`{}` verified_success_rate=`{}` top_reuse=`{}` top_avoid=`{}`\naction_trace_repair_patch_strategy: status=`{}` focus=`{}` next=`{} {}`\naction_trace_repair_decision: decision=`{}` focus=`{}`\naction_trace_harness_environment_drift: status=`{}` detail=`{}` history=`{}` next=`{} {}`\naction_trace_harness_adaptation: status=`{}` focus=`{}`\n\n{}\n\njournal: `{}`\n",
+            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\ndraft_prefix: `{}`\ndraft_model: `{}`\nrepair_command_check: `{}`\nrepair_command_apply: `{}`\nrepair_command_score: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\naction_trace_recall: matches=`{}` top=`{}` reasons=`{}`\naction_trace_lessons: count=`{}` reuse=`{}` avoid=`{}` top_reuse=`{}` top_avoid=`{}`\naction_trace_repair_draft_strategy: status=`{}` focus=`{}` reuse=`{}` avoid=`{}` next=`{} {}`\naction_trace_repair_draft_strategy_effectiveness: used=`{}` success_rate=`{}`\naction_trace_command_strategy: status=`{}` focus=`{}` next=`{} {}`\naction_trace_repair_patch_draft: status=`{}` has_patch=`{}` target=`{}`\naction_trace_repair_patch_review: status=`{}` check=`{}` has_patch=`{}` target=`{}` summary=`{}`\naction_trace_repair_patch_apply: status=`{}` applied=`{}` target=`{}` summary=`{}`\naction_trace_repair_patch_verify: status=`{}` passed=`{}` target=`{}` command=`{}` summary=`{}`\naction_trace_repair_patch_learning: status=`{}` used=`{}` verified=`{}` verified_success_rate=`{}` top_reuse=`{}` top_avoid=`{}`\naction_trace_repair_patch_strategy: status=`{}` focus=`{}` next=`{} {}`\naction_trace_repair_decision: decision=`{}` focus=`{}`\naction_trace_harness_environment_drift: status=`{}` detail=`{}` history=`{}` next=`{} {}`\naction_trace_harness_adaptation: status=`{}` focus=`{}`\n\n{}\n\njournal: `{}`\n",
             status,
             display_path(&workspace, &session_path),
             record["target_tentacle"].as_str().unwrap_or("unknown"),
@@ -6722,10 +6882,22 @@ fn write_repair_score_journal(
             record["action_trace_repair_draft_strategy_focus"]
                 .as_str()
                 .unwrap_or(""),
+            record["action_trace_repair_draft_strategy_learned_reuse"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_repair_draft_strategy_learned_avoid"]
+                .as_str()
+                .unwrap_or(""),
             record["action_trace_repair_draft_strategy_next_need_kind"]
                 .as_str()
                 .unwrap_or(""),
             record["action_trace_repair_draft_strategy_next_need_query"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_repair_draft_strategy_effectiveness_used_count"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_repair_draft_strategy_effectiveness_success_rate"]
                 .as_str()
                 .unwrap_or(""),
             record["action_trace_command_strategy_status"]
@@ -11113,6 +11285,22 @@ fn repair_report(
                 shell_arg(&plan.repair_draft_strategy_json)
             ));
         }
+        if !plan.repair_draft_strategy_effectiveness.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.repair_draft_strategy_effectiveness)
+            ));
+        }
+        if !plan
+            .repair_draft_strategy_effectiveness_json
+            .trim()
+            .is_empty()
+        {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.repair_draft_strategy_effectiveness_json)
+            ));
+        }
         if !plan.repair_patch_draft.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.repair_patch_draft)));
         }
@@ -12298,6 +12486,14 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
             metadata,
             "repair_draft_strategy_learned_avoid",
         ),
+        repair_draft_strategy_strategy_learned_reuse: metadata_value(
+            metadata,
+            "repair_draft_strategy_strategy_learned_reuse",
+        ),
+        repair_draft_strategy_strategy_learned_avoid: metadata_value(
+            metadata,
+            "repair_draft_strategy_strategy_learned_avoid",
+        ),
         repair_draft_strategy_next_need_kind: metadata_value(
             metadata,
             "repair_draft_strategy_next_need_kind",
@@ -12305,6 +12501,46 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         repair_draft_strategy_next_need_query: metadata_value(
             metadata,
             "repair_draft_strategy_next_need_query",
+        ),
+        repair_draft_strategy_effectiveness: metadata_value(
+            metadata,
+            "repair_draft_strategy_effectiveness",
+        ),
+        repair_draft_strategy_effectiveness_json: metadata_value(
+            metadata,
+            "repair_draft_strategy_effectiveness_json",
+        ),
+        repair_draft_strategy_effectiveness_used_count: metadata_value(
+            metadata,
+            "repair_draft_strategy_effectiveness_used_count",
+        ),
+        repair_draft_strategy_effectiveness_satisfied_count: metadata_value(
+            metadata,
+            "repair_draft_strategy_effectiveness_satisfied_count",
+        ),
+        repair_draft_strategy_effectiveness_partial_count: metadata_value(
+            metadata,
+            "repair_draft_strategy_effectiveness_partial_count",
+        ),
+        repair_draft_strategy_effectiveness_failed_count: metadata_value(
+            metadata,
+            "repair_draft_strategy_effectiveness_failed_count",
+        ),
+        repair_draft_strategy_effectiveness_success_rate: metadata_value(
+            metadata,
+            "repair_draft_strategy_effectiveness_success_rate",
+        ),
+        repair_draft_strategy_effectiveness_failure_rate: metadata_value(
+            metadata,
+            "repair_draft_strategy_effectiveness_failure_rate",
+        ),
+        repair_draft_strategy_effectiveness_top_reuse: metadata_value(
+            metadata,
+            "repair_draft_strategy_effectiveness_top_reuse",
+        ),
+        repair_draft_strategy_effectiveness_top_avoid: metadata_value(
+            metadata,
+            "repair_draft_strategy_effectiveness_top_avoid",
         ),
         repair_patch_draft: metadata_value(metadata, "repair_patch_draft"),
         repair_patch_draft_json: metadata_value(metadata, "repair_patch_draft_json"),
@@ -25098,6 +25334,22 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan
             .repair_draft_strategy_next_need_query
             .contains("collect reviewed provider repair draft outcomes"));
+        assert!(plan
+            .repair_draft_strategy_effectiveness
+            .ends_with("REPAIR_DRAFT_STRATEGY_EFFECTIVENESS.md"));
+        assert!(plan
+            .repair_draft_strategy_effectiveness_json
+            .ends_with("REPAIR_DRAFT_STRATEGY_EFFECTIVENESS.json"));
+        assert_eq!(plan.repair_draft_strategy_effectiveness_used_count, "0");
+        assert_eq!(
+            plan.repair_draft_strategy_effectiveness_satisfied_count,
+            "0"
+        );
+        assert_eq!(plan.repair_draft_strategy_effectiveness_failed_count, "0");
+        assert_eq!(
+            plan.repair_draft_strategy_effectiveness_success_rate,
+            "0.00"
+        );
         assert!(plan.repair_patch_draft.ends_with("REPAIR_PATCH_DRAFT.md"));
         assert!(plan
             .repair_patch_draft_json
@@ -25398,6 +25650,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan_json.contains("\"harness_adaptation\""));
         assert!(plan_json.contains("\"repair_draft_effectiveness\""));
         assert!(plan_json.contains("\"repair_draft_strategy\""));
+        assert!(plan_json.contains("\"repair_draft_strategy_effectiveness\""));
         assert!(plan_json.contains("\"harness_adaptation_effectiveness\""));
         assert!(plan_json.contains("\"harness_environment_profile\""));
         assert!(plan_json.contains("\"harness_environment_drift\""));
@@ -25448,6 +25701,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(draft_strategy_json
             .contains("\"schema_version\": \"octopus-harness-repair-draft-strategy-v1\""));
         assert!(draft_strategy_json.contains("\"status\": \"collect_provider_draft_outcomes\""));
+        let draft_strategy_effectiveness_json =
+            fs::read_to_string(&plan.repair_draft_strategy_effectiveness_json).unwrap();
+        assert!(draft_strategy_effectiveness_json.contains(
+            "\"schema_version\": \"octopus-harness-repair-draft-strategy-effectiveness-v1\""
+        ));
+        assert!(draft_strategy_effectiveness_json.contains("\"used_count\": 0"));
         let patch_draft_json = fs::read_to_string(&plan.repair_patch_draft_json).unwrap();
         assert!(patch_draft_json
             .contains("\"schema_version\": \"octopus-harness-repair-patch-draft-v1\""));
@@ -25630,6 +25889,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("REPAIR_DRAFT_STRATEGY.json")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_DRAFT_STRATEGY_EFFECTIVENESS.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_DRAFT_STRATEGY_EFFECTIVENESS.json")));
         assert!(report
             .next
             .iter()
@@ -29630,6 +29897,10 @@ JSON
             "mock-repair-model".to_string(),
         );
         seeded.feed_traces[0].metadata.insert(
+            "action_trace_repair_draft_strategy_learned_reuse".to_string(),
+            "mock-repair-model".to_string(),
+        );
+        seeded.feed_traces[0].metadata.insert(
             "action_trace_repair_draft_strategy_next_need_kind".to_string(),
             "verify".to_string(),
         );
@@ -29808,6 +30079,9 @@ JSON
         assert!(
             outcomes.contains("\"action_trace_repair_draft_strategy_focus\":\"mock-repair-model\"")
         );
+        assert!(outcomes.contains(
+            "\"action_trace_repair_draft_strategy_learned_reuse\":\"mock-repair-model\""
+        ));
         assert!(outcomes.contains("\"action_trace_repair_patch_draft_status\":\"patch_attached\""));
         assert!(outcomes.contains("\"action_trace_repair_patch_draft_has_patch\":\"true\""));
         assert!(outcomes.contains("\"action_trace_repair_patch_draft_target\":\"swe-agent/read\""));
@@ -29970,6 +30244,31 @@ JSON
                     .unwrap_or(false)
             });
         assert!(draft_strategy_found);
+        let draft_strategy_effectiveness_found = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry
+                    .ok()?
+                    .path()
+                    .join("REPAIR_DRAFT_STRATEGY_EFFECTIVENESS.json");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains(
+                            "\"schema_version\": \"octopus-harness-repair-draft-strategy-effectiveness-v1\"",
+                        ) && content.contains("\"used_count\": 1")
+                            && content.contains("\"satisfied_count\": 1")
+                            && content.contains("\"success_rate\": \"1.00\"")
+                            && content.contains("review_generated_repair_draft")
+                            && content.contains("mock-repair-model")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(draft_strategy_effectiveness_found);
         let patch_draft_effectiveness_found = workspace
             .join(".octopus/harness-repair")
             .read_dir()
@@ -30057,6 +30356,20 @@ JSON
                 .get("action_trace_repair_draft_strategy_status")
                 .map(String::as_str),
             Some("reuse_effective_repair_draft")
+        );
+        assert_eq!(
+            after_learning_session.feed_traces[1]
+                .metadata
+                .get("repair_draft_strategy_effectiveness_used_count")
+                .map(String::as_str),
+            Some("1")
+        );
+        assert_eq!(
+            after_learning_session.feed_traces[1]
+                .metadata
+                .get("action_trace_repair_draft_strategy_effectiveness_used_count")
+                .map(String::as_str),
+            Some("1")
         );
         assert_eq!(
             after_learning_session.feed_traces[1]
@@ -30315,6 +30628,10 @@ JSON
             .feed
             .summary
             .contains("patch_strategy_effectiveness=2"));
+        assert!(strategy_report
+            .feed
+            .summary
+            .contains("draft_strategy_effectiveness=2"));
         assert!(strategy_report
             .feed
             .summary
