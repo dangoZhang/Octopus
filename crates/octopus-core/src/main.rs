@@ -939,10 +939,6 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         Some("repair") => {
             if rest.get(1).map(String::as_str) == Some("score") {
-                let trace_index = rest
-                    .get(2)
-                    .ok_or_else(|| "repair score requires a feed trace index".to_string())
-                    .and_then(|value| parse_trace_index(value))?;
                 let status = rest
                     .get(3)
                     .ok_or_else(|| "repair score requires a status".to_string())
@@ -953,6 +949,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     .map(|values| values.join(" "))
                     .unwrap_or_else(|| "recorded repair outcome".to_string());
                 let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                let trace_index = rest
+                    .get(2)
+                    .ok_or_else(|| "repair score requires a feed trace index".to_string())
+                    .and_then(|value| resolve_feed_trace_selector(value, &loaded))?;
                 let trace = loaded
                     .feed_traces
                     .iter()
@@ -16394,7 +16394,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair continue [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers n]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state]|pet desktop [--workers n]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers n] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair continue [query] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers n]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state]|pet desktop [--workers n]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers n] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -19764,7 +19764,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         ));
         assert!(usage().contains("repair [query]"));
         assert!(usage().contains("repair continue [query]"));
-        assert!(usage().contains("repair score <trace-index>"));
+        assert!(usage().contains("repair score <trace-index|latest>"));
         assert!(usage().contains("context [kind query]"));
         assert!(usage().contains("provider save <profile>"));
         assert!(usage().contains("provider status"));
@@ -24701,6 +24701,50 @@ JSON
             });
         assert!(decision_effective_found);
         let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn cli_repair_score_accepts_latest_trace_selector() {
+        let _env = env_guard();
+        let path = std::env::temp_dir().join(format!(
+            "octopus-repair-score-latest-{}.json",
+            std::process::id()
+        ));
+        let state = path.to_string_lossy().to_string();
+        let _ = fs::remove_file(&path);
+        let mut seeded = HarnessState::default();
+        let mut feed = Feed::satisfied(
+            &Need::new(NeedKind::Verify, "repair latest scored feed"),
+            "latest repair feed",
+            "harness-repair-agent",
+        );
+        feed.metadata
+            .insert("tentacle".to_string(), "harness-repair-agent".to_string());
+        feed.metadata
+            .insert("tool".to_string(), "repair_session".to_string());
+        let trace = seeded.record_feed_trace_from_feed(&feed);
+        seeded.save(&path).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "repair".to_string(),
+            "score".to_string(),
+            "latest".to_string(),
+            "partial".to_string(),
+            "latest repair still needs work".to_string(),
+        ])
+        .unwrap();
+
+        let restored = HarnessState::load(&path).unwrap();
+        assert_eq!(restored.repair_outcomes.len(), 1);
+        assert_eq!(restored.repair_outcomes[0].trace_index, Some(trace.index));
+        assert_eq!(restored.repair_outcomes[0].status, Status::Partial);
+        assert!(restored.repair_outcomes[0]
+            .summary
+            .contains("latest repair still needs work"));
+        let _ = fs::remove_file(path);
     }
 
     #[test]
