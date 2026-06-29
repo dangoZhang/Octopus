@@ -358,6 +358,90 @@ def build_field_trajectory_context(workspace, state, latest_trace):
     }
 
 
+def build_adapter_context(workspace, state_path, loaded_provider_keys, repair_llm_prefix):
+    commands = [
+        "bash",
+        "python3",
+        "git",
+        "cargo",
+        "curl",
+        "node",
+        "gh",
+        "open",
+        "osascript",
+        "screencapture",
+        "xdg-open",
+    ]
+    available = {command: shutil.which(command) or "" for command in commands}
+    missing_core = [
+        command for command in ["bash", "python3", "git"] if not available.get(command)
+    ]
+    provider_env = workspace / ".octopus" / "llm.env"
+    provider_text = read_text(provider_env, 6000) if provider_env.exists() else ""
+    provider_keys = []
+    for key in [
+        "OPENAI_API_KEY",
+        f"{repair_llm_prefix}_BASE_URL",
+        f"{repair_llm_prefix}_API_KEY",
+        f"{repair_llm_prefix}_MODEL",
+        "OCTOPUS_LLM_BASE_URL",
+        "OCTOPUS_LLM_API_KEY",
+        "OCTOPUS_LLM_MODEL",
+    ]:
+        if key in loaded_provider_keys or key in provider_text or os.environ.get(key):
+            provider_keys.append(key)
+    provider_keys = sorted(set(provider_keys))
+    desktop = [
+        command
+        for command in ["open", "osascript", "screencapture", "xdg-open"]
+        if available.get(command)
+    ]
+    available_labels = [command for command, path in available.items() if path]
+    status = "satisfied" if not missing_core else "partial"
+    lines = [
+        "# Adapter Context",
+        "",
+        "This file is local command, provider, desktop, and GitHub adapter evidence for repair-session planning.",
+        "It is used by the harness-repair tentacle, not by clean-brain context.",
+        "",
+        f"workspace: `{workspace}`",
+        f"state: `{rel(state_path, workspace)}`",
+        f"status: `{status}`",
+        f"available: `{','.join(available_labels) or 'none'}`",
+        f"missing_core: `{','.join(missing_core) or 'none'}`",
+        f"provider_env: `{'present' if provider_env.exists() else 'missing'}`",
+        f"provider_keys: `{','.join(provider_keys) or 'none'}`",
+        f"desktop_adapters: `{','.join(desktop) or 'none'}`",
+        "",
+        "## Command Paths",
+        "",
+    ]
+    for command, path in available.items():
+        lines.append(f"- `{command}`: `{path or 'missing'}`")
+    lines.extend(
+        [
+            "",
+            "## Provider Env",
+            "",
+            "```",
+            provider_text.rstrip() if provider_text else "missing",
+            "```",
+            "",
+        ]
+    )
+    prompt_excerpt = "\n".join(lines[:28])
+    return {
+        "status": status,
+        "available": ",".join(available_labels),
+        "missing_core": ",".join(missing_core),
+        "provider_env": "present" if provider_env.exists() else "missing",
+        "provider_keys": ",".join(provider_keys),
+        "desktop_adapters": ",".join(desktop),
+        "markdown": "\n".join(lines) + "\n",
+        "prompt_excerpt": prompt_excerpt,
+    }
+
+
 def rel(path, root):
     if path is None:
         return "missing"
@@ -450,6 +534,8 @@ def build_action_plan(
     commands,
     next_need_payload,
     code_context,
+    adapter_context_path,
+    adapter_context,
     outcome_memory_path,
     draft_path,
     plan_path,
@@ -488,9 +574,18 @@ def build_action_plan(
         "source": source,
         "next_need": next_need_payload,
         "inputs": {
+            "adapter_context": rel(adapter_context_path, workspace),
             "code_context": rel(plan_path.parent / "CODE_CONTEXT.md", workspace),
             "outcome_memory": rel(outcome_memory_path, workspace),
             "draft": rel(draft_path, workspace),
+        },
+        "adapter_context_target": {
+            "status": adapter_context.get("status", ""),
+            "available": adapter_context.get("available", ""),
+            "missing_core": adapter_context.get("missing_core", ""),
+            "provider_env": adapter_context.get("provider_env", ""),
+            "provider_keys": adapter_context.get("provider_keys", ""),
+            "desktop_adapters": adapter_context.get("desktop_adapters", ""),
         },
         "review_boundary": "Review CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands.",
         "commands": {
@@ -758,6 +853,7 @@ review_md = session_dir / "REVIEW.md"
 next_need_json = session_dir / "NEXT_NEED.json"
 command_script = session_dir / "COMMANDS.sh"
 outcome_memory_md = session_dir / "OUTCOME_MEMORY.md"
+adapter_context_md = session_dir / "ADAPTER_CONTEXT.md"
 code_context_md = session_dir / "CODE_CONTEXT.md"
 field_trajectory_md = session_dir / "FIELD_TRAJECTORY.md"
 repair_plan_json = session_dir / "REPAIR_PLAN.json"
@@ -774,6 +870,12 @@ code_context = build_code_context(
     latest_check,
     latest_repair_outcome,
 )
+adapter_context = build_adapter_context(
+    workspace,
+    state_path,
+    loaded_provider_keys,
+    repair_llm_prefix,
+)
 field_trajectory = build_field_trajectory_context(workspace, state, latest_trace)
 session = {
     "schema_version": "octopus-harness-repair-session-v1",
@@ -785,6 +887,7 @@ session = {
     "next_need": next_need,
     "commands": commands,
     "outcome_memory": rel(outcome_memory_md, workspace),
+    "adapter_context": rel(adapter_context_md, workspace),
     "code_context": rel(code_context_md, workspace),
     "field_trajectory": rel(field_trajectory_md, workspace),
     "review": rel(review_md, workspace),
@@ -794,6 +897,14 @@ session = {
         "tool": code_context["tool"],
         "manifest": code_context["manifest"],
         "tool_path": code_context["tool_path"],
+    },
+    "adapter_context_target": {
+        "status": adapter_context["status"],
+        "available": adapter_context["available"],
+        "missing_core": adapter_context["missing_core"],
+        "provider_env": adapter_context["provider_env"],
+        "provider_keys": adapter_context["provider_keys"],
+        "desktop_adapters": adapter_context["desktop_adapters"],
     },
     "field_trajectory_target": {
         "field": field_trajectory["field"],
@@ -829,6 +940,7 @@ outcome_memory_md.write_text(
     outcome_memory_markdown(repair_outcomes, workspace, outcomes_file),
     encoding="utf-8",
 )
+adapter_context_md.write_text(adapter_context["markdown"], encoding="utf-8")
 code_context_md.write_text(code_context["markdown"], encoding="utf-8")
 field_trajectory_md.write_text(field_trajectory["markdown"], encoding="utf-8")
 repair_plan = build_action_plan(
@@ -841,11 +953,14 @@ repair_plan = build_action_plan(
     commands,
     next_need_payload,
     code_context,
+    adapter_context_md,
+    adapter_context,
     outcome_memory_md,
     draft_md,
     repair_plan_json,
 )
 repair_plan["inputs"]["field_trajectory"] = rel(field_trajectory_md, workspace)
+repair_plan["inputs"]["adapter_context"] = rel(adapter_context_md, workspace)
 repair_plan["field_trajectory_target"] = {
     "field": field_trajectory["field"],
     "mini_task": field_trajectory["mini_task"],
@@ -853,7 +968,7 @@ repair_plan["field_trajectory_target"] = {
     "verifier_status": field_trajectory["verifier_status"],
     "verifier_error": field_trajectory["verifier_error"],
 }
-repair_plan["review_boundary"] = "Review FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
+repair_plan["review_boundary"] = "Review ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
 repair_plan_json.write_text(
     json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
     encoding="utf-8",
@@ -928,6 +1043,18 @@ prompt_md.write_text(
             "code context excerpt:",
             code_context["prompt_excerpt"],
             "",
+            "adapter context:",
+            f"- artifact: `{rel(adapter_context_md, workspace)}`",
+            f"- status: `{adapter_context['status']}`",
+            f"- available: `{adapter_context['available'] or 'none'}`",
+            f"- missing core: `{adapter_context['missing_core'] or 'none'}`",
+            f"- provider env: `{adapter_context['provider_env']}`",
+            f"- provider keys: `{adapter_context['provider_keys'] or 'none'}`",
+            f"- desktop adapters: `{adapter_context['desktop_adapters'] or 'none'}`",
+            "",
+            "adapter context excerpt:",
+            adapter_context["prompt_excerpt"],
+            "",
             "field trajectory:",
             f"- artifact: `{rel(field_trajectory_md, workspace)}`",
             f"- field: `{field_trajectory['field']}`",
@@ -948,6 +1075,7 @@ prompt_md.write_text(
             f"- commands: `{rel(command_script, workspace)}`",
             f"- draft: `{rel(draft_md, workspace)}`",
             f"- outcome memory: `{rel(outcome_memory_md, workspace)}`",
+            f"- adapter context: `{rel(adapter_context_md, workspace)}`",
             f"- code context: `{rel(code_context_md, workspace)}`",
             f"- field trajectory: `{rel(field_trajectory_md, workspace)}`",
             f"- repair plan: `{rel(repair_plan_json, workspace)}`",
@@ -986,6 +1114,7 @@ review_md.write_text(
             "",
             "## Evidence",
             "",
+            f"- adapter context: `{rel(adapter_context_md, workspace)}`",
             f"- field trajectory: `{rel(field_trajectory_md, workspace)}`",
             f"- code context: `{rel(code_context_md, workspace)}`",
             f"- outcome memory: `{rel(outcome_memory_md, workspace)}`",
@@ -1036,6 +1165,7 @@ session_md.write_text(
             f"next need: `{rel(next_need_json, workspace)}`",
             f"commands: `{rel(command_script, workspace)}`",
             f"outcome memory: `{rel(outcome_memory_md, workspace)}`",
+            f"adapter context: `{rel(adapter_context_md, workspace)}`",
             f"code context: `{rel(code_context_md, workspace)}`",
             f"field trajectory: `{rel(field_trajectory_md, workspace)}`",
             f"repair plan: `{rel(repair_plan_json, workspace)}`",
@@ -1060,6 +1190,7 @@ metadata = {
     "next_need_file": rel(next_need_json, workspace),
     "command_script": rel(command_script, workspace),
     "outcome_memory": rel(outcome_memory_md, workspace),
+    "adapter_context": rel(adapter_context_md, workspace),
     "code_context": rel(code_context_md, workspace),
     "field_trajectory": rel(field_trajectory_md, workspace),
     "repair_plan": rel(repair_plan_json, workspace),
@@ -1067,6 +1198,12 @@ metadata = {
     "code_context_tentacle": code_context["tentacle"],
     "code_context_tool": code_context["tool"],
     "code_context_tool_path": code_context["tool_path"],
+    "adapter_context_status": adapter_context["status"],
+    "adapter_context_available": adapter_context["available"],
+    "adapter_context_missing_core": adapter_context["missing_core"],
+    "adapter_context_provider_env": adapter_context["provider_env"],
+    "adapter_context_provider_keys": adapter_context["provider_keys"],
+    "adapter_context_desktop": adapter_context["desktop_adapters"],
     "field_trajectory_field": field_trajectory["field"],
     "field_trajectory_mini_task": field_trajectory["mini_task"],
     "field_trajectory_verifier_status": field_trajectory["verifier_status"],

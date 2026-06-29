@@ -575,6 +575,12 @@ struct RepairPlanReport {
     outcome: String,
     outcome_status: String,
     outcome_summary: String,
+    adapter_context: String,
+    adapter_context_status: String,
+    adapter_context_missing_core: String,
+    adapter_context_provider_env: String,
+    adapter_context_provider_keys: String,
+    adapter_context_desktop: String,
     field_trajectory: String,
     field_trajectory_field: String,
     field_trajectory_mini_task: String,
@@ -3730,6 +3736,8 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("review", &plan.review);
                 print_optional_line("outcome", &plan.outcome);
                 print_optional_line("outcome_status", &plan.outcome_status);
+                print_optional_line("adapter_context", &plan.adapter_context);
+                print_optional_line("adapter_status", &repair_plan_adapter_label(plan));
                 print_optional_line("field_trajectory", &plan.field_trajectory);
                 print_optional_line("field_target", &repair_plan_field_label(plan));
                 print_optional_line("field_verifier", &repair_plan_field_verifier(plan));
@@ -3764,6 +3772,8 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("审阅", &plan.review);
                 print_optional_line("结果", &plan.outcome);
                 print_optional_line("结果状态", &plan.outcome_status);
+                print_optional_line("适配器上下文", &plan.adapter_context);
+                print_optional_line("适配器状态", &repair_plan_adapter_label(plan));
                 print_optional_line("领域轨迹", &plan.field_trajectory);
                 print_optional_line("领域目标", &repair_plan_field_label(plan));
                 print_optional_line("领域验证", &repair_plan_field_verifier(plan));
@@ -3804,6 +3814,35 @@ fn repair_plan_field_label(plan: &RepairPlanReport) -> String {
         ("", mini_task) => mini_task.to_string(),
         (field, mini_task) => format!("{field}/{mini_task}"),
     }
+}
+
+fn repair_plan_adapter_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan.adapter_context_status.trim().is_empty() {
+        parts.push(plan.adapter_context_status.trim().to_string());
+    }
+    if !plan.adapter_context_missing_core.trim().is_empty() {
+        parts.push(format!(
+            "missing_core={}",
+            plan.adapter_context_missing_core
+        ));
+    }
+    if !plan.adapter_context_provider_env.trim().is_empty() {
+        parts.push(format!(
+            "provider_env={}",
+            plan.adapter_context_provider_env
+        ));
+    }
+    if !plan.adapter_context_provider_keys.trim().is_empty() {
+        parts.push(format!(
+            "provider_keys={}",
+            plan.adapter_context_provider_keys
+        ));
+    }
+    if !plan.adapter_context_desktop.trim().is_empty() {
+        parts.push(format!("desktop={}", plan.adapter_context_desktop));
+    }
+    parts.join(" ")
 }
 
 fn repair_plan_field_verifier(plan: &RepairPlanReport) -> String {
@@ -8266,6 +8305,9 @@ fn repair_report(
         if !plan.outcome.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.outcome)));
         }
+        if !plan.adapter_context.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.adapter_context)));
+        }
         if !plan.field_trajectory.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.field_trajectory)));
         }
@@ -8406,6 +8448,12 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         outcome: metadata_value(metadata, "outcome"),
         outcome_status: metadata_value(metadata, "outcome_status"),
         outcome_summary: metadata_value(metadata, "outcome_summary"),
+        adapter_context: metadata_value(metadata, "adapter_context"),
+        adapter_context_status: metadata_value(metadata, "adapter_context_status"),
+        adapter_context_missing_core: metadata_value(metadata, "adapter_context_missing_core"),
+        adapter_context_provider_env: metadata_value(metadata, "adapter_context_provider_env"),
+        adapter_context_provider_keys: metadata_value(metadata, "adapter_context_provider_keys"),
+        adapter_context_desktop: metadata_value(metadata, "adapter_context_desktop"),
         field_trajectory: metadata_value(metadata, "field_trajectory"),
         field_trajectory_field: metadata_value(metadata, "field_trajectory_field"),
         field_trajectory_mini_task: metadata_value(metadata, "field_trajectory_mini_task"),
@@ -20332,6 +20380,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let plan = report.repair_plan.expect("repair plan report");
         assert!(plan.path.ends_with("REPAIR_PLAN.json"));
         assert!(plan.review.ends_with("REVIEW.md"));
+        assert!(plan.adapter_context.ends_with("ADAPTER_CONTEXT.md"));
+        assert_eq!(plan.adapter_context_status, "satisfied");
+        assert!(plan.adapter_context_missing_core.is_empty());
+        assert!(!plan.adapter_context_provider_env.is_empty());
         assert!(plan.field_trajectory.ends_with("FIELD_TRAJECTORY.md"));
         assert_eq!(plan.status, "review_required");
         assert_eq!(plan.target_tool, "repair_session");
@@ -20342,6 +20394,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("REVIEW.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("ADAPTER_CONTEXT.md")));
         assert!(report
             .next
             .iter()

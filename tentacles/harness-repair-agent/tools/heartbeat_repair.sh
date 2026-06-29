@@ -90,6 +90,16 @@ def clean_markdown_value(value):
     return "" if text in {"none", "missing", "not provided"} else text
 
 
+def clean_adapter_value(value, keep_missing=False):
+    text = str(value or "").strip()
+    if text.startswith("`") and text.endswith("`") and len(text) >= 2:
+        text = text[1:-1].strip()
+    empty_values = {"none", "not provided"}
+    if not keep_missing:
+        empty_values.add("missing")
+    return "" if text in empty_values else text
+
+
 def field_trajectory_metadata(root, value, target):
     path = resolve_artifact(root, value)
     metadata = {
@@ -120,6 +130,51 @@ def field_trajectory_metadata(root, value, target):
             metadata["field_trajectory_field"] = value
         elif key == "mini_task" and not metadata["field_trajectory_mini_task"]:
             metadata["field_trajectory_mini_task"] = value
+    return metadata
+
+
+def adapter_context_metadata(root, value, target):
+    path = resolve_artifact(root, value)
+    metadata = {
+        "adapter_context_status": "",
+        "adapter_context_available": "",
+        "adapter_context_missing_core": "",
+        "adapter_context_provider_env": "",
+        "adapter_context_provider_keys": "",
+        "adapter_context_desktop": "",
+        "adapter_context_preview": "",
+    }
+    if isinstance(target, dict):
+        metadata.update({
+            "adapter_context_status": clean_adapter_value(target.get("status")),
+            "adapter_context_available": clean_adapter_value(target.get("available")),
+            "adapter_context_missing_core": clean_adapter_value(target.get("missing_core")),
+            "adapter_context_provider_env": clean_adapter_value(target.get("provider_env"), keep_missing=True),
+            "adapter_context_provider_keys": clean_adapter_value(target.get("provider_keys")),
+            "adapter_context_desktop": clean_adapter_value(target.get("desktop_adapters")),
+        })
+    if not path or not path.exists():
+        return metadata
+    text = path.read_text(encoding="utf-8", errors="replace")
+    metadata["adapter_context_preview"] = compact(text, 600)
+    key_map = {
+        "status": "adapter_context_status",
+        "available": "adapter_context_available",
+        "missing_core": "adapter_context_missing_core",
+        "provider_env": "adapter_context_provider_env",
+        "provider_keys": "adapter_context_provider_keys",
+        "desktop_adapters": "adapter_context_desktop",
+    }
+    for line in text.splitlines():
+        key, _, raw = line.partition(":")
+        if not raw:
+            continue
+        target_key = key_map.get(key.strip())
+        if target_key and not metadata[target_key]:
+            metadata[target_key] = clean_adapter_value(
+                raw,
+                keep_missing=target_key == "adapter_context_provider_env",
+            )
     return metadata
 
 
@@ -214,6 +269,12 @@ if latest_repair_plan:
     target_tool = str(repair_plan.get("target_tool") or "unknown")
     candidate = str(repair_plan.get("candidate") or "none")
     field_trajectory = str(inputs.get("field_trajectory") or "")
+    adapter_context = str(inputs.get("adapter_context") or "")
+    adapter_metadata = adapter_context_metadata(
+        root,
+        adapter_context,
+        repair_plan.get("adapter_context_target") or {},
+    )
     field_metadata = field_trajectory_metadata(
         root,
         field_trajectory,
@@ -263,6 +324,7 @@ if latest_repair_plan:
         "repair_plan_schema": str(repair_plan.get("schema_version") or ""),
         "repair_plan_session": str(repair_plan.get("session") or ""),
         "review": str(inputs.get("review") or ""),
+        "adapter_context": adapter_context,
         "field_trajectory": field_trajectory,
         "target_tentacle": target_tentacle,
         "target_tool": target_tool,
@@ -274,6 +336,7 @@ if latest_repair_plan:
         "score_command": "" if has_outcome else command_value(commands, "score"),
         "suggested_commands": " && ".join(suggested),
     }
+    repair_metadata.update(adapter_metadata)
     repair_metadata.update(field_metadata)
     repair_metadata.update(outcome_metadata)
 elif not tentacles:
