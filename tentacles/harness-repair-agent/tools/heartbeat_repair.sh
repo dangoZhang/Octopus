@@ -178,6 +178,33 @@ def adapter_context_metadata(root, value, target):
     return metadata
 
 
+def repair_draft_metadata(root, value):
+    path = resolve_artifact(root, value)
+    metadata = {
+        "draft_status": "",
+        "draft_prefix": "",
+        "draft_model": "",
+        "draft_preview": "",
+    }
+    if not path or not path.exists():
+        return metadata
+    text = path.read_text(encoding="utf-8", errors="replace")
+    metadata["draft_preview"] = compact(text, 600)
+    key_map = {
+        "status": "draft_status",
+        "prefix": "draft_prefix",
+        "model": "draft_model",
+    }
+    for line in text.splitlines():
+        key, _, raw = line.partition(":")
+        if not raw:
+            continue
+        target_key = key_map.get(key.strip().lower())
+        if target_key and not metadata[target_key]:
+            metadata[target_key] = clean_markdown_value(raw)
+    return metadata
+
+
 def repair_outcome_metadata(root, latest_repair_plan, repair_plan):
     session_path = resolve_artifact(root, repair_plan.get("session"))
     if not session_path and latest_repair_plan:
@@ -270,6 +297,9 @@ if latest_repair_plan:
     candidate = str(repair_plan.get("candidate") or "none")
     field_trajectory = str(inputs.get("field_trajectory") or "")
     adapter_context = str(inputs.get("adapter_context") or "")
+    draft = str(inputs.get("draft") or "")
+    code_context = str(inputs.get("code_context") or "")
+    draft_metadata = repair_draft_metadata(root, draft)
     adapter_metadata = adapter_context_metadata(
         root,
         adapter_context,
@@ -347,6 +377,8 @@ if latest_repair_plan:
         "repair_plan_schema": str(repair_plan.get("schema_version") or ""),
         "repair_plan_session": str(repair_plan.get("session") or ""),
         "review": str(inputs.get("review") or ""),
+        "draft": draft,
+        "code_context": code_context,
         "adapter_context": adapter_context,
         "field_trajectory": field_trajectory,
         "target_tentacle": target_tentacle,
@@ -360,6 +392,7 @@ if latest_repair_plan:
         "score_command": "" if has_outcome or adapter_blocked else command_value(commands, "score"),
         "suggested_commands": " && ".join(suggested),
     }
+    repair_metadata.update(draft_metadata)
     repair_metadata.update(adapter_metadata)
     repair_metadata.update(field_metadata)
     repair_metadata.update(outcome_metadata)

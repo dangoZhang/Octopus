@@ -575,6 +575,11 @@ struct RepairPlanReport {
     outcome: String,
     outcome_status: String,
     outcome_summary: String,
+    draft: String,
+    draft_status: String,
+    draft_prefix: String,
+    draft_model: String,
+    code_context: String,
     adapter_context: String,
     adapter_context_status: String,
     adapter_context_missing_core: String,
@@ -3736,6 +3741,9 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("review", &plan.review);
                 print_optional_line("outcome", &plan.outcome);
                 print_optional_line("outcome_status", &plan.outcome_status);
+                print_optional_line("draft", &plan.draft);
+                print_optional_line("draft_status", &repair_plan_draft_label(plan));
+                print_optional_line("code_context", &plan.code_context);
                 print_optional_line("adapter_context", &plan.adapter_context);
                 print_optional_line("adapter_status", &repair_plan_adapter_label(plan));
                 print_optional_line("field_trajectory", &plan.field_trajectory);
@@ -3772,6 +3780,9 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("审阅", &plan.review);
                 print_optional_line("结果", &plan.outcome);
                 print_optional_line("结果状态", &plan.outcome_status);
+                print_optional_line("草稿", &plan.draft);
+                print_optional_line("草稿状态", &repair_plan_draft_label(plan));
+                print_optional_line("代码上下文", &plan.code_context);
                 print_optional_line("适配器上下文", &plan.adapter_context);
                 print_optional_line("适配器状态", &repair_plan_adapter_label(plan));
                 print_optional_line("领域轨迹", &plan.field_trajectory);
@@ -3841,6 +3852,20 @@ fn repair_plan_adapter_label(plan: &RepairPlanReport) -> String {
     }
     if !plan.adapter_context_desktop.trim().is_empty() {
         parts.push(format!("desktop={}", plan.adapter_context_desktop));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_draft_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan.draft_status.trim().is_empty() {
+        parts.push(plan.draft_status.trim().to_string());
+    }
+    if !plan.draft_prefix.trim().is_empty() {
+        parts.push(format!("prefix={}", plan.draft_prefix));
+    }
+    if !plan.draft_model.trim().is_empty() {
+        parts.push(format!("model={}", plan.draft_model));
     }
     parts.join(" ")
 }
@@ -8305,6 +8330,12 @@ fn repair_report(
         if !plan.outcome.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.outcome)));
         }
+        if !plan.draft.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.draft)));
+        }
+        if !plan.code_context.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.code_context)));
+        }
         if !plan.adapter_context.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.adapter_context)));
         }
@@ -8448,6 +8479,11 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         outcome: metadata_value(metadata, "outcome"),
         outcome_status: metadata_value(metadata, "outcome_status"),
         outcome_summary: metadata_value(metadata, "outcome_summary"),
+        draft: metadata_value(metadata, "draft"),
+        draft_status: metadata_value(metadata, "draft_status"),
+        draft_prefix: metadata_value(metadata, "draft_prefix"),
+        draft_model: metadata_value(metadata, "draft_model"),
+        code_context: metadata_value(metadata, "code_context"),
         adapter_context: metadata_value(metadata, "adapter_context"),
         adapter_context_status: metadata_value(metadata, "adapter_context_status"),
         adapter_context_missing_core: metadata_value(metadata, "adapter_context_missing_core"),
@@ -20380,6 +20416,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let plan = report.repair_plan.expect("repair plan report");
         assert!(plan.path.ends_with("REPAIR_PLAN.json"));
         assert!(plan.review.ends_with("REVIEW.md"));
+        assert!(plan.draft.ends_with("DRAFT.md"));
+        assert_eq!(plan.draft_status, "disabled");
+        assert_eq!(plan.draft_prefix, "OCTOPUS_LLM");
+        assert!(plan.code_context.ends_with("CODE_CONTEXT.md"));
         assert!(plan.adapter_context.ends_with("ADAPTER_CONTEXT.md"));
         assert_eq!(plan.adapter_context_status, "satisfied");
         assert!(plan.adapter_context_missing_core.is_empty());
@@ -20394,6 +20434,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("REVIEW.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("DRAFT.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("CODE_CONTEXT.md")));
         assert!(report
             .next
             .iter()

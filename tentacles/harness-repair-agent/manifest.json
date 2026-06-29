@@ -116,6 +116,7 @@
       "Write REVIEW.md as the user-facing repair review bundle for each session.",
       "Keep REPAIR_PLAN commands reviewable and grant-bound before any harness write.",
       "Let heartbeat_repair read the latest REPAIR_PLAN before older evolution artifacts.",
+      "Expose provider DRAFT and CODE_CONTEXT as repair-plan Feed metadata before grant, apply, or score.",
       "When ADAPTER_CONTEXT reports missing core adapters, return an adapter repair Need and stop grant/apply/score commands.",
       "Expose FIELD_TRAJECTORY as repair-plan Feed metadata before grant, apply, or score.",
       "When OUTCOME.md exists, return the reviewed outcome and stop repeating stale grant/apply/score commands.",
