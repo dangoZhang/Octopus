@@ -2408,6 +2408,42 @@ def repair_effectiveness_rollup_markdown(rollup, workspace, rollup_json):
     return "\n".join(lines) + "\n"
 
 
+def repair_effectiveness_rollup_effectiveness_markdown(effectiveness, workspace, effectiveness_json):
+    lines = [
+        "# Repair Effectiveness Rollup Effectiveness",
+        "",
+        "This file measures whether prior repair effectiveness rollup guidance helped later reviewed outcomes.",
+        "It is local tentacle Feed evidence, not clean-brain context.",
+        "",
+        f"json: `{rel(effectiveness_json, workspace)}`",
+        f"used_count: `{effectiveness.get('used_count', 0)}`",
+        f"satisfied_count: `{effectiveness.get('satisfied_count', 0)}`",
+        f"partial_count: `{effectiveness.get('partial_count', 0)}`",
+        f"failed_count: `{effectiveness.get('failed_count', 0)}`",
+        f"success_rate: `{effectiveness.get('success_rate', '0.00')}`",
+        f"failure_rate: `{effectiveness.get('failure_rate', '0.00')}`",
+        "",
+    ]
+    if not effectiveness.get("hints"):
+        lines.append("No reviewed repair outcome has used repair effectiveness rollup guidance yet.")
+        return "\n".join(lines) + "\n"
+    lines.extend(["## Hints", ""])
+    for hint in effectiveness["hints"]:
+        lines.extend(
+            [
+                (
+                    f"- `{hint.get('direction')}` used=`{hint.get('used_count')}` "
+                    f"satisfied=`{hint.get('satisfied_count')}` partial=`{hint.get('partial_count')}` "
+                    f"failed=`{hint.get('failed_count')}` success_rate=`{hint.get('success_rate')}`"
+                ),
+                f"  guidance: {compact(hint.get('hint'), 260)}",
+                f"  latest: target=`{hint.get('latest_target') or 'unknown'}` candidate=`{hint.get('latest_candidate') or 'none'}`",
+                f"  summary: {compact(hint.get('latest_summary'), 220) or 'none'}",
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
 def harness_adaptation_effectiveness_markdown(effectiveness, workspace, effectiveness_json):
     lines = [
         "# Harness Adaptation Effectiveness",
@@ -5204,6 +5240,7 @@ def action_trace_record(
     repair_command_strategy_effectiveness,
     harness_environment_drift,
     harness_environment_drift_effectiveness,
+    repair_effectiveness_rollup_effectiveness,
     repair_decision,
     repair_decision_effectiveness,
     harness_adaptation,
@@ -5434,6 +5471,14 @@ def action_trace_record(
         "top_reuse": compact(harness_environment_drift_effectiveness.get("top_reuse") or "", 240),
         "top_avoid": compact(harness_environment_drift_effectiveness.get("top_avoid") or "", 240),
     }
+    rollup_effectiveness_summary = {
+        "used_count": str(repair_effectiveness_rollup_effectiveness.get("used_count") or 0),
+        "satisfied_count": str(repair_effectiveness_rollup_effectiveness.get("satisfied_count") or 0),
+        "failed_count": str(repair_effectiveness_rollup_effectiveness.get("failed_count") or 0),
+        "success_rate": str(repair_effectiveness_rollup_effectiveness.get("success_rate") or "0.00"),
+        "top_reuse": compact(repair_effectiveness_rollup_effectiveness.get("top_reuse") or "", 240),
+        "top_avoid": compact(repair_effectiveness_rollup_effectiveness.get("top_avoid") or "", 240),
+    }
     decision_next = repair_decision.get("next_need") if isinstance(repair_decision.get("next_need"), dict) else {}
     decision_summary = {
         "status": str(repair_decision.get("status") or ""),
@@ -5479,7 +5524,7 @@ def action_trace_record(
         {
             "kind": "Action",
             "action": "merge field, recall, lessons, effectiveness, decision, and outcome evidence",
-            "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']} recalled={recall_count} top={recall_top_status} lessons={lessons_summary['lesson_count']} effectiveness_used={effectiveness_summary['used_count']} action_trace_effectiveness_used={action_trace_effectiveness_summary['used_count']} draft_effectiveness_used={draft_effectiveness_summary['used_count']} draft_strategy={draft_strategy_summary['status']} draft_strategy_effectiveness_used={draft_strategy_effectiveness_summary['used_count']} patch_draft={patch_draft_summary['status']} patch_draft_effectiveness_used={patch_draft_effectiveness_summary['used_count']} patch_review={patch_review_summary['status']} patch_review_effectiveness_used={patch_review_effectiveness_summary['used_count']} patch_apply_effectiveness_used={patch_apply_effectiveness_summary['used_count']} patch_verify_effectiveness_used={patch_verify_effectiveness_summary['used_count']} patch_learning={patch_learning_summary['status']} patch_learning_effectiveness_used={patch_learning_effectiveness_summary['used_count']} patch_strategy={patch_strategy_summary['status']} patch_strategy_effectiveness_used={patch_strategy_effectiveness_summary['used_count']} command_effectiveness_used={command_effectiveness_summary['used_count']} command_strategy={command_strategy_summary['status']} command_strategy_effectiveness_used={command_strategy_effectiveness_summary['used_count']} decision_effectiveness_used={decision_effectiveness_summary['used_count']} drift={drift_summary['status']} drift_effectiveness_used={drift_effectiveness_summary['used_count']} success_rate={effectiveness_summary['success_rate']} decision={decision_summary['decision']}",
+            "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']} recalled={recall_count} top={recall_top_status} lessons={lessons_summary['lesson_count']} effectiveness_used={effectiveness_summary['used_count']} action_trace_effectiveness_used={action_trace_effectiveness_summary['used_count']} draft_effectiveness_used={draft_effectiveness_summary['used_count']} draft_strategy={draft_strategy_summary['status']} draft_strategy_effectiveness_used={draft_strategy_effectiveness_summary['used_count']} patch_draft={patch_draft_summary['status']} patch_draft_effectiveness_used={patch_draft_effectiveness_summary['used_count']} patch_review={patch_review_summary['status']} patch_review_effectiveness_used={patch_review_effectiveness_summary['used_count']} patch_apply_effectiveness_used={patch_apply_effectiveness_summary['used_count']} patch_verify_effectiveness_used={patch_verify_effectiveness_summary['used_count']} patch_learning={patch_learning_summary['status']} patch_learning_effectiveness_used={patch_learning_effectiveness_summary['used_count']} patch_strategy={patch_strategy_summary['status']} patch_strategy_effectiveness_used={patch_strategy_effectiveness_summary['used_count']} command_effectiveness_used={command_effectiveness_summary['used_count']} command_strategy={command_strategy_summary['status']} command_strategy_effectiveness_used={command_strategy_effectiveness_summary['used_count']} decision_effectiveness_used={decision_effectiveness_summary['used_count']} drift={drift_summary['status']} drift_effectiveness_used={drift_effectiveness_summary['used_count']} rollup_effectiveness_used={rollup_effectiveness_summary['used_count']} success_rate={effectiveness_summary['success_rate']} decision={decision_summary['decision']}",
             "status": "satisfied",
         },
         {
@@ -5546,6 +5591,7 @@ def action_trace_record(
         "harness_environment_drift_next_need_kind": drift_summary["next_need_kind"],
         "harness_environment_drift_next_need_query": drift_summary["next_need_query"],
         "harness_environment_drift_effectiveness": drift_effectiveness_summary,
+        "repair_effectiveness_rollup_effectiveness": rollup_effectiveness_summary,
         "repair_decision": decision_summary,
         "repair_decision_effectiveness": decision_effectiveness_summary,
         "harness_adaptation": adaptation_summary,
@@ -5606,6 +5652,8 @@ def action_trace_markdown(record, workspace, repair_plan):
         f"harness_environment_drift_detail: `{record.get('harness_environment_drift', {}).get('detail', 'none') or 'none'}`",
         f"harness_environment_drift_effectiveness_used: `{record.get('harness_environment_drift_effectiveness', {}).get('used_count', '0')}`",
         f"harness_environment_drift_effectiveness_success_rate: `{record.get('harness_environment_drift_effectiveness', {}).get('success_rate', '0.00')}`",
+        f"repair_effectiveness_rollup_effectiveness_used: `{record.get('repair_effectiveness_rollup_effectiveness', {}).get('used_count', '0')}`",
+        f"repair_effectiveness_rollup_effectiveness_success_rate: `{record.get('repair_effectiveness_rollup_effectiveness', {}).get('success_rate', '0.00')}`",
         f"repair_decision: `{record.get('repair_decision', {}).get('decision', 'none') or 'none'}`",
         f"repair_decision_focus: `{record.get('repair_decision', {}).get('focus', 'none') or 'none'}`",
         f"repair_decision_effectiveness_used: `{record.get('repair_decision_effectiveness', {}).get('used_count', '0')}`",
@@ -5800,6 +5848,8 @@ harness_environment_drift_effectiveness_json = session_dir / "HARNESS_ENVIRONMEN
 harness_environment_drift_effectiveness_md = session_dir / "HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS.md"
 repair_effectiveness_rollup_json = session_dir / "REPAIR_EFFECTIVENESS_ROLLUP.json"
 repair_effectiveness_rollup_md = session_dir / "REPAIR_EFFECTIVENESS_ROLLUP.md"
+repair_effectiveness_rollup_effectiveness_json = session_dir / "REPAIR_EFFECTIVENESS_ROLLUP_EFFECTIVENESS.json"
+repair_effectiveness_rollup_effectiveness_md = session_dir / "REPAIR_EFFECTIVENESS_ROLLUP_EFFECTIVENESS.md"
 harness_adaptation_json = session_dir / "HARNESS_ADAPTATION.json"
 harness_adaptation_md = session_dir / "HARNESS_ADAPTATION.md"
 adapter_context_md = session_dir / "ADAPTER_CONTEXT.md"
@@ -6001,6 +6051,8 @@ session = {
     "harness_environment_drift_effectiveness_json": rel(harness_environment_drift_effectiveness_json, workspace),
     "repair_effectiveness_rollup": rel(repair_effectiveness_rollup_md, workspace),
     "repair_effectiveness_rollup_json": rel(repair_effectiveness_rollup_json, workspace),
+    "repair_effectiveness_rollup_effectiveness": rel(repair_effectiveness_rollup_effectiveness_md, workspace),
+    "repair_effectiveness_rollup_effectiveness_json": rel(repair_effectiveness_rollup_effectiveness_json, workspace),
     "environment_profile_journal": rel(environment_profile_journal, workspace),
     "harness_adaptation": rel(harness_adaptation_md, workspace),
     "harness_adaptation_json": rel(harness_adaptation_json, workspace),
@@ -6217,6 +6269,14 @@ session = {
         "strongest_source": repair_effectiveness_rollup["strongest_source"],
         "weakest_source": repair_effectiveness_rollup["weakest_source"],
         "next_need": repair_effectiveness_rollup["next_need"],
+    },
+    "repair_effectiveness_rollup_effectiveness_summary": {
+        "used_count": repair_effectiveness_rollup_effectiveness["used_count"],
+        "satisfied_count": repair_effectiveness_rollup_effectiveness["satisfied_count"],
+        "failed_count": repair_effectiveness_rollup_effectiveness["failed_count"],
+        "success_rate": repair_effectiveness_rollup_effectiveness["success_rate"],
+        "top_reuse": repair_effectiveness_rollup_effectiveness["top_reuse"],
+        "top_avoid": repair_effectiveness_rollup_effectiveness["top_avoid"],
     },
     "harness_adaptation_summary": {
         "status": harness_adaptation["status"],
@@ -6503,6 +6563,18 @@ repair_effectiveness_rollup_md.write_text(
     ),
     encoding="utf-8",
 )
+repair_effectiveness_rollup_effectiveness_json.write_text(
+    json.dumps(repair_effectiveness_rollup_effectiveness, ensure_ascii=True, indent=2) + "\n",
+    encoding="utf-8",
+)
+repair_effectiveness_rollup_effectiveness_md.write_text(
+    repair_effectiveness_rollup_effectiveness_markdown(
+        repair_effectiveness_rollup_effectiveness,
+        workspace,
+        repair_effectiveness_rollup_effectiveness_json,
+    ),
+    encoding="utf-8",
+)
 append_profile_history(environment_profile_journal, harness_environment_profile)
 harness_adaptation_json.write_text(
     json.dumps(harness_adaptation, ensure_ascii=True, indent=2) + "\n",
@@ -6592,6 +6664,8 @@ repair_plan["inputs"]["harness_environment_drift_effectiveness"] = rel(harness_e
 repair_plan["inputs"]["harness_environment_drift_effectiveness_json"] = rel(harness_environment_drift_effectiveness_json, workspace)
 repair_plan["inputs"]["repair_effectiveness_rollup"] = rel(repair_effectiveness_rollup_md, workspace)
 repair_plan["inputs"]["repair_effectiveness_rollup_json"] = rel(repair_effectiveness_rollup_json, workspace)
+repair_plan["inputs"]["repair_effectiveness_rollup_effectiveness"] = rel(repair_effectiveness_rollup_effectiveness_md, workspace)
+repair_plan["inputs"]["repair_effectiveness_rollup_effectiveness_json"] = rel(repair_effectiveness_rollup_effectiveness_json, workspace)
 repair_plan["inputs"]["environment_profile_journal"] = rel(environment_profile_journal, workspace)
 repair_plan["inputs"]["harness_adaptation"] = rel(harness_adaptation_md, workspace)
 repair_plan["inputs"]["harness_adaptation_json"] = rel(harness_adaptation_json, workspace)
@@ -6632,8 +6706,9 @@ repair_plan["harness_environment_profile_summary"] = session["harness_environmen
 repair_plan["harness_environment_drift_summary"] = session["harness_environment_drift_summary"]
 repair_plan["harness_environment_drift_effectiveness_summary"] = session["harness_environment_drift_effectiveness_summary"]
 repair_plan["repair_effectiveness_rollup_summary"] = session["repair_effectiveness_rollup_summary"]
+repair_plan["repair_effectiveness_rollup_effectiveness_summary"] = session["repair_effectiveness_rollup_effectiveness_summary"]
 repair_plan["harness_adaptation_summary"] = session["harness_adaptation_summary"]
-repair_plan["review_boundary"] = "Review HARNESS_ADAPTATION, HARNESS_ENVIRONMENT_PROFILE, HARNESS_ENVIRONMENT_DRIFT, HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS, HARNESS_ADAPTATION_EFFECTIVENESS, REPAIR_EFFECTIVENESS_ROLLUP, ACTION_TRACE.md, ACTION_TRACE.json, ACTION_TRACE_EFFECTIVENESS, REPAIR_RECALL.json, REPAIR_LESSONS, REPAIR_LESSON_EFFECTIVENESS, REPAIR_DRAFT_EFFECTIVENESS, REPAIR_DRAFT_STRATEGY, REPAIR_DRAFT_STRATEGY_EFFECTIVENESS, REPAIR_PATCH_DRAFT, REPAIR_PATCH_DRAFT_EFFECTIVENESS, REPAIR_PATCH_REVIEW, REPAIR_PATCH_REVIEW_EFFECTIVENESS, REPAIR_PATCH_APPLY, REPAIR_PATCH_APPLY_EFFECTIVENESS, REPAIR_PATCH_VERIFY, REPAIR_PATCH_VERIFY_EFFECTIVENESS, REPAIR_PATCH_LEARNING, REPAIR_PATCH_LEARNING_EFFECTIVENESS, REPAIR_PATCH_STRATEGY, REPAIR_PATCH_STRATEGY_EFFECTIVENESS, REPAIR_COMMAND_EFFECTIVENESS, REPAIR_COMMAND_STRATEGY, REPAIR_COMMAND_STRATEGY_EFFECTIVENESS, REPAIR_DECISION_EFFECTIVENESS, REPAIR_DECISION, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
+repair_plan["review_boundary"] = "Review HARNESS_ADAPTATION, HARNESS_ENVIRONMENT_PROFILE, HARNESS_ENVIRONMENT_DRIFT, HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS, HARNESS_ADAPTATION_EFFECTIVENESS, REPAIR_EFFECTIVENESS_ROLLUP, REPAIR_EFFECTIVENESS_ROLLUP_EFFECTIVENESS, ACTION_TRACE.md, ACTION_TRACE.json, ACTION_TRACE_EFFECTIVENESS, REPAIR_RECALL.json, REPAIR_LESSONS, REPAIR_LESSON_EFFECTIVENESS, REPAIR_DRAFT_EFFECTIVENESS, REPAIR_DRAFT_STRATEGY, REPAIR_DRAFT_STRATEGY_EFFECTIVENESS, REPAIR_PATCH_DRAFT, REPAIR_PATCH_DRAFT_EFFECTIVENESS, REPAIR_PATCH_REVIEW, REPAIR_PATCH_REVIEW_EFFECTIVENESS, REPAIR_PATCH_APPLY, REPAIR_PATCH_APPLY_EFFECTIVENESS, REPAIR_PATCH_VERIFY, REPAIR_PATCH_VERIFY_EFFECTIVENESS, REPAIR_PATCH_LEARNING, REPAIR_PATCH_LEARNING_EFFECTIVENESS, REPAIR_PATCH_STRATEGY, REPAIR_PATCH_STRATEGY_EFFECTIVENESS, REPAIR_COMMAND_EFFECTIVENESS, REPAIR_COMMAND_STRATEGY, REPAIR_COMMAND_STRATEGY_EFFECTIVENESS, REPAIR_DECISION_EFFECTIVENESS, REPAIR_DECISION, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
 repair_plan_json.write_text(
     json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
     encoding="utf-8",
@@ -7028,6 +7103,11 @@ prompt_md.write_text(
             f"- status: `{repair_effectiveness_rollup.get('status')}` active_sources: `{repair_effectiveness_rollup.get('active_source_count', 0)}` used: `{repair_effectiveness_rollup.get('used_count', 0)}` success_rate: `{repair_effectiveness_rollup.get('success_rate', '0.00')}`",
             f"- strongest_source: `{repair_effectiveness_rollup.get('strongest_source') or 'none'}` weakest_source: `{repair_effectiveness_rollup.get('weakest_source') or 'none'}`",
             "",
+            "repair effectiveness rollup effectiveness:",
+            f"- effectiveness artifact: `{rel(repair_effectiveness_rollup_effectiveness_md, workspace)}`",
+            f"- effectiveness json: `{rel(repair_effectiveness_rollup_effectiveness_json, workspace)}`",
+            f"- used: `{repair_effectiveness_rollup_effectiveness.get('used_count', 0)}` satisfied: `{repair_effectiveness_rollup_effectiveness.get('satisfied_count', 0)}` failed: `{repair_effectiveness_rollup_effectiveness.get('failed_count', 0)}` success_rate: `{repair_effectiveness_rollup_effectiveness.get('success_rate', '0.00')}`",
+            "",
             "repair decision:",
             f"- decision artifact: `{rel(repair_decision_md, workspace)}`",
             f"- decision json: `{rel(repair_decision_json, workspace)}`",
@@ -7138,6 +7218,8 @@ prompt_md.write_text(
             f"- harness environment drift effectiveness json: `{rel(harness_environment_drift_effectiveness_json, workspace)}`",
             f"- repair effectiveness rollup: `{rel(repair_effectiveness_rollup_md, workspace)}`",
             f"- repair effectiveness rollup json: `{rel(repair_effectiveness_rollup_json, workspace)}`",
+            f"- repair effectiveness rollup effectiveness: `{rel(repair_effectiveness_rollup_effectiveness_md, workspace)}`",
+            f"- repair effectiveness rollup effectiveness json: `{rel(repair_effectiveness_rollup_effectiveness_json, workspace)}`",
             f"- environment profile journal: `{rel(environment_profile_journal, workspace)}`",
             f"- harness adaptation: `{rel(harness_adaptation_md, workspace)}`",
             f"- harness adaptation json: `{rel(harness_adaptation_json, workspace)}`",
@@ -7333,6 +7415,7 @@ action_trace = action_trace_record(
         repair_command_strategy_effectiveness,
         harness_environment_drift,
         harness_environment_drift_effectiveness,
+        repair_effectiveness_rollup_effectiveness,
         repair_decision,
         repair_decision_effectiveness,
         harness_adaptation,
@@ -7391,6 +7474,8 @@ review_md.write_text(
             f"- harness environment drift effectiveness json: `{rel(harness_environment_drift_effectiveness_json, workspace)}`",
             f"- repair effectiveness rollup: `{rel(repair_effectiveness_rollup_md, workspace)}`",
             f"- repair effectiveness rollup json: `{rel(repair_effectiveness_rollup_json, workspace)}`",
+            f"- repair effectiveness rollup effectiveness: `{rel(repair_effectiveness_rollup_effectiveness_md, workspace)}`",
+            f"- repair effectiveness rollup effectiveness json: `{rel(repair_effectiveness_rollup_effectiveness_json, workspace)}`",
             f"- adapter context: `{rel(adapter_context_md, workspace)}`",
             f"- action trace: `{rel(action_trace_md, workspace)}`",
             f"- action trace json: `{rel(action_trace_json, workspace)}`",
@@ -7544,6 +7629,8 @@ session_md.write_text(
             f"harness environment drift effectiveness json: `{rel(harness_environment_drift_effectiveness_json, workspace)}`",
             f"repair effectiveness rollup: `{rel(repair_effectiveness_rollup_md, workspace)}`",
             f"repair effectiveness rollup json: `{rel(repair_effectiveness_rollup_json, workspace)}`",
+            f"repair effectiveness rollup effectiveness: `{rel(repair_effectiveness_rollup_effectiveness_md, workspace)}`",
+            f"repair effectiveness rollup effectiveness json: `{rel(repair_effectiveness_rollup_effectiveness_json, workspace)}`",
             f"environment profile journal: `{rel(environment_profile_journal, workspace)}`",
             f"harness adaptation: `{rel(harness_adaptation_md, workspace)}`",
             f"harness adaptation json: `{rel(harness_adaptation_json, workspace)}`",
@@ -7860,6 +7947,16 @@ metadata = {
     "repair_effectiveness_rollup_top_avoid": repair_effectiveness_rollup.get("top_avoid", ""),
     "repair_effectiveness_rollup_next_need_kind": repair_effectiveness_rollup.get("next_need", {}).get("kind", ""),
     "repair_effectiveness_rollup_next_need_query": repair_effectiveness_rollup.get("next_need", {}).get("query", ""),
+    "repair_effectiveness_rollup_effectiveness": rel(repair_effectiveness_rollup_effectiveness_md, workspace),
+    "repair_effectiveness_rollup_effectiveness_json": rel(repair_effectiveness_rollup_effectiveness_json, workspace),
+    "repair_effectiveness_rollup_effectiveness_used_count": str(repair_effectiveness_rollup_effectiveness.get("used_count", 0)),
+    "repair_effectiveness_rollup_effectiveness_satisfied_count": str(repair_effectiveness_rollup_effectiveness.get("satisfied_count", 0)),
+    "repair_effectiveness_rollup_effectiveness_partial_count": str(repair_effectiveness_rollup_effectiveness.get("partial_count", 0)),
+    "repair_effectiveness_rollup_effectiveness_failed_count": str(repair_effectiveness_rollup_effectiveness.get("failed_count", 0)),
+    "repair_effectiveness_rollup_effectiveness_success_rate": repair_effectiveness_rollup_effectiveness.get("success_rate", "0.00"),
+    "repair_effectiveness_rollup_effectiveness_failure_rate": repair_effectiveness_rollup_effectiveness.get("failure_rate", "0.00"),
+    "repair_effectiveness_rollup_effectiveness_top_reuse": repair_effectiveness_rollup_effectiveness.get("top_reuse", ""),
+    "repair_effectiveness_rollup_effectiveness_top_avoid": repair_effectiveness_rollup_effectiveness.get("top_avoid", ""),
     "environment_profile_journal": rel(environment_profile_journal, workspace),
     "harness_adaptation": rel(harness_adaptation_md, workspace),
     "harness_adaptation_json": rel(harness_adaptation_json, workspace),

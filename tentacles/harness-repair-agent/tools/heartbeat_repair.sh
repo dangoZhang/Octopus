@@ -1421,6 +1421,44 @@ def repair_effectiveness_rollup_metadata(root, value, json_value=""):
     return metadata
 
 
+def repair_effectiveness_rollup_effectiveness_metadata(root, value, json_value=""):
+    path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
+    metadata = {
+        "repair_effectiveness_rollup_effectiveness": rel(path, root) if path else "",
+        "repair_effectiveness_rollup_effectiveness_json": rel(json_path, root) if json_path else "",
+        "repair_effectiveness_rollup_effectiveness_used_count": "",
+        "repair_effectiveness_rollup_effectiveness_satisfied_count": "",
+        "repair_effectiveness_rollup_effectiveness_partial_count": "",
+        "repair_effectiveness_rollup_effectiveness_failed_count": "",
+        "repair_effectiveness_rollup_effectiveness_success_rate": "",
+        "repair_effectiveness_rollup_effectiveness_failure_rate": "",
+        "repair_effectiveness_rollup_effectiveness_top_reuse": "",
+        "repair_effectiveness_rollup_effectiveness_top_avoid": "",
+        "repair_effectiveness_rollup_effectiveness_preview": "",
+    }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        metadata.update({
+            "repair_effectiveness_rollup_effectiveness_used_count": str(data.get("used_count") or 0),
+            "repair_effectiveness_rollup_effectiveness_satisfied_count": str(data.get("satisfied_count") or 0),
+            "repair_effectiveness_rollup_effectiveness_partial_count": str(data.get("partial_count") or 0),
+            "repair_effectiveness_rollup_effectiveness_failed_count": str(data.get("failed_count") or 0),
+            "repair_effectiveness_rollup_effectiveness_success_rate": str(data.get("success_rate") or "0.00"),
+            "repair_effectiveness_rollup_effectiveness_failure_rate": str(data.get("failure_rate") or "0.00"),
+            "repair_effectiveness_rollup_effectiveness_top_reuse": compact(data.get("top_reuse") or "", 320),
+            "repair_effectiveness_rollup_effectiveness_top_avoid": compact(data.get("top_avoid") or "", 320),
+            "repair_effectiveness_rollup_effectiveness_preview": compact(json.dumps(data, sort_keys=True), 700),
+        })
+    if path and path.exists() and not metadata["repair_effectiveness_rollup_effectiveness_preview"]:
+        metadata["repair_effectiveness_rollup_effectiveness_preview"] = compact(path.read_text(encoding="utf-8", errors="replace"), 700)
+    return metadata
+
+
 def action_trace_metadata(root, value, json_value=""):
     path = resolve_artifact(root, value)
     json_path = resolve_artifact(root, json_value)
@@ -1635,6 +1673,8 @@ if latest_repair_plan:
     harness_environment_drift_effectiveness_json = str(inputs.get("harness_environment_drift_effectiveness_json") or "")
     repair_effectiveness_rollup = str(inputs.get("repair_effectiveness_rollup") or "")
     repair_effectiveness_rollup_json = str(inputs.get("repair_effectiveness_rollup_json") or "")
+    repair_effectiveness_rollup_effectiveness = str(inputs.get("repair_effectiveness_rollup_effectiveness") or "")
+    repair_effectiveness_rollup_effectiveness_json = str(inputs.get("repair_effectiveness_rollup_effectiveness_json") or "")
     environment_profile_journal = str(inputs.get("environment_profile_journal") or "")
     harness_adaptation = str(inputs.get("harness_adaptation") or "")
     harness_adaptation_json = str(inputs.get("harness_adaptation_json") or "")
@@ -1773,6 +1813,11 @@ if latest_repair_plan:
         repair_effectiveness_rollup,
         repair_effectiveness_rollup_json,
     )
+    rollup_effectiveness_metadata = repair_effectiveness_rollup_effectiveness_metadata(
+        root,
+        repair_effectiveness_rollup_effectiveness,
+        repair_effectiveness_rollup_effectiveness_json,
+    )
     decision_metadata = repair_decision_metadata(
         root,
         repair_decision,
@@ -1908,6 +1953,8 @@ if latest_repair_plan:
     rollup_weakest = rollup_metadata.get("repair_effectiveness_rollup_weakest_source", "")
     rollup_next_kind = rollup_metadata.get("repair_effectiveness_rollup_next_need_kind", "")
     rollup_next_query = rollup_metadata.get("repair_effectiveness_rollup_next_need_query", "")
+    rollup_effectiveness_used = rollup_effectiveness_metadata.get("repair_effectiveness_rollup_effectiveness_used_count", "")
+    rollup_effectiveness_success = rollup_effectiveness_metadata.get("repair_effectiveness_rollup_effectiveness_success_rate", "")
     adaptation_next_kind = adaptation_metadata.get("harness_adaptation_next_need_kind", "")
     adaptation_next_query = adaptation_metadata.get("harness_adaptation_next_need_query", "")
     next_need_source = "repair_plan"
@@ -2161,6 +2208,7 @@ if latest_repair_plan:
             f"gained={environment_drift_gained or '0'} lost={environment_drift_lost or '0'} detail={environment_drift_detail or 'none'}; "
             f"environment_drift_effectiveness={environment_drift_effectiveness_used or '0'} success_rate={environment_drift_effectiveness_success or '0.00'}; "
             f"effectiveness_rollup={rollup_status or 'none'} active_sources={rollup_active_sources or '0'} used={rollup_used or '0'} failed={rollup_failed or '0'} success_rate={rollup_success or '0.00'} weakest={rollup_weakest or 'none'}; "
+            f"effectiveness_rollup_effectiveness={rollup_effectiveness_used or '0'} success_rate={rollup_effectiveness_success or '0.00'}; "
             f"adaptation={adaptation_status or 'none'} focus={adaptation_focus or 'none'} "
             f"adaptation_effectiveness={adaptation_effectiveness_used or '0'} success_rate={adaptation_effectiveness_success or '0.00'}; "
             "review before grant/apply/score"
@@ -2230,6 +2278,8 @@ if latest_repair_plan:
         "harness_environment_drift_effectiveness_json": harness_environment_drift_effectiveness_json,
         "repair_effectiveness_rollup": repair_effectiveness_rollup,
         "repair_effectiveness_rollup_json": repair_effectiveness_rollup_json,
+        "repair_effectiveness_rollup_effectiveness": repair_effectiveness_rollup_effectiveness,
+        "repair_effectiveness_rollup_effectiveness_json": repair_effectiveness_rollup_effectiveness_json,
         "environment_profile_journal": environment_profile_journal,
         "harness_adaptation": harness_adaptation,
         "harness_adaptation_json": harness_adaptation_json,
@@ -2284,6 +2334,7 @@ if latest_repair_plan:
     repair_metadata.update(environment_drift_metadata)
     repair_metadata.update(environment_drift_effectiveness_metadata)
     repair_metadata.update(rollup_metadata)
+    repair_metadata.update(rollup_effectiveness_metadata)
     repair_metadata.update(decision_metadata)
     repair_metadata.update(adaptation_metadata)
     repair_metadata.update(action_metadata)
