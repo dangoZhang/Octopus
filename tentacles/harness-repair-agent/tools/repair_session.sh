@@ -107,6 +107,13 @@ def normalized_outcome(item, origin):
         "action_trace_lesson_top_avoid": str(item.get("action_trace_lesson_top_avoid") or action_trace.get("lesson_top_avoid") or ""),
         "action_trace_harness_adaptation_status": str(item.get("action_trace_harness_adaptation_status") or action_trace.get("harness_adaptation_status") or ""),
         "action_trace_harness_adaptation_focus": str(item.get("action_trace_harness_adaptation_focus") or action_trace.get("harness_adaptation_focus") or ""),
+        "action_trace_harness_environment_drift_status": str(item.get("action_trace_harness_environment_drift_status") or action_trace.get("harness_environment_drift_status") or ""),
+        "action_trace_harness_environment_drift_detail": str(item.get("action_trace_harness_environment_drift_detail") or action_trace.get("harness_environment_drift_detail") or ""),
+        "action_trace_harness_environment_drift_history_count": str(item.get("action_trace_harness_environment_drift_history_count") or action_trace.get("harness_environment_drift_history_count") or ""),
+        "action_trace_harness_environment_drift_gained_count": str(item.get("action_trace_harness_environment_drift_gained_count") or action_trace.get("harness_environment_drift_gained_count") or ""),
+        "action_trace_harness_environment_drift_lost_count": str(item.get("action_trace_harness_environment_drift_lost_count") or action_trace.get("harness_environment_drift_lost_count") or ""),
+        "action_trace_harness_environment_drift_next_need_kind": str(item.get("action_trace_harness_environment_drift_next_need_kind") or action_trace.get("harness_environment_drift_next_need_kind") or ""),
+        "action_trace_harness_environment_drift_next_need_query": str(item.get("action_trace_harness_environment_drift_next_need_query") or action_trace.get("harness_environment_drift_next_need_query") or ""),
         "outcome_status": outcome_status(item),
         "summary": compact(item.get("summary") or item.get("content") or "", 500),
     }
@@ -155,6 +162,13 @@ def merge_repair_outcomes(state_items, journal_items, limit=8):
                     "action_trace_lesson_top_avoid",
                     "action_trace_harness_adaptation_status",
                     "action_trace_harness_adaptation_focus",
+                    "action_trace_harness_environment_drift_status",
+                    "action_trace_harness_environment_drift_detail",
+                    "action_trace_harness_environment_drift_history_count",
+                    "action_trace_harness_environment_drift_gained_count",
+                    "action_trace_harness_environment_drift_lost_count",
+                    "action_trace_harness_environment_drift_next_need_kind",
+                    "action_trace_harness_environment_drift_next_need_query",
                 ]:
                     if outcome.get(field) and not current.get(field):
                         current[field] = outcome[field]
@@ -231,6 +245,9 @@ def outcome_memory_markdown(outcomes, workspace, outcomes_file, repair_recall=No
         lesson_top = item.get("action_trace_lesson_top_reuse") or item.get("action_trace_lesson_top_avoid") or "none"
         adaptation_status = item.get("action_trace_harness_adaptation_status") or "none"
         adaptation_focus = item.get("action_trace_harness_adaptation_focus") or "none"
+        drift_status = item.get("action_trace_harness_environment_drift_status") or "none"
+        drift_detail = item.get("action_trace_harness_environment_drift_detail") or "none"
+        drift_history = item.get("action_trace_harness_environment_drift_history_count") or "0"
         lines.extend(
             [
                 f"- `{status}` target=`{target}` candidate=`{candidate}` origin=`{origin}` session=`{session}`",
@@ -239,6 +256,7 @@ def outcome_memory_markdown(outcomes, workspace, outcomes_file, repair_recall=No
                 f"  recall_used: matches=`{recall_count}` top=`{compact(recall_status, 80)}` reasons=`{compact(recall_reasons, 160)}`",
                 f"  lesson_used: count=`{lesson_count}` reuse=`{lesson_reuse}` avoid=`{lesson_avoid}` top=`{compact(lesson_top, 160)}`",
                 f"  adaptation_used: status=`{adaptation_status}` focus=`{compact(adaptation_focus, 180)}`",
+                f"  environment_drift_used: status=`{drift_status}` history=`{drift_history}` detail=`{compact(drift_detail, 180)}`",
             ]
         )
     return "\n".join(lines) + "\n"
@@ -658,6 +676,79 @@ def build_harness_adaptation_effectiveness(outcomes):
     }
 
 
+def build_harness_environment_drift_effectiveness(outcomes):
+    used = []
+    hints = {}
+    counts = {
+        "satisfied": 0,
+        "partial": 0,
+        "failed": 0,
+        "unknown": 0,
+    }
+    for outcome in outcomes:
+        drift_status = outcome.get("action_trace_harness_environment_drift_status") or ""
+        drift_detail = outcome.get("action_trace_harness_environment_drift_detail") or ""
+        if not drift_status and not drift_detail:
+            continue
+        status = outcome.get("outcome_status") or "unknown"
+        if status not in counts:
+            status = "unknown"
+        counts[status] += 1
+        used.append(outcome)
+        if status == "satisfied":
+            direction = "reuse"
+        elif status in {"partial", "failed"}:
+            direction = "avoid"
+        else:
+            direction = "observe"
+        add_effectiveness_hint(
+            hints,
+            direction,
+            drift_detail or drift_status,
+            status,
+            outcome,
+        )
+    used_count = len(used)
+    hint_rows = []
+    for record in hints.values():
+        record["success_rate"] = rate_label(record["satisfied_count"], record["used_count"])
+        record["failure_rate"] = rate_label(record["failed_count"], record["used_count"])
+        hint_rows.append(record)
+    hint_rows.sort(
+        key=lambda item: (
+            item["satisfied_count"],
+            item["used_count"],
+            -item["failed_count"],
+            item["hint"],
+        ),
+        reverse=True,
+    )
+    reuse = [item for item in hint_rows if item["direction"] == "reuse"]
+    avoid = [item for item in hint_rows if item["direction"] == "avoid"]
+    avoid.sort(
+        key=lambda item: (
+            item["failed_count"] + item["partial_count"],
+            item["used_count"],
+            item["hint"],
+        ),
+        reverse=True,
+    )
+    return {
+        "schema_version": "octopus-harness-environment-drift-effectiveness-v1",
+        "used_count": used_count,
+        "satisfied_count": counts["satisfied"],
+        "partial_count": counts["partial"],
+        "failed_count": counts["failed"],
+        "unknown_count": counts["unknown"],
+        "success_rate": rate_label(counts["satisfied"], used_count),
+        "partial_rate": rate_label(counts["partial"], used_count),
+        "failure_rate": rate_label(counts["failed"], used_count),
+        "top_reuse": reuse[0]["hint"] if reuse else "",
+        "top_avoid": avoid[0]["hint"] if avoid else "",
+        "hints": hint_rows[:8],
+    }
+
+
 def harness_adaptation_effectiveness_markdown(effectiveness, workspace, effectiveness_json):
     lines = [
         "# Harness Adaptation Effectiveness",
@@ -687,6 +778,42 @@ def harness_adaptation_effectiveness_markdown(effectiveness, workspace, effectiv
                     f"failed=`{hint.get('failed_count')}` success_rate=`{hint.get('success_rate')}`"
                 ),
                 f"  focus: {compact(hint.get('hint'), 260)}",
+                f"  latest: target=`{hint.get('latest_target') or 'unknown'}` candidate=`{hint.get('latest_candidate') or 'none'}`",
+                f"  summary: {compact(hint.get('latest_summary'), 220) or 'none'}",
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
+def harness_environment_drift_effectiveness_markdown(effectiveness, workspace, effectiveness_json):
+    lines = [
+        "# Harness Environment Drift Effectiveness",
+        "",
+        "This file measures whether responding to prior environment drift helped later reviewed outcomes.",
+        "It is local tentacle Feed evidence, not clean-brain context.",
+        "",
+        f"json: `{rel(effectiveness_json, workspace)}`",
+        f"used_count: `{effectiveness.get('used_count', 0)}`",
+        f"satisfied_count: `{effectiveness.get('satisfied_count', 0)}`",
+        f"partial_count: `{effectiveness.get('partial_count', 0)}`",
+        f"failed_count: `{effectiveness.get('failed_count', 0)}`",
+        f"success_rate: `{effectiveness.get('success_rate', '0.00')}`",
+        f"failure_rate: `{effectiveness.get('failure_rate', '0.00')}`",
+        "",
+    ]
+    if not effectiveness.get("hints"):
+        lines.append("No scored repair outcome has used environment drift evidence yet.")
+        return "\n".join(lines) + "\n"
+    lines.extend(["## Hints", ""])
+    for hint in effectiveness["hints"]:
+        lines.extend(
+            [
+                (
+                    f"- `{hint.get('direction')}` used=`{hint.get('used_count')}` "
+                    f"satisfied=`{hint.get('satisfied_count')}` partial=`{hint.get('partial_count')}` "
+                    f"failed=`{hint.get('failed_count')}` success_rate=`{hint.get('success_rate')}`"
+                ),
+                f"  drift: {compact(hint.get('hint'), 260)}",
                 f"  latest: target=`{hint.get('latest_target') or 'unknown'}` candidate=`{hint.get('latest_candidate') or 'none'}`",
                 f"  summary: {compact(hint.get('latest_summary'), 220) or 'none'}",
             ]
@@ -833,6 +960,7 @@ def build_harness_adaptation(
     repair_lessons,
     repair_lesson_effectiveness,
     harness_adaptation_effectiveness,
+    harness_environment_drift_effectiveness,
     repair_decision,
 ):
     decision_next = repair_decision.get("next_need") if isinstance(repair_decision.get("next_need"), dict) else {}
@@ -854,6 +982,11 @@ def build_harness_adaptation(
     adaptation_failed = int_count(harness_adaptation_effectiveness.get("failed_count"))
     adaptation_top_reuse = harness_adaptation_effectiveness.get("top_reuse") or ""
     adaptation_top_avoid = harness_adaptation_effectiveness.get("top_avoid") or ""
+    drift_effectiveness_used = int_count(harness_environment_drift_effectiveness.get("used_count"))
+    drift_effectiveness_satisfied = int_count(harness_environment_drift_effectiveness.get("satisfied_count"))
+    drift_effectiveness_failed = int_count(harness_environment_drift_effectiveness.get("failed_count"))
+    drift_effectiveness_top_reuse = harness_environment_drift_effectiveness.get("top_reuse") or ""
+    drift_effectiveness_top_avoid = harness_environment_drift_effectiveness.get("top_avoid") or ""
     if adapter_missing or adapter_status in {"failed", "partial"}:
         status = "adapter_substrate"
         focus = f"restore local tool substrate: {adapter_missing or adapter_status}"
@@ -874,6 +1007,13 @@ def build_harness_adaptation(
         next_need = {
             "kind": drift_next.get("kind") or "execute",
             "query": drift_next.get("query") or "repair harness environment drift",
+        }
+    elif drift_effectiveness_used > 0 and drift_effectiveness_failed > drift_effectiveness_satisfied:
+        status = "environment_drift_effectiveness_review"
+        focus = drift_effectiveness_top_avoid or "inspect unreliable harness environment drift response"
+        next_need = {
+            "kind": "execute",
+            "query": "octopus repair . after unreliable harness environment drift response",
         }
     elif field and mini_task and field_status in {"failed", "partial"}:
         status = "field_runtime"
@@ -942,6 +1082,10 @@ def build_harness_adaptation(
             "adaptation_effectiveness_success_rate": harness_adaptation_effectiveness.get("success_rate") or "0.00",
             "adaptation_top_reuse": adaptation_top_reuse,
             "adaptation_top_avoid": adaptation_top_avoid,
+            "environment_drift_effectiveness_used_count": str(drift_effectiveness_used),
+            "environment_drift_effectiveness_success_rate": harness_environment_drift_effectiveness.get("success_rate") or "0.00",
+            "environment_drift_top_reuse": drift_effectiveness_top_reuse,
+            "environment_drift_top_avoid": drift_effectiveness_top_avoid,
         },
         "decision": {
             "status": repair_decision.get("status") or "",
@@ -953,6 +1097,7 @@ def build_harness_adaptation(
             "HARNESS_ADAPTATION.md",
             "HARNESS_ENVIRONMENT_PROFILE.md",
             "HARNESS_ENVIRONMENT_DRIFT.md",
+            "HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS.md",
             "ADAPTER_CONTEXT.md",
             "FIELD_TRAJECTORY.md",
             "CODE_CONTEXT.md",
@@ -1019,6 +1164,10 @@ def harness_adaptation_markdown(adaptation, workspace, adaptation_json):
         f"- adaptation_effectiveness_success_rate: `{memory.get('adaptation_effectiveness_success_rate') or '0.00'}`",
         f"- adaptation_top_reuse: {compact(memory.get('adaptation_top_reuse'), 260) or 'none'}",
         f"- adaptation_top_avoid: {compact(memory.get('adaptation_top_avoid'), 260) or 'none'}",
+        f"- environment_drift_effectiveness_used_count: `{memory.get('environment_drift_effectiveness_used_count') or '0'}`",
+        f"- environment_drift_effectiveness_success_rate: `{memory.get('environment_drift_effectiveness_success_rate') or '0.00'}`",
+        f"- environment_drift_top_reuse: {compact(memory.get('environment_drift_top_reuse'), 260) or 'none'}",
+        f"- environment_drift_top_avoid: {compact(memory.get('environment_drift_top_avoid'), 260) or 'none'}",
         "",
         "## Repair Decision",
         "",
@@ -2054,6 +2203,8 @@ def action_trace_record(
     repair_recall,
     repair_lessons,
     repair_lesson_effectiveness,
+    harness_environment_drift,
+    harness_environment_drift_effectiveness,
     repair_decision,
     harness_adaptation,
     draft,
@@ -2090,6 +2241,24 @@ def action_trace_record(
         "success_rate": str(repair_lesson_effectiveness.get("success_rate") or "0.00"),
         "top_reuse": compact(repair_lesson_effectiveness.get("top_reuse") or "", 240),
         "top_avoid": compact(repair_lesson_effectiveness.get("top_avoid") or "", 240),
+    }
+    drift_next = harness_environment_drift.get("next_need") if isinstance(harness_environment_drift.get("next_need"), dict) else {}
+    drift_summary = {
+        "status": str(harness_environment_drift.get("status") or ""),
+        "detail": compact(harness_environment_drift.get("detail") or "", 260),
+        "history_count": str(harness_environment_drift.get("history_count") or 0),
+        "gained_count": str(harness_environment_drift.get("gained_count") or 0),
+        "lost_count": str(harness_environment_drift.get("lost_count") or 0),
+        "next_need_kind": str(drift_next.get("kind") or ""),
+        "next_need_query": compact(drift_next.get("query") or "", 260),
+    }
+    drift_effectiveness_summary = {
+        "used_count": str(harness_environment_drift_effectiveness.get("used_count") or 0),
+        "satisfied_count": str(harness_environment_drift_effectiveness.get("satisfied_count") or 0),
+        "failed_count": str(harness_environment_drift_effectiveness.get("failed_count") or 0),
+        "success_rate": str(harness_environment_drift_effectiveness.get("success_rate") or "0.00"),
+        "top_reuse": compact(harness_environment_drift_effectiveness.get("top_reuse") or "", 240),
+        "top_avoid": compact(harness_environment_drift_effectiveness.get("top_avoid") or "", 240),
     }
     decision_next = repair_decision.get("next_need") if isinstance(repair_decision.get("next_need"), dict) else {}
     decision_summary = {
@@ -2128,7 +2297,7 @@ def action_trace_record(
         {
             "kind": "Action",
             "action": "merge field, recall, lessons, effectiveness, decision, and outcome evidence",
-            "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']} recalled={recall_count} top={recall_top_status} lessons={lessons_summary['lesson_count']} effectiveness_used={effectiveness_summary['used_count']} success_rate={effectiveness_summary['success_rate']} decision={decision_summary['decision']}",
+            "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']} recalled={recall_count} top={recall_top_status} lessons={lessons_summary['lesson_count']} effectiveness_used={effectiveness_summary['used_count']} drift={drift_summary['status']} drift_effectiveness_used={drift_effectiveness_summary['used_count']} success_rate={effectiveness_summary['success_rate']} decision={decision_summary['decision']}",
             "status": "satisfied",
         },
         {
@@ -2169,6 +2338,15 @@ def action_trace_record(
         "repair_recall": recall_summary,
         "repair_lessons": lessons_summary,
         "repair_lesson_effectiveness": effectiveness_summary,
+        "harness_environment_drift": drift_summary,
+        "harness_environment_drift_status": drift_summary["status"],
+        "harness_environment_drift_detail": drift_summary["detail"],
+        "harness_environment_drift_history_count": drift_summary["history_count"],
+        "harness_environment_drift_gained_count": drift_summary["gained_count"],
+        "harness_environment_drift_lost_count": drift_summary["lost_count"],
+        "harness_environment_drift_next_need_kind": drift_summary["next_need_kind"],
+        "harness_environment_drift_next_need_query": drift_summary["next_need_query"],
+        "harness_environment_drift_effectiveness": drift_effectiveness_summary,
         "repair_decision": decision_summary,
         "harness_adaptation": adaptation_summary,
         "stages": stages,
@@ -2196,6 +2374,10 @@ def action_trace_markdown(record, workspace, repair_plan):
         f"lesson_avoid: `{record.get('repair_lessons', {}).get('avoid_count', '0')}`",
         f"lesson_effectiveness_used: `{record.get('repair_lesson_effectiveness', {}).get('used_count', '0')}`",
         f"lesson_effectiveness_success_rate: `{record.get('repair_lesson_effectiveness', {}).get('success_rate', '0.00')}`",
+        f"harness_environment_drift: `{record.get('harness_environment_drift', {}).get('status', 'none') or 'none'}`",
+        f"harness_environment_drift_detail: `{record.get('harness_environment_drift', {}).get('detail', 'none') or 'none'}`",
+        f"harness_environment_drift_effectiveness_used: `{record.get('harness_environment_drift_effectiveness', {}).get('used_count', '0')}`",
+        f"harness_environment_drift_effectiveness_success_rate: `{record.get('harness_environment_drift_effectiveness', {}).get('success_rate', '0.00')}`",
         f"repair_decision: `{record.get('repair_decision', {}).get('decision', 'none') or 'none'}`",
         f"repair_decision_focus: `{record.get('repair_decision', {}).get('focus', 'none') or 'none'}`",
         f"harness_adaptation: `{record.get('harness_adaptation', {}).get('status', 'none') or 'none'}`",
@@ -2346,6 +2528,8 @@ harness_environment_profile_json = session_dir / "HARNESS_ENVIRONMENT_PROFILE.js
 harness_environment_profile_md = session_dir / "HARNESS_ENVIRONMENT_PROFILE.md"
 harness_environment_drift_json = session_dir / "HARNESS_ENVIRONMENT_DRIFT.json"
 harness_environment_drift_md = session_dir / "HARNESS_ENVIRONMENT_DRIFT.md"
+harness_environment_drift_effectiveness_json = session_dir / "HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS.json"
+harness_environment_drift_effectiveness_md = session_dir / "HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS.md"
 harness_adaptation_json = session_dir / "HARNESS_ADAPTATION.json"
 harness_adaptation_md = session_dir / "HARNESS_ADAPTATION.md"
 adapter_context_md = session_dir / "ADAPTER_CONTEXT.md"
@@ -2391,6 +2575,7 @@ repair_recall = build_repair_recall(
 repair_lessons = build_repair_lessons(repair_outcomes, repair_recall)
 repair_lesson_effectiveness = build_repair_lesson_effectiveness(repair_outcomes)
 harness_adaptation_effectiveness = build_harness_adaptation_effectiveness(repair_outcomes)
+harness_environment_drift_effectiveness = build_harness_environment_drift_effectiveness(repair_outcomes)
 harness_environment_profile = build_harness_environment_profile(
     workspace,
     harness_environment_profile_json,
@@ -2427,6 +2612,7 @@ harness_adaptation = build_harness_adaptation(
     repair_lessons,
     repair_lesson_effectiveness,
     harness_adaptation_effectiveness,
+    harness_environment_drift_effectiveness,
     repair_decision,
 )
 session = {
@@ -2452,6 +2638,8 @@ session = {
     "harness_environment_profile_json": rel(harness_environment_profile_json, workspace),
     "harness_environment_drift": rel(harness_environment_drift_md, workspace),
     "harness_environment_drift_json": rel(harness_environment_drift_json, workspace),
+    "harness_environment_drift_effectiveness": rel(harness_environment_drift_effectiveness_md, workspace),
+    "harness_environment_drift_effectiveness_json": rel(harness_environment_drift_effectiveness_json, workspace),
     "environment_profile_journal": rel(environment_profile_journal, workspace),
     "harness_adaptation": rel(harness_adaptation_md, workspace),
     "harness_adaptation_json": rel(harness_adaptation_json, workspace),
@@ -2531,6 +2719,14 @@ session = {
         "gained_count": harness_environment_drift["gained_count"],
         "lost_count": harness_environment_drift["lost_count"],
         "next_need": harness_environment_drift["next_need"],
+    },
+    "harness_environment_drift_effectiveness_summary": {
+        "used_count": harness_environment_drift_effectiveness["used_count"],
+        "satisfied_count": harness_environment_drift_effectiveness["satisfied_count"],
+        "failed_count": harness_environment_drift_effectiveness["failed_count"],
+        "success_rate": harness_environment_drift_effectiveness["success_rate"],
+        "top_reuse": harness_environment_drift_effectiveness["top_reuse"],
+        "top_avoid": harness_environment_drift_effectiveness["top_avoid"],
     },
     "harness_adaptation_summary": {
         "status": harness_adaptation["status"],
@@ -2629,6 +2825,18 @@ harness_environment_drift_md.write_text(
     ),
     encoding="utf-8",
 )
+harness_environment_drift_effectiveness_json.write_text(
+    json.dumps(harness_environment_drift_effectiveness, ensure_ascii=True, indent=2) + "\n",
+    encoding="utf-8",
+)
+harness_environment_drift_effectiveness_md.write_text(
+    harness_environment_drift_effectiveness_markdown(
+        harness_environment_drift_effectiveness,
+        workspace,
+        harness_environment_drift_effectiveness_json,
+    ),
+    encoding="utf-8",
+)
 append_profile_history(environment_profile_journal, harness_environment_profile)
 harness_adaptation_json.write_text(
     json.dumps(harness_adaptation, ensure_ascii=True, indent=2) + "\n",
@@ -2676,6 +2884,8 @@ repair_plan["inputs"]["harness_environment_profile"] = rel(harness_environment_p
 repair_plan["inputs"]["harness_environment_profile_json"] = rel(harness_environment_profile_json, workspace)
 repair_plan["inputs"]["harness_environment_drift"] = rel(harness_environment_drift_md, workspace)
 repair_plan["inputs"]["harness_environment_drift_json"] = rel(harness_environment_drift_json, workspace)
+repair_plan["inputs"]["harness_environment_drift_effectiveness"] = rel(harness_environment_drift_effectiveness_md, workspace)
+repair_plan["inputs"]["harness_environment_drift_effectiveness_json"] = rel(harness_environment_drift_effectiveness_json, workspace)
 repair_plan["inputs"]["environment_profile_journal"] = rel(environment_profile_journal, workspace)
 repair_plan["inputs"]["harness_adaptation"] = rel(harness_adaptation_md, workspace)
 repair_plan["inputs"]["harness_adaptation_json"] = rel(harness_adaptation_json, workspace)
@@ -2695,8 +2905,9 @@ repair_plan["repair_decision_summary"] = session["repair_decision_summary"]
 repair_plan["harness_adaptation_effectiveness_summary"] = session["harness_adaptation_effectiveness_summary"]
 repair_plan["harness_environment_profile_summary"] = session["harness_environment_profile_summary"]
 repair_plan["harness_environment_drift_summary"] = session["harness_environment_drift_summary"]
+repair_plan["harness_environment_drift_effectiveness_summary"] = session["harness_environment_drift_effectiveness_summary"]
 repair_plan["harness_adaptation_summary"] = session["harness_adaptation_summary"]
-repair_plan["review_boundary"] = "Review HARNESS_ADAPTATION, HARNESS_ENVIRONMENT_PROFILE, HARNESS_ENVIRONMENT_DRIFT, HARNESS_ADAPTATION_EFFECTIVENESS, ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_RECALL.json, REPAIR_LESSONS, REPAIR_LESSON_EFFECTIVENESS, REPAIR_DECISION, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
+repair_plan["review_boundary"] = "Review HARNESS_ADAPTATION, HARNESS_ENVIRONMENT_PROFILE, HARNESS_ENVIRONMENT_DRIFT, HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS, HARNESS_ADAPTATION_EFFECTIVENESS, ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_RECALL.json, REPAIR_LESSONS, REPAIR_LESSON_EFFECTIVENESS, REPAIR_DECISION, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
 repair_plan_json.write_text(
     json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
     encoding="utf-8",
@@ -2768,6 +2979,17 @@ adaptation_effectiveness_lines = [
         f" focus={compact(hint.get('hint') or '', 180)}"
     )
     for hint in harness_adaptation_effectiveness.get("hints", [])[:4]
+] or ["- none"]
+drift_effectiveness_lines = [
+    (
+        f"- {hint.get('direction')}"
+        f" used={hint.get('used_count')}"
+        f" satisfied={hint.get('satisfied_count')}"
+        f" failed={hint.get('failed_count')}"
+        f" success={hint.get('success_rate')}"
+        f" drift={compact(hint.get('hint') or '', 180)}"
+    )
+    for hint in harness_environment_drift_effectiveness.get("hints", [])[:4]
 ] or ["- none"]
 decision_next = repair_decision.get("next_need") if isinstance(repair_decision.get("next_need"), dict) else {}
 prompt_md.write_text(
@@ -2841,6 +3063,12 @@ prompt_md.write_text(
             f"- status: `{harness_environment_drift.get('status')}` detail: {compact(harness_environment_drift.get('detail'), 260)}",
             f"- history_count: `{harness_environment_drift.get('history_count')}` gained: `{harness_environment_drift.get('gained_count')}` lost: `{harness_environment_drift.get('lost_count')}`",
             "",
+            "harness environment drift effectiveness:",
+            f"- effectiveness artifact: `{rel(harness_environment_drift_effectiveness_md, workspace)}`",
+            f"- effectiveness json: `{rel(harness_environment_drift_effectiveness_json, workspace)}`",
+            f"- used: `{harness_environment_drift_effectiveness.get('used_count', 0)}` satisfied: `{harness_environment_drift_effectiveness.get('satisfied_count', 0)}` failed: `{harness_environment_drift_effectiveness.get('failed_count', 0)}` success_rate: `{harness_environment_drift_effectiveness.get('success_rate', '0.00')}`",
+            *drift_effectiveness_lines,
+            "",
             "repair decision:",
             f"- decision artifact: `{rel(repair_decision_md, workspace)}`",
             f"- decision json: `{rel(repair_decision_json, workspace)}`",
@@ -2909,6 +3137,8 @@ prompt_md.write_text(
             f"- harness environment profile json: `{rel(harness_environment_profile_json, workspace)}`",
             f"- harness environment drift: `{rel(harness_environment_drift_md, workspace)}`",
             f"- harness environment drift json: `{rel(harness_environment_drift_json, workspace)}`",
+            f"- harness environment drift effectiveness: `{rel(harness_environment_drift_effectiveness_md, workspace)}`",
+            f"- harness environment drift effectiveness json: `{rel(harness_environment_drift_effectiveness_json, workspace)}`",
             f"- environment profile journal: `{rel(environment_profile_journal, workspace)}`",
             f"- harness adaptation: `{rel(harness_adaptation_md, workspace)}`",
             f"- harness adaptation json: `{rel(harness_adaptation_json, workspace)}`",
@@ -2937,6 +3167,8 @@ action_trace = action_trace_record(
         repair_recall,
         repair_lessons,
         repair_lesson_effectiveness,
+        harness_environment_drift,
+        harness_environment_drift_effectiveness,
         repair_decision,
         harness_adaptation,
         draft,
@@ -2990,6 +3222,8 @@ review_md.write_text(
             f"- harness environment profile json: `{rel(harness_environment_profile_json, workspace)}`",
             f"- harness environment drift: `{rel(harness_environment_drift_md, workspace)}`",
             f"- harness environment drift json: `{rel(harness_environment_drift_json, workspace)}`",
+            f"- harness environment drift effectiveness: `{rel(harness_environment_drift_effectiveness_md, workspace)}`",
+            f"- harness environment drift effectiveness json: `{rel(harness_environment_drift_effectiveness_json, workspace)}`",
             f"- adapter context: `{rel(adapter_context_md, workspace)}`",
             f"- action trace: `{rel(action_trace_md, workspace)}`",
             f"- action trace json: `{rel(action_trace_json, workspace)}`",
@@ -3065,6 +3299,8 @@ session_md.write_text(
             f"harness environment profile json: `{rel(harness_environment_profile_json, workspace)}`",
             f"harness environment drift: `{rel(harness_environment_drift_md, workspace)}`",
             f"harness environment drift json: `{rel(harness_environment_drift_json, workspace)}`",
+            f"harness environment drift effectiveness: `{rel(harness_environment_drift_effectiveness_md, workspace)}`",
+            f"harness environment drift effectiveness json: `{rel(harness_environment_drift_effectiveness_json, workspace)}`",
             f"environment profile journal: `{rel(environment_profile_journal, workspace)}`",
             f"harness adaptation: `{rel(harness_adaptation_md, workspace)}`",
             f"harness adaptation json: `{rel(harness_adaptation_json, workspace)}`",
@@ -3156,6 +3392,16 @@ metadata = {
     "harness_environment_drift_lost_count": str(harness_environment_drift.get("lost_count", 0)),
     "harness_environment_drift_next_need_kind": harness_environment_drift.get("next_need", {}).get("kind", ""),
     "harness_environment_drift_next_need_query": harness_environment_drift.get("next_need", {}).get("query", ""),
+    "harness_environment_drift_effectiveness": rel(harness_environment_drift_effectiveness_md, workspace),
+    "harness_environment_drift_effectiveness_json": rel(harness_environment_drift_effectiveness_json, workspace),
+    "harness_environment_drift_effectiveness_used_count": str(harness_environment_drift_effectiveness.get("used_count", 0)),
+    "harness_environment_drift_effectiveness_satisfied_count": str(harness_environment_drift_effectiveness.get("satisfied_count", 0)),
+    "harness_environment_drift_effectiveness_partial_count": str(harness_environment_drift_effectiveness.get("partial_count", 0)),
+    "harness_environment_drift_effectiveness_failed_count": str(harness_environment_drift_effectiveness.get("failed_count", 0)),
+    "harness_environment_drift_effectiveness_success_rate": harness_environment_drift_effectiveness.get("success_rate", "0.00"),
+    "harness_environment_drift_effectiveness_failure_rate": harness_environment_drift_effectiveness.get("failure_rate", "0.00"),
+    "harness_environment_drift_effectiveness_top_reuse": harness_environment_drift_effectiveness.get("top_reuse", ""),
+    "harness_environment_drift_effectiveness_top_avoid": harness_environment_drift_effectiveness.get("top_avoid", ""),
     "environment_profile_journal": rel(environment_profile_journal, workspace),
     "harness_adaptation": rel(harness_adaptation_md, workspace),
     "harness_adaptation_json": rel(harness_adaptation_json, workspace),
@@ -3185,6 +3431,13 @@ metadata = {
     "action_trace_lesson_top_avoid": action_trace["repair_lessons"]["top_avoid"],
     "action_trace_repair_decision": action_trace["repair_decision"]["decision"],
     "action_trace_repair_decision_focus": action_trace["repair_decision"]["focus"],
+    "action_trace_harness_environment_drift_status": action_trace["harness_environment_drift"]["status"],
+    "action_trace_harness_environment_drift_detail": action_trace["harness_environment_drift"]["detail"],
+    "action_trace_harness_environment_drift_history_count": action_trace["harness_environment_drift"]["history_count"],
+    "action_trace_harness_environment_drift_gained_count": action_trace["harness_environment_drift"]["gained_count"],
+    "action_trace_harness_environment_drift_lost_count": action_trace["harness_environment_drift"]["lost_count"],
+    "action_trace_harness_environment_drift_next_need_kind": action_trace["harness_environment_drift"]["next_need_kind"],
+    "action_trace_harness_environment_drift_next_need_query": action_trace["harness_environment_drift"]["next_need_query"],
     "action_trace_harness_adaptation": action_trace["harness_adaptation"]["status"],
     "action_trace_harness_adaptation_focus": action_trace["harness_adaptation"]["focus"],
     "repair_plan_status": repair_plan["status"],

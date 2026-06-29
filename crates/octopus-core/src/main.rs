@@ -660,6 +660,16 @@ struct RepairPlanReport {
     harness_environment_drift_lost_count: String,
     harness_environment_drift_next_need_kind: String,
     harness_environment_drift_next_need_query: String,
+    harness_environment_drift_effectiveness: String,
+    harness_environment_drift_effectiveness_json: String,
+    harness_environment_drift_effectiveness_used_count: String,
+    harness_environment_drift_effectiveness_satisfied_count: String,
+    harness_environment_drift_effectiveness_partial_count: String,
+    harness_environment_drift_effectiveness_failed_count: String,
+    harness_environment_drift_effectiveness_success_rate: String,
+    harness_environment_drift_effectiveness_failure_rate: String,
+    harness_environment_drift_effectiveness_top_reuse: String,
+    harness_environment_drift_effectiveness_top_avoid: String,
     environment_profile_journal: String,
     harness_adaptation: String,
     harness_adaptation_json: String,
@@ -3838,6 +3848,14 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                     &repair_plan_environment_drift_label(plan),
                 );
                 print_optional_line(
+                    "harness_environment_drift_effectiveness",
+                    &plan.harness_environment_drift_effectiveness,
+                );
+                print_optional_line(
+                    "harness_environment_drift_effectiveness_status",
+                    &repair_plan_environment_drift_effectiveness_label(plan),
+                );
+                print_optional_line(
                     "environment_profile_journal",
                     &plan.environment_profile_journal,
                 );
@@ -3916,6 +3934,14 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line(
                     "Harness环境漂移状态",
                     &repair_plan_environment_drift_label(plan),
+                );
+                print_optional_line(
+                    "Harness环境漂移有效性",
+                    &plan.harness_environment_drift_effectiveness,
+                );
+                print_optional_line(
+                    "Harness环境漂移有效性状态",
+                    &repair_plan_environment_drift_effectiveness_label(plan),
                 );
                 print_optional_line("环境Profile日志", &plan.environment_profile_journal);
                 print_optional_line("Harness适应", &plan.harness_adaptation);
@@ -4342,6 +4368,71 @@ fn repair_plan_environment_drift_label(plan: &RepairPlanReport) -> String {
     parts.join(" ")
 }
 
+fn repair_plan_environment_drift_effectiveness_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan
+        .harness_environment_drift_effectiveness_used_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "used={}",
+            plan.harness_environment_drift_effectiveness_used_count
+        ));
+    }
+    if !plan
+        .harness_environment_drift_effectiveness_satisfied_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "satisfied={}",
+            plan.harness_environment_drift_effectiveness_satisfied_count
+        ));
+    }
+    if !plan
+        .harness_environment_drift_effectiveness_failed_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "failed={}",
+            plan.harness_environment_drift_effectiveness_failed_count
+        ));
+    }
+    if !plan
+        .harness_environment_drift_effectiveness_success_rate
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "success_rate={}",
+            plan.harness_environment_drift_effectiveness_success_rate
+        ));
+    }
+    if !plan
+        .harness_environment_drift_effectiveness_top_reuse
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "top_reuse={}",
+            plan.harness_environment_drift_effectiveness_top_reuse
+        ));
+    }
+    if !plan
+        .harness_environment_drift_effectiveness_top_avoid
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "top_avoid={}",
+            plan.harness_environment_drift_effectiveness_top_avoid
+        ));
+    }
+    parts.join(" ")
+}
+
 fn repair_plan_adaptation_label(plan: &RepairPlanReport) -> String {
     let mut parts = Vec::new();
     if !plan.harness_adaptation_status.trim().is_empty() {
@@ -4672,6 +4763,60 @@ fn write_repair_score_journal(
         .get("action_trace_lesson_top_avoid")
         .cloned()
         .unwrap_or_default();
+    let action_trace_harness_environment_drift_status = trace
+        .metadata
+        .get("action_trace_harness_environment_drift_status")
+        .or_else(|| trace.metadata.get("harness_environment_drift_status"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_harness_environment_drift_detail = trace
+        .metadata
+        .get("action_trace_harness_environment_drift_detail")
+        .or_else(|| trace.metadata.get("harness_environment_drift_detail"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_harness_environment_drift_history_count = trace
+        .metadata
+        .get("action_trace_harness_environment_drift_history_count")
+        .or_else(|| {
+            trace
+                .metadata
+                .get("harness_environment_drift_history_count")
+        })
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_harness_environment_drift_gained_count = trace
+        .metadata
+        .get("action_trace_harness_environment_drift_gained_count")
+        .or_else(|| trace.metadata.get("harness_environment_drift_gained_count"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_harness_environment_drift_lost_count = trace
+        .metadata
+        .get("action_trace_harness_environment_drift_lost_count")
+        .or_else(|| trace.metadata.get("harness_environment_drift_lost_count"))
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_harness_environment_drift_next_need_kind = trace
+        .metadata
+        .get("action_trace_harness_environment_drift_next_need_kind")
+        .or_else(|| {
+            trace
+                .metadata
+                .get("harness_environment_drift_next_need_kind")
+        })
+        .cloned()
+        .unwrap_or_default();
+    let action_trace_harness_environment_drift_next_need_query = trace
+        .metadata
+        .get("action_trace_harness_environment_drift_next_need_query")
+        .or_else(|| {
+            trace
+                .metadata
+                .get("harness_environment_drift_next_need_query")
+        })
+        .cloned()
+        .unwrap_or_default();
     let action_trace_harness_adaptation_status = trace
         .metadata
         .get("action_trace_harness_adaptation")
@@ -4713,6 +4858,13 @@ fn write_repair_score_journal(
         "action_trace_lesson_avoid_count": action_trace_lesson_avoid_count,
         "action_trace_lesson_top_reuse": action_trace_lesson_top_reuse,
         "action_trace_lesson_top_avoid": action_trace_lesson_top_avoid,
+        "action_trace_harness_environment_drift_status": action_trace_harness_environment_drift_status,
+        "action_trace_harness_environment_drift_detail": action_trace_harness_environment_drift_detail,
+        "action_trace_harness_environment_drift_history_count": action_trace_harness_environment_drift_history_count,
+        "action_trace_harness_environment_drift_gained_count": action_trace_harness_environment_drift_gained_count,
+        "action_trace_harness_environment_drift_lost_count": action_trace_harness_environment_drift_lost_count,
+        "action_trace_harness_environment_drift_next_need_kind": action_trace_harness_environment_drift_next_need_kind,
+        "action_trace_harness_environment_drift_next_need_query": action_trace_harness_environment_drift_next_need_query,
         "action_trace_harness_adaptation_status": action_trace_harness_adaptation_status,
         "action_trace_harness_adaptation_focus": action_trace_harness_adaptation_focus,
         "outcome_status": status,
@@ -4727,7 +4879,7 @@ fn write_repair_score_journal(
     fs::write(
         &outcome_path,
         format!(
-            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\naction_trace_recall: matches=`{}` top=`{}` reasons=`{}`\naction_trace_lessons: count=`{}` reuse=`{}` avoid=`{}` top_reuse=`{}` top_avoid=`{}`\naction_trace_harness_adaptation: status=`{}` focus=`{}`\n\n{}\n\njournal: `{}`\n",
+            "# Harness Repair Outcome\n\nstatus: `{}`\nsession: `{}`\ntarget: `{}`\ncandidate: `{}`\ndraft_status: `{}`\naction_trace_json: `{}`\naction_trace_status: `{}`\naction_trace_stages: `{}`\naction_trace_last: `{}`\naction_trace_recall: matches=`{}` top=`{}` reasons=`{}`\naction_trace_lessons: count=`{}` reuse=`{}` avoid=`{}` top_reuse=`{}` top_avoid=`{}`\naction_trace_harness_environment_drift: status=`{}` detail=`{}` history=`{}` next=`{} {}`\naction_trace_harness_adaptation: status=`{}` focus=`{}`\n\n{}\n\njournal: `{}`\n",
             status,
             display_path(&workspace, &session_path),
             record["target_tentacle"].as_str().unwrap_or("unknown"),
@@ -4745,6 +4897,21 @@ fn write_repair_score_journal(
             record["action_trace_lesson_avoid_count"].as_str().unwrap_or(""),
             record["action_trace_lesson_top_reuse"].as_str().unwrap_or(""),
             record["action_trace_lesson_top_avoid"].as_str().unwrap_or(""),
+            record["action_trace_harness_environment_drift_status"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_harness_environment_drift_detail"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_harness_environment_drift_history_count"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_harness_environment_drift_next_need_kind"]
+                .as_str()
+                .unwrap_or(""),
+            record["action_trace_harness_environment_drift_next_need_query"]
+                .as_str()
+                .unwrap_or(""),
             record["action_trace_harness_adaptation_status"]
                 .as_str()
                 .unwrap_or(""),
@@ -9052,6 +9219,26 @@ fn repair_report(
                 shell_arg(&plan.harness_environment_drift_json)
             ));
         }
+        if !plan
+            .harness_environment_drift_effectiveness
+            .trim()
+            .is_empty()
+        {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.harness_environment_drift_effectiveness)
+            ));
+        }
+        if !plan
+            .harness_environment_drift_effectiveness_json
+            .trim()
+            .is_empty()
+        {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.harness_environment_drift_effectiveness_json)
+            ));
+        }
         if !plan.environment_profile_journal.trim().is_empty() {
             next.push(format!(
                 "review {}",
@@ -9543,6 +9730,46 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         harness_environment_drift_next_need_query: metadata_value(
             metadata,
             "harness_environment_drift_next_need_query",
+        ),
+        harness_environment_drift_effectiveness: metadata_value(
+            metadata,
+            "harness_environment_drift_effectiveness",
+        ),
+        harness_environment_drift_effectiveness_json: metadata_value(
+            metadata,
+            "harness_environment_drift_effectiveness_json",
+        ),
+        harness_environment_drift_effectiveness_used_count: metadata_value(
+            metadata,
+            "harness_environment_drift_effectiveness_used_count",
+        ),
+        harness_environment_drift_effectiveness_satisfied_count: metadata_value(
+            metadata,
+            "harness_environment_drift_effectiveness_satisfied_count",
+        ),
+        harness_environment_drift_effectiveness_partial_count: metadata_value(
+            metadata,
+            "harness_environment_drift_effectiveness_partial_count",
+        ),
+        harness_environment_drift_effectiveness_failed_count: metadata_value(
+            metadata,
+            "harness_environment_drift_effectiveness_failed_count",
+        ),
+        harness_environment_drift_effectiveness_success_rate: metadata_value(
+            metadata,
+            "harness_environment_drift_effectiveness_success_rate",
+        ),
+        harness_environment_drift_effectiveness_failure_rate: metadata_value(
+            metadata,
+            "harness_environment_drift_effectiveness_failure_rate",
+        ),
+        harness_environment_drift_effectiveness_top_reuse: metadata_value(
+            metadata,
+            "harness_environment_drift_effectiveness_top_reuse",
+        ),
+        harness_environment_drift_effectiveness_top_avoid: metadata_value(
+            metadata,
+            "harness_environment_drift_effectiveness_top_avoid",
         ),
         environment_profile_journal: metadata_value(metadata, "environment_profile_journal"),
         harness_adaptation: metadata_value(metadata, "harness_adaptation"),
@@ -21661,6 +21888,25 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(plan.harness_environment_drift_gained_count, "0");
         assert_eq!(plan.harness_environment_drift_lost_count, "0");
         assert!(plan
+            .harness_environment_drift_effectiveness
+            .ends_with("HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS.md"));
+        assert!(plan
+            .harness_environment_drift_effectiveness_json
+            .ends_with("HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS.json"));
+        assert_eq!(plan.harness_environment_drift_effectiveness_used_count, "0");
+        assert_eq!(
+            plan.harness_environment_drift_effectiveness_satisfied_count,
+            "0"
+        );
+        assert_eq!(
+            plan.harness_environment_drift_effectiveness_failed_count,
+            "0"
+        );
+        assert_eq!(
+            plan.harness_environment_drift_effectiveness_success_rate,
+            "0.00"
+        );
+        assert!(plan
             .environment_profile_journal
             .ends_with("environment-profiles.jsonl"));
         assert!(plan.harness_adaptation.ends_with("HARNESS_ADAPTATION.md"));
@@ -21727,6 +21973,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan_json.contains("\"harness_adaptation_effectiveness\""));
         assert!(plan_json.contains("\"harness_environment_profile\""));
         assert!(plan_json.contains("\"harness_environment_drift\""));
+        assert!(plan_json.contains("\"harness_environment_drift_effectiveness\""));
         assert!(plan_json.contains("repair partly improved Feed"));
         assert!(plan_json.contains("repair did not improve Feed"));
         let adaptation_effectiveness_json =
@@ -21743,6 +21990,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(environment_drift_json
             .contains("\"schema_version\": \"octopus-harness-environment-drift-v1\""));
         assert!(environment_drift_json.contains("\"status\": \"baseline\""));
+        let environment_drift_effectiveness_json =
+            fs::read_to_string(&plan.harness_environment_drift_effectiveness_json).unwrap();
+        assert!(environment_drift_effectiveness_json.contains(
+            "\"schema_version\": \"octopus-harness-environment-drift-effectiveness-v1\""
+        ));
+        assert!(environment_drift_effectiveness_json.contains("\"used_count\": 0"));
         let profile_journal = fs::read_to_string(&plan.environment_profile_journal).unwrap();
         assert!(profile_journal.contains("octopus-harness-environment-profile-v1"));
         let adaptation_json = fs::read_to_string(&plan.harness_adaptation_json).unwrap();
@@ -21774,6 +22027,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("HARNESS_ENVIRONMENT_DRIFT.json")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS.json")));
         assert!(report
             .next
             .iter()
@@ -25379,6 +25640,7 @@ JSON
         assert!(outcomes.contains("\"candidate\":\"03-runtime-code\""));
         assert!(outcomes.contains("\"action_trace_status\":\"satisfied\""));
         assert!(outcomes.contains("\"action_trace_stage_count\":\"7\""));
+        assert!(outcomes.contains("\"action_trace_harness_environment_drift_status\":\"baseline\""));
         assert!(outcomes.contains("\"action_trace_harness_adaptation_status\":\"decision_guided\""));
         assert!(outcomes.contains("\"action_trace_json\":\".octopus/harness-repair/"));
         assert!(outcomes.contains("repair improved harness"));
@@ -25397,6 +25659,9 @@ JSON
         assert!(outcome_markdown.contains("action_trace_status: `satisfied`"));
         assert!(
             outcome_markdown.contains("action_trace_harness_adaptation: status=`decision_guided`")
+        );
+        assert!(
+            outcome_markdown.contains("action_trace_harness_environment_drift: status=`baseline`")
         );
         run(vec![
             "--state".to_string(),
@@ -25497,6 +25762,30 @@ JSON
                     .unwrap_or(false)
             });
         assert!(drift_history_found);
+        let drift_effectiveness_found = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry
+                    .ok()?
+                    .path()
+                    .join("HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS.json");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains(
+                            "\"schema_version\": \"octopus-harness-environment-drift-effectiveness-v1\"",
+                        ) && content.contains("\"used_count\": 1")
+                            && content.contains("\"satisfied_count\": 1")
+                            && content.contains("\"success_rate\": \"1.00\"")
+                            && content.contains("no previous profile")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(drift_effectiveness_found);
         let profile_journal = fs::read_to_string(
             workspace.join(".octopus/harness-repair/environment-profiles.jsonl"),
         )

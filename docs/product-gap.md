@@ -70,6 +70,7 @@ Updated: 2026-06-29
 - `json-feed` is a runtime seed for the `octopus-json-v1` contract.
 - The old Python SDK/prototype package has been removed; Python remains a tentacle runtime, not a second product/kernel surface.
 - Memory is a heart/beat; visual is the color-changing pet layer.
+- Harness repair now writes `HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS.md/json`, so scored outcomes teach whether responding to environment drift actually helped.
 - LLM adapters support backend-aware providers for chat goal refinement, clean-brain Goal/Intent/Brief/Align/Clarify/Agenda/Scout/Deliberate/Council/Synthesize/Explore/Rewrite/Queue/Memory jobs, manifest tool planning, and harness evolution candidate generation.
 - `providers` and provider env support Codex CLI OAuth, API-key clouds, Z.AI/BigModel, local servers, LiteLLM gateway, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.
 - `provider status` reports a compact provider coverage matrix for Goal chat, clean-brain calls, tentacle planning, and harness evolution, followed by detailed model slots including intent, brief, alignment, clarification, agenda, scout, memory, and synthesis. It does not make a network call.
