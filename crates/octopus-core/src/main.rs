@@ -638,6 +638,18 @@ struct RepairPlanReport {
     harness_adaptation_effectiveness_failure_rate: String,
     harness_adaptation_effectiveness_top_reuse: String,
     harness_adaptation_effectiveness_top_avoid: String,
+    harness_environment_profile: String,
+    harness_environment_profile_json: String,
+    harness_environment_profile_status: String,
+    harness_environment_profile_id: String,
+    harness_environment_profile_execution_mode: String,
+    harness_environment_profile_provider_mode: String,
+    harness_environment_profile_desktop_mode: String,
+    harness_environment_profile_capabilities: String,
+    harness_environment_profile_constraints: String,
+    harness_environment_profile_installed_profiles: String,
+    harness_environment_profile_next_need_kind: String,
+    harness_environment_profile_next_need_query: String,
     harness_adaptation: String,
     harness_adaptation_json: String,
     harness_adaptation_status: String,
@@ -3801,6 +3813,14 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                     "harness_adaptation_effectiveness_status",
                     &repair_plan_adaptation_effectiveness_label(plan),
                 );
+                print_optional_line(
+                    "harness_environment_profile",
+                    &plan.harness_environment_profile,
+                );
+                print_optional_line(
+                    "harness_environment_profile_status",
+                    &repair_plan_environment_profile_label(plan),
+                );
                 print_optional_line("harness_adaptation", &plan.harness_adaptation);
                 print_optional_line(
                     "harness_adaptation_status",
@@ -3866,6 +3886,11 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line(
                     "Harness适应有效性状态",
                     &repair_plan_adaptation_effectiveness_label(plan),
+                );
+                print_optional_line("Harness环境Profile", &plan.harness_environment_profile);
+                print_optional_line(
+                    "Harness环境Profile状态",
+                    &repair_plan_environment_profile_label(plan),
                 );
                 print_optional_line("Harness适应", &plan.harness_adaptation);
                 print_optional_line("Harness适应状态", &repair_plan_adaptation_label(plan));
@@ -4153,6 +4178,83 @@ fn repair_plan_adaptation_effectiveness_label(plan: &RepairPlanReport) -> String
         parts.push(format!(
             "top_avoid={}",
             plan.harness_adaptation_effectiveness_top_avoid
+        ));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_environment_profile_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan.harness_environment_profile_status.trim().is_empty() {
+        parts.push(plan.harness_environment_profile_status.trim().to_string());
+    }
+    if !plan
+        .harness_environment_profile_execution_mode
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "mode={}",
+            plan.harness_environment_profile_execution_mode
+        ));
+    }
+    if !plan
+        .harness_environment_profile_provider_mode
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "provider={}",
+            plan.harness_environment_profile_provider_mode
+        ));
+    }
+    if !plan
+        .harness_environment_profile_desktop_mode
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "desktop={}",
+            plan.harness_environment_profile_desktop_mode
+        ));
+    }
+    if !plan
+        .harness_environment_profile_capabilities
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "capabilities={}",
+            plan.harness_environment_profile_capabilities
+        ));
+    }
+    if !plan
+        .harness_environment_profile_constraints
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "constraints={}",
+            plan.harness_environment_profile_constraints
+        ));
+    }
+    if !plan
+        .harness_environment_profile_next_need_query
+        .trim()
+        .is_empty()
+    {
+        let kind = if plan
+            .harness_environment_profile_next_need_kind
+            .trim()
+            .is_empty()
+        {
+            "verify"
+        } else {
+            plan.harness_environment_profile_next_need_kind.trim()
+        };
+        parts.push(format!(
+            "next={kind} {}",
+            plan.harness_environment_profile_next_need_query
         ));
     }
     parts.join(" ")
@@ -8844,6 +8946,18 @@ fn repair_report(
                 shell_arg(&plan.harness_adaptation_effectiveness_json)
             ));
         }
+        if !plan.harness_environment_profile.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.harness_environment_profile)
+            ));
+        }
+        if !plan.harness_environment_profile_json.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.harness_environment_profile_json)
+            ));
+        }
         if !plan.harness_adaptation.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.harness_adaptation)));
         }
@@ -9253,6 +9367,48 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         harness_adaptation_effectiveness_top_avoid: metadata_value(
             metadata,
             "harness_adaptation_effectiveness_top_avoid",
+        ),
+        harness_environment_profile: metadata_value(metadata, "harness_environment_profile"),
+        harness_environment_profile_json: metadata_value(
+            metadata,
+            "harness_environment_profile_json",
+        ),
+        harness_environment_profile_status: metadata_value(
+            metadata,
+            "harness_environment_profile_status",
+        ),
+        harness_environment_profile_id: metadata_value(metadata, "harness_environment_profile_id"),
+        harness_environment_profile_execution_mode: metadata_value(
+            metadata,
+            "harness_environment_profile_execution_mode",
+        ),
+        harness_environment_profile_provider_mode: metadata_value(
+            metadata,
+            "harness_environment_profile_provider_mode",
+        ),
+        harness_environment_profile_desktop_mode: metadata_value(
+            metadata,
+            "harness_environment_profile_desktop_mode",
+        ),
+        harness_environment_profile_capabilities: metadata_value(
+            metadata,
+            "harness_environment_profile_capabilities",
+        ),
+        harness_environment_profile_constraints: metadata_value(
+            metadata,
+            "harness_environment_profile_constraints",
+        ),
+        harness_environment_profile_installed_profiles: metadata_value(
+            metadata,
+            "harness_environment_profile_installed_profiles",
+        ),
+        harness_environment_profile_next_need_kind: metadata_value(
+            metadata,
+            "harness_environment_profile_next_need_kind",
+        ),
+        harness_environment_profile_next_need_query: metadata_value(
+            metadata,
+            "harness_environment_profile_next_need_query",
         ),
         harness_adaptation: metadata_value(metadata, "harness_adaptation"),
         harness_adaptation_json: metadata_value(metadata, "harness_adaptation_json"),
@@ -21344,6 +21500,21 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(plan.harness_adaptation_effectiveness_satisfied_count, "0");
         assert_eq!(plan.harness_adaptation_effectiveness_failed_count, "0");
         assert_eq!(plan.harness_adaptation_effectiveness_success_rate, "0.00");
+        assert!(plan
+            .harness_environment_profile
+            .ends_with("HARNESS_ENVIRONMENT_PROFILE.md"));
+        assert!(plan
+            .harness_environment_profile_json
+            .ends_with("HARNESS_ENVIRONMENT_PROFILE.json"));
+        assert_eq!(plan.harness_environment_profile_status, "satisfied");
+        assert!(!plan.harness_environment_profile_id.is_empty());
+        assert!(!plan.harness_environment_profile_execution_mode.is_empty());
+        assert!(plan
+            .harness_environment_profile_capabilities
+            .contains("local_repo_harness"));
+        assert!(plan
+            .harness_environment_profile_installed_profiles
+            .contains("harness-repair-agent"));
         assert!(plan.harness_adaptation.ends_with("HARNESS_ADAPTATION.md"));
         assert!(plan
             .harness_adaptation_json
@@ -21406,15 +21577,22 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(plan_json.contains("\"score_options\""));
         assert!(plan_json.contains("\"harness_adaptation\""));
         assert!(plan_json.contains("\"harness_adaptation_effectiveness\""));
+        assert!(plan_json.contains("\"harness_environment_profile\""));
         assert!(plan_json.contains("repair partly improved Feed"));
         assert!(plan_json.contains("repair did not improve Feed"));
         let adaptation_effectiveness_json =
             fs::read_to_string(&plan.harness_adaptation_effectiveness_json).unwrap();
         assert!(adaptation_effectiveness_json
             .contains("\"schema_version\": \"octopus-harness-adaptation-effectiveness-v1\""));
+        let environment_profile_json =
+            fs::read_to_string(&plan.harness_environment_profile_json).unwrap();
+        assert!(environment_profile_json
+            .contains("\"schema_version\": \"octopus-harness-environment-profile-v1\""));
+        assert!(environment_profile_json.contains("\"execution_mode\""));
         let adaptation_json = fs::read_to_string(&plan.harness_adaptation_json).unwrap();
         assert!(adaptation_json.contains("\"schema_version\": \"octopus-harness-adaptation-v1\""));
         assert!(adaptation_json.contains("\"status\": \"decision_guided\""));
+        assert!(adaptation_json.contains("\"profile_status\": \"satisfied\""));
         assert!(report
             .next
             .iter()
@@ -21423,6 +21601,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("HARNESS_ADAPTATION_EFFECTIVENESS.json")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("HARNESS_ENVIRONMENT_PROFILE.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("HARNESS_ENVIRONMENT_PROFILE.json")));
         assert!(report
             .next
             .iter()

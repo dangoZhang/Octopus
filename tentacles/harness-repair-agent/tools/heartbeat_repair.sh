@@ -437,6 +437,49 @@ def harness_adaptation_metadata(root, value, json_value=""):
     return metadata
 
 
+def harness_environment_profile_metadata(root, value, json_value=""):
+    path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
+    metadata = {
+        "harness_environment_profile": rel(path, root) if path else "",
+        "harness_environment_profile_json": rel(json_path, root) if json_path else "",
+        "harness_environment_profile_status": "",
+        "harness_environment_profile_id": "",
+        "harness_environment_profile_execution_mode": "",
+        "harness_environment_profile_provider_mode": "",
+        "harness_environment_profile_desktop_mode": "",
+        "harness_environment_profile_capabilities": "",
+        "harness_environment_profile_constraints": "",
+        "harness_environment_profile_installed_profiles": "",
+        "harness_environment_profile_next_need_kind": "",
+        "harness_environment_profile_next_need_query": "",
+        "harness_environment_profile_preview": "",
+    }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        next_need = data.get("next_need") if isinstance(data.get("next_need"), dict) else {}
+        metadata.update({
+            "harness_environment_profile_status": str(data.get("status") or ""),
+            "harness_environment_profile_id": compact(data.get("profile_id") or "", 220),
+            "harness_environment_profile_execution_mode": str(data.get("execution_mode") or ""),
+            "harness_environment_profile_provider_mode": str(data.get("provider_mode") or ""),
+            "harness_environment_profile_desktop_mode": str(data.get("desktop_mode") or ""),
+            "harness_environment_profile_capabilities": compact(",".join(data.get("capabilities") or []), 320),
+            "harness_environment_profile_constraints": compact(",".join(data.get("constraints") or []), 320),
+            "harness_environment_profile_installed_profiles": compact(",".join(data.get("installed_profiles") or []), 320),
+            "harness_environment_profile_next_need_kind": str(next_need.get("kind") or ""),
+            "harness_environment_profile_next_need_query": compact(next_need.get("query") or "", 320),
+            "harness_environment_profile_preview": compact(json.dumps(data, sort_keys=True), 700),
+        })
+    if path and path.exists() and not metadata["harness_environment_profile_preview"]:
+        metadata["harness_environment_profile_preview"] = compact(path.read_text(encoding="utf-8", errors="replace"), 700)
+    return metadata
+
+
 def action_trace_metadata(root, value, json_value=""):
     path = resolve_artifact(root, value)
     json_path = resolve_artifact(root, json_value)
@@ -603,6 +646,8 @@ if latest_repair_plan:
     repair_decision_json = str(inputs.get("repair_decision_json") or "")
     harness_adaptation_effectiveness = str(inputs.get("harness_adaptation_effectiveness") or "")
     harness_adaptation_effectiveness_json = str(inputs.get("harness_adaptation_effectiveness_json") or "")
+    harness_environment_profile = str(inputs.get("harness_environment_profile") or "")
+    harness_environment_profile_json = str(inputs.get("harness_environment_profile_json") or "")
     harness_adaptation = str(inputs.get("harness_adaptation") or "")
     harness_adaptation_json = str(inputs.get("harness_adaptation_json") or "")
     action_trace = str(inputs.get("action_trace") or "")
@@ -619,6 +664,11 @@ if latest_repair_plan:
         root,
         harness_adaptation_effectiveness,
         harness_adaptation_effectiveness_json,
+    )
+    environment_profile_metadata = harness_environment_profile_metadata(
+        root,
+        harness_environment_profile,
+        harness_environment_profile_json,
     )
     decision_metadata = repair_decision_metadata(
         root,
@@ -683,6 +733,10 @@ if latest_repair_plan:
     adaptation_focus = adaptation_metadata.get("harness_adaptation_focus", "")
     adaptation_effectiveness_used = adaptation_effectiveness_metadata.get("harness_adaptation_effectiveness_used_count", "")
     adaptation_effectiveness_success = adaptation_effectiveness_metadata.get("harness_adaptation_effectiveness_success_rate", "")
+    environment_profile_status = environment_profile_metadata.get("harness_environment_profile_status", "")
+    environment_profile_mode = environment_profile_metadata.get("harness_environment_profile_execution_mode", "")
+    environment_profile_capabilities = environment_profile_metadata.get("harness_environment_profile_capabilities", "")
+    environment_profile_constraints = environment_profile_metadata.get("harness_environment_profile_constraints", "")
     adaptation_next_kind = adaptation_metadata.get("harness_adaptation_next_need_kind", "")
     adaptation_next_query = adaptation_metadata.get("harness_adaptation_next_need_query", "")
     next_need_source = "repair_plan"
@@ -787,6 +841,8 @@ if latest_repair_plan:
             f"lessons={lesson_count or '0'} reuse={lesson_reuse or '0'} avoid={lesson_avoid or '0'}; "
             f"effectiveness={effectiveness_used or '0'} success_rate={effectiveness_success or '0.00'}; "
             f"decision={decision_kind or 'none'} focus={decision_focus or 'none'}; "
+            f"environment_profile={environment_profile_status or 'none'} mode={environment_profile_mode or 'none'} "
+            f"capabilities={environment_profile_capabilities or 'none'} constraints={environment_profile_constraints or 'none'}; "
             f"adaptation={adaptation_status or 'none'} focus={adaptation_focus or 'none'} "
             f"adaptation_effectiveness={adaptation_effectiveness_used or '0'} success_rate={adaptation_effectiveness_success or '0.00'}; "
             "review before grant/apply/score"
@@ -808,6 +864,8 @@ if latest_repair_plan:
         "repair_decision_json": repair_decision_json,
         "harness_adaptation_effectiveness": harness_adaptation_effectiveness,
         "harness_adaptation_effectiveness_json": harness_adaptation_effectiveness_json,
+        "harness_environment_profile": harness_environment_profile,
+        "harness_environment_profile_json": harness_environment_profile_json,
         "harness_adaptation": harness_adaptation,
         "harness_adaptation_json": harness_adaptation_json,
         "action_trace": action_trace,
@@ -834,6 +892,7 @@ if latest_repair_plan:
     repair_metadata.update(lessons_metadata)
     repair_metadata.update(effectiveness_metadata)
     repair_metadata.update(adaptation_effectiveness_metadata)
+    repair_metadata.update(environment_profile_metadata)
     repair_metadata.update(decision_metadata)
     repair_metadata.update(adaptation_metadata)
     repair_metadata.update(action_metadata)
