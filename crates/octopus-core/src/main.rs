@@ -8743,7 +8743,7 @@ fn repair_continue_report(
     *state = harness.state;
     state.save(state_path).map_err(|error| error.to_string())?;
     let mut next = vec![
-        "octopus repair score <trace-index> satisfied \"repair improved harness\"".to_string(),
+        repair_score_command(trace_index.as_deref()),
         "octopus report".to_string(),
         "octopus beat 200".to_string(),
     ];
@@ -8766,6 +8766,11 @@ fn feedback_trace_index(feedback: &Feedback) -> Option<String> {
         .feeds
         .iter()
         .find_map(|feed| feed.metadata.get("feed_trace_index").cloned())
+}
+
+fn repair_score_command(trace_index: Option<&str>) -> String {
+    let index = trace_index.unwrap_or("<trace-index>");
+    format!("octopus repair score {index} satisfied \"repair improved harness\"")
 }
 
 fn latest_repair_plan_in_workspace(workspace: &Path) -> Option<PathBuf> {
@@ -20798,6 +20803,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.starts_with("octopus feedback ")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("repair score 2")));
+        assert!(!report
+            .next
+            .iter()
+            .any(|command| command.contains("<trace-index>")));
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
