@@ -87,7 +87,7 @@ Local OpenAI-compatible servers and gateway routers use the same provider shape.
 
 Octopus already starts as one local product: app, pet, docs, recipes, installer page, provider checks, seed tentacles, and release evidence.
 
-The release evidence is recorded in [docs/real-machine-test.md](docs/real-machine-test.md). The v0.1.0 line includes installed-binary checks, local app checks, provider matrix evidence, and minimal SWE/Claw/Wild benchmark records.
+The release evidence is recorded in [docs/real-machine-test.md](docs/real-machine-test.md). The v0.1.0 line includes installed-binary checks, local app checks, provider matrix evidence, field-pool evidence, and minimal SWE/Claw/Wild benchmark records.
 
 The GitHub Pages app is a zero-install taste of the idea. It sends requests directly to the endpoint you enter; the project does not proxy API keys.
 

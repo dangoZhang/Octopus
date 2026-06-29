@@ -87,7 +87,7 @@ octopus provider check
 
 Octopus 已经是一个本地产品：app、pet、docs、recipes、installer page、provider checks、seed tentacles 和 release evidence 都在同一条启动路径里。
 
-发布证据记录在 [docs/real-machine-test.md](docs/real-machine-test.md)。v0.1.0 已记录 installed binary、本地 app、provider matrix、最小 SWE/Claw/Wild benchmark 证据。
+发布证据记录在 [docs/real-machine-test.md](docs/real-machine-test.md)。v0.1.0 已记录 installed binary、本地 app、provider matrix、field pool、最小 SWE/Claw/Wild benchmark 证据。
 
 GitHub Pages app 用来零安装体验想法。它直接请求你填写的 endpoint；项目不代理 API key。
 

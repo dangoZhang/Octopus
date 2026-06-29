@@ -13,6 +13,7 @@ Release checklist:
 - `docs/product-gap.md` records current shape, filled gaps, and next fill.
 - CI stays green for Rust, manifests, tentacle runtime checks, pet page, and install path.
 - `octopus preflight --live` is the release-readiness summary before every `0.1.0+` tag.
+- Release evidence records the field pool with `fields summary` and a filled `Field pool` result.
 - Pages deploys `index.html`, `app.html`, `pet.html`, quickstart, architecture, references, and self-iteration docs.
 - Version changes land together in `crates/octopus-core/Cargo.toml` and `Cargo.lock`.
 - `0.0.24` must complete `docs/core-audit.md`: full source audit, redundant development residue removal, misaligned fallback removal, and core/harness boundary cleanup.
@@ -23,6 +24,7 @@ Real-machine test gate for `0.1.0` and later tags:
 
 - Install from GitHub with `cargo install --git ... --force`.
 - Run `octopus --version`, `doctor`, `first-run`, `chat`, `goal refine`, `brain --goal --save`, `pet harness`, and `preflight` on a clean machine.
+- Run `octopus fields summary` and fill the `Field pool` result in the real-machine record.
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 

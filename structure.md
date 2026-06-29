@@ -90,7 +90,7 @@ Octopus/
 | Local app bridge | Local HTTP/SSE server, app policy, command allow-list, static app/docs/demo fallback | `app_bridge.rs`, `docs/app.html` | 2,348 |
 | Release and install gates | Release records, benchmark evidence, download/install manifest, real-machine checks | `release_gate.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 1,022 |
 | Pet and visual state | Pixel Octopus state, SVG/export helpers, native read-only observer, HTML preview | `pet.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 1,505 |
-| Product docs/site | README, landing/demo/tutorial/use/recipes/about/docs pages | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 7,965 |
+| Product docs/site | README, landing/demo/tutorial/use/recipes/about/docs pages | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 7,975 |
 | Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, repair templates, repair surfaces | `tentacles/**` | 6,950 |
 
 ## Core, Distinctive, Editable
