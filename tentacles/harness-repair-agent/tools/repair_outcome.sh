@@ -122,6 +122,26 @@ def action_trace_summary(workspace, session_path, session):
     }
 
 
+def repair_plan_commands(workspace, session_path, session):
+    path = resolve_session_artifact(
+        workspace,
+        session_path,
+        session.get("repair_plan"),
+        "REPAIR_PLAN.json",
+    )
+    data = load_json(path) if path else {}
+    commands = data.get("commands") if isinstance(data.get("commands"), dict) else {}
+    checks = commands.get("checks") if isinstance(commands.get("checks"), list) else []
+    score_options = commands.get("score_options") if isinstance(commands.get("score_options"), list) else []
+    return {
+        "check": " && ".join(str(item) for item in checks),
+        "grant": str(commands.get("grant") or ""),
+        "apply": str(commands.get("apply") or ""),
+        "score": str(commands.get("score") or ""),
+        "score_options": " && ".join(str(item) for item in score_options),
+    }
+
+
 def parse_input(payload, args):
     query = payload.get("need", {}).get("query", "")
     tokens = list(args)
@@ -214,6 +234,7 @@ if outcome_status is None:
 session = load_json(session_path)
 action_trace = action_trace_summary(workspace, session_path, session)
 draft = session.get("draft") if isinstance(session.get("draft"), dict) else {}
+repair_commands = repair_plan_commands(workspace, session_path, session)
 record = {
     "schema_version": "octopus-harness-repair-outcome-v1",
     "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -226,6 +247,11 @@ record = {
     "draft_status": str(draft.get("status") or "unknown"),
     "draft_prefix": str(draft.get("prefix") or ""),
     "draft_model": str(draft.get("model") or ""),
+    "repair_command_check": repair_commands["check"],
+    "repair_command_grant": repair_commands["grant"],
+    "repair_command_apply": repair_commands["apply"],
+    "repair_command_score": repair_commands["score"],
+    "repair_command_score_options": repair_commands["score_options"],
     "action_trace_json": action_trace["json"],
     "action_trace_status": action_trace["status"],
     "action_trace_stage_count": action_trace["stage_count"],
@@ -274,6 +300,9 @@ outcome_md.write_text(
         f"draft_status: `{record['draft_status']}`",
         f"draft_prefix: `{record['draft_prefix'] or 'none'}`",
         f"draft_model: `{record['draft_model'] or 'none'}`",
+        f"repair_command_check: `{record['repair_command_check'] or 'none'}`",
+        f"repair_command_apply: `{record['repair_command_apply'] or 'none'}`",
+        f"repair_command_score: `{record['repair_command_score'] or 'none'}`",
         f"action_trace_json: `{record['action_trace_json'] or 'missing'}`",
         f"action_trace_status: `{record['action_trace_status']}`",
         f"action_trace_stages: `{record['action_trace_stage_count'] or 'unknown'}`",
@@ -307,6 +336,11 @@ metadata = {
     "draft_status": record["draft_status"],
     "draft_prefix": record["draft_prefix"],
     "draft_model": record["draft_model"],
+    "repair_command_check": record["repair_command_check"],
+    "repair_command_grant": record["repair_command_grant"],
+    "repair_command_apply": record["repair_command_apply"],
+    "repair_command_score": record["repair_command_score"],
+    "repair_command_score_options": record["repair_command_score_options"],
     "action_trace_json": record["action_trace_json"],
     "action_trace_status": record["action_trace_status"],
     "action_trace_stage_count": record["action_trace_stage_count"],

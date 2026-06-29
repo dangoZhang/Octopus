@@ -72,6 +72,7 @@ Updated: 2026-06-29
 - Memory is a heart/beat; visual is the color-changing pet layer.
 - Harness repair now writes `HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS.md/json`, so scored outcomes teach whether responding to environment drift actually helped.
 - Harness repair now writes `REPAIR_DRAFT_EFFECTIVENESS.md/json`, so provider-generated repair drafts get scored into future repair prompts instead of staying one-off text.
+- Harness repair now writes `REPAIR_COMMAND_EFFECTIVENESS.md/json`, so scored outcomes teach which reviewable check/grant/apply/score command recipes should be reused or avoided.
 - LLM adapters support backend-aware providers for chat goal refinement, clean-brain Goal/Intent/Brief/Align/Clarify/Agenda/Scout/Deliberate/Council/Synthesize/Explore/Rewrite/Queue/Memory jobs, manifest tool planning, and harness evolution candidate generation.
 - `providers` and provider env support Codex CLI OAuth, API-key clouds, Z.AI/BigModel, local servers, LiteLLM gateway, routers, DeepSeek, Groq, Gemini, DashScope, Moonshot, LM Studio, and custom endpoints.
 - `provider status` reports a compact provider coverage matrix for Goal chat, clean-brain calls, tentacle planning, and harness evolution, followed by detailed model slots including intent, brief, alignment, clarification, agenda, scout, memory, and synthesis. It does not make a network call.
