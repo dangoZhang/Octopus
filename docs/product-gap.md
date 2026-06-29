@@ -77,6 +77,7 @@ Updated: 2026-06-29
 - Harness repair now writes `REPAIR_DRAFT_STRATEGY_EFFECTIVENESS.md/json`, so reviewed outcomes can teach whether provider-draft strategy choices should be reused, tightened, or inspected.
 - Harness repair now writes `REPAIR_PATCH_DRAFT.md/json` and `REPAIR_PATCH_DRAFT_EFFECTIVENESS.md/json`, so provider repair drafts can carry reviewable patch intent and later outcome scores teach whether that patch-draft mode helped.
 - Harness repair now writes `REPAIR_PATCH_REVIEW.md/json`, `REPAIR_PATCH_APPLY.md/json`, `REPAIR_PATCH_VERIFY.md/json`, and patch-review effectiveness memory, so provider patch drafts are checked locally, applied only after a harness-write grant, verified with the target tentacle check, and then handed back to heartbeat for score/learning.
+- Harness repair now writes `REPAIR_PATCH_APPLY_EFFECTIVENESS.md/json`, so scored outcomes teach whether grant-bound patch application helped later repair sessions.
 - Harness repair now writes `REPAIR_PATCH_LEARNING.md/json`, so scored apply+verify outcomes become compact reuse/avoid/observe evidence for the next tool-side repair session.
 - Harness repair now writes `REPAIR_PATCH_LEARNING_EFFECTIVENESS.md/json`, so outcomes that used verified-patch learning can teach whether that learning should be reused or avoided.
 - Harness repair now writes `REPAIR_PATCH_STRATEGY.md/json`, so patch draft/review/apply/verify/learning evidence can drive the next heartbeat repair Need without adding patch mechanics to the clean brain.

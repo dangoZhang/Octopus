@@ -490,6 +490,44 @@ def repair_patch_review_effectiveness_metadata(root, value, json_value=""):
     return metadata
 
 
+def repair_patch_apply_effectiveness_metadata(root, value, json_value=""):
+    path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
+    metadata = {
+        "repair_patch_apply_effectiveness": rel(path, root) if path else "",
+        "repair_patch_apply_effectiveness_json": rel(json_path, root) if json_path else "",
+        "repair_patch_apply_effectiveness_used_count": "",
+        "repair_patch_apply_effectiveness_satisfied_count": "",
+        "repair_patch_apply_effectiveness_partial_count": "",
+        "repair_patch_apply_effectiveness_failed_count": "",
+        "repair_patch_apply_effectiveness_success_rate": "",
+        "repair_patch_apply_effectiveness_failure_rate": "",
+        "repair_patch_apply_effectiveness_top_reuse": "",
+        "repair_patch_apply_effectiveness_top_avoid": "",
+        "repair_patch_apply_effectiveness_preview": "",
+    }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        metadata.update({
+            "repair_patch_apply_effectiveness_used_count": str(data.get("used_count") or 0),
+            "repair_patch_apply_effectiveness_satisfied_count": str(data.get("satisfied_count") or 0),
+            "repair_patch_apply_effectiveness_partial_count": str(data.get("partial_count") or 0),
+            "repair_patch_apply_effectiveness_failed_count": str(data.get("failed_count") or 0),
+            "repair_patch_apply_effectiveness_success_rate": str(data.get("success_rate") or "0.00"),
+            "repair_patch_apply_effectiveness_failure_rate": str(data.get("failure_rate") or "0.00"),
+            "repair_patch_apply_effectiveness_top_reuse": compact(data.get("top_reuse") or "", 320),
+            "repair_patch_apply_effectiveness_top_avoid": compact(data.get("top_avoid") or "", 320),
+            "repair_patch_apply_effectiveness_preview": compact(json.dumps(data, sort_keys=True), 700),
+        })
+    if path and path.exists() and not metadata["repair_patch_apply_effectiveness_preview"]:
+        metadata["repair_patch_apply_effectiveness_preview"] = compact(path.read_text(encoding="utf-8", errors="replace"), 700)
+    return metadata
+
+
 def repair_patch_apply_metadata(root, value, json_value=""):
     path = resolve_artifact(root, value)
     json_path = resolve_artifact(root, json_value)
@@ -1472,6 +1510,8 @@ if latest_repair_plan:
     repair_patch_review_effectiveness_json = str(inputs.get("repair_patch_review_effectiveness_json") or "")
     repair_patch_apply = str(inputs.get("repair_patch_apply") or "")
     repair_patch_apply_json = str(inputs.get("repair_patch_apply_json") or "")
+    repair_patch_apply_effectiveness = str(inputs.get("repair_patch_apply_effectiveness") or "")
+    repair_patch_apply_effectiveness_json = str(inputs.get("repair_patch_apply_effectiveness_json") or "")
     repair_patch_verify = str(inputs.get("repair_patch_verify") or "")
     repair_patch_verify_json = str(inputs.get("repair_patch_verify_json") or "")
     repair_patch_learning = str(inputs.get("repair_patch_learning") or "")
@@ -1557,6 +1597,11 @@ if latest_repair_plan:
         root,
         repair_patch_apply,
         repair_patch_apply_json,
+    )
+    patch_apply_effectiveness_metadata = repair_patch_apply_effectiveness_metadata(
+        root,
+        repair_patch_apply_effectiveness,
+        repair_patch_apply_effectiveness_json,
     )
     patch_verify_metadata = repair_patch_verify_metadata(
         root,
@@ -1700,6 +1745,8 @@ if latest_repair_plan:
     patch_apply_status = patch_apply_metadata.get("repair_patch_apply_status", "")
     patch_apply_applied = patch_apply_metadata.get("repair_patch_apply_applied", "")
     patch_apply_summary = patch_apply_metadata.get("repair_patch_apply_summary", "")
+    patch_apply_effectiveness_used = patch_apply_effectiveness_metadata.get("repair_patch_apply_effectiveness_used_count", "")
+    patch_apply_effectiveness_success = patch_apply_effectiveness_metadata.get("repair_patch_apply_effectiveness_success_rate", "")
     patch_verify_status = patch_verify_metadata.get("repair_patch_verify_status", "")
     patch_verify_passed = patch_verify_metadata.get("repair_patch_verify_passed", "")
     patch_verify_summary = patch_verify_metadata.get("repair_patch_verify_summary", "")
@@ -1977,6 +2024,7 @@ if latest_repair_plan:
             f"patch_review={patch_review_status or 'none'} check={patch_review_check or 'none'}; "
             f"patch_review_effectiveness={patch_review_effectiveness_used or '0'} success_rate={patch_review_effectiveness_success or '0.00'}; "
             f"patch_apply={patch_apply_status or 'none'} applied={patch_apply_applied or 'false'}; "
+            f"patch_apply_effectiveness={patch_apply_effectiveness_used or '0'} success_rate={patch_apply_effectiveness_success or '0.00'}; "
             f"patch_verify={patch_verify_status or 'none'} passed={patch_verify_passed or 'false'}; "
             f"patch_learning={patch_learning_status or 'none'} used={patch_learning_used or '0'} verified={patch_learning_verified or '0'} verified_success_rate={patch_learning_verified_success or '0.00'}; "
             f"patch_learning_effectiveness={patch_learning_effectiveness_used or '0'} success_rate={patch_learning_effectiveness_success or '0.00'}; "
@@ -2027,6 +2075,8 @@ if latest_repair_plan:
         "repair_patch_review_effectiveness_json": repair_patch_review_effectiveness_json,
         "repair_patch_apply": repair_patch_apply,
         "repair_patch_apply_json": repair_patch_apply_json,
+        "repair_patch_apply_effectiveness": repair_patch_apply_effectiveness,
+        "repair_patch_apply_effectiveness_json": repair_patch_apply_effectiveness_json,
         "repair_patch_verify": repair_patch_verify,
         "repair_patch_verify_json": repair_patch_verify_json,
         "repair_patch_learning": repair_patch_learning,
@@ -2093,6 +2143,7 @@ if latest_repair_plan:
     repair_metadata.update(patch_review_metadata)
     repair_metadata.update(patch_review_effectiveness_metadata)
     repair_metadata.update(patch_apply_metadata)
+    repair_metadata.update(patch_apply_effectiveness_metadata)
     repair_metadata.update(patch_verify_metadata)
     repair_metadata.update(patch_learning_metadata)
     repair_metadata.update(patch_learning_effectiveness_metadata)
