@@ -1,6 +1,6 @@
 {
   "id": "code",
-  "version": "0.2.0-dev",
+  "version": "0.1.x",
   "description": "Local code reading, small edits, tests, and patch summaries.",
   "task_schema": {
     "inputs": ["repo path", "goal", "constraints"],
@@ -24,6 +24,16 @@
       "id": "code-mini-1",
       "goal": "Update one documentation sentence and verify the diff only touches that file.",
       "expected_feed": "A scoped diff summary and git diff verification."
+    },
+    {
+      "id": "code-mini-2",
+      "goal": "Make a tiny local code fixture easier to read without changing its output, then verify the before/after result.",
+      "expected_feed": "Changed file path, behavior-preserving check output, and a scoped diff summary."
+    },
+    {
+      "id": "code-mini-3",
+      "goal": "Add one small parser guard to a local fixture, then verify both the normal path and the guarded edge case.",
+      "expected_feed": "Guarded condition, changed file path, normal-case check, edge-case check, and scoped diff summary."
     }
   ]
 }

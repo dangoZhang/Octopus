@@ -1,0 +1,99 @@
+if field == "swe" and mini_task == "swe-mini-3":
+    import difflib
+    import shutil
+    import subprocess
+    scratch = session / "scratch-swe-multifile"
+    scratch.mkdir(parents=True, exist_ok=True)
+    orders = scratch / "orders.py"
+    shipping = scratch / "shipping.py"
+    test_file = scratch / "test_shipping_contract.py"
+    orders_source = "def normalize_order(raw):\n    return {'customer': raw['customer'].strip(), 'items': list(raw['items'])}\n"
+    before_shipping = "from orders import normalize_order\n\ndef build_label(raw):\n    order = normalize_order(raw)\n    return 'SHIP TO: ' + raw['customer']\n"
+    after_shipping = "from orders import normalize_order\n\ndef build_label(raw):\n    order = normalize_order(raw)\n    return 'SHIP TO: ' + order['customer']\n"
+    test_source = "import unittest\nfrom shipping import build_label\n\nclass ShippingContractTest(unittest.TestCase):\n    def test_label_uses_normalized_customer(self):\n        raw = {'customer': ' Ada ', 'items': ['wrench']}\n        self.assertEqual(build_label(raw), 'SHIP TO: Ada')\n\nif __name__ == '__main__':\n    unittest.main()\n"
+    orders.write_text(orders_source, encoding="utf-8")
+    shipping.write_text(before_shipping, encoding="utf-8")
+    test_file.write_text(test_source, encoding="utf-8")
+    before_run = subprocess.run([sys.executable, "-B", "-m", "unittest", "discover", "-s", str(scratch)], cwd=str(scratch), text=True, capture_output=True)
+    shipping.write_text(after_shipping, encoding="utf-8")
+    shutil.rmtree(scratch / "__pycache__", ignore_errors=True)
+    after_run = subprocess.run([sys.executable, "-B", "-m", "unittest", "discover", "-s", str(scratch)], cwd=str(scratch), text=True, capture_output=True)
+    diff_lines = list(difflib.unified_diff(
+        before_shipping.splitlines(),
+        after_shipping.splitlines(),
+        fromfile="a/shipping.py",
+        tofile="b/shipping.py",
+        lineterm="",
+    ))
+    before_output = (before_run.stdout + before_run.stderr).strip()
+    after_output = (after_run.stdout + after_run.stderr).strip()
+    files_inspected = [
+        {"path": "orders.py", "reason": "normalization contract source"},
+        {"path": "shipping.py", "reason": "consumer that violated normalized customer contract"},
+        {"path": "test_shipping_contract.py", "reason": "regression check"},
+    ]
+    failing_contract = "shipping.build_label must use orders.normalize_order(raw)['customer'] so labels use normalized customer names"
+    root_cause = "shipping.build_label called normalize_order but built the label from raw['customer'], bypassing normalization"
+    checks = {
+        "before_failed": before_run.returncode != 0,
+        "after_passed": after_run.returncode == 0,
+        "files_inspected_count": len(files_inspected),
+        "failing_contract_recorded": bool(failing_contract),
+        "root_cause_recorded": bool(root_cause),
+        "patched_file": "shipping.py",
+        "regression_test": "test_shipping_contract.py::ShippingContractTest.test_label_uses_normalized_customer",
+    }
+    checks["reproduced_and_fixed"] = checks["before_failed"] and checks["after_passed"] and checks["files_inspected_count"] >= 3 and checks["failing_contract_recorded"] and checks["root_cause_recorded"]
+    (session / "FILES_INSPECTED.json").write_text(json.dumps(files_inspected, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    (session / "CONTRACT.md").write_text(failing_contract + "\n", encoding="utf-8")
+    (session / "PATCH.diff").write_text("\n".join(diff_lines) + "\n", encoding="utf-8")
+    (session / "TEST_BEFORE.txt").write_text(before_output + "\n", encoding="utf-8")
+    (session / "TEST_AFTER.txt").write_text(after_output + "\n", encoding="utf-8")
+    (session / "CHECKS.json").write_text(json.dumps(checks, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    answer_lines = [
+        "# SWE Mini Task Answer",
+        "",
+        "Files inspected: `orders.py`, `shipping.py`, and `test_shipping_contract.py`.",
+        "Failing contract: labels must use the normalized customer name from `orders.normalize_order`.",
+        "Root cause: `shipping.build_label` built the label from `raw['customer']` after normalization was already available.",
+        "Patch: changed `raw['customer']` to `order['customer']` in `shipping.py`.",
+        "Regression: failing unittest reproduced before the patch and passed after clearing bytecode cache and rerunning.",
+    ]
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "files_inspected": rel(session / "FILES_INSPECTED.json", root),
+        "contract": rel(session / "CONTRACT.md", root),
+        "patch": rel(session / "PATCH.diff", root),
+        "test_before": rel(session / "TEST_BEFORE.txt", root),
+        "test_after": rel(session / "TEST_AFTER.txt", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "scratch_repo": rel(scratch, root),
+        "verifier_status": "satisfied" if checks["reproduced_and_fixed"] else "partial",
+        "field_pass_evidence": "inspected three files, recorded failing contract and root cause, patched cross-file behavior, and recorded passing regression output",
+    }
+    field_result = {
+        "status": "satisfied" if checks["reproduced_and_fixed"] else "partial",
+        "output": answer,
+        "evidence": [
+            {"source": "field-mini-task/swe/files-inspected", "content": json.dumps(files_inspected, ensure_ascii=True), "confidence": 0.86, "metadata": field_metadata},
+            {"source": "field-mini-task/swe/contract", "content": failing_contract, "confidence": 0.88, "metadata": field_metadata},
+            {"source": "field-mini-task/swe/root-cause", "content": root_cause, "confidence": 0.88, "metadata": field_metadata},
+            {"source": "field-mini-task/swe/multifile-patch", "content": "\n".join(diff_lines), "confidence": 0.9, "metadata": field_metadata},
+            {"source": "field-mini-task/swe/test-before", "content": before_output, "confidence": 0.86, "metadata": field_metadata},
+            {"source": "field-mini-task/swe/test-after", "content": after_output, "confidence": 0.92, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

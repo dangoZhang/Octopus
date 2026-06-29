@@ -1,5 +1,5 @@
 {
-  "current_version": "0.1.0",
+  "current_version": "0.1.1",
   "repository": "https://github.com/dangoZhang/Octopus",
   "source_archive_url": "https://github.com/dangoZhang/Octopus/archive/refs/heads/main.zip",
   "cargo_package": "octopus-core",

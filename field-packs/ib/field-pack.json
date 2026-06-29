@@ -1,6 +1,6 @@
 {
   "id": "ib",
-  "version": "0.2.0-dev",
+  "version": "0.1.x",
   "description": "Investment-banking style spreadsheet, memo, market-data, and compliance-bounded analysis tasks.",
   "task_schema": {
     "inputs": ["company or asset", "data sources", "analysis request", "compliance constraints"],
@@ -24,6 +24,16 @@
       "id": "ib-mini-1",
       "goal": "Create a tiny revenue growth table from provided numbers and draft a neutral memo sentence.",
       "expected_feed": "Checked table math, assumptions, and a non-advisory memo line."
+    },
+    {
+      "id": "ib-mini-2",
+      "goal": "Build a tiny three-year EBITDA margin table and draft a neutral risk note with assumptions separated.",
+      "expected_feed": "Checked margin table, stated assumptions, and a non-advisory risk note."
+    },
+    {
+      "id": "ib-mini-3",
+      "goal": "Create a tiny sensitivity table for revenue growth versus margin, then draft a neutral diligence question.",
+      "expected_feed": "Sensitivity table, formula checks, separated assumptions, and a non-advisory diligence question."
     }
   ]
 }

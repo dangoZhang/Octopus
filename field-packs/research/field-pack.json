@@ -1,6 +1,6 @@
 {
   "id": "research",
-  "version": "0.2.0-dev",
+  "version": "0.1.x",
   "description": "Paper, report, and claim-grounding tasks with source-aware synthesis.",
   "task_schema": {
     "inputs": ["claim", "domain", "source policy"],
@@ -24,6 +24,16 @@
       "id": "research-mini-1",
       "goal": "Ground one sentence about octopus distributed control using provided sources.",
       "expected_feed": "A short synthesis with source coverage and uncertainty."
+    },
+    {
+      "id": "research-mini-2",
+      "goal": "Compare two project reference claims and separate biological analogy from benchmark evidence.",
+      "expected_feed": "Two cited claim mappings, one explicit limitation, and no benchmark overclaim."
+    },
+    {
+      "id": "research-mini-3",
+      "goal": "Build a three-claim evidence map for one Octopus architecture paragraph and label source-backed, inferred, and unverified parts.",
+      "expected_feed": "Three claim rows with source coverage, inference labels, uncertainty notes, and no fabricated citation."
     }
   ]
 }

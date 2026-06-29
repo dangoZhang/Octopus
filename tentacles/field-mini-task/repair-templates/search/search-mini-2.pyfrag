@@ -1,0 +1,72 @@
+if field == "search" and mini_task == "search-mini-2":
+    def source_date(path):
+        if not path.exists():
+            return "missing"
+        return dt.datetime.fromtimestamp(path.stat().st_mtime, dt.timezone.utc).strftime("%Y-%m-%d")
+    source_paths = [root / "README.md", root / "docs" / "quickstart.md", root / "docs" / "use.html"]
+    command_patterns = ["curl -fsSL", "cargo install", "octopus start --open", "octopus first-run"]
+    sources = []
+    for path in source_paths:
+        content = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+        snippets = [pattern for pattern in command_patterns if pattern in content]
+        sources.append({
+            "path": rel(path, root),
+            "date": source_date(path),
+            "exists": path.exists(),
+            "command_snippets": snippets,
+            "mentions_start": "octopus start --open" in content,
+            "mentions_first_run": "octopus first-run" in content,
+        })
+    start_sources = [source["path"] for source in sources if source["mentions_start"]]
+    first_run_sources = [source["path"] for source in sources if source["mentions_first_run"]]
+    audit = {
+        "source_count": len(sources),
+        "existing_sources": len([source for source in sources if source["exists"]]),
+        "start_path_agreement": len(start_sources) >= 2,
+        "first_run_coverage": len(first_run_sources) >= 2,
+        "start_sources": start_sources,
+        "first_run_sources": first_run_sources,
+        "remaining_gaps": [],
+    }
+    if audit["existing_sources"] < 3:
+        audit["remaining_gaps"].append("one or more expected docs are missing")
+    if not audit["start_path_agreement"]:
+        audit["remaining_gaps"].append("fewer than two docs show octopus start --open")
+    if not audit["first_run_coverage"]:
+        audit["remaining_gaps"].append("fewer than two docs show octopus first-run")
+    passed = audit["existing_sources"] == 3 and audit["start_path_agreement"] and audit["first_run_coverage"]
+    (session / "SOURCES.json").write_text(json.dumps(sources, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    (session / "AUDIT.json").write_text(json.dumps(audit, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    answer_lines = ["# Search Mini Task Answer", "", "Install/start path audit across three local docs:"]
+    for source in sources:
+        answer_lines.append(f"- {source['path']} ({source['date']}): commands={', '.join(source['command_snippets']) or 'none'}")
+    answer_lines.extend(["", f"Agreement: start_path={audit['start_path_agreement']}; first_run={audit['first_run_coverage']}", "Remaining gaps: " + (", ".join(audit["remaining_gaps"]) or "none")])
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "sources": rel(session / "SOURCES.json", root),
+        "audit": rel(session / "AUDIT.json", root),
+        "verifier_status": "satisfied" if passed else "partial",
+        "field_pass_evidence": "three local docs audited for install/start commands with agreement and gap notes",
+    }
+    field_result = {
+        "status": "satisfied" if passed else "partial",
+        "output": answer,
+        "evidence": [
+            {"source": "field-mini-task/search/docs", "content": json.dumps(sources, ensure_ascii=True), "confidence": 0.88, "metadata": field_metadata},
+            {"source": "field-mini-task/search/audit", "content": json.dumps(audit, ensure_ascii=True), "confidence": 0.9, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

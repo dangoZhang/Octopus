@@ -1,0 +1,55 @@
+if field == "math" and mini_task == "math-mini-2":
+    from fractions import Fraction
+    # Solve 2x + y = 7 and x - y = 1 exactly.
+    x = Fraction(8, 3)
+    y = Fraction(5, 3)
+    lhs_one = 2 * x + y
+    lhs_two = x - y
+    checks = {
+        "equation_1": "2x + y = 7",
+        "equation_2": "x - y = 1",
+        "x": f"{x.numerator}/{x.denominator}",
+        "y": f"{y.numerator}/{y.denominator}",
+        "substitution_1": f"2*({x}) + ({y}) = {lhs_one}",
+        "substitution_2": f"({x}) - ({y}) = {lhs_two}",
+        "equation_1_holds": lhs_one == 7,
+        "equation_2_holds": lhs_two == 1,
+    }
+    checks["passed"] = checks["equation_1_holds"] and checks["equation_2_holds"]
+    (session / "SOLUTION.json").write_text(json.dumps({"x": checks["x"], "y": checks["y"]}, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    (session / "CHECKS.json").write_text(json.dumps(checks, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    answer_lines = [
+        "# Math Mini Task Answer",
+        "",
+        "Solution: `x = 8/3`, `y = 5/3`.",
+        "Verification: `2*(8/3) + 5/3 = 7`; `(8/3) - (5/3) = 1`.",
+    ]
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "solution": rel(session / "SOLUTION.json", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "verifier_status": "satisfied" if checks["passed"] else "partial",
+        "field_pass_evidence": "exact linear-system solution with substitution checks",
+    }
+    field_result = {
+        "status": "satisfied" if checks["passed"] else "partial",
+        "output": answer,
+        "evidence": [
+            {"source": "field-mini-task/math/solution", "content": json.dumps({"x": checks["x"], "y": checks["y"]}, ensure_ascii=True), "confidence": 0.94, "metadata": field_metadata},
+            {"source": "field-mini-task/math/checks", "content": json.dumps(checks, ensure_ascii=True), "confidence": 0.94, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

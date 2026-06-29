@@ -33,6 +33,7 @@ tmp=$(mktemp -d)
 
 Agent tool-combo tentacles:
 
+- `field-mini-task`: generic field-task execution surface. It records sampled field mini tasks, expected Feed, and artifact paths so Octopus can evolve domain behavior from real traces; `repair-templates/` keeps task-specific runtime fragments outside the Rust core.
 - `swe-agent`: repo work through `read`, `edit`, inspection, patch, and test tools.
 - `computer-use-agent`: local UI work through configurable MCP calls, local commands, screenshots, URLs, browser status, front-window status, clipboard adapters, and desktop probes.
 - `repo-maintainer`: OAuth-bounded self-iteration with repo inspection, PR drafts, and explicit PR publishing.

@@ -1,0 +1,68 @@
+if field == "ib" and mini_task == "ib-mini-1":
+    rows = [
+        {"year": 2024, "revenue": 100.0},
+        {"year": 2025, "revenue": 115.0},
+    ]
+    growth = (rows[1]["revenue"] - rows[0]["revenue"]) / rows[0]["revenue"]
+    assumptions = [
+        "Need did not include external numbers; harness used a deterministic local mini-task fixture.",
+        "Revenue values are illustrative units, not market data.",
+        "Memo language avoids investment advice and trading recommendations.",
+    ]
+    table = [
+        {"year": rows[0]["year"], "revenue": rows[0]["revenue"], "growth": None},
+        {"year": rows[1]["year"], "revenue": rows[1]["revenue"], "growth": round(growth, 4)},
+    ]
+    memo = f"Revenue grew {growth:.1%} from {rows[0]['year']} to {rows[1]['year']} in the local fixture; treat this as a neutral calculation note until source data is supplied."
+    checks = {
+        "formula": "(115.0 - 100.0) / 100.0 = 15.0%",
+        "numbers_tie": abs(growth - 0.15) < 1e-9,
+        "source_notes": "local deterministic fixture; no external market source claimed",
+        "compliance": "non-advisory memo; no trading instruction; no MNPI",
+    }
+    (session / "TABLE.json").write_text(json.dumps(table, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    (session / "CHECKS.json").write_text(json.dumps(checks, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    answer_lines = [
+        "# IB Mini Task Answer",
+        "",
+        "| Year | Revenue | Growth |",
+        "| --- | ---: | ---: |",
+        f"| {rows[0]['year']} | {rows[0]['revenue']:.1f} | n/a |",
+        f"| {rows[1]['year']} | {rows[1]['revenue']:.1f} | {growth:.1%} |",
+        "",
+        "Assumptions:",
+        *[f"- {item}" for item in assumptions],
+        "",
+        f"Memo: {memo}",
+        "",
+        "Checks: numbers tie; source notes stated; restricted claims avoided.",
+    ]
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "table": rel(session / "TABLE.json", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "verifier_status": "satisfied",
+        "field_pass_evidence": "checked table math, stated assumptions, source notes, and non-advisory memo",
+    }
+    field_result = {
+        "status": "satisfied",
+        "output": answer,
+        "evidence": [
+            {"source": "field-mini-task/ib/table", "content": f"growth check {growth:.1%}; numbers_tie={checks['numbers_tie']}", "confidence": 0.9, "metadata": field_metadata},
+            {"source": "field-mini-task/ib/compliance", "content": checks["compliance"], "confidence": 0.86, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

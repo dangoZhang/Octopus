@@ -1,6 +1,6 @@
 {
   "id": "template",
-  "version": "0.2.0-dev",
+  "version": "0.1.x",
   "description": "Describe one task field without binding it to a fixed tool flow.",
   "task_schema": {
     "inputs": ["goal", "context", "constraints"],
@@ -24,6 +24,16 @@
       "id": "template-mini-1",
       "goal": "Run one small task in this field.",
       "expected_feed": "A checked Feed summary with verifier result."
+    },
+    {
+      "id": "template-mini-2",
+      "goal": "Run a harder task in this field after the first mini task is satisfied.",
+      "expected_feed": "A checked Feed summary, verifier result, and reusable trajectory labels."
+    },
+    {
+      "id": "template-mini-3",
+      "goal": "Run a task that combines two capabilities from this field and forces verifier-backed reuse.",
+      "expected_feed": "A compact Feed summary with action evidence, verifier result, and a reusable repair signal if it fails."
     }
   ]
 }

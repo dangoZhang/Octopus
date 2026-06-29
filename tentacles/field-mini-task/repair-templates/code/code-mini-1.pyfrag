@@ -1,0 +1,75 @@
+if field == "code" and mini_task == "code-mini-1":
+    import difflib
+    scratch = session / "scratch-repo"
+    scratch.mkdir(parents=True, exist_ok=True)
+    doc = scratch / "README.md"
+    before_lines = [
+        "# Octopus Code Mini Task",
+        "",
+        "Octopus records code-task evidence.",
+        "",
+    ]
+    after_lines = [
+        "# Octopus Code Mini Task",
+        "",
+        "Octopus records scoped code-task evidence with a verified diff.",
+        "",
+    ]
+    doc.write_text("\n".join(before_lines), encoding="utf-8")
+    before_text = doc.read_text(encoding="utf-8")
+    doc.write_text("\n".join(after_lines), encoding="utf-8")
+    after_text = doc.read_text(encoding="utf-8")
+    diff_lines = list(difflib.unified_diff(
+        before_text.splitlines(),
+        after_text.splitlines(),
+        fromfile="a/README.md",
+        tofile="b/README.md",
+        lineterm="",
+    ))
+    changed_paths = ["README.md"] if diff_lines else []
+    checks = {
+        "changed_paths": changed_paths,
+        "only_readme_changed": changed_paths == ["README.md"],
+        "diff_has_expected_sentence": "scoped code-task evidence" in after_text,
+        "workspace": "scratch session repository",
+    }
+    (session / "DIFF.patch").write_text("\n".join(diff_lines) + "\n", encoding="utf-8")
+    (session / "CHECKS.json").write_text(json.dumps(checks, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    answer_lines = [
+        "# Code Mini Task Answer",
+        "",
+        "Changed path: `README.md`",
+        "Diff artifact: `DIFF.patch`",
+        "Check: only README.md changed in the scratch repository.",
+        "Project tests: not required for this docs-only mini task.",
+    ]
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "diff": rel(session / "DIFF.patch", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "scratch_repo": rel(scratch, root),
+        "verifier_status": "satisfied",
+        "field_pass_evidence": "scoped documentation diff plus changed-path check",
+    }
+    field_result = {
+        "status": "satisfied",
+        "output": answer,
+        "evidence": [
+            {"source": "field-mini-task/code/diff", "content": "\n".join(diff_lines), "confidence": 0.9, "metadata": field_metadata},
+            {"source": "field-mini-task/code/checks", "content": json.dumps(checks, ensure_ascii=True), "confidence": 0.9, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

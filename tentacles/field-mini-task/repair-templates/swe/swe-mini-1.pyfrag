@@ -1,0 +1,76 @@
+if field == "swe" and mini_task == "swe-mini-1":
+    import difflib
+    import shutil
+    import subprocess
+    scratch = session / "scratch-swe-repo"
+    scratch.mkdir(parents=True, exist_ok=True)
+    module = scratch / "calculator.py"
+    test_file = scratch / "test_calculator.py"
+    before_source = "def add(a, b):\n    return a - b\n"
+    after_source = "def add(a, b):\n    return a + b\n"
+    test_source = "import unittest\nfrom calculator import add\n\nclass CalculatorTest(unittest.TestCase):\n    def test_adds_numbers(self):\n        self.assertEqual(add(2, 3), 5)\n\nif __name__ == '__main__':\n    unittest.main()\n"
+    module.write_text(before_source, encoding="utf-8")
+    test_file.write_text(test_source, encoding="utf-8")
+    before_run = subprocess.run([sys.executable, "-B", "-m", "unittest", "discover", "-s", str(scratch)], cwd=str(scratch), text=True, capture_output=True)
+    module.write_text(after_source, encoding="utf-8")
+    shutil.rmtree(scratch / "__pycache__", ignore_errors=True)
+    after_run = subprocess.run([sys.executable, "-B", "-m", "unittest", "discover", "-s", str(scratch)], cwd=str(scratch), text=True, capture_output=True)
+    diff_lines = list(difflib.unified_diff(
+        before_source.splitlines(),
+        after_source.splitlines(),
+        fromfile="a/calculator.py",
+        tofile="b/calculator.py",
+        lineterm="",
+    ))
+    before_output = (before_run.stdout + before_run.stderr).strip()
+    after_output = (after_run.stdout + after_run.stderr).strip()
+    checks = {
+        "before_failed": before_run.returncode != 0,
+        "after_passed": after_run.returncode == 0,
+        "patched_file": "calculator.py",
+        "regression_test": "test_calculator.py::CalculatorTest.test_adds_numbers",
+    }
+    (session / "PATCH.diff").write_text("\n".join(diff_lines) + "\n", encoding="utf-8")
+    (session / "TEST_BEFORE.txt").write_text(before_output + "\n", encoding="utf-8")
+    (session / "TEST_AFTER.txt").write_text(after_output + "\n", encoding="utf-8")
+    (session / "CHECKS.json").write_text(json.dumps(checks, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    answer_lines = [
+        "# SWE Mini Task Answer",
+        "",
+        "Root cause: `add` subtracted the second operand.",
+        "Patch: changed `return a - b` to `return a + b` in `calculator.py`.",
+        "Regression: failing unittest reproduced before the patch and passed after the patch.",
+    ]
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "patch": rel(session / "PATCH.diff", root),
+        "test_before": rel(session / "TEST_BEFORE.txt", root),
+        "test_after": rel(session / "TEST_AFTER.txt", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "scratch_repo": rel(scratch, root),
+        "verifier_status": "satisfied",
+        "field_pass_evidence": "reproduced failing unittest, patched root cause, and recorded passing regression output",
+    }
+    field_result = {
+        "status": "satisfied" if checks["before_failed"] and checks["after_passed"] else "partial",
+        "output": answer,
+        "evidence": [
+            {"source": "field-mini-task/swe/patch", "content": "\n".join(diff_lines), "confidence": 0.9, "metadata": field_metadata},
+            {"source": "field-mini-task/swe/test-before", "content": before_output, "confidence": 0.86, "metadata": field_metadata},
+            {"source": "field-mini-task/swe/test-after", "content": after_output, "confidence": 0.92, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

@@ -33,7 +33,7 @@ Heartbeat -> run data -> memory and harness updates
 
 **章鱼会变色。**
 
-像素章鱼不是装饰。它是等待、运行、记忆、harness、阻塞、成功这些状态的最小可视面。
+像素章鱼是只读桌面观察器。它读取 `.octopus/state.json`：Need 出现时头部变色，触手执行时挥动，code-as-harness 运行时吐泡泡，蓝色表示进化，红色表示卡住，Feed 返回后变绿。
 
 ## 快速安装和启动
 
@@ -48,10 +48,10 @@ octopus start --open
 ```bash
 octopus first-run "make this repo easier to use"
 octopus chat "prefer one small evidence-backed improvement"
-octopus pet
+octopus pet desktop
 ```
 
-你应该看到本地 app：`http://127.0.0.1:8765/app.html`，一个 `.octopus/state.json` 文件，一段 Feed summary，以及像素章鱼状态。
+你应该看到本地 app：`http://127.0.0.1:8765/app.html`，一个 `.octopus/state.json` 文件，一段 Feed summary，以及一个观察真实状态的原生桌面章鱼。
 
 直接从 GitHub 安装：
 
@@ -98,12 +98,21 @@ GitHub Pages app 用来零安装体验想法。它直接请求你填写的 endpo
 - [5 分钟使用教学](docs/use.html)
 - [Recipes](docs/recipes.html)
 - [架构](docs/architecture.md)
-- [v0.2.0 领域触手进化计划](docs/field-adaptation.md)
+- [领域适配 TODO](docs/field-adaptation.md)
 - [产品 gap log](docs/product-gap.md)
 
-## v0.2.0
+## TODO
 
-v0.2.0 聚焦领域适配。Octopus 需要理解不同任务领域的行为，再用轨迹、错误和修复结果改进合适的触手。
+`0.1.x` 先把 `v0.2.0` 的领域进化基建做稳。八个 field slot 属于同一个并行矩阵，worker 只决定一次并发几个槽位。
+
+平级槽位：`math`、`search`、`code`、`SWE`、`research`、`computer-use`、`IB`、`robotics`。
+每个槽位共用同一条 Need -> Feed 链路、verifier trace、repair template 和 harness evolution 闭环。
+
+- [x] 原生只读桌宠显示 Need 气泡、执行泡泡、Goal 展开、蓝色进化、红色卡住。
+- [x] Feed trace 记录 `field_pack`、verifier 结果、轨迹摘要和 repair signal。
+- [x] 领域修复代码放在 Rust kernel 外部的可编辑 harness template。
+- [x] 失败轨迹可以产出可审查 harness patch，授权后 apply、rerun、score。
+- [x] `mini-1/2/3` 是单个 field 内部训练阶梯，不给八个领域排序。
 
 ## License
 

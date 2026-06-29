@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Octopus Pixel Pet</title>
-    <meta name="description" content="A pixel Octopus pet that changes color for heartbeat, memory, harness, blocked, and success state." />
+    <meta name="description" content="A pixel Octopus pet that changes color and motion for Need, action, Feed, evolution, memory, blocked, and success state." />
     <style>
       :root {
         color-scheme: light;
@@ -76,12 +76,38 @@
       }
 
       .pet-wrap {
+        position: relative;
         display: grid;
         place-items: center;
         min-height: 430px;
+        padding: 28px;
         border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--soft);
+        overflow: hidden;
+      }
+
+      .fleet {
+        --pet-size: var(--pixel);
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: clamp(16px, 3vw, 32px);
+        max-width: 100%;
+      }
+
+      .fleet[data-count="2"],
+      .fleet[data-count="3"],
+      .fleet[data-count="4"] {
+        --pixel: clamp(9px, 2.6vw, 18px);
+      }
+
+      .fleet[data-count="5"],
+      .fleet[data-count="6"],
+      .fleet[data-count="7"],
+      .fleet[data-count="8"] {
+        --pixel: clamp(7px, 2vw, 14px);
       }
 
       .pixel-pet {
@@ -90,6 +116,10 @@
         grid-auto-rows: var(--pixel);
         gap: 2px;
         image-rendering: pixelated;
+        border: 0;
+        background: transparent;
+        padding: 0;
+        cursor: pointer;
       }
 
       .pixel {
@@ -101,6 +131,14 @@
       .pixel.body {
         background: var(--pet);
         box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.12);
+      }
+
+      .pixel.head {
+        background: var(--head, var(--pet));
+      }
+
+      .pixel.tentacle {
+        transform-origin: 50% 0;
       }
 
       .pixel.eye {
@@ -124,6 +162,105 @@
         padding: 22px;
       }
 
+      .goal-toggle {
+        position: absolute;
+        top: 16px;
+        left: 50%;
+        min-height: 36px;
+        transform: translateX(-50%);
+        padding: 0 14px;
+        background: rgba(255, 255, 255, 0.86);
+        backdrop-filter: blur(14px);
+        z-index: 3;
+      }
+
+      .goal-sheet {
+        position: absolute;
+        inset: auto 18px 18px 18px;
+        max-height: 42%;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.92);
+        padding: 14px;
+        box-shadow: 0 22px 50px rgba(16, 19, 24, 0.14);
+        z-index: 4;
+      }
+
+      .goal-sheet strong,
+      .work-bubble strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .goal-sheet span,
+      .work-bubble span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+      }
+
+      .work-bubble {
+        position: absolute;
+        max-width: min(270px, 44%);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        padding: 12px 14px;
+        box-shadow: 0 18px 44px rgba(16, 19, 24, 0.12);
+        z-index: 2;
+      }
+
+      .need-bubble {
+        left: 18px;
+        top: 86px;
+        animation: need-pop 1.1s ease-in-out infinite;
+      }
+
+      .need-bubble::after {
+        content: "";
+        position: absolute;
+        right: -10px;
+        top: 22px;
+        width: 18px;
+        height: 18px;
+        border-right: 1px solid var(--line);
+        border-top: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.94);
+        transform: rotate(45deg);
+      }
+
+      .action-bubbles {
+        position: absolute;
+        right: 24px;
+        top: 126px;
+        display: flex;
+        gap: 8px;
+        z-index: 2;
+      }
+
+      .action-bubbles span {
+        width: 14px;
+        height: 14px;
+        border-radius: 999px;
+        background: var(--accent);
+        opacity: 0.78;
+        animation: bubble-rise 1.2s ease-in-out infinite;
+      }
+
+      .action-bubbles span:nth-child(2) {
+        animation-delay: 160ms;
+      }
+
+      .action-bubbles span:nth-child(3) {
+        animation-delay: 320ms;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
       h1 {
         margin: 0;
         font-size: 38px;
@@ -142,10 +279,12 @@
         line-height: 1.55;
       }
 
-      .swatches {
+      .legend {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
       }
 
       button {
@@ -159,9 +298,92 @@
         cursor: pointer;
       }
 
-      button[aria-pressed="true"] {
-        border-color: var(--ink);
-        box-shadow: inset 0 -4px 0 var(--accent);
+      .pixel-pet[data-motion="head"] .head {
+        animation: head-signal 1s ease-in-out infinite;
+      }
+
+      .pixel-pet[data-motion="tentacles"] .tentacle {
+        animation: tentacle-wave 0.72s ease-in-out infinite alternate;
+      }
+
+      .pixel-pet[data-motion="feed"] .body {
+        animation: feed-glow 1.1s ease-in-out infinite;
+      }
+
+      .pixel-pet[data-motion="evolve"] {
+        animation: evolve-breathe 1.4s ease-in-out infinite;
+      }
+
+      .pixel-pet[data-motion="blocked"] {
+        animation: blocked-shake 0.42s steps(2, end) infinite;
+      }
+
+      @keyframes head-signal {
+        0%, 100% {
+          filter: saturate(1);
+        }
+        50% {
+          filter: saturate(1.6) brightness(1.08);
+        }
+      }
+
+      @keyframes tentacle-wave {
+        from {
+          transform: translateY(0) rotate(-4deg);
+        }
+        to {
+          transform: translateY(5px) rotate(5deg);
+        }
+      }
+
+      @keyframes feed-glow {
+        0%, 100% {
+          filter: brightness(1);
+        }
+        50% {
+          filter: brightness(1.2);
+        }
+      }
+
+      @keyframes evolve-breathe {
+        0%, 100% {
+          transform: translateY(0) scale(1);
+        }
+        50% {
+          transform: translateY(-7px) scale(1.04);
+        }
+      }
+
+      @keyframes blocked-shake {
+        0%, 100% {
+          transform: translateX(0);
+        }
+        50% {
+          transform: translateX(5px);
+        }
+      }
+
+      @keyframes need-pop {
+        0%, 100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-5px);
+        }
+      }
+
+      @keyframes bubble-rise {
+        0% {
+          transform: translateY(16px) scale(0.7);
+          opacity: 0;
+        }
+        40% {
+          opacity: 0.85;
+        }
+        100% {
+          transform: translateY(-18px) scale(1);
+          opacity: 0;
+        }
       }
 
       @media (max-width: 760px) {
@@ -171,6 +393,17 @@
 
         .pet-wrap {
           min-height: 320px;
+        }
+
+        .work-bubble {
+          position: static;
+          max-width: none;
+          margin: 12px 0;
+        }
+
+        .action-bubbles {
+          right: 18px;
+          top: 82px;
         }
 
         h1 {
@@ -191,20 +424,31 @@
 
     <main class="shell">
       <div class="stage">
-        <div class="pet-wrap" aria-label="Octopus pixel pet">
-          <div class="pixel-pet" id="pixel-pet" aria-hidden="true"></div>
+        <div class="pet-wrap" id="pet-wrap" aria-label="Octopus working pets">
+          <button class="goal-toggle" id="goal-toggle" type="button" aria-expanded="false">Goal</button>
+          <div class="work-bubble need-bubble" id="need-bubble" hidden>
+            <strong>Need</strong>
+            <span id="need-text">No Need yet.</span>
+          </div>
+          <div class="action-bubbles" id="action-bubbles" aria-label="code-as-harness running" hidden>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="fleet" id="pet-fleet" aria-hidden="true"></div>
+          <div class="goal-sheet" id="goal-sheet" hidden>
+            <strong>Goal</strong>
+            <span id="goal-text">No Goal yet.</span>
+          </div>
         </div>
 
         <section class="state" aria-live="polite">
           <h1 id="state-title">Heartbeat</h1>
           <div class="fallback" id="fallback" aria-label="chat fallback">🟩 🐙</div>
           <p class="label" id="state-label">Kernel and chat loop are alive.</p>
-          <div class="swatches">
-            <button type="button" data-state="heartbeat">Heartbeat</button>
-            <button type="button" data-state="memory">Memory</button>
-            <button type="button" data-state="harness">Harness</button>
-            <button type="button" data-state="blocked">Blocked</button>
-            <button type="button" data-state="success">Success</button>
+          <div class="legend">
+            <span>Read-only preview. The native desktop pet watches `.octopus/state.json`.</span>
+            <span>Need changes the head, action waves the tentacles, Feed turns green, evolution turns blue, blocked turns red.</span>
           </div>
         </section>
       </div>
@@ -227,44 +471,108 @@
       ];
 
       const states = {
-        heartbeat: ["Heartbeat", "Kernel and chat loop are alive.", "#0f766e", "🟩"],
-        memory: ["Memory beat", "Context was recalled, compacted, or forgotten.", "#6d5bd0", "🟪"],
-        harness: ["Harness beat", "Routes or tools are adapting from feedback.", "#cf4d32", "🟥"],
-        blocked: ["Blocked", "The harness needs a grant or external change.", "#a16207", "🟨"],
-        success: ["Success", "Feedback returned useful evidence.", "#16833a", "🟩"]
+        heartbeat: ["Heartbeat", "Kernel and chat loop are alive.", "#0f766e", "#0f766e", "breathe", "🟩"],
+        need: ["Need", "The clean brain produced a cognitive Need.", "#f973a9", "#ff4f8b", "head", "🟧"],
+        action: ["Action", "A tentacle is observing, calling tools, or running code.", "#f59e0b", "#f97316", "tentacles", "🟨"],
+        feed: ["Feed", "A tentacle compressed action results back into Feed.", "#22a06b", "#16a34a", "feed", "🟩"],
+        memory: ["Memory beat", "Context was recalled, compacted, or forgotten.", "#6d5bd0", "#7c6ee6", "pulse", "🟪"],
+        harness: ["Evolution", "Routes or tools are adapting from feedback.", "#2563eb", "#4f8cff", "evolve", "🟦"],
+        evolution: ["Evolution", "Routes or tools are adapting from feedback.", "#2563eb", "#4f8cff", "evolve", "🟦"],
+        blocked: ["Blocked", "The harness needs a grant or external change.", "#b93827", "#dc2626", "blocked", "🟥"],
+        success: ["Success", "Feedback returned useful evidence.", "#16833a", "#16a34a", "feed", "🟩"]
       };
 
-      const pet = document.querySelector("#pixel-pet");
+      const petFleet = document.querySelector("#pet-fleet");
+      const needBubble = document.querySelector("#need-bubble");
+      const needText = document.querySelector("#need-text");
+      const actionBubbles = document.querySelector("#action-bubbles");
+      const goalToggle = document.querySelector("#goal-toggle");
+      const goalSheet = document.querySelector("#goal-sheet");
+      const goalText = document.querySelector("#goal-text");
       const title = document.querySelector("#state-title");
       const label = document.querySelector("#state-label");
       const fallback = document.querySelector("#fallback");
-      const buttons = [...document.querySelectorAll("[data-state]")];
+      const query = new URLSearchParams(window.location.search);
 
-      function drawPet() {
-        pet.replaceChildren();
-        octopusPixels.join("").split("").forEach((pixel) => {
+      function queryText(name, fallbackText = "") {
+        return query.get(name) || fallbackText;
+      }
+
+      function workerCount() {
+        const raw = Number.parseInt(query.get("workers") || "1", 10);
+        if (!Number.isFinite(raw)) return 1;
+        return Math.max(1, Math.min(8, raw));
+      }
+
+      function drawPet(root) {
+        root.replaceChildren();
+        octopusPixels.forEach((line, row) => line.split("").forEach((pixel, col) => {
           const block = document.createElement("span");
-          block.className = pixel === "b" ? "pixel body" : pixel === "e" ? "pixel eye" : "pixel";
-          pet.appendChild(block);
-        });
+          if (pixel === "b") {
+            block.className = `pixel body ${row <= 6 ? "head" : ""} ${row >= 8 ? "tentacle" : ""}`.trim();
+            block.style.animationDelay = `${(row + col) * 24}ms`;
+          } else if (pixel === "e") {
+            block.className = "pixel eye head";
+          } else {
+            block.className = "pixel";
+          }
+          root.appendChild(block);
+        }));
+      }
+
+      function drawFleet(count, motion) {
+        petFleet.replaceChildren();
+        petFleet.dataset.count = String(count);
+        for (let index = 0; index < count; index += 1) {
+          const pet = document.createElement("button");
+          pet.type = "button";
+          pet.className = "pixel-pet";
+          pet.dataset.motion = motion;
+          pet.style.animationDelay = `${index * 120}ms`;
+          pet.setAttribute("aria-label", `Octopus pet ${index + 1}`);
+          pet.addEventListener("click", toggleGoal);
+          drawPet(pet);
+          petFleet.appendChild(pet);
+        }
+      }
+
+      function toggleGoal() {
+        const open = goalSheet.hidden;
+        goalSheet.hidden = !open;
+        goalToggle.setAttribute("aria-expanded", String(open));
+      }
+
+      function updateWorkPanels(name) {
+        const goal = queryText("goal", "No Goal yet.");
+        const need = queryText("need", name === "need" ? "A new cognitive Need appeared." : "");
+        const feed = queryText("feed", "");
+        const source = queryText("source", "code-as-harness");
+        goalText.textContent = goal;
+        goalToggle.textContent = goal === "No Goal yet." ? "Goal" : "Goal active";
+        needText.textContent = need || "No Need yet.";
+        needBubble.hidden = !(need || name === "need");
+        actionBubbles.hidden = !["action", "harness", "evolution"].includes(name);
+        actionBubbles.setAttribute("aria-label", `${source} running`);
+        if ((name === "feed" || name === "success") && feed) {
+          label.textContent = feed;
+        }
       }
 
       function setState(name) {
         const state = states[name] || states.heartbeat;
         document.body.dataset.state = name;
         document.documentElement.style.setProperty("--pet", state[2]);
+        document.documentElement.style.setProperty("--head", state[3]);
         document.documentElement.style.setProperty("--accent", state[2]);
         title.textContent = state[0];
         label.textContent = state[1];
-        fallback.textContent = `${state[3]} 🐙`;
-        buttons.forEach((button) => {
-          button.setAttribute("aria-pressed", String(button.dataset.state === name));
-        });
+        fallback.textContent = `${state[5]} 🐙`;
+        drawFleet(workerCount(), state[4]);
+        updateWorkPanels(name);
       }
 
-      drawPet();
       const initial = new URLSearchParams(window.location.search).get("state") || "heartbeat";
-      buttons.forEach((button) => button.addEventListener("click", () => setState(button.dataset.state)));
+      goalToggle.addEventListener("click", toggleGoal);
       setState(initial);
     </script>
   </body>

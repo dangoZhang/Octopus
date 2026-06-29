@@ -1,6 +1,6 @@
 {
   "id": "computer-use",
-  "version": "0.2.0-dev",
+  "version": "0.1.x",
   "description": "Browser, desktop, clipboard, file, and UI-operation tasks.",
   "task_schema": {
     "inputs": ["user goal", "visible app state", "allowed actions"],
@@ -24,6 +24,16 @@
       "id": "computer-use-mini-1",
       "goal": "Open the local Octopus demo page and verify the title is visible.",
       "expected_feed": "Observed URL, visible title, and verification status."
+    },
+    {
+      "id": "computer-use-mini-2",
+      "goal": "Inspect the local Octopus app page and verify that Goal, Need, Feed, and Output regions are visible.",
+      "expected_feed": "Observed app URL, visible region checklist, and verification status."
+    },
+    {
+      "id": "computer-use-mini-3",
+      "goal": "Observe the local docs/demo surface, identify the primary call-to-action, and verify the page has a visible Octopus product signal.",
+      "expected_feed": "Observed URL, primary call-to-action, visible Octopus signal, and verification status without destructive actions."
     }
   ]
 }

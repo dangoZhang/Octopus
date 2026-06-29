@@ -1,0 +1,74 @@
+if field == "computer-use" and mini_task == "computer-use-mini-3":
+    page = root / "docs" / "demo.html"
+    html = page.read_text(encoding="utf-8", errors="replace") if page.exists() else ""
+    visible_text = re.sub(r"<[^>]+>", " ", html)
+    visible_text = " ".join(visible_text.split())
+    links = re.findall(r"<a[^>]+href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>", html, re.IGNORECASE | re.DOTALL)
+    def strip_tags(value):
+        return re.sub(r"<[^>]+>", "", value or "").strip()
+    cta_candidates = []
+    for href, label in links:
+        text = " ".join(strip_tags(label).split())
+        if text and any(token in text.lower() for token in ["install", "start", "try", "demo", "download", "launch"]):
+            cta_candidates.append({"label": text, "href": href})
+    if not cta_candidates and links:
+        href, label = links[0]
+        cta_candidates.append({"label": " ".join(strip_tags(label).split()), "href": href})
+    primary_cta = cta_candidates[0] if cta_candidates else {"label": "", "href": ""}
+    observed_url = page.as_uri() if page.exists() else rel(page, root)
+    visible_octopus_signal = "octopus" in visible_text.lower() or "🐙" in html
+    cta_visible = bool(primary_cta.get("label"))
+    passed = page.exists() and cta_visible and visible_octopus_signal
+    observation = {
+        "mode": "local-html-demo-cta-observation",
+        "observed_url": observed_url,
+        "target": rel(page, root),
+        "primary_call_to_action": primary_cta,
+        "visible_octopus_signal": visible_octopus_signal,
+        "actions": ["read local demo page", "extract call-to-action links", "verify visible Octopus product signal"],
+    }
+    checks = {
+        "page_exists": page.exists(),
+        "cta_visible": cta_visible,
+        "visible_octopus_signal": visible_octopus_signal,
+        "verified": passed,
+    }
+    (session / "OBSERVATION.json").write_text(json.dumps(observation, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    (session / "CHECKS.json").write_text(json.dumps(checks, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    answer_lines = [
+        "# Computer-Use Mini Task Answer",
+        "",
+        f"Observed URL: `{observed_url}`",
+        f"Primary call-to-action: `{primary_cta.get('label', '')}` -> `{primary_cta.get('href', '')}`",
+        f"Visible Octopus signal: `{visible_octopus_signal}`",
+        f"Verification: `{'passed' if passed else 'partial'}`",
+    ]
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "observation": rel(session / "OBSERVATION.json", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "verifier_status": "satisfied" if passed else "partial",
+        "field_pass_evidence": "observed local demo URL, primary call-to-action, visible Octopus signal, and verification status",
+    }
+    field_result = {
+        "status": "satisfied" if passed else "partial",
+        "output": answer,
+        "evidence": [
+            {"source": "field-mini-task/computer-use/demo-cta-observation", "content": json.dumps(observation, ensure_ascii=True), "confidence": 0.9, "metadata": field_metadata},
+            {"source": "field-mini-task/computer-use/demo-cta-checks", "content": json.dumps(checks, ensure_ascii=True), "confidence": 0.9, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

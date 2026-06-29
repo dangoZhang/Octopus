@@ -188,6 +188,14 @@
         background: var(--pet);
       }
 
+      .pixel-pet .head {
+        background: var(--head, var(--pet));
+      }
+
+      .pixel-pet .tentacle {
+        transform-origin: 50% 0;
+      }
+
       .pixel-pet .eye {
         background: #fff;
         box-shadow: inset 0 0 0 2px #111318;
@@ -203,6 +211,75 @@
         }
         50% {
           transform: translateY(-5px) scale(1.03);
+        }
+      }
+
+      .pixel-pet[data-state="need"] .head {
+        animation: pet-head-signal 1s ease-in-out infinite;
+      }
+
+      .pixel-pet[data-state="action"] .tentacle,
+      .pixel-pet[data-state="action"] .shadow {
+        animation: pet-tentacle-wave 0.72s ease-in-out infinite alternate;
+      }
+
+      .pixel-pet[data-state="feed"] .body,
+      .pixel-pet[data-state="success"] .body {
+        animation: pet-feed-glow 1.1s ease-in-out infinite;
+      }
+
+      .pixel-pet[data-state="harness"],
+      .pixel-pet[data-state="evolution"] {
+        animation: pet-evolve-breathe 1.4s ease-in-out infinite;
+      }
+
+      .pixel-pet[data-state="blocked"],
+      .pixel-pet[data-state="failed"] {
+        animation: pet-blocked-shake 0.42s steps(2, end) infinite;
+      }
+
+      @keyframes pet-head-signal {
+        0%, 100% {
+          filter: saturate(1);
+        }
+        50% {
+          filter: saturate(1.6) brightness(1.08);
+        }
+      }
+
+      @keyframes pet-tentacle-wave {
+        from {
+          transform: translateY(0) rotate(-4deg);
+        }
+        to {
+          transform: translateY(5px) rotate(5deg);
+        }
+      }
+
+      @keyframes pet-feed-glow {
+        0%, 100% {
+          filter: brightness(1);
+        }
+        50% {
+          filter: brightness(1.2);
+        }
+      }
+
+      @keyframes pet-evolve-breathe {
+        0%, 100% {
+          transform: translateY(0) scale(1);
+        }
+        50% {
+          transform: translateY(-7px) scale(1.04);
+        }
+      }
+
+      @keyframes pet-blocked-shake {
+        0%, 100% {
+          transform: translateX(0);
+        }
+        50% {
+          transform: translateX(5px);
         }
       }
 
@@ -540,13 +617,27 @@
       ];
       const colors = {
         heartbeat: "#0f766e",
+        need: "#f973a9",
+        action: "#f59e0b",
+        feed: "#22a06b",
         memory: "#6d5bd0",
-        harness: "#a16207",
+        harness: "#2563eb",
+        evolution: "#2563eb",
         success: "#16833a",
         blocked: "#b93827",
         failed: "#b93827",
-        partial: "#a16207",
+        partial: "#2563eb",
         waiting: "#2563eb"
+      };
+
+      const headColors = {
+        need: "#ff4f8b",
+        action: "#f97316",
+        feed: "#16a34a",
+        harness: "#4f8cff",
+        evolution: "#4f8cff",
+        blocked: "#dc2626",
+        failed: "#dc2626"
       };
 
       function defaultBridge() {
@@ -618,6 +709,7 @@
         document.querySelectorAll("button").forEach((button) => {
           button.disabled = busy;
         });
+        if (busy) drawPet("action");
       }
 
       function setStatus(text) {
@@ -631,14 +723,17 @@
       function drawPet(state = "waiting") {
         const root = $("pixelPet");
         root.textContent = "";
+        root.dataset.state = state;
         root.style.setProperty("--pet", colors[state] || colors.waiting);
+        root.style.setProperty("--head", headColors[state] || colors[state] || colors.waiting);
         for (let row = 0; row < petMap.length; row += 1) {
           for (let col = 0; col < petMap[row].length; col += 1) {
             const cell = document.createElement("span");
             const kind = petMap[row][col];
-            if (kind === "E") cell.className = "eye";
-            else if (kind === "S") cell.className = "shadow";
-            else if (kind === "B") cell.className = "body";
+            if (kind === "E") cell.className = "eye head";
+            else if (kind === "S") cell.className = "shadow tentacle";
+            else if (kind === "B") cell.className = `body ${row <= 6 ? "head" : ""} ${row >= 8 ? "tentacle" : ""}`.trim();
+            cell.style.animationDelay = `${(row + col) * 24}ms`;
             root.appendChild(cell);
           }
         }
@@ -929,17 +1024,18 @@
         setOutputStatus("thinking");
         try {
           const need = await cleanBrainNeed(goal, task);
-          drawPet("heartbeat");
+          drawPet("need");
           setBlock("needCard", `${need.kind} Need`, `${need.query} · ${need.brief}`);
           output("Brain Need", `${need.kind}: ${need.query}`, "pass");
 
           setStatus("Web demo · browser tentacle feeding");
           const plan = await browserTentaclePlan(need, task);
+          drawPet("action");
           executeBrowserAction(plan);
-          drawPet("success");
+          drawPet("feed");
           setBlock("feedCard", "Browser Tentacle Feed", `${plan.feed_summary} Steps: ${plan.steps.join(" -> ")}`);
           output("Tentacle Feed", `${plan.action}: ${plan.feed_summary}`, "pass");
-          setBlock("petText", "Success", "The browser tentacle executed Feed in this page.");
+          setBlock("petText", "Feed", "The browser tentacle compressed action back into Feed.");
           setStatus("Web demo · complete");
           setOutputStatus("ready");
         } catch (error) {
@@ -1022,6 +1118,7 @@
         try {
           const report = await runJson(args);
           if (done) done(report);
+          drawPet("feed");
           output(label, summarize(report), "pass");
           setStatus(`${label} complete`);
           setOutputStatus("ready");
@@ -1091,8 +1188,8 @@
             : "Browser tentacle rendered Hello World and returned checked Feed.";
         $("goal").value = goal;
         $("webDemo").hidden = true;
-        drawPet("success");
-        setBlock("petText", "Success", "The browser tentacle executed Feed in this app surface.");
+        drawPet("feed");
+        setBlock("petText", "Feed", "The browser tentacle compressed action back into Feed.");
         setBlock("needCard", "execute Need", need);
         setBlock("feedCard", "Browser Tentacle Feed", `${summary} Steps: observe Need -> choose ${action} -> render artifact -> verify output`);
         replaceOutput("Brain Need", `execute: ${need}`, "pass");

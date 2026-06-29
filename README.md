@@ -33,7 +33,7 @@ Seed tentacles live under `tentacles/`. Their prompts, manifests, tools, and rep
 
 **The Octopus shows state.**
 
-The pixel pet is not decoration. It is the smallest visible surface for waiting, running, memory, harness, blocked, and success states.
+The pixel pet is a read-only desktop observer. It watches `.octopus/state.json`: head color marks Need, moving tentacles mark action, bubbles mark code-as-harness work, blue marks evolution, red marks blocked, and green marks Feed.
 
 ## Quick Install & Use
 
@@ -48,10 +48,10 @@ Then run one local loop:
 ```bash
 octopus first-run "make this repo easier to use"
 octopus chat "prefer one small evidence-backed improvement"
-octopus pet
+octopus pet desktop
 ```
 
-You should see the local app at `http://127.0.0.1:8765/app.html`, a `.octopus/state.json` file, one Feed summary, and a pixel Octopus state.
+You should see the local app at `http://127.0.0.1:8765/app.html`, a `.octopus/state.json` file, one Feed summary, and one native desktop Octopus observing that state.
 
 Direct GitHub install:
 
@@ -99,12 +99,21 @@ The GitHub Pages app is a zero-install taste of the idea. It sends requests dire
 - [Recipes](docs/recipes.html)
 - [Architecture](docs/architecture.md)
 - [Research Map](docs/references.md)
-- [v0.2.0 Field Adaptation Harness](docs/field-adaptation.md)
+- [Field Adaptation TODO](docs/field-adaptation.md)
 - [Current Gap Log](docs/product-gap.md)
 
-## Road to v0.2.0
+## TODO
 
-v0.2.0 focuses on field adaptation. Octopus should learn how different task fields behave, then improve the right tentacle from trajectories, errors, and repairs.
+`0.1.x` is building the field-evolution base for `v0.2.0`. The eight fields form one parallel matrix; workers choose slots from that matrix.
+
+Peer slots: `math`, `search`, `code`, `SWE`, `research`, `computer-use`, `IB`, and `robotics`.
+Each slot uses the same Need -> Feed chain, verifier traces, repair templates, and harness evolution loop.
+
+- [x] Native read-only desktop pet with Need bubbles, action bubbles, Goal view, evolution blue, and blocked red.
+- [x] Feed traces record `field_pack`, verifier result, trajectory summary, and repair signal.
+- [x] Field-specific repair code lives in editable harness templates outside the Rust kernel.
+- [x] Failed field traces can produce reviewable harness patches, apply them with a grant, rerun, and score the result.
+- [x] `mini-1/2/3` are training rungs inside each field. They do not create order across fields.
 
 ## License
 

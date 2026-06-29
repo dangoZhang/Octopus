@@ -1,6 +1,6 @@
 {
   "id": "robotics",
-  "version": "0.2.0-dev",
+  "version": "0.1.x",
   "description": "Simulator-first perception, action planning, execution feedback, and safety-gated robotics tasks.",
   "task_schema": {
     "inputs": ["environment state", "robot capability", "task goal", "safety boundary"],
@@ -24,6 +24,16 @@
       "id": "robotics-mini-1",
       "goal": "Plan a simulator-only move from A to B around one obstacle.",
       "expected_feed": "Path plan, simulated clearance check, and safety status."
+    },
+    {
+      "id": "robotics-mini-2",
+      "goal": "Plan a simulator-only pick-and-place route around two obstacles with a stop-on-uncertainty rule.",
+      "expected_feed": "Route plan, obstacle clearance checks, stop condition, and no-hardware safety status."
+    },
+    {
+      "id": "robotics-mini-3",
+      "goal": "Plan a simulator-only recovery action when the robot detects an unexpected obstacle mid-route.",
+      "expected_feed": "Initial route, unexpected-obstacle detection, recovery plan, safety stop condition, and no-hardware status."
     }
   ]
 }

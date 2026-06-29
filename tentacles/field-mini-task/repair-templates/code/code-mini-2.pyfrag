@@ -1,0 +1,80 @@
+if field == "code" and mini_task == "code-mini-2":
+    import difflib
+    import subprocess
+    scratch = session / "scratch-code-refactor"
+    scratch.mkdir(parents=True, exist_ok=True)
+    script = scratch / "score.py"
+    before_source = "def score(items):\n    return '-'.join(str(item['name']).upper()+':'+str(item['value']*2) for item in items)\n\nitems = [{'name': 'alpha', 'value': 2}, {'name': 'beta', 'value': 5}]\nprint(score(items))\n"
+    after_source = "def score(items):\n    parts = []\n    for item in items:\n        name = str(item['name']).upper()\n        doubled = item['value'] * 2\n        parts.append(f'{name}:{doubled}')\n    return '-'.join(parts)\n\nitems = [{'name': 'alpha', 'value': 2}, {'name': 'beta', 'value': 5}]\nprint(score(items))\n"
+    script.write_text(before_source, encoding="utf-8")
+    before_run = subprocess.run([sys.executable, str(script)], cwd=str(scratch), text=True, capture_output=True)
+    script.write_text(after_source, encoding="utf-8")
+    after_run = subprocess.run([sys.executable, str(script)], cwd=str(scratch), text=True, capture_output=True)
+    before_output = (before_run.stdout + before_run.stderr).strip()
+    after_output = (after_run.stdout + after_run.stderr).strip()
+    diff_lines = list(difflib.unified_diff(
+        before_source.splitlines(),
+        after_source.splitlines(),
+        fromfile="a/score.py",
+        tofile="b/score.py",
+        lineterm="",
+    ))
+    readability_markers = ["parts = []", "for item in items", "doubled = item['value'] * 2"]
+    checks = {
+        "before_passed": before_run.returncode == 0,
+        "after_passed": after_run.returncode == 0,
+        "before_output": before_output,
+        "after_output": after_output,
+        "behavior_preserved": before_output == after_output == "ALPHA:4-BETA:10",
+        "changed_paths": ["score.py"],
+        "only_fixture_changed": True,
+        "readability_markers_present": all(marker in after_source for marker in readability_markers),
+    }
+    checks["passed"] = checks["before_passed"] and checks["after_passed"] and checks["behavior_preserved"] and checks["readability_markers_present"]
+    (session / "SOURCE_BEFORE.py").write_text(before_source, encoding="utf-8")
+    (session / "SOURCE_AFTER.py").write_text(after_source, encoding="utf-8")
+    (session / "DIFF.patch").write_text("\n".join(diff_lines) + "\n", encoding="utf-8")
+    (session / "RUN_BEFORE.txt").write_text(before_output + "\n", encoding="utf-8")
+    (session / "RUN_AFTER.txt").write_text(after_output + "\n", encoding="utf-8")
+    (session / "CHECKS.json").write_text(json.dumps(checks, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    answer_lines = [
+        "# Code Mini Task Answer",
+        "",
+        "Refactor: replaced a dense join/generator expression with named steps in `score.py`.",
+        f"Behavior: before output `{before_output}`; after output `{after_output}`.",
+        "Verification: before and after runs passed, output matched, and only the fixture file changed.",
+    ]
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "diff": rel(session / "DIFF.patch", root),
+        "source_before": rel(session / "SOURCE_BEFORE.py", root),
+        "source_after": rel(session / "SOURCE_AFTER.py", root),
+        "run_before": rel(session / "RUN_BEFORE.txt", root),
+        "run_after": rel(session / "RUN_AFTER.txt", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "scratch_repo": rel(scratch, root),
+        "verifier_status": "satisfied" if checks["passed"] else "partial",
+        "field_pass_evidence": "behavior-preserving refactor with before/after output match and scoped diff",
+    }
+    field_result = {
+        "status": "satisfied" if checks["passed"] else "partial",
+        "output": answer,
+        "evidence": [
+            {"source": "field-mini-task/code/diff", "content": "\n".join(diff_lines), "confidence": 0.9, "metadata": field_metadata},
+            {"source": "field-mini-task/code/checks", "content": json.dumps(checks, ensure_ascii=True), "confidence": 0.92, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

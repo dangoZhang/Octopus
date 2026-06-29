@@ -1,0 +1,88 @@
+if field == "ib" and mini_task == "ib-mini-3":
+    base_revenue = 100.0
+    growth_cases = [0.05, 0.10]
+    margin_cases = [0.20, 0.25]
+    sensitivity = []
+    for growth in growth_cases:
+        for margin in margin_cases:
+            revenue = base_revenue * (1 + growth)
+            ebitda = revenue * margin
+            sensitivity.append({
+                "revenue_growth": round(growth, 4),
+                "ebitda_margin": round(margin, 4),
+                "revenue": round(revenue, 2),
+                "ebitda": round(ebitda, 2),
+            })
+    assumptions = [
+        "Need did not include company source data; harness used a deterministic local fixture.",
+        "Base revenue is 100.0 illustrative units.",
+        "Sensitivity cases are mechanical scenarios, not a valuation view or recommendation.",
+    ]
+    diligence_question = "Which cost line items would need evidence before assuming the high-margin case is sustainable?"
+    formula_checks = []
+    for row in sensitivity:
+        revenue_ties = abs(row["revenue"] - round(base_revenue * (1 + row["revenue_growth"]), 2)) < 1e-9
+        ebitda_ties = abs(row["ebitda"] - round(row["revenue"] * row["ebitda_margin"], 2)) < 1e-9
+        formula_checks.append({"case": row, "revenue_ties": revenue_ties, "ebitda_ties": ebitda_ties})
+    restricted_terms = ["buy", "sell", "target price", "recommend", "undervalued", "overvalued"]
+    question_lower = diligence_question.lower()
+    checks = {
+        "case_count": len(sensitivity),
+        "formula": "revenue = base_revenue * (1 + growth); ebitda = revenue * margin",
+        "formulas_tie": all(item["revenue_ties"] and item["ebitda_ties"] for item in formula_checks),
+        "assumptions_separated": len(assumptions) == 3,
+        "diligence_question_neutral": not any(term in question_lower for term in restricted_terms),
+        "source_notes": "local deterministic fixture; no external market source claimed",
+        "compliance": "non-advisory diligence question; no trading instruction; no MNPI",
+    }
+    checks["passed"] = checks["case_count"] == 4 and checks["formulas_tie"] and checks["assumptions_separated"] and checks["diligence_question_neutral"]
+    (session / "SENSITIVITY.json").write_text(json.dumps(sensitivity, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    (session / "FORMULA_CHECKS.json").write_text(json.dumps(formula_checks, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    (session / "ASSUMPTIONS.md").write_text("\n".join(f"- {item}" for item in assumptions) + "\n", encoding="utf-8")
+    (session / "DILIGENCE_QUESTION.md").write_text(diligence_question + "\n", encoding="utf-8")
+    (session / "CHECKS.json").write_text(json.dumps(checks, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    answer_lines = [
+        "# IB Mini Task Answer",
+        "",
+        "| Revenue growth | EBITDA margin | Revenue | EBITDA |",
+        "| ---: | ---: | ---: | ---: |",
+    ]
+    for row in sensitivity:
+        answer_lines.append(f"| {row['revenue_growth']:.1%} | {row['ebitda_margin']:.1%} | {row['revenue']:.1f} | {row['ebitda']:.1f} |")
+    answer_lines.extend(["", "Assumptions:"])
+    answer_lines.extend(f"- {item}" for item in assumptions)
+    answer_lines.extend(["", f"Diligence question: {diligence_question}", "", "Checks: four cases; formulas tie; assumptions separated; restricted claims avoided."])
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "sensitivity": rel(session / "SENSITIVITY.json", root),
+        "formula_checks": rel(session / "FORMULA_CHECKS.json", root),
+        "assumptions": rel(session / "ASSUMPTIONS.md", root),
+        "diligence_question": rel(session / "DILIGENCE_QUESTION.md", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "verifier_status": "satisfied" if checks["passed"] else "partial",
+        "field_pass_evidence": "checked growth-versus-margin sensitivity table, formulas, separated assumptions, and non-advisory diligence question",
+    }
+    field_result = {
+        "status": "satisfied" if checks["passed"] else "partial",
+        "output": answer,
+        "evidence": [
+            {"source": "field-mini-task/ib/sensitivity", "content": json.dumps(sensitivity, ensure_ascii=True), "confidence": 0.9, "metadata": field_metadata},
+            {"source": "field-mini-task/ib/formula-checks", "content": json.dumps(formula_checks, ensure_ascii=True), "confidence": 0.9, "metadata": field_metadata},
+            {"source": "field-mini-task/ib/diligence-question", "content": diligence_question, "confidence": 0.86, "metadata": field_metadata},
+            {"source": "field-mini-task/ib/checks", "content": json.dumps(checks, ensure_ascii=True), "confidence": 0.9, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

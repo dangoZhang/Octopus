@@ -3,11 +3,11 @@
   "schema_version": "0.0.1",
   "id": "visual",
   "name": "Color Pet Layer",
-  "description": "A color-changing Octopus pixel pet layer for heartbeat, memory, harness, blocked, and success states.",
+  "description": "A color-changing Octopus pixel pet layer for Need, action, Feed, evolution, memory, blocked, and success states.",
   "brain": {
     "kind": "rule",
     "model": null,
-    "prompt": "Map Feedback and harness state into a small visible pet state without using an LLM. Keep the UI outside the kernel and return compact state labels.",
+    "prompt": "Map Feedback and harness state into a small visible pet state without using an LLM. Head color means Need, tentacle motion means action, bubbles mean code-as-harness work, blue means evolution, red means blocked, and green means Feed.",
     "feedback_contract": "Return pet state, color, short label, and whether user attention is needed."
   },
   "skills": [

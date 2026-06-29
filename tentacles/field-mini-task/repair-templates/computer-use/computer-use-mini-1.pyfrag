@@ -1,0 +1,62 @@
+if field == "computer-use" and mini_task == "computer-use-mini-1":
+    page = root / "docs" / "demo.html"
+    html = page.read_text(encoding="utf-8", errors="replace") if page.exists() else ""
+    title_match = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+    h1_match = re.search(r"<h1[^>]*>(.*?)</h1>", html, re.IGNORECASE | re.DOTALL)
+    def strip_tags(value):
+        return re.sub(r"<[^>]+>", "", value or "").strip()
+    observed_url = page.as_uri() if page.exists() else rel(page, root)
+    visible_title = strip_tags(title_match.group(1) if title_match else h1_match.group(1) if h1_match else "")
+    target_visible = page.exists() and bool(visible_title) and "octopus" in visible_title.lower()
+    observation = {
+        "mode": "local-html-observation",
+        "observed_url": observed_url,
+        "visible_title": visible_title,
+        "target": rel(page, root),
+        "target_visible": target_visible,
+        "actions": ["read local demo page", "extract title", "verify title contains Octopus"],
+    }
+    checks = {
+        "page_exists": page.exists(),
+        "title_visible": bool(visible_title),
+        "title_mentions_octopus": "octopus" in visible_title.lower(),
+        "verified": target_visible,
+    }
+    (session / "OBSERVATION.json").write_text(json.dumps(observation, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    (session / "CHECKS.json").write_text(json.dumps(checks, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    answer_lines = [
+        "# Computer-Use Mini Task Answer",
+        "",
+        f"Observed URL: `{observed_url}`",
+        f"Visible title: `{visible_title}`",
+        f"Verification: `{'passed' if target_visible else 'partial'}`",
+    ]
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "observation": rel(session / "OBSERVATION.json", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "verifier_status": "satisfied" if target_visible else "partial",
+        "field_pass_evidence": "observed local demo URL, visible title, and verification status",
+    }
+    field_result = {
+        "status": "satisfied" if target_visible else "partial",
+        "output": answer,
+        "evidence": [
+            {"source": "field-mini-task/computer-use/observation", "content": json.dumps(observation, ensure_ascii=True), "confidence": 0.9, "metadata": field_metadata},
+            {"source": "field-mini-task/computer-use/checks", "content": json.dumps(checks, ensure_ascii=True), "confidence": 0.9, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

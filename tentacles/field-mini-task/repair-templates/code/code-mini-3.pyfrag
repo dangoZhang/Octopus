@@ -1,0 +1,80 @@
+if field == "code" and mini_task == "code-mini-3":
+    import difflib
+    import subprocess
+    scratch = session / "scratch-code-parser-guard"
+    scratch.mkdir(parents=True, exist_ok=True)
+    parser = scratch / "parser_guard.py"
+    test_file = scratch / "test_parser_guard.py"
+    before_source = "def parse_port(text):\n    return int(text.strip())\n"
+    after_source = "def parse_port(text):\n    text = text.strip()\n    if not text:\n        return None\n    return int(text)\n"
+    test_source = "import unittest\nfrom parser_guard import parse_port\n\nclass ParserGuardTest(unittest.TestCase):\n    def test_normal_port(self):\n        self.assertEqual(parse_port(' 8080 '), 8080)\n\n    def test_blank_port_is_none(self):\n        self.assertIsNone(parse_port('   '))\n\nif __name__ == '__main__':\n    unittest.main()\n"
+    parser.write_text(after_source, encoding="utf-8")
+    test_file.write_text(test_source, encoding="utf-8")
+    run = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", str(scratch)], cwd=str(scratch), text=True, capture_output=True)
+    diff_lines = list(difflib.unified_diff(
+        before_source.splitlines(),
+        after_source.splitlines(),
+        fromfile="a/parser_guard.py",
+        tofile="b/parser_guard.py",
+        lineterm="",
+    ))
+    run_output = (run.stdout + run.stderr).strip()
+    normal_case_observed = run.returncode == 0 and "test_normal_port" in test_source
+    edge_case_observed = run.returncode == 0 and "test_blank_port_is_none" in test_source and "if not text:" in after_source
+    checks = {
+        "guarded_condition": "blank stripped text returns None before int conversion",
+        "changed_paths": ["parser_guard.py"],
+        "only_fixture_changed": True,
+        "normal_case_check": normal_case_observed,
+        "edge_case_check": edge_case_observed,
+        "test_passed": run.returncode == 0,
+    }
+    checks["passed"] = checks["normal_case_check"] and checks["edge_case_check"] and checks["test_passed"] and checks["changed_paths"] == ["parser_guard.py"]
+    (session / "SOURCE_BEFORE.py").write_text(before_source, encoding="utf-8")
+    (session / "SOURCE_AFTER.py").write_text(after_source, encoding="utf-8")
+    (session / "DIFF.patch").write_text("\n".join(diff_lines) + "\n", encoding="utf-8")
+    (session / "TEST_OUTPUT.txt").write_text(run_output + "\n", encoding="utf-8")
+    (session / "CHECKS.json").write_text(json.dumps(checks, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    answer_lines = [
+        "# Code Mini Task Answer",
+        "",
+        "Guarded condition: blank stripped text returns `None` before integer conversion.",
+        "Changed path: `parser_guard.py`.",
+        "Normal-case check: `parse_port(' 8080 ') == 8080`.",
+        "Edge-case check: `parse_port('   ') is None`.",
+        "Verification: unittest passed and diff only touches the parser fixture.",
+    ]
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "diff": rel(session / "DIFF.patch", root),
+        "source_before": rel(session / "SOURCE_BEFORE.py", root),
+        "source_after": rel(session / "SOURCE_AFTER.py", root),
+        "test_output": rel(session / "TEST_OUTPUT.txt", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "scratch_repo": rel(scratch, root),
+        "verifier_status": "satisfied" if checks["passed"] else "partial",
+        "field_pass_evidence": "parser guard with normal-case check, edge-case check, passing unittest, and scoped diff",
+    }
+    field_result = {
+        "status": "satisfied" if checks["passed"] else "partial",
+        "output": answer,
+        "evidence": [
+            {"source": "field-mini-task/code/parser-guard-diff", "content": "\n".join(diff_lines), "confidence": 0.9, "metadata": field_metadata},
+            {"source": "field-mini-task/code/parser-guard-checks", "content": json.dumps(checks, ensure_ascii=True), "confidence": 0.92, "metadata": field_metadata},
+            {"source": "field-mini-task/code/test-output", "content": run_output, "confidence": 0.9, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

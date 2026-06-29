@@ -1,6 +1,6 @@
 {
   "id": "math",
-  "version": "0.2.0-dev",
+  "version": "0.1.x",
   "description": "Proof, calculation, symbolic reasoning, and numeric verification tasks.",
   "task_schema": {
     "inputs": ["problem", "known facts", "required rigor"],
@@ -24,6 +24,16 @@
       "id": "math-mini-1",
       "goal": "Compute the derivative of x^3 + 2x and verify by finite difference at x = 2.",
       "expected_feed": "Derivative 3x^2 + 2 with a numeric check near 14."
+    },
+    {
+      "id": "math-mini-2",
+      "goal": "Solve the linear system 2x + y = 7 and x - y = 1, then verify both equations exactly.",
+      "expected_feed": "Exact solution x = 8/3 and y = 5/3 with substitution checks for both equations."
+    },
+    {
+      "id": "math-mini-3",
+      "goal": "Prove by induction that 1 + 2 + ... + n = n(n + 1)/2, then verify the formula at n = 10.",
+      "expected_feed": "Base case, induction step, and numeric verification that the sum at n = 10 equals 55."
     }
   ]
 }

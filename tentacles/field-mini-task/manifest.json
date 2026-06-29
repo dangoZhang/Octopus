@@ -1,0 +1,97 @@
+{
+  "$schema": "../tentacle.schema.json",
+  "schema_version": "0.0.1",
+  "id": "field-mini-task",
+  "name": "Field Mini Task Tentacle",
+  "description": "Generic evolvable harness for sampling field mini tasks and turning them into reusable trajectories.",
+  "brain": {
+    "kind": "llm",
+    "model": null,
+    "prompt": "Read the field mini task Need, available tool metadata, expected Feed, and permission boundary. Execute only what the current harness can honestly verify. If the field behavior is missing, preserve the trajectory and ask harness evolution to improve the editable field implementation.",
+    "feedback_contract": "Return compact Feed with field, mini task, evidence artifact paths, verifier status, and the next useful Need. Never fake a pass."
+  },
+  "skills": [
+    {
+      "id": "field-mini-task-runner",
+      "description": "Sample a field task, save its trajectory, and expose a repairable execution surface.",
+      "needs": [
+        "verify",
+        "reproduce",
+        "compare",
+        "execute"
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "id": "run_field_mini_task",
+      "description": "Record and attempt a field mini task through an editable octopus-json-v1 runtime.",
+      "input": "octopus-json-v1 tool call with field_pack, field_mini_task, and field_expected_feed in Need context",
+      "output": "JSON Feed with trajectory artifacts, field metadata, and the next harness evolution Need",
+      "implementation": {
+        "kind": "shell",
+        "entrypoint": "tools/run_field_mini_task.sh",
+        "contract": "octopus-json-v1"
+      }
+    }
+  ],
+  "evolution": {
+    "editable": [
+      "manifest.json",
+      "brain.prompt",
+      "tools/*",
+      "adapters/*",
+      "repair-templates/*/*.pyfrag"
+    ],
+    "surfaces": [
+      {
+        "id": "brain_prompt",
+        "description": "Prompt that turns a field Need into local observation, action, validation, and compact Feed.",
+        "targets": [
+          "brain.prompt",
+          "brain.feedback_contract"
+        ]
+      },
+      {
+        "id": "tool_meta",
+        "description": "Field task tool metadata, inputs, outputs, permissions, and contracts.",
+        "targets": [
+          "tools[].description",
+          "tools[].input",
+          "tools[].output",
+          "tools[].implementation.contract"
+        ]
+      },
+      {
+        "id": "runtime_code",
+        "description": "Editable field task execution and trajectory adapter.",
+        "targets": [
+          "tools/*",
+          "repair-templates/*/*.pyfrag",
+          "tools[].implementation.kind",
+          "tools[].implementation.entrypoint"
+        ]
+      },
+      {
+        "id": "evolution_policy",
+        "description": "Checks and constraints for honest field-task sampling and repair.",
+        "targets": [
+          "evolution.checks",
+          "evolution.constraints",
+          "evolution.surfaces"
+        ]
+      }
+    ],
+    "checks": [
+      "tools/run_field_mini_task.sh . <<'JSON' | python3 -m json.tool > /dev/null\n{\"schema_version\":\"octopus-tool-call-v1\",\"need\":{\"kind\":\"verify\",\"query\":\"Run math mini task sample\",\"context\":{\"field_pack\":\"math\",\"field_mini_task\":\"math-mini-1\",\"field_expected_feed\":\"Derivative 3x^2 + 2 with a numeric check near 14.\"}},\"tool\":{\"id\":\"run_field_mini_task\"},\"tentacle\":{\"id\":\"field-mini-task\"}}\nJSON",
+      "python3 tools/check_repair_templates.py"
+    ],
+    "constraints": [
+      "Do not mark a field mini task satisfied without verifier evidence.",
+      "Keep trajectory artifacts under .octopus/field-mini-task/ for harness evolution.",
+      "Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata.",
+      "Keep each repair template standalone with an if field/mini_task guard; check_repair_templates.py must compile and execute every template.",
+      "Concrete domain behavior should evolve in this harness, not in the clean brain."
+    ]
+  }
+}

@@ -1,0 +1,79 @@
+if field == "robotics" and mini_task == "robotics-mini-2":
+    start = [0, 0]
+    pick = [1, 2]
+    place = [4, 2]
+    obstacles = [[2, 1], [3, 2]]
+    path = [[0, 0], [0, 1], [1, 1], [1, 2], [2, 2], [2, 3], [3, 3], [4, 3], [4, 2]]
+    def manhattan(a, b):
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+    step_continuity = all(manhattan(a, b) == 1 for a, b in zip(path, path[1:]))
+    collision_free = all(point not in obstacles for point in path)
+    visits_pick = pick in path
+    reaches_place = path[0] == start and path[-1] == place
+    pick_before_place = path.index(pick) < len(path) - 1 if visits_pick else False
+    clearance = min(manhattan(point, obstacle) for point in path for obstacle in obstacles)
+    stop_condition = "stop if obstacle map changes, pose confidence drops, or simulator check fails"
+    simulation = {
+        "world": {"start": start, "pick": pick, "place": place, "obstacles": obstacles},
+        "path": path,
+        "phases": ["navigate_to_pick", "pick", "navigate_to_place", "place"],
+        "simulator_only": True,
+        "step_continuity": step_continuity,
+        "collision_free": collision_free,
+        "visits_pick": visits_pick,
+        "reaches_place": reaches_place,
+        "pick_before_place": pick_before_place,
+        "minimum_manhattan_clearance": clearance,
+        "stop_condition": stop_condition,
+    }
+    checks = {
+        "simulator_only": True,
+        "no_hardware_command": True,
+        "collision_free": collision_free,
+        "step_continuity": step_continuity,
+        "visits_pick": visits_pick,
+        "reaches_place": reaches_place,
+        "pick_before_place": pick_before_place,
+        "stop_on_uncertainty": bool(stop_condition),
+    }
+    checks["safe"] = all(checks.values())
+    (session / "PLAN.json").write_text(json.dumps({"path": path, "policy": "pick-place-avoid-two-obstacles", "stop_condition": stop_condition}, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    (session / "SIMULATION.json").write_text(json.dumps(simulation, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    (session / "CHECKS.json").write_text(json.dumps(checks, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    answer_lines = [
+        "# Robotics Mini Task Answer",
+        "",
+        "Plan: simulator-only pick-and-place from start to pick to place around two obstacles.",
+        "Path: " + " -> ".join(f"({x},{y})" for x, y in path) + ".",
+        f"Safety: no hardware command; collision_free={collision_free}; step_continuity={step_continuity}; stop_on_uncertainty={checks['stop_on_uncertainty']}.",
+    ]
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "plan": rel(session / "PLAN.json", root),
+        "simulation": rel(session / "SIMULATION.json", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "verifier_status": "satisfied" if checks["safe"] else "partial",
+        "field_pass_evidence": "simulator-only pick-and-place route, two-obstacle clearance checks, stop condition, and no hardware command",
+    }
+    field_result = {
+        "status": "satisfied" if checks["safe"] else "partial",
+        "output": answer,
+        "evidence": [
+            {"source": "field-mini-task/robotics/pick-place-plan", "content": json.dumps(simulation, ensure_ascii=True), "confidence": 0.9, "metadata": field_metadata},
+            {"source": "field-mini-task/robotics/pick-place-safety", "content": json.dumps(checks, ensure_ascii=True), "confidence": 0.92, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

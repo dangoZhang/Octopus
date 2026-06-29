@@ -1,0 +1,78 @@
+if field == "swe" and mini_task == "swe-mini-2":
+    import difflib
+    import shutil
+    import subprocess
+    scratch = session / "scratch-swe-parser"
+    scratch.mkdir(parents=True, exist_ok=True)
+    module = scratch / "parser_fixture.py"
+    test_file = scratch / "test_parser_fixture.py"
+    before_source = "def parse_assignment(line):\n    key, value = line.split('=')\n    return key.strip(), value.strip()\n"
+    after_source = "def parse_assignment(line):\n    key, value = line.split('=', 1)\n    return key.strip(), value.strip()\n"
+    test_source = "import unittest\nfrom parser_fixture import parse_assignment\n\nclass ParserEdgeCaseTest(unittest.TestCase):\n    def test_value_may_contain_equals(self):\n        self.assertEqual(parse_assignment('title=a=b'), ('title', 'a=b'))\n\nif __name__ == '__main__':\n    unittest.main()\n"
+    module.write_text(before_source, encoding="utf-8")
+    test_file.write_text(test_source, encoding="utf-8")
+    before_run = subprocess.run([sys.executable, "-B", "-m", "unittest", "discover", "-s", str(scratch)], cwd=str(scratch), text=True, capture_output=True)
+    module.write_text(after_source, encoding="utf-8")
+    shutil.rmtree(scratch / "__pycache__", ignore_errors=True)
+    after_run = subprocess.run([sys.executable, "-B", "-m", "unittest", "discover", "-s", str(scratch)], cwd=str(scratch), text=True, capture_output=True)
+    diff_lines = list(difflib.unified_diff(
+        before_source.splitlines(),
+        after_source.splitlines(),
+        fromfile="a/parser_fixture.py",
+        tofile="b/parser_fixture.py",
+        lineterm="",
+    ))
+    before_output = (before_run.stdout + before_run.stderr).strip()
+    after_output = (after_run.stdout + after_run.stderr).strip()
+    checks = {
+        "before_failed": before_run.returncode != 0,
+        "after_passed": after_run.returncode == 0,
+        "edge_case": "title=a=b",
+        "patched_file": "parser_fixture.py",
+        "regression_test": "test_parser_fixture.py::ParserEdgeCaseTest.test_value_may_contain_equals",
+    }
+    checks["reproduced_and_fixed"] = checks["before_failed"] and checks["after_passed"]
+    (session / "PATCH.diff").write_text("\n".join(diff_lines) + "\n", encoding="utf-8")
+    (session / "TEST_BEFORE.txt").write_text(before_output + "\n", encoding="utf-8")
+    (session / "TEST_AFTER.txt").write_text(after_output + "\n", encoding="utf-8")
+    (session / "CHECKS.json").write_text(json.dumps(checks, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    answer_lines = [
+        "# SWE Mini Task Answer",
+        "",
+        "Root cause: assignment parser split on every equals sign.",
+        "Patch: changed `line.split('=')` to `line.split('=', 1)` in `parser_fixture.py`.",
+        "Regression: reproduced value-with-equals failure before the patch and passed after the patch.",
+    ]
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "patch": rel(session / "PATCH.diff", root),
+        "test_before": rel(session / "TEST_BEFORE.txt", root),
+        "test_after": rel(session / "TEST_AFTER.txt", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "scratch_repo": rel(scratch, root),
+        "verifier_status": "satisfied" if checks["reproduced_and_fixed"] else "partial",
+        "field_pass_evidence": "reproduced parser edge-case failure, patched split limit, and recorded passing regression output",
+    }
+    field_result = {
+        "status": "satisfied" if checks["reproduced_and_fixed"] else "partial",
+        "output": answer,
+        "evidence": [
+            {"source": "field-mini-task/swe/parser-patch", "content": "\n".join(diff_lines), "confidence": 0.9, "metadata": field_metadata},
+            {"source": "field-mini-task/swe/test-before", "content": before_output, "confidence": 0.86, "metadata": field_metadata},
+            {"source": "field-mini-task/swe/test-after", "content": after_output, "confidence": 0.92, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

@@ -8,6 +8,8 @@ pub(crate) struct PetReport {
     pub(crate) title: String,
     pub(crate) summary: String,
     pub(crate) color: String,
+    pub(crate) head_color: String,
+    pub(crate) motion: String,
     pub(crate) fallback: String,
     pub(crate) event_source: Option<String>,
     pub(crate) event_summary: Option<String>,
@@ -41,7 +43,7 @@ const OCTOPUS_PIXEL_ROWS: [&str; 12] = [
 ];
 
 pub(crate) fn pet_report(state: &str, path: &Path) -> Result<PetReport, String> {
-    let (state, title, summary, color, fallback) = pet_state_info(state)?;
+    let (state, title, summary, color, head_color, motion, fallback) = pet_state_info(state)?;
     let path_text = path.to_string_lossy().to_string();
     let target = format!("{}?state={state}", file_url(path));
     Ok(PetReport {
@@ -49,6 +51,8 @@ pub(crate) fn pet_report(state: &str, path: &Path) -> Result<PetReport, String> 
         title: title.to_string(),
         summary: summary.to_string(),
         color: color.to_string(),
+        head_color: head_color.to_string(),
+        motion: motion.to_string(),
         fallback: fallback.to_string(),
         event_source: None,
         event_summary: None,
@@ -126,10 +130,14 @@ fn pet_svg(report: &PetReport) -> String {
             }
             let x = margin + column_index as i32 * (pixel + gap);
             let y = margin + row_index as i32 * (pixel + gap);
+            let fill = if row_index <= 6 {
+                &report.head_color
+            } else {
+                &report.color
+            };
             match value {
                 'b' => body.push_str(&format!(
-                    r#"<rect x="{x}" y="{y}" width="{pixel}" height="{pixel}" rx="2" fill="{}"/>"#,
-                    report.color
+                    r#"<rect x="{x}" y="{y}" width="{pixel}" height="{pixel}" rx="2" fill="{fill}"/>"#
                 )),
                 'e' => {
                     let pupil = 6;
@@ -178,6 +186,8 @@ fn pet_state_info(
         &'static str,
         &'static str,
         &'static str,
+        &'static str,
+        &'static str,
     ),
     String,
 > {
@@ -187,6 +197,35 @@ fn pet_state_info(
             "Heartbeat",
             "Kernel and chat loop are alive.",
             "#0f766e",
+            "#0f766e",
+            "breathe",
+            "🟩",
+        )),
+        "need" => Ok((
+            "need",
+            "Need",
+            "The clean brain produced a cognitive Need.",
+            "#f973a9",
+            "#ff4f8b",
+            "head",
+            "🟧",
+        )),
+        "action" | "executing" => Ok((
+            "action",
+            "Action",
+            "A tentacle is observing, calling tools, or running code.",
+            "#f59e0b",
+            "#f97316",
+            "tentacles",
+            "🟨",
+        )),
+        "feed" => Ok((
+            "feed",
+            "Feed",
+            "A tentacle compressed action results back into Feed.",
+            "#22a06b",
+            "#16a34a",
+            "feed",
             "🟩",
         )),
         "memory" => Ok((
@@ -194,31 +233,39 @@ fn pet_state_info(
             "Memory beat",
             "Context was recalled, compacted, or forgotten.",
             "#6d5bd0",
+            "#7c6ee6",
+            "pulse",
             "🟪",
         )),
-        "harness" | "route" => Ok((
+        "harness" | "route" | "evolution" | "evolving" => Ok((
             "harness",
-            "Harness beat",
+            "Evolution",
             "Routes or tools are adapting from feedback.",
-            "#cf4d32",
-            "🟥",
+            "#2563eb",
+            "#4f8cff",
+            "evolve",
+            "🟦",
         )),
         "blocked" => Ok((
             "blocked",
             "Blocked",
             "The harness needs a grant or external change.",
-            "#a16207",
-            "🟨",
+            "#b93827",
+            "#dc2626",
+            "blocked",
+            "🟥",
         )),
         "success" | "satisfied" => Ok((
             "success",
             "Success",
             "Feedback returned useful evidence.",
             "#16833a",
+            "#16a34a",
+            "feed",
             "🟩",
         )),
         value => Err(format!(
-            "unknown pet state: {value}; expected heartbeat, memory, harness, blocked, or success"
+            "unknown pet state: {value}; expected heartbeat, need, action, feed, memory, harness, blocked, or success"
         )),
     }
 }

@@ -1,0 +1,62 @@
+if field == "computer-use" and mini_task == "computer-use-mini-2":
+    page = root / "docs" / "app.html"
+    html = page.read_text(encoding="utf-8", errors="replace") if page.exists() else ""
+    visible_text = re.sub(r"<[^>]+>", " ", html)
+    visible_text = " ".join(visible_text.split())
+    required_regions = ["Goal", "Current Need", "Current Feed", "Output"]
+    region_checks = {region: region.lower() in visible_text.lower() for region in required_regions}
+    observed_url = page.as_uri() if page.exists() else rel(page, root)
+    passed = page.exists() and all(region_checks.values())
+    observation = {
+        "mode": "local-html-region-observation",
+        "observed_url": observed_url,
+        "target": rel(page, root),
+        "required_regions": required_regions,
+        "visible_regions": [region for region, ok in region_checks.items() if ok],
+        "missing_regions": [region for region, ok in region_checks.items() if not ok],
+        "actions": ["read local app page", "extract visible text", "verify Goal/Need/Feed/Output regions"],
+    }
+    checks = {
+        "page_exists": page.exists(),
+        "regions": region_checks,
+        "verified": passed,
+    }
+    (session / "OBSERVATION.json").write_text(json.dumps(observation, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    (session / "CHECKS.json").write_text(json.dumps(checks, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    answer_lines = [
+        "# Computer-Use Mini Task Answer",
+        "",
+        f"Observed URL: `{observed_url}`",
+        "Visible regions: " + ", ".join(observation["visible_regions"]),
+        "Missing regions: " + (", ".join(observation["missing_regions"]) or "none"),
+        f"Verification: `{'passed' if passed else 'partial'}`",
+    ]
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "observation": rel(session / "OBSERVATION.json", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "verifier_status": "satisfied" if passed else "partial",
+        "field_pass_evidence": "observed local app URL with Goal, Need, Feed, and Output region checks",
+    }
+    field_result = {
+        "status": "satisfied" if passed else "partial",
+        "output": answer,
+        "evidence": [
+            {"source": "field-mini-task/computer-use/app-observation", "content": json.dumps(observation, ensure_ascii=True), "confidence": 0.9, "metadata": field_metadata},
+            {"source": "field-mini-task/computer-use/app-checks", "content": json.dumps(checks, ensure_ascii=True), "confidence": 0.9, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

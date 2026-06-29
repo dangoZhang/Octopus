@@ -1,6 +1,6 @@
 {
   "id": "search",
-  "version": "0.2.0-dev",
+  "version": "0.1.x",
   "description": "Retrieval, deduplication, source quality, and citation tasks.",
   "task_schema": {
     "inputs": ["query", "time range", "source constraints"],
@@ -24,6 +24,16 @@
       "id": "search-mini-1",
       "goal": "Find two primary sources for the Octopus project release page and summarize what each proves.",
       "expected_feed": "Two links with dates, claim coverage, and unsupported gaps."
+    },
+    {
+      "id": "search-mini-2",
+      "goal": "Audit three local project docs for the install/start path and report any mismatched commands or missing evidence.",
+      "expected_feed": "Three source paths, command snippets, agreement or mismatch notes, and remaining gaps."
+    },
+    {
+      "id": "search-mini-3",
+      "goal": "Compare three sources for one release claim, deduplicate overlapping evidence, and mark the strongest source.",
+      "expected_feed": "Three sources, deduplicated claim table, strongest-source rationale, dates, and unsupported gaps."
     }
   ]
 }

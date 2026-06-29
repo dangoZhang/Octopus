@@ -26,7 +26,7 @@ Real-machine test gate for `0.1.0` and later tags:
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 
-Road to `0.1.0`:
+`0.1.0` release history:
 
 - `0.0.17`: product path cleanup, bridge clarity, readiness diagnostics, and core/harness boundary evidence.
 - `0.0.18`: live LLM provider, OAuth, local model, and gateway validation.
@@ -42,4 +42,11 @@ Last release correction: `0.1.0` on 2026-06-28. Scope: recorded GitHub-installed
 
 `0.1.0` is the clean local-product release line.
 
-Next milestone: `0.2.0` field adaptation harness. The focus is reusable task templates, trajectory-backed tentacle evolution, verifier infrastructure, and domain packs for math, search, code, SWE, research, computer-use, IB work, and robotics.
+`0.1.x` patch train after release: build the field-adaptation foundation in small usable steps.
+
+- `0.1.x`: field packs, trace field IDs, one native read-only desktop pet, sampled active-field Need -> Feed -> verifier step from parallel field goals.
+- `0.1.x`: generic `field-mini-task` code-as-harness surface so sampled field tasks create repairable trajectories before domain behavior is evolved.
+- `0.1.x`: field trajectory summaries, failed-run reuse, reviewable harness patches. Current state has `octopus fields summary` reporting all eight first-pass mini tasks as satisfied.
+- `0.1.x`: define harder mini tasks per field and keep the same sampled parallel pool. Current state has three satisfied mini-task layers in all eight packs after real trace repair cycles.
+- `0.1.x`: keep the eight fields as peer slots; add depth inside each field without turning the field list into a sequence.
+- `0.2.0`: Octopus can run, score, repair, and rerun tasks across math, search, code, SWE, research, computer-use, IB work, and robotics with the concrete tentacle code primarily iterated by Octopus.

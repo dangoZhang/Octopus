@@ -146,6 +146,7 @@ if latest_repair_plan:
         "repair_plan_schema": str(repair_plan.get("schema_version") or ""),
         "repair_plan_session": str(repair_plan.get("session") or ""),
         "review": str(inputs.get("review") or ""),
+        "field_trajectory": str(inputs.get("field_trajectory") or ""),
         "target_tentacle": target_tentacle,
         "target_tool": target_tool,
         "candidate": candidate,

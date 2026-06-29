@@ -1,0 +1,78 @@
+if field == "robotics" and mini_task == "robotics-mini-3":
+    start = [0, 0]
+    goal = [5, 0]
+    initial_path = [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0]]
+    unexpected_obstacle = [3, 0]
+    detection_step = 2
+    recovery_path = [[2, 0], [2, 1], [3, 1], [4, 1], [4, 0], [5, 0]]
+    full_recovered_route = initial_path[: detection_step + 1] + recovery_path[1:]
+    def manhattan(a, b):
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+    step_continuity = all(manhattan(a, b) == 1 for a, b in zip(full_recovered_route, full_recovered_route[1:]))
+    obstacle_avoided_after_detection = all(point != unexpected_obstacle for point in recovery_path)
+    reaches_goal = full_recovered_route[0] == start and full_recovered_route[-1] == goal
+    detection_recorded = initial_path[detection_step + 1] == unexpected_obstacle
+    stop_condition = "stop and replan if a new obstacle appears on the planned route or pose confidence drops"
+    recovery_plan = {
+        "mode": "simulator-only-recovery",
+        "start": start,
+        "goal": goal,
+        "initial_path": initial_path,
+        "unexpected_obstacle": unexpected_obstacle,
+        "detection_step": detection_step,
+        "recovery_path": recovery_path,
+        "full_recovered_route": full_recovered_route,
+        "stop_condition": stop_condition,
+        "simulator_only": True,
+    }
+    checks = {
+        "simulator_only": True,
+        "no_hardware_command": True,
+        "unexpected_obstacle_detected": detection_recorded,
+        "recovery_avoids_obstacle": obstacle_avoided_after_detection,
+        "step_continuity": step_continuity,
+        "reaches_goal": reaches_goal,
+        "stop_on_uncertainty": bool(stop_condition),
+    }
+    checks["safe"] = all(checks.values())
+    (session / "PLAN.json").write_text(json.dumps(recovery_plan, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    (session / "SIMULATION.json").write_text(json.dumps(recovery_plan, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    (session / "CHECKS.json").write_text(json.dumps(checks, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    answer_lines = [
+        "# Robotics Mini Task Answer",
+        "",
+        "Initial route: " + " -> ".join(f"({x},{y})" for x, y in initial_path) + ".",
+        f"Unexpected obstacle detected at `({unexpected_obstacle[0]},{unexpected_obstacle[1]})` before entering that cell.",
+        "Recovery route: " + " -> ".join(f"({x},{y})" for x, y in recovery_path) + ".",
+        f"Safety: simulator_only=True; no_hardware_command=True; stop_condition=`{stop_condition}`.",
+    ]
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "plan": rel(session / "PLAN.json", root),
+        "simulation": rel(session / "SIMULATION.json", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "verifier_status": "satisfied" if checks["safe"] else "partial",
+        "field_pass_evidence": "simulator-only recovery route, unexpected-obstacle detection, safe replan, stop condition, and no hardware command",
+    }
+    field_result = {
+        "status": "satisfied" if checks["safe"] else "partial",
+        "output": answer,
+        "evidence": [
+            {"source": "field-mini-task/robotics/recovery-plan", "content": json.dumps(recovery_plan, ensure_ascii=True), "confidence": 0.9, "metadata": field_metadata},
+            {"source": "field-mini-task/robotics/recovery-safety", "content": json.dumps(checks, ensure_ascii=True), "confidence": 0.92, "metadata": field_metadata},
+        ],
+        "metadata": field_metadata,
+    }

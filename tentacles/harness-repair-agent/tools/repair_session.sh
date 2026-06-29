@@ -263,6 +263,101 @@ def build_code_context(workspace, target_tentacle, target_tool, latest_trace, la
     }
 
 
+def metadata_of(item):
+    if isinstance(item, dict) and isinstance(item.get("metadata"), dict):
+        return item["metadata"]
+    return {}
+
+
+def resolve_artifact(workspace, value):
+    value = str(value or "").strip()
+    if not value:
+        return None
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = workspace / path
+    try:
+        resolved = path.resolve()
+        resolved.relative_to(workspace)
+    except Exception:
+        return None
+    return resolved
+
+
+def latest_matching_field_verifier(state, latest_trace, field):
+    results = state.get("field_verifier_results") if isinstance(state, dict) else []
+    trace_index = str(latest_trace.get("index") or "")
+    for result in reversed(results if isinstance(results, list) else []):
+        if not isinstance(result, dict):
+            continue
+        if trace_index and str(result.get("trace_index") or "") == trace_index:
+            return result
+        if field and str(result.get("field") or "") == field:
+            return result
+    return {}
+
+
+def build_field_trajectory_context(workspace, state, latest_trace):
+    metadata = metadata_of(latest_trace)
+    field = str(latest_trace.get("field") or metadata.get("field_pack") or "").strip()
+    mini_task = str(metadata.get("field_mini_task") or "").strip()
+    expected_feed = str(metadata.get("field_expected_feed") or "").strip()
+    session_path = resolve_artifact(workspace, metadata.get("field_session"))
+    artifact_keys = ["task_record", "prompt", "feed_draft"]
+    artifacts = {
+        key: resolve_artifact(workspace, metadata.get(key))
+        for key in artifact_keys
+    }
+    verifier = latest_matching_field_verifier(state, latest_trace, field)
+    lines = [
+        "# Field Trajectory Context",
+        "",
+        "This file is local field-task evidence for harness-repair planning.",
+        "It is used by the harness-repair tentacle, not by clean-brain context.",
+        "",
+        f"field: `{field or 'none'}`",
+        f"mini_task: `{mini_task or 'none'}`",
+        f"expected_feed: {expected_feed or 'not provided'}",
+        f"trace_index: `{latest_trace.get('index', 'none')}`",
+        f"trace_status: `{latest_trace.get('status', 'none')}`",
+        f"trace_tentacle: `{latest_trace.get('tentacle', 'none')}`",
+        f"trace_tool: `{latest_trace.get('tool', 'none')}`",
+        f"field_session: `{rel(session_path, workspace) if session_path else 'missing'}`",
+        "",
+        "## Latest Trace",
+        "",
+        "```json",
+        json.dumps(latest_trace, ensure_ascii=True, indent=2)[:8000],
+        "```",
+        "",
+        "## Latest Field Verifier",
+        "",
+        "```json",
+        json.dumps(verifier, ensure_ascii=True, indent=2)[:4000],
+        "```",
+        "",
+    ]
+    for key, path in artifacts.items():
+        lines.extend([f"## {key}", ""])
+        if path and path.exists():
+            lines.extend(["```", read_text(path, 6000).rstrip(), "```", ""])
+        else:
+            lines.extend(["missing", ""])
+    prompt_excerpt = "\n".join(lines[:30])
+    if artifacts.get("task_record") and artifacts["task_record"].exists():
+        prompt_excerpt += "\n\nTASK_RECORD_EXCERPT:\n" + read_text(artifacts["task_record"], 2400)
+    return {
+        "field": field or "none",
+        "mini_task": mini_task or "none",
+        "expected_feed": expected_feed,
+        "session": str(session_path) if session_path else "",
+        "verifier_status": str(verifier.get("status") or ""),
+        "verifier_error": str(verifier.get("error_category") or ""),
+        "markdown": "\n".join(lines) + "\n",
+        "prompt_excerpt": prompt_excerpt,
+    }
+
+
 def rel(path, root):
     if path is None:
         return "missing"
@@ -586,8 +681,25 @@ source = "none"
 next_need = "execute octopus beat 200"
 commands = ["octopus beat 200", "octopus report", "octopus traces"]
 target_tool = ""
+latest_trace_status = str(latest_trace.get("status", "")).lower() if latest_trace else ""
+latest_trace_metadata = metadata_of(latest_trace)
+latest_trace_is_field_gap = (
+    latest_trace_status in {"failed", "partial"}
+    and bool(latest_trace_metadata.get("field_mini_task"))
+)
 
-if apply_plans:
+if latest_trace_is_field_gap:
+    target_tentacle = str(latest_trace.get("tentacle") or latest_trace_metadata.get("tentacle") or "unknown")
+    target_tool = tool_from_trace(latest_trace)
+    field = str(latest_trace.get("field") or latest_trace_metadata.get("field_pack") or "field").strip() or "field"
+    mini_task = str(latest_trace_metadata.get("field_mini_task") or "mini-task").strip()
+    source = compact(latest_trace.get("summary", "field mini task trace"))
+    next_need = f"execute evolve recommend {target_tentacle}"
+    commands = [
+        f"octopus evolve recommend {shell_arg(target_tentacle)} {shell_arg(f'improve {field} harness after {mini_task}')}",
+        "octopus beat 200",
+    ]
+elif apply_plans:
     plan = apply_plans[-1]
     data = load_json(plan)
     target_tentacle = str(data.get("tentacle_id") or plan.parent.parent.name)
@@ -647,6 +759,7 @@ next_need_json = session_dir / "NEXT_NEED.json"
 command_script = session_dir / "COMMANDS.sh"
 outcome_memory_md = session_dir / "OUTCOME_MEMORY.md"
 code_context_md = session_dir / "CODE_CONTEXT.md"
+field_trajectory_md = session_dir / "FIELD_TRAJECTORY.md"
 repair_plan_json = session_dir / "REPAIR_PLAN.json"
 outcome_command = (
     "octopus repair score <trace-index> satisfied \"repair improved Feed\""
@@ -661,6 +774,7 @@ code_context = build_code_context(
     latest_check,
     latest_repair_outcome,
 )
+field_trajectory = build_field_trajectory_context(workspace, state, latest_trace)
 session = {
     "schema_version": "octopus-harness-repair-session-v1",
     "workspace": str(workspace),
@@ -672,6 +786,7 @@ session = {
     "commands": commands,
     "outcome_memory": rel(outcome_memory_md, workspace),
     "code_context": rel(code_context_md, workspace),
+    "field_trajectory": rel(field_trajectory_md, workspace),
     "review": rel(review_md, workspace),
     "repair_plan": rel(repair_plan_json, workspace),
     "code_context_target": {
@@ -679,6 +794,13 @@ session = {
         "tool": code_context["tool"],
         "manifest": code_context["manifest"],
         "tool_path": code_context["tool_path"],
+    },
+    "field_trajectory_target": {
+        "field": field_trajectory["field"],
+        "mini_task": field_trajectory["mini_task"],
+        "session": field_trajectory["session"],
+        "verifier_status": field_trajectory["verifier_status"],
+        "verifier_error": field_trajectory["verifier_error"],
     },
     "signals": {
         "feed_traces": len(feed_traces),
@@ -708,6 +830,7 @@ outcome_memory_md.write_text(
     encoding="utf-8",
 )
 code_context_md.write_text(code_context["markdown"], encoding="utf-8")
+field_trajectory_md.write_text(field_trajectory["markdown"], encoding="utf-8")
 repair_plan = build_action_plan(
     workspace,
     session_json,
@@ -722,6 +845,8 @@ repair_plan = build_action_plan(
     draft_md,
     repair_plan_json,
 )
+repair_plan["inputs"]["field_trajectory"] = rel(field_trajectory_md, workspace)
+repair_plan["review_boundary"] = "Review FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
 repair_plan_json.write_text(
     json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
     encoding="utf-8",
@@ -796,6 +921,15 @@ prompt_md.write_text(
             "code context excerpt:",
             code_context["prompt_excerpt"],
             "",
+            "field trajectory:",
+            f"- artifact: `{rel(field_trajectory_md, workspace)}`",
+            f"- field: `{field_trajectory['field']}`",
+            f"- mini task: `{field_trajectory['mini_task']}`",
+            f"- verifier: `{field_trajectory['verifier_status'] or 'none'}` `{field_trajectory['verifier_error'] or ''}`",
+            "",
+            "field trajectory excerpt:",
+            field_trajectory["prompt_excerpt"],
+            "",
             "repair action plan:",
             f"- plan artifact: `{rel(repair_plan_json, workspace)}`",
             f"- review boundary: {repair_plan['review_boundary']}",
@@ -808,6 +942,7 @@ prompt_md.write_text(
             f"- draft: `{rel(draft_md, workspace)}`",
             f"- outcome memory: `{rel(outcome_memory_md, workspace)}`",
             f"- code context: `{rel(code_context_md, workspace)}`",
+            f"- field trajectory: `{rel(field_trajectory_md, workspace)}`",
             f"- repair plan: `{rel(repair_plan_json, workspace)}`",
         ]
     )
@@ -844,6 +979,7 @@ review_md.write_text(
             "",
             "## Evidence",
             "",
+            f"- field trajectory: `{rel(field_trajectory_md, workspace)}`",
             f"- code context: `{rel(code_context_md, workspace)}`",
             f"- outcome memory: `{rel(outcome_memory_md, workspace)}`",
             f"- provider draft: `{rel(draft_md, workspace)}`",
@@ -894,6 +1030,7 @@ session_md.write_text(
             f"commands: `{rel(command_script, workspace)}`",
             f"outcome memory: `{rel(outcome_memory_md, workspace)}`",
             f"code context: `{rel(code_context_md, workspace)}`",
+            f"field trajectory: `{rel(field_trajectory_md, workspace)}`",
             f"repair plan: `{rel(repair_plan_json, workspace)}`",
             f"outcome command: `{outcome_command}`",
         ]
@@ -917,11 +1054,16 @@ metadata = {
     "command_script": rel(command_script, workspace),
     "outcome_memory": rel(outcome_memory_md, workspace),
     "code_context": rel(code_context_md, workspace),
+    "field_trajectory": rel(field_trajectory_md, workspace),
     "repair_plan": rel(repair_plan_json, workspace),
     "repair_plan_status": repair_plan["status"],
     "code_context_tentacle": code_context["tentacle"],
     "code_context_tool": code_context["tool"],
     "code_context_tool_path": code_context["tool_path"],
+    "field_trajectory_field": field_trajectory["field"],
+    "field_trajectory_mini_task": field_trajectory["mini_task"],
+    "field_trajectory_verifier_status": field_trajectory["verifier_status"],
+    "field_trajectory_verifier_error": field_trajectory["verifier_error"],
     "outcome_command": outcome_command,
     "repair_outcome_count": str(len(repair_outcomes)),
     "repair_outcome_sources": ",".join(outcome_sources),

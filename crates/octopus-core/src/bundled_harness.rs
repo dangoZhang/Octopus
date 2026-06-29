@@ -75,6 +75,118 @@ const BUNDLED_TENTACLE_FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../../tentacles/harness-repair-agent/tools/repair_session.sh"),
     ),
     (
+        "field-mini-task/manifest.json",
+        include_bytes!("../../../tentacles/field-mini-task/manifest.json"),
+    ),
+    (
+        "field-mini-task/tools/check_repair_templates.py",
+        include_bytes!("../../../tentacles/field-mini-task/tools/check_repair_templates.py"),
+    ),
+    (
+        "field-mini-task/tools/run_field_mini_task.sh",
+        include_bytes!("../../../tentacles/field-mini-task/tools/run_field_mini_task.sh"),
+    ),
+    (
+        "field-mini-task/repair-templates/README.md",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/README.md"),
+    ),
+    (
+        "field-mini-task/repair-templates/code/code-mini-1.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/code/code-mini-1.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/code/code-mini-2.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/code/code-mini-2.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/code/code-mini-3.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/code/code-mini-3.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/computer-use/computer-use-mini-1.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/computer-use/computer-use-mini-1.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/computer-use/computer-use-mini-2.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/computer-use/computer-use-mini-2.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/computer-use/computer-use-mini-3.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/computer-use/computer-use-mini-3.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/ib/ib-mini-1.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/ib/ib-mini-1.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/ib/ib-mini-2.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/ib/ib-mini-2.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/ib/ib-mini-3.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/ib/ib-mini-3.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/math/math-mini-1.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/math/math-mini-1.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/math/math-mini-2.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/math/math-mini-2.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/math/math-mini-3.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/math/math-mini-3.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/research/research-mini-1.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/research/research-mini-1.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/research/research-mini-2.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/research/research-mini-2.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/research/research-mini-3.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/research/research-mini-3.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/robotics/robotics-mini-1.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/robotics/robotics-mini-1.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/robotics/robotics-mini-2.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/robotics/robotics-mini-2.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/robotics/robotics-mini-3.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/robotics/robotics-mini-3.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/search/search-mini-1.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/search/search-mini-1.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/search/search-mini-2.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/search/search-mini-2.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/search/search-mini-3.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/search/search-mini-3.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/swe/swe-mini-1.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/swe/swe-mini-1.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/swe/swe-mini-2.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/swe/swe-mini-2.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/swe/swe-mini-3.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/swe/swe-mini-3.pyfrag"),
+    ),
+    (
         "json-feed/manifest.json",
         include_bytes!("../../../tentacles/json-feed/manifest.json"),
     ),
@@ -144,6 +256,68 @@ const BUNDLED_TENTACLE_FILES: &[(&str, &[u8])] = &[
     ),
 ];
 
+const BUNDLED_FIELD_PACK_FILES: &[(&str, &[u8])] = &[
+    (
+        "field-packs/index.json",
+        include_bytes!("../../../field-packs/index.json"),
+    ),
+    (
+        "field-packs/math/field-pack.json",
+        include_bytes!("../../../field-packs/math/field-pack.json"),
+    ),
+    (
+        "field-packs/search/field-pack.json",
+        include_bytes!("../../../field-packs/search/field-pack.json"),
+    ),
+    (
+        "field-packs/code/field-pack.json",
+        include_bytes!("../../../field-packs/code/field-pack.json"),
+    ),
+    (
+        "field-packs/swe/field-pack.json",
+        include_bytes!("../../../field-packs/swe/field-pack.json"),
+    ),
+    (
+        "field-packs/research/field-pack.json",
+        include_bytes!("../../../field-packs/research/field-pack.json"),
+    ),
+    (
+        "field-packs/computer-use/field-pack.json",
+        include_bytes!("../../../field-packs/computer-use/field-pack.json"),
+    ),
+    (
+        "field-packs/ib/field-pack.json",
+        include_bytes!("../../../field-packs/ib/field-pack.json"),
+    ),
+    (
+        "field-packs/robotics/field-pack.json",
+        include_bytes!("../../../field-packs/robotics/field-pack.json"),
+    ),
+];
+
+const BUNDLED_DOC_FIXTURE_FILES: &[(&str, &[u8])] = &[
+    ("README.md", include_bytes!("../../../README.md")),
+    ("docs/app.html", include_bytes!("../../../docs/app.html")),
+    ("docs/demo.html", include_bytes!("../../../docs/demo.html")),
+    (
+        "docs/download.json",
+        include_bytes!("../../../docs/download.json"),
+    ),
+    (
+        "docs/quickstart.md",
+        include_bytes!("../../../docs/quickstart.md"),
+    ),
+    (
+        "docs/real-machine-test.md",
+        include_bytes!("../../../docs/real-machine-test.md"),
+    ),
+    (
+        "docs/references.md",
+        include_bytes!("../../../docs/references.md"),
+    ),
+    ("docs/use.html", include_bytes!("../../../docs/use.html")),
+];
+
 const BUNDLED_PET_HTML: &[u8] = include_bytes!("../../../docs/pet.html");
 
 pub(crate) fn tentacles_root(cwd: &Path) -> PathBuf {
@@ -158,6 +332,12 @@ pub(crate) fn materialize_tentacles_root(cwd: &Path) -> Result<PathBuf, String> 
         if bundled_file_executable(relative) {
             make_executable(&path)?;
         }
+    }
+    for (relative, bytes) in BUNDLED_FIELD_PACK_FILES {
+        write_bundled_file_if_missing(&root.join(relative), bytes)?;
+    }
+    for (relative, bytes) in BUNDLED_DOC_FIXTURE_FILES {
+        write_bundled_file_if_missing(&root.join(relative), bytes)?;
     }
     write_bundled_file_if_missing(
         &cwd.join(".octopus").join("docs").join("pet.html"),

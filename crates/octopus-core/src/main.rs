@@ -1,3 +1,4 @@
+use octopus_core::{default_field_pack_catalog, field_pack_report, select_field_pack};
 use octopus_core::{
     default_permissions, default_tentacle_profiles, embedded_profile_registry_json,
     feed_tentacle_with_llm_factory, inspect_tentacle_manifests, load_tentacle_manifests,
@@ -12,15 +13,17 @@ use octopus_core::{
     ChatClient, ChatClientFactory, ChatMessage, ChatRole, CheckHistoryInput, CheckHistoryRecord,
     CodexCliChatClient, CodexCliConfig, ContextReport, EnvironmentReport, EvolutionApplyArtifact,
     EvolutionApplyPlan, EvolutionArtifact, EvolutionOutcome, EvolutionRecommendation, Feed,
-    FeedFeedbackOutcome, FeedTraceRecord, Feedback, Goal, GoalChat, GoalNeedSuggestion,
-    GoalRefinement, Harness, HarnessBeatEvolution, HarnessLearningSummary, HarnessState, HeartBeat,
+    FeedFeedbackOutcome, FeedTraceRecord, Feedback, FieldPackReport, FieldPackSelection,
+    FieldTrajectoryReport, FieldVerifierResult, Goal, GoalChat, GoalNeedSuggestion, GoalRefinement,
+    Harness, HarnessBeatEvolution, HarnessLearningSummary, HarnessState, HeartBeat,
     HeartbeatReport, InstalledTentacle, LoadedTentacleManifest, Need, NeedKind, NeedQueueItem,
     NeedQueueReport, NeedQueueSaveReport, NeedQueueStatus, NeedQueueTakeReport,
-    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, OpenAiCompatibleTuning, RepairOutcome,
-    RouteReport, SelfIterationPlan, StarterFeedbackInput, StarterFeedbackRecord,
-    StarterFeedbackStatus, Status, StatusReport, TentacleEvolutionProposal, TentacleManifestReport,
-    TentacleProfile, TentacleScaffold, TentacleThinkingPlan, TentacleToolAction,
-    TentacleToolCandidate, ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
+    OpenAiCompatibleChatClient, OpenAiCompatibleConfig, OpenAiCompatibleTuning,
+    ParallelEvolutionRun, RepairOutcome, RouteReport, SelfIterationPlan, StarterFeedbackInput,
+    StarterFeedbackRecord, StarterFeedbackStatus, Status, StatusReport, TentacleEvolutionProposal,
+    TentacleManifestReport, TentacleProfile, TentacleScaffold, TentacleThinkingPlan,
+    TentacleToolAction, TentacleToolCandidate, ToolPermission, CLEAN_BRAIN_CONTEXT_POLICY,
+    TENTACLE_CONTEXT_POLICY,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -34,6 +37,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 mod app_bridge;
 mod bundled_harness;
 mod core_boundary;
+mod desktop_pet;
 mod download;
 mod pet;
 mod profile_registry;
@@ -48,6 +52,7 @@ use app_bridge::{
     prepare_state as prepare_bridge_state, run_command as run_bridge_command,
     start_check_requested, static_asset as bridge_static_asset, static_page as bridge_static,
 };
+use desktop_pet::{launch_desktop_pet, DesktopPetConfig, DesktopPetReport};
 use download::{download_artifacts_preflight_check, download_report, DownloadReport};
 #[cfg(test)]
 use pet::percent_encode_path;
@@ -75,6 +80,16 @@ struct DoctorReport {
     self_iteration_mode: String,
     warnings: Vec<String>,
     next: Vec<String>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct EvolutionLiveApplyReport {
+    applied: bool,
+    status: String,
+    command: Option<String>,
+    patch_path: Option<String>,
+    stdout: String,
+    stderr: String,
 }
 
 #[derive(serde::Serialize)]
@@ -521,6 +536,38 @@ struct RepairContinueReport {
 }
 
 #[derive(Debug, serde::Serialize)]
+struct NeedRunReport {
+    taken: NeedQueueTakeReport,
+    feed: Feed,
+    feed_trace_index: Option<u64>,
+    field: Option<String>,
+    verifier_result: Option<FieldVerifierResult>,
+    next: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct NeedRunBatchReport {
+    requested: usize,
+    ran: usize,
+    reports: Vec<NeedRunReport>,
+    remaining_pending: usize,
+    next: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NeedRunSelector {
+    First,
+    Latest,
+    Index(u64),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NeedRunRequest {
+    Single(NeedRunSelector),
+    Batch(usize),
+}
+
+#[derive(Debug, serde::Serialize)]
 struct RepairPlanReport {
     path: String,
     review: String,
@@ -692,6 +739,14 @@ struct ProductGap {
     id: String,
     impact: String,
     next: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct FieldMatchReport {
+    need: Need,
+    selection: Option<FieldPackSelection>,
+    pack_count: usize,
+    next: Vec<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -952,8 +1007,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
             } else {
                 None
             };
+            let root = resolve_tentacle_manifest_root(tentacle_id)?;
             let plan = think_tentacle_with_llm_factory(
-                default_tentacles_root(),
+                root,
                 tentacle_id,
                 &Need::new(kind, query),
                 llm_factory,
@@ -994,6 +1050,93 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     serde_json::to_string_pretty(&loaded.routes.scores)
                         .map_err(|error| error.to_string())?
                 );
+            }
+            Ok(())
+        }
+        Some("fields") => {
+            if rest.get(1).map(String::as_str) == Some("score") {
+                let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                let trace_index = rest
+                    .get(2)
+                    .ok_or_else(|| "fields score requires a feed trace index or latest".to_string())
+                    .and_then(|value| resolve_feed_trace_selector(value, &loaded))?;
+                let status = rest
+                    .get(3)
+                    .ok_or_else(|| "fields score requires a status".to_string())
+                    .and_then(|value| parse_status(value))?;
+                let error_category = rest.get(4).filter(|value| value.as_str() != "-").cloned();
+                let summary = rest
+                    .get(5..)
+                    .filter(|values| !values.is_empty())
+                    .map(|values| values.join(" "))
+                    .unwrap_or_else(|| "recorded field verifier result".to_string());
+                let result = loaded.record_field_verifier_result(
+                    trace_index,
+                    status,
+                    error_category,
+                    None,
+                    summary,
+                )?;
+                loaded.save(&state).map_err(|error| error.to_string())?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&result).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_field_verifier_result(&result, language);
+                }
+            } else if rest.get(1).map(String::as_str) == Some("summary") {
+                let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                let report = loaded.field_trajectory_report_with_state(Some(&state))?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_field_trajectory_report(&report, language);
+                }
+            } else if rest.get(1).map(String::as_str) == Some("match") {
+                let kind = rest
+                    .get(2)
+                    .ok_or_else(|| "fields match requires a need kind".to_string())
+                    .and_then(|value| parse_kind(value))?;
+                let query = rest
+                    .get(3..)
+                    .filter(|values| !values.is_empty())
+                    .map(|values| values.join(" "))
+                    .ok_or_else(|| "fields match requires a query".to_string())?;
+                let catalog = default_field_pack_catalog()?;
+                let need = Need::new(kind, query);
+                let report = FieldMatchReport {
+                    selection: select_field_pack(&catalog.packs, None, &need),
+                    need,
+                    pack_count: catalog.packs.len(),
+                    next: vec![
+                        "octopus need <kind> <query>".to_string(),
+                        "octopus traces 10".to_string(),
+                    ],
+                };
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_field_match_report(&report, language);
+                }
+            } else {
+                let root = rest.get(1).map(PathBuf::from);
+                let report = field_pack_report(root.as_deref());
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_field_pack_report(&report, language);
+                }
             }
             Ok(())
         }
@@ -1052,7 +1195,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .filter(|values| !values.is_empty())
                 .map(|values| values.join(" "))
                 .ok_or_else(|| "chat requires a message".to_string())?;
-            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            repair_installed_seed_sources(&mut loaded)?;
             let mut harness = Harness::with_state(loaded);
             let chat = if chat_llm_enabled() {
                 let mut client = chat_llm_client()?;
@@ -2213,6 +2357,40 @@ fn run(args: Vec<String>) -> Result<(), String> {
         Some("needs") => {
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             match rest.get(1).map(String::as_str) {
+                Some("run") => {
+                    let values = rest.get(2..).unwrap_or(&[]);
+                    match parse_need_run_request(values)? {
+                        NeedRunRequest::Single(selector) => {
+                            let (report, next_state) = run_queued_need(loaded, selector)?;
+                            loaded = next_state;
+                            loaded.save(&state).map_err(|error| error.to_string())?;
+                            if json {
+                                println!(
+                                    "{}",
+                                    serde_json::to_string_pretty(&report)
+                                        .map_err(|error| error.to_string())?
+                                );
+                            } else {
+                                print_need_run_report(&report, language);
+                            }
+                        }
+                        NeedRunRequest::Batch(limit) => {
+                            let (report, next_state) = run_queued_needs(loaded, limit)?;
+                            loaded = next_state;
+                            loaded.save(&state).map_err(|error| error.to_string())?;
+                            if json {
+                                println!(
+                                    "{}",
+                                    serde_json::to_string_pretty(&report)
+                                        .map_err(|error| error.to_string())?
+                                );
+                            } else {
+                                print_need_run_batch_report(&report, language);
+                            }
+                        }
+                    }
+                    Ok(())
+                }
                 Some("take") => {
                     let index = rest
                         .get(2)
@@ -2760,6 +2938,19 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         Some("pet") => {
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            if matches!(rest.get(1).map(String::as_str), Some("desktop" | "open")) {
+                let worker_cap = parse_worker_cap(&rest[2..]);
+                let report = launch_desktop_pet(&state, DesktopPetConfig { worker_cap })?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_desktop_pet_report(&report, language);
+                }
+                return Ok(());
+            }
             if rest.get(1).map(String::as_str) == Some("image") {
                 let pet_state = rest.get(2).map(String::as_str).unwrap_or("auto");
                 let report = pet_report_for_state(&loaded, &state, pet_state)?;
@@ -2801,10 +2992,11 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .transpose()?
                 .unwrap_or(200);
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            repair_installed_seed_sources(&mut loaded)?;
             let mut report = loaded.beat(memory_keep);
             let cwd = env::current_dir().map_err(|error| error.to_string())?;
             let evolution =
-                write_harness_beat_evolution_artifacts(default_tentacles_root(), &cwd, &loaded)?;
+                write_harness_beat_evolution_artifacts_with_bundled_fallback(&cwd, &loaded)?;
             if let Some(evolution) = &evolution {
                 attach_harness_beat_evolution(&mut report, evolution);
                 loaded.record_pet_event(
@@ -2912,6 +3104,74 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("evolve") => {
+            if matches!(rest.get(1).map(String::as_str), Some("parallel" | "swarm")) {
+                let (open_pet, worker_limit, objective) = parse_parallel_evolution_args(&rest[2..]);
+                let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                let prepared_field_tentacle = ensure_field_mini_task_tentacle(&mut loaded)?;
+                let objective = objective
+                    .or_else(|| loaded.goal.as_ref().map(|goal| goal.objective.clone()))
+                    .unwrap_or_else(|| {
+                        "parallel harness evolution toward field adaptation".to_string()
+                    });
+                let mut run = loaded.start_parallel_evolution(objective, worker_limit)?;
+                loaded.save(&state).map_err(|error| error.to_string())?;
+                let desktop_pet = if open_pet {
+                    Some(launch_desktop_pet(
+                        &state,
+                        DesktopPetConfig {
+                            worker_cap: run.worker_count.max(1),
+                        },
+                    )?)
+                } else {
+                    None
+                };
+                let queued_indices = run
+                    .workers
+                    .iter()
+                    .filter_map(|worker| worker.queued_need_index)
+                    .collect::<Vec<_>>();
+                let (auto_feed, next_state) = run_queued_need_indices(loaded, &queued_indices)?;
+                loaded = next_state;
+                for report in &auto_feed.reports {
+                    let status = report
+                        .verifier_result
+                        .as_ref()
+                        .map(|result| result.status.clone())
+                        .unwrap_or_else(|| report.feed.status.clone());
+                    if let Some(updated) = loaded.update_parallel_evolution_worker_result(
+                        run.index,
+                        report.taken.item.index,
+                        report.feed_trace_index,
+                        report.verifier_result.as_ref().map(|result| result.index),
+                        status,
+                    ) {
+                        run = updated;
+                    }
+                }
+                loaded.save(&state).map_err(|error| error.to_string())?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "run": run,
+                            "auto_feed": auto_feed,
+                            "desktop_pet": desktop_pet,
+                            "prepared_field_tentacle": prepared_field_tentacle,
+                            "mode": "0.1.x automatic active-field step",
+                            "next": [
+                                "octopus traces 10",
+                                "octopus fields score latest <status> <error-category> <summary>",
+                                "octopus beat 200"
+                            ]
+                        }))
+                        .map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_parallel_evolution_run(&run, desktop_pet.as_ref(), language);
+                    print_need_run_batch_report(&auto_feed, language);
+                }
+                return Ok(());
+            }
             if rest.get(1).map(String::as_str) == Some("recommend") {
                 let tentacle_id = rest
                     .get(2)
@@ -2959,19 +3219,22 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 let cwd = env::current_dir().map_err(|error| error.to_string())?;
                 let artifact = write_tentacle_evolution_artifacts(&cwd, &proposal)?;
                 let plan = plan_tentacle_evolution_apply(&proposal, &loaded, candidate_id)?;
-                let apply_artifact = write_tentacle_apply_artifacts(cwd, &plan)?;
+                let apply_artifact = write_tentacle_apply_artifacts(&cwd, &plan)?;
+                let live_apply = apply_authorized_suggested_patch(&cwd, &plan, &apply_artifact);
                 if json {
                     println!(
                         "{}",
                         serde_json::to_string_pretty(&serde_json::json!({
                             "apply": plan,
                             "apply_artifact": apply_artifact,
+                            "live_apply": live_apply,
                             "evolution_artifact": artifact,
                         }))
                         .map_err(|error| error.to_string())?
                     );
                 } else {
                     print_evolution_apply_plan(&plan, &apply_artifact, language);
+                    print_evolution_live_apply(&live_apply, language);
                 }
                 return Ok(());
             }
@@ -3069,7 +3332,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .filter(|values| !values.is_empty())
                 .map(|values| values.join(" "))
                 .ok_or_else(|| "probe requires a query".to_string())?;
-            let feed = probe_tentacle(default_tentacles_root(), tentacle_id, kind, query)?;
+            let root = resolve_tentacle_manifest_root(tentacle_id)?;
+            let feed = probe_tentacle(root, tentacle_id, kind, query)?;
             if json {
                 println!(
                     "{}",
@@ -3195,11 +3459,11 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         Some("manifests") => {
-            let root = rest
-                .get(1)
-                .map(PathBuf::from)
-                .unwrap_or_else(default_tentacles_root);
-            let reports = inspect_tentacle_manifests(&root).map_err(|error| error.to_string())?;
+            let reports = if let Some(root) = rest.get(1).map(PathBuf::from) {
+                inspect_tentacle_manifests(&root).map_err(|error| error.to_string())?
+            } else {
+                inspect_tentacle_manifests_with_bundled_seed_fallback(&default_tentacles_root())?
+            };
             if json {
                 println!(
                     "{}",
@@ -3230,7 +3494,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .unwrap_or_else(default_tentacles_root);
             let cwd = env::current_dir().map_err(|error| error.to_string())?;
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            let report = loaded.adapt_environment(cwd, root);
+            let report = adapt_environment_with_bundled_seed_fallback(&mut loaded, cwd, root);
             loaded.save(&state).map_err(|error| error.to_string())?;
             if json {
                 println!(
@@ -3250,13 +3514,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let profile_metadata = default_tentacle_profiles()
                 .into_iter()
                 .find(|candidate| candidate.id == profile.as_str());
-            let manifest_metadata = load_tentacle_manifests(&root)
-                .map_err(|error| error.to_string())?
-                .into_iter()
-                .find(|loaded| loaded.manifest.id == profile.as_str());
+            let manifest_lookup = find_tentacle_manifest_with_bundled_fallback(&root, profile)?;
+            let manifest_metadata = manifest_lookup.as_ref().map(|(loaded, _)| loaded.clone());
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             let profile_installed = loaded.install_profile(profile).is_ok();
-            let manifest_installed = loaded.install_manifest(&root, profile).ok();
+            let manifest_installed =
+                install_manifest_with_bundled_fallback(&mut loaded, &root, profile).ok();
             if !profile_installed && manifest_installed.is_none() {
                 return Err(format!("unknown profile or tentacle manifest: {profile}"));
             }
@@ -4485,6 +4748,27 @@ fn print_pet_image_report(report: &PetImageReport, language: Language) {
     }
 }
 
+fn print_desktop_pet_report(report: &DesktopPetReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus desktop pet");
+            println!("mode: read-only observer");
+            println!("state: {}", report.state_path);
+            println!("worker_cap: {}", report.worker_cap);
+            println!("app: {}", report.app_path);
+            println!("launched: {}", report.launched);
+        }
+        Language::Zh => {
+            println!("章鱼桌面观察器");
+            println!("模式: 只读观察");
+            println!("状态文件: {}", report.state_path);
+            println!("worker上限: {}", report.worker_cap);
+            println!("App: {}", report.app_path);
+            println!("已启动: {}", report.launched);
+        }
+    }
+}
+
 fn provider_profiles() -> Vec<ProviderProfile> {
     vec![
         ProviderProfile {
@@ -5085,8 +5369,9 @@ fn run_provider_matrix_target(
         Err(error) => provider_matrix_fail(error),
     };
     let tentacle_planning = match provider_client_factory(&target.prefix).and_then(|factory| {
+        let root = resolve_tentacle_manifest_root("swe-agent")?;
         think_tentacle_with_llm_factory(
-            default_tentacles_root(),
+            root,
             "swe-agent",
             &Need::new(NeedKind::Observe, "README.md"),
             Some(factory),
@@ -5099,8 +5384,9 @@ fn run_provider_matrix_target(
     };
     let harness_evolution =
         match provider_client(&target.prefix).and_then(|(_, _, _, _, mut client)| {
+            let root = resolve_tentacle_manifest_root("swe-agent")?;
             propose_tentacle_evolution_with_client(
-                default_tentacles_root(),
+                root,
                 "swe-agent",
                 "improve Feed evidence",
                 state,
@@ -6358,7 +6644,7 @@ fn init_workspace(state_path: PathBuf, tentacles_root: PathBuf) -> Result<InitRe
     let state_existed = state_path.exists();
     let cwd = env::current_dir().map_err(|error| error.to_string())?;
     let mut state = HarnessState::load(&state_path).map_err(|error| error.to_string())?;
-    let adapt = state.adapt_environment(&cwd, tentacles_root);
+    let adapt = adapt_environment_with_bundled_seed_fallback(&mut state, cwd, tentacles_root);
     state.save(&state_path).map_err(|error| error.to_string())?;
     let files = init_files(&state_path)?;
     let state_arg = shell_arg(&state_path.to_string_lossy());
@@ -6405,7 +6691,11 @@ fn bootstrap_workspace(
     let cwd = env::current_dir().map_err(|error| error.to_string())?;
     let mut state = HarnessState::load(&state_path).map_err(|error| error.to_string())?;
     let files = init_files(&state_path)?;
-    let adapt = state.adapt_environment(&cwd, &tentacles_root);
+    let adapt = adapt_environment_with_bundled_seed_fallback(
+        &mut state,
+        cwd.clone(),
+        tentacles_root.clone(),
+    );
     let seed_tentacles = bootstrap_seed_tentacles()
         .into_iter()
         .map(str::to_string)
@@ -6418,7 +6708,7 @@ fn bootstrap_workspace(
             .iter()
             .any(|tentacle| tentacle.id == *tentacle_id);
         let _ = state.install_profile(tentacle_id);
-        match state.install_manifest(&tentacles_root, tentacle_id) {
+        match install_manifest_with_bundled_fallback(&mut state, &tentacles_root, tentacle_id) {
             Ok(tentacle) if !was_installed => installed_tentacles.push(tentacle.id),
             Ok(_) => {}
             Err(error) => skipped_tentacles.push(format!("{tentacle_id}: {error}")),
@@ -6712,13 +7002,75 @@ fn pet_report_for_state(
         requested.to_string()
     };
     let mut report = pet_report(&pet_state)?;
-    if let Some(event) = status.and_then(|status| status.last_pet_event) {
-        if event.state == report.state {
-            report.event_source = Some(event.source);
-            report.event_summary = Some(event.summary);
+    if let Some(status) = &status {
+        if let Some(event) = &status.last_pet_event {
+            if event.state == report.state {
+                report.event_source = Some(event.source.clone());
+                report.event_summary = Some(event.summary.clone());
+            }
         }
+        enrich_pet_target(&mut report, status);
     }
     Ok(report)
+}
+
+fn enrich_pet_target(report: &mut PetReport, status: &StatusReport) {
+    let mut params = Vec::new();
+    if let Some(goal) = &status.goal {
+        params.push(("goal", goal.objective.as_str()));
+    }
+    if let Some(item) = &status.latest_need_queue_item {
+        params.push(("need", item.need.query.as_str()));
+    } else if let Some(trace) = &status.latest_feed_trace {
+        params.push(("need", trace.need_query.as_str()));
+    }
+    if let Some(trace) = &status.latest_feed_trace {
+        params.push(("feed", trace.summary.as_str()));
+    }
+    if let Some(event) = &status.last_pet_event {
+        params.push(("source", event.source.as_str()));
+    }
+    let worker_count = status
+        .latest_parallel_evolution_run
+        .as_ref()
+        .map(|run| run.worker_count)
+        .unwrap_or(status.tentacles.len())
+        .clamp(1, 8);
+    let workers = worker_count.to_string();
+    params.push(("workers", workers.as_str()));
+    for (key, value) in params {
+        if !value.trim().is_empty() {
+            report.target.push('&');
+            report.target.push_str(key);
+            report.target.push('=');
+            report
+                .target
+                .push_str(&percent_encode_query_component(&truncate_query_param(
+                    value, 180,
+                )));
+        }
+    }
+}
+
+fn truncate_query_param(value: &str, max_chars: usize) -> String {
+    let mut output = String::new();
+    for character in value.chars().take(max_chars) {
+        output.push(character);
+    }
+    output
+}
+
+fn percent_encode_query_component(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.as_bytes() {
+        match *byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(*byte as char)
+            }
+            value => encoded.push_str(&format!("%{value:02X}")),
+        }
+    }
+    encoded
 }
 
 fn auto_pet_state(report: &StatusReport) -> String {
@@ -6742,6 +7094,15 @@ fn auto_pet_state(report: &StatusReport) -> String {
             return event.state.clone();
         }
     }
+    if report.need_queue_count > 0 {
+        return "need".to_string();
+    }
+    if report.latest_feed_trace.is_some() {
+        return "feed".to_string();
+    }
+    if report.evolution_outcome_count > 0 || report.repair_outcome_count > 0 {
+        return "harness".to_string();
+    }
     if report.route_count > 0 {
         return "harness".to_string();
     }
@@ -6755,9 +7116,20 @@ fn pet_report(state: &str) -> Result<PetReport, String> {
     pet::pet_report(state, &repo_root().join("docs/pet.html"))
 }
 
+const BUNDLED_SEED_TENTACLE_IDS: &[&str] = &[
+    "bash-only",
+    "computer-use-agent",
+    "field-mini-task",
+    "harness-repair-agent",
+    "json-feed",
+    "repo-maintainer",
+    "swe-agent",
+    "visual",
+];
+
 fn skill_reports(state: &HarnessState, root: PathBuf) -> Result<Vec<SkillReport>, String> {
     let mut reports = Vec::new();
-    let manifests = load_tentacle_manifests(&root).map_err(|error| error.to_string())?;
+    let manifests = load_tentacle_manifests_with_bundled_seed_fallback(&root)?;
     let manifest_ids = manifests
         .iter()
         .map(|loaded| loaded.manifest.id.as_str())
@@ -6855,6 +7227,157 @@ fn skill_reports(state: &HarnessState, root: PathBuf) -> Result<Vec<SkillReport>
             .then_with(|| left.source.cmp(&right.source))
     });
     Ok(reports)
+}
+
+fn load_tentacle_manifests_with_bundled_seed_fallback(
+    root: &Path,
+) -> Result<Vec<LoadedTentacleManifest>, String> {
+    let mut manifests = load_tentacle_manifests(root).map_err(|error| error.to_string())?;
+    let mut ids = manifests
+        .iter()
+        .map(|loaded| loaded.manifest.id.clone())
+        .collect::<BTreeSet<_>>();
+    let broken_seed_ids = broken_seed_manifest_ids(root)?;
+    let needs_bundled_seed = BUNDLED_SEED_TENTACLE_IDS
+        .iter()
+        .any(|id| !ids.contains(*id) || broken_seed_ids.contains(*id));
+    if !needs_bundled_seed {
+        return Ok(manifests);
+    }
+
+    let cwd = env::current_dir().map_err(|error| error.to_string())?;
+    let bundled_root = materialize_bundled_tentacles_root_in(&cwd)?;
+    if bundled_root == root {
+        return Ok(manifests);
+    }
+    let healthy_bundled_ids = healthy_seed_manifest_ids(&bundled_root)?;
+    for loaded in load_tentacle_manifests(&bundled_root).map_err(|error| error.to_string())? {
+        let id = loaded.manifest.id.clone();
+        if broken_seed_ids.contains(&id) && healthy_bundled_ids.contains(&id) {
+            manifests.retain(|manifest| manifest.manifest.id != id);
+            ids.remove(&id);
+        }
+        if ids.insert(id) {
+            manifests.push(loaded);
+        }
+    }
+    manifests.sort_by(|left, right| left.manifest.id.cmp(&right.manifest.id));
+    Ok(manifests)
+}
+
+fn install_manifest_with_bundled_fallback(
+    state: &mut HarnessState,
+    root: &Path,
+    tentacle_id: &str,
+) -> Result<InstalledTentacle, String> {
+    let mut errors = Vec::new();
+    match state.install_manifest(root, tentacle_id) {
+        Ok(tentacle) => return Ok(tentacle),
+        Err(error) => errors.push(format!("{}: {error}", root.display())),
+    }
+
+    let cwd = env::current_dir().map_err(|error| error.to_string())?;
+    let bundled_root = materialize_bundled_tentacles_root_in(&cwd)?;
+    if bundled_root != root {
+        match state.install_manifest(&bundled_root, tentacle_id) {
+            Ok(tentacle) => return Ok(tentacle),
+            Err(error) => errors.push(format!("{}: {error}", bundled_root.display())),
+        }
+    }
+
+    Err(format!(
+        "unknown or invalid manifest {tentacle_id}: {}",
+        errors.join("; ")
+    ))
+}
+
+fn adapt_environment_with_bundled_seed_fallback(
+    state: &mut HarnessState,
+    cwd: PathBuf,
+    root: PathBuf,
+) -> AdaptReport {
+    let mut report = state.adapt_environment(&cwd, &root);
+    let skipped = std::mem::take(&mut report.skipped_manifests);
+    for profile in skipped {
+        let was_installed = state
+            .installed_tentacles
+            .iter()
+            .any(|tentacle| tentacle.id == profile);
+        match install_manifest_with_bundled_fallback(state, &root, &profile) {
+            Ok(tentacle) => {
+                if !was_installed {
+                    report.installed_tentacles.push(tentacle.id);
+                }
+            }
+            Err(_) => report.skipped_manifests.push(profile),
+        }
+    }
+    report.installed_tentacles.sort();
+    report.installed_tentacles.dedup();
+    report.skipped_manifests.sort();
+    report.skipped_manifests.dedup();
+    report
+}
+
+fn inspect_tentacle_manifests_with_bundled_seed_fallback(
+    root: &Path,
+) -> Result<Vec<TentacleManifestReport>, String> {
+    let mut reports = inspect_tentacle_manifests(root).map_err(|error| error.to_string())?;
+    let mut ids = reports
+        .iter()
+        .map(|report| report.id.clone())
+        .collect::<BTreeSet<_>>();
+    let broken_seed_ids = reports
+        .iter()
+        .filter(|report| seed_id(&report.id) && !report.missing_entrypoints.is_empty())
+        .map(|report| report.id.clone())
+        .collect::<BTreeSet<_>>();
+    let needs_bundled_seed = BUNDLED_SEED_TENTACLE_IDS
+        .iter()
+        .any(|id| !ids.contains(*id) || broken_seed_ids.contains(*id));
+    if !needs_bundled_seed {
+        return Ok(reports);
+    }
+
+    let cwd = env::current_dir().map_err(|error| error.to_string())?;
+    let bundled_root = materialize_bundled_tentacles_root_in(&cwd)?;
+    if bundled_root == root {
+        return Ok(reports);
+    }
+    for report in inspect_tentacle_manifests(&bundled_root).map_err(|error| error.to_string())? {
+        let id = report.id.clone();
+        if broken_seed_ids.contains(&id) && report.missing_entrypoints.is_empty() {
+            reports.retain(|candidate| candidate.id != id);
+            ids.remove(&id);
+        }
+        if ids.insert(id) {
+            reports.push(report);
+        }
+    }
+    reports.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(reports)
+}
+
+fn seed_id(id: &str) -> bool {
+    BUNDLED_SEED_TENTACLE_IDS.contains(&id)
+}
+
+fn broken_seed_manifest_ids(root: &Path) -> Result<BTreeSet<String>, String> {
+    Ok(inspect_tentacle_manifests(root)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .filter(|report| seed_id(&report.id) && !report.missing_entrypoints.is_empty())
+        .map(|report| report.id)
+        .collect())
+}
+
+fn healthy_seed_manifest_ids(root: &Path) -> Result<BTreeSet<String>, String> {
+    Ok(inspect_tentacle_manifests(root)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .filter(|report| seed_id(&report.id) && report.missing_entrypoints.is_empty())
+        .map(|report| report.id)
+        .collect())
 }
 
 fn starter_report(
@@ -7644,7 +8167,7 @@ fn repair_report(
     query: String,
 ) -> Result<RepairReport, String> {
     let tentacle_id = "harness-repair-agent";
-    let root = default_tentacles_root();
+    let root = resolve_tentacle_manifest_root(tentacle_id)?;
     let _ = state.install_profile(tentacle_id);
     state.install_manifest(&root, tentacle_id)?;
     state.save(state_path).map_err(|error| error.to_string())?;
@@ -7866,7 +8389,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
     let cwd = env::current_dir().map_err(|error| error.to_string())?;
     let environment = EnvironmentReport::detect(&cwd);
     let manifests =
-        inspect_tentacle_manifests(default_tentacles_root()).map_err(|error| error.to_string())?;
+        inspect_tentacle_manifests_with_bundled_seed_fallback(&default_tentacles_root())?;
     let provider = provider_status_report();
     let provider_matrix = check_provider_matrix_record(Path::new(DEFAULT_PROVIDER_MATRIX_PATH))?;
     let profile_registry = profile_registry_report(state_path);
@@ -10142,6 +10665,92 @@ fn print_need_queue_take(report: &NeedQueueTakeReport, language: Language) {
     }
 }
 
+fn print_need_run_report(report: &NeedRunReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus ran queued Need");
+            println!("need: #{}", report.taken.item.index);
+            println!("status: {:?}", report.feed.status);
+            if let Some(field) = &report.field {
+                println!("field: {field}");
+            }
+            if let Some(index) = report.feed_trace_index {
+                println!("trace: #{index}");
+            }
+            if let Some(result) = &report.verifier_result {
+                println!("verifier: #{} {:?}", result.index, result.status);
+            }
+            println!("summary: {}", report.feed.summary);
+        }
+        Language::Zh => {
+            println!("章鱼已自动运行队列 Need");
+            println!("Need: #{}", report.taken.item.index);
+            println!("状态: {:?}", report.feed.status);
+            if let Some(field) = &report.field {
+                println!("领域: {field}");
+            }
+            if let Some(index) = report.feed_trace_index {
+                println!("轨迹: #{index}");
+            }
+            if let Some(result) = &report.verifier_result {
+                println!("验证: #{} {:?}", result.index, result.status);
+            }
+            println!("摘要: {}", report.feed.summary);
+        }
+    }
+    for next in &report.next {
+        match language {
+            Language::En => println!("next: {next}"),
+            Language::Zh => println!("下一步: {next}"),
+        }
+    }
+}
+
+fn print_need_run_batch_report(report: &NeedRunBatchReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus ran queued Needs");
+            println!("requested: {}", report.requested);
+            println!("ran: {}", report.ran);
+            println!("remaining_pending: {}", report.remaining_pending);
+            for item in &report.reports {
+                let field = item.field.as_deref().unwrap_or("none");
+                let trace = item
+                    .feed_trace_index
+                    .map(|index| format!("#{index}"))
+                    .unwrap_or_else(|| "none".to_string());
+                println!(
+                    "- need #{} status={:?} field={} trace={} :: {}",
+                    item.taken.item.index, item.feed.status, field, trace, item.feed.summary
+                );
+            }
+        }
+        Language::Zh => {
+            println!("章鱼已批量运行队列 Need");
+            println!("请求数: {}", report.requested);
+            println!("已运行: {}", report.ran);
+            println!("剩余 pending: {}", report.remaining_pending);
+            for item in &report.reports {
+                let field = item.field.as_deref().unwrap_or("none");
+                let trace = item
+                    .feed_trace_index
+                    .map(|index| format!("#{index}"))
+                    .unwrap_or_else(|| "none".to_string());
+                println!(
+                    "- Need #{} 状态={:?} 领域={} 轨迹={} :: {}",
+                    item.taken.item.index, item.feed.status, field, trace, item.feed.summary
+                );
+            }
+        }
+    }
+    for next in &report.next {
+        match language {
+            Language::En => println!("next: {next}"),
+            Language::Zh => println!("下一步: {next}"),
+        }
+    }
+}
+
 fn print_need_queue_script(report: &NeedQueueScriptReport, language: Language) {
     match language {
         Language::En => {
@@ -10420,6 +11029,317 @@ fn print_feed_traces(traces: &[FeedTraceRecord], language: Language) {
     }
 }
 
+fn print_field_pack_report(report: &FieldPackReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Field packs");
+            println!("source: {}", report.source);
+            if let Some(root) = &report.root {
+                println!("root: {root}");
+            }
+            println!("packs: {}", report.pack_count);
+            for pack in &report.packs {
+                println!("- {} {} :: {}", pack.id, pack.version, pack.description);
+                println!(
+                    "  hints={} verifier={} mini_tasks={}",
+                    join_or_none(&pack.capability_hints),
+                    pack.verifier_method,
+                    pack.mini_tasks
+                );
+            }
+            for error in &report.errors {
+                println!("error: {error}");
+            }
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("领域包");
+            println!("来源: {}", report.source);
+            if let Some(root) = &report.root {
+                println!("路径: {root}");
+            }
+            println!("数量: {}", report.pack_count);
+            for pack in &report.packs {
+                println!("- {} {} :: {}", pack.id, pack.version, pack.description);
+                println!(
+                    "  能力={} 验证={} mini_tasks={}",
+                    join_or_none(&pack.capability_hints),
+                    pack.verifier_method,
+                    pack.mini_tasks
+                );
+            }
+            for error in &report.errors {
+                println!("错误: {error}");
+            }
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn print_field_match_report(report: &FieldMatchReport, language: Language) {
+    match language {
+        Language::En => {
+            println!(
+                "Field match: {} {}",
+                need_label(&report.need.kind),
+                report.need.query
+            );
+            if let Some(selection) = &report.selection {
+                println!(
+                    "selected: {} score={:.2} reason={}",
+                    selection.field, selection.score, selection.reason
+                );
+                println!(
+                    "verifier: {} | pass={}",
+                    selection.verifier_method, selection.pass_signal
+                );
+            } else {
+                println!("selected: none");
+            }
+            println!("packs: {}", report.pack_count);
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!(
+                "领域匹配: {} {}",
+                need_label(&report.need.kind),
+                report.need.query
+            );
+            if let Some(selection) = &report.selection {
+                println!(
+                    "已选择: {} 分数={:.2} 原因={}",
+                    selection.field, selection.score, selection.reason
+                );
+                println!(
+                    "验证: {} | 通过信号={}",
+                    selection.verifier_method, selection.pass_signal
+                );
+            } else {
+                println!("已选择: 无");
+            }
+            println!("领域包: {}", report.pack_count);
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn print_field_trajectory_report(report: &FieldTrajectoryReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Field trajectory summary");
+            println!("fields: {}", report.field_count);
+            println!("traces: {}", report.trace_count);
+            println!("verifier_results: {}", report.verifier_result_count);
+            println!(
+                "first_pass: {}",
+                if report.all_first_pass_satisfied {
+                    "satisfied"
+                } else {
+                    "incomplete"
+                }
+            );
+            println!(
+                "all_pack_tasks: {}",
+                if report.all_pack_tasks_satisfied {
+                    "satisfied"
+                } else {
+                    "incomplete"
+                }
+            );
+            for field in &report.fields {
+                println!(
+                    "- {} status={} tasks={}/{} next_task={} traces={} verifiers={} latest_trace={} latest_verifier={} latest_task={} next={}",
+                    field.field,
+                    field
+                        .latest_verifier_status
+                        .as_ref()
+                        .or(field.latest_trace_status.as_ref())
+                        .map(|status| format!("{status:?}"))
+                        .unwrap_or_else(|| "None".to_string()),
+                    field.satisfied_mini_task_count,
+                    field.mini_task_count,
+                    field.next_mini_task.as_deref().unwrap_or("none"),
+                    field.trace_count,
+                    field.verifier_result_count,
+                    field
+                        .latest_trace_index
+                        .map(|index| format!("#{index}"))
+                        .unwrap_or_else(|| "none".to_string()),
+                    field
+                        .latest_verifier_result_index
+                        .map(|index| format!("#{index}"))
+                        .unwrap_or_else(|| "none".to_string()),
+                    field.latest_mini_task.as_deref().unwrap_or("none"),
+                    field.next_action
+                );
+            }
+            println!(
+                "sampled_slot_field: {}",
+                option_or_none(&report.sampled_slot_field)
+            );
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("领域轨迹汇总");
+            println!("领域数: {}", report.field_count);
+            println!("轨迹数: {}", report.trace_count);
+            println!("验证结果数: {}", report.verifier_result_count);
+            println!(
+                "首轮状态: {}",
+                if report.all_first_pass_satisfied {
+                    "已通过"
+                } else {
+                    "未完成"
+                }
+            );
+            println!(
+                "全部任务: {}",
+                if report.all_pack_tasks_satisfied {
+                    "已通过"
+                } else {
+                    "未完成"
+                }
+            );
+            for field in &report.fields {
+                println!(
+                    "- {} 状态={} 任务={}/{} 下一题={} 轨迹={} 验证={} 最新轨迹={} 最新验证={} 最新题={} 下一步={}",
+                    field.field,
+                    field
+                        .latest_verifier_status
+                        .as_ref()
+                        .or(field.latest_trace_status.as_ref())
+                        .map(|status| format!("{status:?}"))
+                        .unwrap_or_else(|| "None".to_string()),
+                    field.satisfied_mini_task_count,
+                    field.mini_task_count,
+                    field.next_mini_task.as_deref().unwrap_or("无"),
+                    field.trace_count,
+                    field.verifier_result_count,
+                    field
+                        .latest_trace_index
+                        .map(|index| format!("#{index}"))
+                        .unwrap_or_else(|| "无".to_string()),
+                    field
+                        .latest_verifier_result_index
+                        .map(|index| format!("#{index}"))
+                        .unwrap_or_else(|| "无".to_string()),
+                    field.latest_mini_task.as_deref().unwrap_or("无"),
+                    field.next_action
+                );
+            }
+            println!(
+                "当前采样槽领域: {}",
+                option_or_none(&report.sampled_slot_field)
+            );
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
+fn print_field_verifier_result(result: &FieldVerifierResult, language: Language) {
+    match language {
+        Language::En => {
+            println!("Field verifier result");
+            println!("field: {}", result.field);
+            println!("trace: #{}", result.trace_index);
+            println!("status: {:?}", result.status);
+            if let Some(category) = &result.error_category {
+                println!("error_category: {category}");
+            }
+            if let Some(artifact) = &result.artifact {
+                println!("artifact: {artifact}");
+            }
+            println!("summary: {}", result.summary);
+        }
+        Language::Zh => {
+            println!("领域验证结果");
+            println!("领域: {}", result.field);
+            println!("轨迹: #{}", result.trace_index);
+            println!("状态: {:?}", result.status);
+            if let Some(category) = &result.error_category {
+                println!("错误类别: {category}");
+            }
+            if let Some(artifact) = &result.artifact {
+                println!("证据文件: {artifact}");
+            }
+            println!("摘要: {}", result.summary);
+        }
+    }
+}
+
+fn print_parallel_evolution_run(
+    run: &ParallelEvolutionRun,
+    desktop_pet: Option<&DesktopPetReport>,
+    language: Language,
+) {
+    match language {
+        Language::En => {
+            println!("Octopus automatic field evolution");
+            println!("run: #{}", run.index);
+            println!("sampled_slots: {}", run.worker_count);
+            println!("summary: {}", run.summary);
+            for worker in &run.workers {
+                println!(
+                    "- {} field={} need={} trace={} verifier={} :: {}",
+                    worker.id,
+                    worker.field,
+                    worker
+                        .queued_need_index
+                        .map(|index| format!("#{index}"))
+                        .unwrap_or_else(|| "none".to_string()),
+                    worker
+                        .source_trace_index
+                        .map(|index| format!("#{index}"))
+                        .unwrap_or_else(|| "none".to_string()),
+                    worker
+                        .verifier_result_index
+                        .map(|index| format!("#{index}"))
+                        .unwrap_or_else(|| "none".to_string()),
+                    worker.next_action
+                );
+            }
+            if let Some(report) = desktop_pet {
+                println!("desktop_pet: {}", report.app_path);
+                println!("observing: {}", report.state_path);
+            } else {
+                println!("desktop_pet: octopus pet desktop");
+            }
+        }
+        Language::Zh => {
+            println!("章鱼自动领域进化");
+            println!("run: #{}", run.index);
+            println!("采样执行槽数: {}", run.worker_count);
+            println!("摘要: {}", run.summary);
+            for worker in &run.workers {
+                println!(
+                    "- {} 领域={} Need={} 轨迹={} 验证={} :: {}",
+                    worker.id,
+                    worker.field,
+                    worker
+                        .queued_need_index
+                        .map(|index| format!("#{index}"))
+                        .unwrap_or_else(|| "无".to_string()),
+                    worker
+                        .source_trace_index
+                        .map(|index| format!("#{index}"))
+                        .unwrap_or_else(|| "无".to_string()),
+                    worker
+                        .verifier_result_index
+                        .map(|index| format!("#{index}"))
+                        .unwrap_or_else(|| "无".to_string()),
+                    worker.next_action
+                );
+            }
+            if let Some(report) = desktop_pet {
+                println!("桌宠: {}", report.app_path);
+                println!("观察状态: {}", report.state_path);
+            } else {
+                println!("桌宠: octopus pet desktop");
+            }
+        }
+    }
+}
+
 fn print_route_report(report: &RouteReport, language: Language) {
     match language {
         Language::En => {
@@ -10490,15 +11410,17 @@ fn print_route_report(report: &RouteReport, language: Language) {
 }
 
 fn trace_line(trace: &FeedTraceRecord) -> String {
+    let field = trace.field.as_deref().unwrap_or("none");
     let tentacle = trace.tentacle.as_deref().unwrap_or("none");
     let tool = trace.tool.as_deref().unwrap_or("none");
     let plan = trace.plan_source.as_deref().unwrap_or("none");
     format!(
-        "#{} {}:{} -> {:?} via {}/{} plan={} evidence={} :: {}",
+        "#{} {}:{} -> {:?} field={} via {}/{} plan={} evidence={} :: {}",
         trace.index,
         need_label(&trace.need_kind),
         trace.need_query,
         trace.status,
+        field,
         tentacle,
         tool,
         plan,
@@ -10521,7 +11443,7 @@ fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorRepo
     let cwd = env::current_dir().map_err(|error| error.to_string())?;
     let environment = EnvironmentReport::detect(&cwd);
     let manifests =
-        inspect_tentacle_manifests(default_tentacles_root()).map_err(|error| error.to_string())?;
+        inspect_tentacle_manifests_with_bundled_seed_fallback(&default_tentacles_root())?;
     let broken_manifests = manifests
         .iter()
         .filter(|manifest| !manifest.missing_entrypoints.is_empty())
@@ -11066,6 +11988,94 @@ fn print_evolution_apply_plan(
     }
 }
 
+fn apply_authorized_suggested_patch(
+    cwd: &Path,
+    plan: &EvolutionApplyPlan,
+    artifact: &EvolutionApplyArtifact,
+) -> EvolutionLiveApplyReport {
+    if !plan.authorized {
+        return EvolutionLiveApplyReport {
+            applied: false,
+            status: "skipped_not_authorized".to_string(),
+            command: None,
+            patch_path: artifact.patch_path.clone(),
+            stdout: String::new(),
+            stderr: String::new(),
+        };
+    }
+    if plan.suggested_patch.is_none() {
+        return EvolutionLiveApplyReport {
+            applied: false,
+            status: "skipped_no_suggested_patch".to_string(),
+            command: None,
+            patch_path: artifact.patch_path.clone(),
+            stdout: String::new(),
+            stderr: String::new(),
+        };
+    }
+    let Some(patch_path) = artifact.patch_path.as_deref() else {
+        return EvolutionLiveApplyReport {
+            applied: false,
+            status: "skipped_missing_patch_artifact".to_string(),
+            command: None,
+            patch_path: None,
+            stdout: String::new(),
+            stderr: String::new(),
+        };
+    };
+    let command_text = format!("git apply {}", shell_arg(patch_path));
+    let output = Command::new("git")
+        .arg("apply")
+        .arg(patch_path)
+        .current_dir(cwd)
+        .output();
+    match output {
+        Ok(output) => EvolutionLiveApplyReport {
+            applied: output.status.success(),
+            status: if output.status.success() {
+                "applied".to_string()
+            } else {
+                "failed".to_string()
+            },
+            command: Some(command_text),
+            patch_path: Some(patch_path.to_string()),
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        },
+        Err(error) => EvolutionLiveApplyReport {
+            applied: false,
+            status: "failed_to_start".to_string(),
+            command: Some(command_text),
+            patch_path: Some(patch_path.to_string()),
+            stdout: String::new(),
+            stderr: error.to_string(),
+        },
+    }
+}
+
+fn print_evolution_live_apply(report: &EvolutionLiveApplyReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("live apply: {}", report.status);
+            if let Some(command) = &report.command {
+                println!("command: {command}");
+            }
+            if !report.stderr.trim().is_empty() {
+                println!("stderr: {}", report.stderr.trim());
+            }
+        }
+        Language::Zh => {
+            println!("实时应用: {}", report.status);
+            if let Some(command) = &report.command {
+                println!("命令: {command}");
+            }
+            if !report.stderr.trim().is_empty() {
+                println!("stderr: {}", report.stderr.trim());
+            }
+        }
+    }
+}
+
 fn print_evolution_recommendation(
     recommendation: &EvolutionRecommendation,
     artifact: &EvolutionApplyArtifact,
@@ -11507,6 +12517,10 @@ fn join_or_none(values: &[String]) -> String {
     }
 }
 
+fn option_or_none(value: &Option<String>) -> &str {
+    value.as_deref().unwrap_or("none")
+}
+
 fn install_report(
     id: &str,
     state_path: &Path,
@@ -11853,12 +12867,69 @@ fn update_report(run_update: bool) -> UpdateReport {
     }
 }
 
+fn write_harness_beat_evolution_artifacts_with_bundled_fallback(
+    cwd: &Path,
+    state: &HarnessState,
+) -> Result<Option<HarnessBeatEvolution>, String> {
+    let root = default_tentacles_root();
+    let broken_local_seed =
+        harness_beat_next_tentacle_id(state)
+            .as_deref()
+            .is_some_and(|tentacle_id| {
+                seed_id(tentacle_id)
+                    && manifest_missing_entrypoints(&root, tentacle_id)
+                        .map(|missing| !missing.is_empty())
+                        .unwrap_or(false)
+            });
+    if !broken_local_seed {
+        if let Some(evolution) = write_harness_beat_evolution_artifacts(&root, cwd, state)? {
+            return Ok(Some(evolution));
+        }
+    }
+    let bundled_root = materialize_bundled_tentacles_root_in(cwd)?;
+    if bundled_root == root {
+        return Ok(None);
+    }
+    write_harness_beat_evolution_artifacts(bundled_root, cwd, state)
+}
+
+fn harness_beat_next_tentacle_id(state: &HarnessState) -> Option<String> {
+    state
+        .check_history
+        .iter()
+        .rev()
+        .find(|record| status_needs_harness_evolution(&record.status))
+        .map(|record| record.tentacle_id.clone())
+        .or_else(|| {
+            state
+                .feed_traces
+                .iter()
+                .rev()
+                .find(|trace| status_needs_harness_evolution(&trace.status))
+                .and_then(|trace| trace.tentacle.clone())
+        })
+        .or_else(|| {
+            state
+                .repair_outcomes
+                .iter()
+                .rev()
+                .find(|outcome| status_needs_harness_evolution(&outcome.status))
+                .map(|outcome| {
+                    outcome
+                        .target_tentacle
+                        .clone()
+                        .unwrap_or_else(|| outcome.tentacle_id.clone())
+                })
+        })
+}
+
+fn status_needs_harness_evolution(status: &Status) -> bool {
+    matches!(status, Status::Failed | Status::Partial)
+}
+
 fn check_report(tentacle_id: &str, selected: Option<usize>) -> Result<CheckReport, String> {
     let root = default_tentacles_root();
-    if let Some(loaded) = load_tentacle_manifests(&root)
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .find(|loaded| loaded.manifest.id == tentacle_id)
+    if let Some((loaded, root)) = find_tentacle_manifest_with_bundled_fallback(&root, tentacle_id)?
     {
         let cwd = Path::new(&loaded.path)
             .parent()
@@ -11903,6 +12974,75 @@ fn check_report(tentacle_id: &str, selected: Option<usize>) -> Result<CheckRepor
         results,
         history: Vec::new(),
     })
+}
+
+fn find_tentacle_manifest_with_bundled_fallback(
+    root: &Path,
+    tentacle_id: &str,
+) -> Result<Option<(LoadedTentacleManifest, PathBuf)>, String> {
+    let mut errors = Vec::new();
+    let manifests = load_tentacle_manifests(root).map_err(|error| error.to_string())?;
+    if let Some(loaded) = manifests
+        .into_iter()
+        .find(|loaded| loaded.manifest.id == tentacle_id)
+    {
+        let missing = manifest_missing_entrypoints(root, tentacle_id)?;
+        if missing.is_empty() {
+            return Ok(Some((loaded, root.to_path_buf())));
+        }
+        errors.push(format!("{}: missing {}", root.display(), missing.join(",")));
+    }
+    let cwd = env::current_dir().map_err(|error| error.to_string())?;
+    let bundled_root = materialize_bundled_tentacles_root_in(&cwd)?;
+    if bundled_root == root {
+        return if errors.is_empty() {
+            Ok(None)
+        } else {
+            Err(format!(
+                "invalid manifest {tentacle_id}: {}",
+                errors.join("; ")
+            ))
+        };
+    }
+    let manifests = load_tentacle_manifests(&bundled_root).map_err(|error| error.to_string())?;
+    if let Some(loaded) = manifests
+        .into_iter()
+        .find(|loaded| loaded.manifest.id == tentacle_id)
+    {
+        let missing = manifest_missing_entrypoints(&bundled_root, tentacle_id)?;
+        if missing.is_empty() {
+            return Ok(Some((loaded, bundled_root)));
+        }
+        errors.push(format!(
+            "{}: missing {}",
+            bundled_root.display(),
+            missing.join(",")
+        ));
+    }
+    if errors.is_empty() {
+        Ok(None)
+    } else {
+        Err(format!(
+            "invalid manifest {tentacle_id}: {}",
+            errors.join("; ")
+        ))
+    }
+}
+
+fn manifest_missing_entrypoints(root: &Path, tentacle_id: &str) -> Result<Vec<String>, String> {
+    Ok(inspect_tentacle_manifests(root)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find(|report| report.id == tentacle_id)
+        .map(|report| report.missing_entrypoints)
+        .unwrap_or_default())
+}
+
+fn resolve_tentacle_manifest_root(tentacle_id: &str) -> Result<PathBuf, String> {
+    let root = default_tentacles_root();
+    find_tentacle_manifest_with_bundled_fallback(&root, tentacle_id)?
+        .map(|(_, root)| root)
+        .ok_or_else(|| format!("unknown tentacle manifest: {tentacle_id}"))
 }
 
 fn record_check_report(state: &mut HarnessState, report: &mut CheckReport) {
@@ -12076,6 +13216,109 @@ fn materialize_bundled_tentacles_root_in(cwd: &Path) -> Result<PathBuf, String> 
     bundled_harness::materialize_tentacles_root(cwd)
 }
 
+fn ensure_field_mini_task_tentacle(state: &mut HarnessState) -> Result<bool, String> {
+    if installed_field_mini_task_ready(state) {
+        return Ok(false);
+    }
+    state
+        .installed_tentacles
+        .retain(|tentacle| tentacle.id != "field-mini-task");
+
+    let root = default_tentacles_root();
+    let mut errors = Vec::new();
+    match ensure_field_mini_task_tentacle_from_root(state, &root) {
+        Ok(installed) => return Ok(installed),
+        Err(error) => errors.push(format!("{}: {error}", root.display())),
+    }
+
+    let cwd = env::current_dir().map_err(|error| error.to_string())?;
+    match materialize_bundled_tentacles_root_in(&cwd) {
+        Ok(bundled_root) if bundled_root != root => {
+            match ensure_field_mini_task_tentacle_from_root(state, &bundled_root) {
+                Ok(installed) => Ok(installed),
+                Err(error) => {
+                    errors.push(format!("{}: {error}", bundled_root.display()));
+                    Err(format!(
+                        "field-mini-task seed unavailable: {}",
+                        errors.join("; ")
+                    ))
+                }
+            }
+        }
+        Ok(_) => Err(format!(
+            "field-mini-task seed unavailable: {}",
+            errors.join("; ")
+        )),
+        Err(error) => {
+            errors.push(format!("bundled seed materialization failed: {error}"));
+            Err(format!(
+                "field-mini-task seed unavailable: {}",
+                errors.join("; ")
+            ))
+        }
+    }
+}
+
+fn ensure_field_mini_task_tentacle_from_root(
+    state: &mut HarnessState,
+    root: &Path,
+) -> Result<bool, String> {
+    if installed_field_mini_task_ready(state) {
+        return Ok(false);
+    }
+    state
+        .installed_tentacles
+        .retain(|tentacle| tentacle.id != "field-mini-task");
+    let _ = state.install_profile("field-mini-task");
+    state.install_manifest(root, "field-mini-task")?;
+    Ok(true)
+}
+
+fn installed_field_mini_task_ready(state: &HarnessState) -> bool {
+    state
+        .installed_tentacles
+        .iter()
+        .find(|tentacle| tentacle.id == "field-mini-task")
+        .is_some_and(|tentacle| installed_tentacle_missing_entrypoints(tentacle).is_empty())
+}
+
+fn installed_tentacle_missing_entrypoints(tentacle: &InstalledTentacle) -> Vec<String> {
+    let source = Path::new(&tentacle.source);
+    let manifest_dir = source.parent().unwrap_or_else(|| Path::new(""));
+    let mut missing = Vec::new();
+    if !source.exists() {
+        missing.push(tentacle.source.clone());
+    }
+    let entrypoints = if tentacle.tool_meta.is_empty() {
+        tentacle
+            .tools
+            .iter()
+            .filter_map(|tool| tool.splitn(3, ':').nth(2).map(str::to_string))
+            .collect::<Vec<_>>()
+    } else {
+        tentacle
+            .tool_meta
+            .iter()
+            .map(|tool| tool.entrypoint.clone())
+            .collect::<Vec<_>>()
+    };
+    for entrypoint in entrypoints {
+        if entrypoint.starts_with("http://") || entrypoint.starts_with("https://") {
+            continue;
+        }
+        let path = Path::new(&entrypoint);
+        let full_path = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            manifest_dir.join(path)
+        };
+        if !full_path.exists() {
+            missing.push(entrypoint);
+        }
+    }
+    missing
+}
+
 fn repo_root() -> PathBuf {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     fs::canonicalize(&root).unwrap_or(root)
@@ -12097,7 +13340,8 @@ fn probe_tentacle(
     Ok(harness.feed_one(&Need::new(kind, query)))
 }
 
-fn harness_for_need(state: HarnessState, kind: &NeedKind) -> Result<Harness, String> {
+fn harness_for_need(mut state: HarnessState, kind: &NeedKind) -> Result<Harness, String> {
+    repair_installed_seed_sources(&mut state)?;
     if matches!(
         kind,
         NeedKind::Remember | NeedKind::Recall | NeedKind::Forget
@@ -12113,22 +13357,48 @@ fn harness_for_need(state: HarnessState, kind: &NeedKind) -> Result<Harness, Str
     Ok(Harness::with_state(state))
 }
 
+fn repair_installed_seed_sources(state: &mut HarnessState) -> Result<usize, String> {
+    let broken = state
+        .installed_tentacles
+        .iter()
+        .filter(|tentacle| {
+            seed_id(&tentacle.id) && !installed_tentacle_missing_entrypoints(tentacle).is_empty()
+        })
+        .map(|tentacle| tentacle.id.clone())
+        .collect::<BTreeSet<_>>();
+    if broken.is_empty() {
+        return Ok(0);
+    }
+    state
+        .installed_tentacles
+        .retain(|tentacle| !broken.contains(&tentacle.id));
+    let root = default_tentacles_root();
+    let mut repaired = 0;
+    for tentacle_id in broken {
+        if install_manifest_with_bundled_fallback(state, &root, &tentacle_id).is_ok() {
+            repaired += 1;
+        }
+    }
+    Ok(repaired)
+}
+
 fn propose_evolution_for_cli(
     tentacle_id: &str,
     objective: &str,
     state: &HarnessState,
 ) -> Result<TentacleEvolutionProposal, String> {
+    let root = resolve_tentacle_manifest_root(tentacle_id)?;
     if evolve_llm_enabled() {
         let (_, _, _, _, mut client) = provider_client(&evolve_llm_prefix())?;
         return propose_tentacle_evolution_with_client(
-            default_tentacles_root(),
+            root,
             tentacle_id,
             objective,
             state,
             &mut client,
         );
     }
-    propose_tentacle_evolution_with_state(default_tentacles_root(), tentacle_id, objective, state)
+    propose_tentacle_evolution_with_state(root, tentacle_id, objective, state)
 }
 
 fn evolution_score_report(
@@ -14435,7 +15705,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair continue [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state] | pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair continue [query] | repair score <trace-index> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers n]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state]|pet desktop [--workers n]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers n] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -14470,6 +15740,43 @@ fn parse_goal_set_args(values: &[String]) -> Result<(String, Vec<String>), Strin
     Ok((objective, constraints))
 }
 
+fn parse_parallel_evolution_args(values: &[String]) -> (bool, usize, Option<String>) {
+    let mut open_pet = false;
+    let mut workers = 4usize;
+    let mut objective = Vec::new();
+    let mut index = 0;
+    while index < values.len() {
+        match values[index].as_str() {
+            "--open" => open_pet = true,
+            "--workers" => {
+                index += 1;
+                if let Some(value) = values.get(index).and_then(|value| value.parse().ok()) {
+                    workers = value;
+                }
+            }
+            value => objective.push(value.to_string()),
+        }
+        index += 1;
+    }
+    let objective = (!objective.is_empty()).then(|| objective.join(" "));
+    (open_pet, workers, objective)
+}
+
+fn parse_worker_cap(values: &[String]) -> usize {
+    let mut workers = 1usize;
+    let mut index = 0;
+    while index < values.len() {
+        if values[index] == "--workers" {
+            index += 1;
+            if let Some(value) = values.get(index).and_then(|value| value.parse().ok()) {
+                workers = value;
+            }
+        }
+        index += 1;
+    }
+    workers.clamp(1, 8)
+}
+
 fn clean_goal_constraint(value: &str) -> Result<String, String> {
     let value = value.trim();
     if value.is_empty() {
@@ -14498,6 +15805,315 @@ fn resolve_feed_trace_selector(value: &str, state: &HarnessState) -> Result<u64,
     }
 }
 
+fn parse_need_run_selector(value: Option<&str>) -> NeedRunSelector {
+    match value {
+        Some("latest") => NeedRunSelector::Latest,
+        Some(value) => value
+            .parse::<u64>()
+            .ok()
+            .filter(|index| *index > 0)
+            .map(NeedRunSelector::Index)
+            .unwrap_or(NeedRunSelector::First),
+        None => NeedRunSelector::First,
+    }
+}
+
+fn parse_need_run_request(values: &[String]) -> Result<NeedRunRequest, String> {
+    match values.first().map(String::as_str) {
+        Some("all") | Some("--all") => Ok(NeedRunRequest::Batch(usize::MAX)),
+        Some("--workers") => {
+            let value = values
+                .get(1)
+                .ok_or_else(|| "needs run --workers requires a number".to_string())?;
+            let workers = value
+                .parse::<usize>()
+                .ok()
+                .filter(|value| *value > 0)
+                .ok_or_else(|| format!("invalid workers value: {value}"))?;
+            Ok(NeedRunRequest::Batch(workers))
+        }
+        Some(value) => Ok(NeedRunRequest::Single(parse_need_run_selector(Some(value)))),
+        None => Ok(NeedRunRequest::Single(NeedRunSelector::First)),
+    }
+}
+
+fn run_queued_need(
+    mut state: HarnessState,
+    selector: NeedRunSelector,
+) -> Result<(NeedRunReport, HarnessState), String> {
+    let pending = state
+        .need_queue
+        .iter()
+        .filter(|item| item.status == NeedQueueStatus::Pending)
+        .map(|item| item.index)
+        .collect::<Vec<_>>();
+    let index = match selector {
+        NeedRunSelector::First => pending.first().copied(),
+        NeedRunSelector::Latest => pending.last().copied(),
+        NeedRunSelector::Index(index) => Some(index),
+    }
+    .ok_or_else(|| "no pending Need to run".to_string())?;
+    let taken = state.take_queued_need(index)?;
+    let kind = taken.item.need.kind.clone();
+    let query = taken.item.need.query.clone();
+    state.record_pet_event("need", "need queue", query.clone(), Status::Partial);
+    let field_hint = field_hint_from_queue_item(&taken.item);
+    if field_hint.is_some() {
+        ensure_field_mini_task_tentacle(&mut state)?;
+    }
+    let mut harness = harness_for_need(state, &kind)?;
+    let mut need = Need::new(kind, query);
+    if let Some(field) = field_hint {
+        need.context
+            .insert("field_original_need".to_string(), need.query.clone());
+        need.context.insert("field_pack".to_string(), field.clone());
+        if let Some((task_id, expected_feed)) = field_mini_task_context(&field, &taken.item) {
+            need.context.insert("field_mini_task".to_string(), task_id);
+            need.context
+                .insert("field_expected_feed".to_string(), expected_feed);
+        }
+    }
+    let feed = harness.feed_one(&need);
+    let feed_trace_index = feed
+        .metadata
+        .get("feed_trace_index")
+        .and_then(|index| index.parse::<u64>().ok());
+    let field = feed
+        .metadata
+        .get("field_pack")
+        .or_else(|| feed.metadata.get("field"))
+        .or_else(|| feed.need.context.get("field_pack"))
+        .cloned();
+    let verifier_result = feed_trace_index.and_then(|index| {
+        let explicit_verifier_status = feed
+            .metadata
+            .get("verifier_status")
+            .and_then(|value| parse_status(value).ok());
+        let verifier_status = match feed.status {
+            Status::Failed | Status::Unsupported => feed.status.clone(),
+            Status::Satisfied
+                if explicit_verifier_status.as_ref() == Some(&Status::Satisfied) =>
+            {
+                Status::Satisfied
+            }
+            Status::Satisfied | Status::Partial => Status::Partial,
+        };
+            let mini_task = feed.metadata.get("field_mini_task").cloned();
+            let error_category = match verifier_status {
+                Status::Satisfied => None,
+                Status::Partial if mini_task.is_some() => {
+                    Some("field_mini_task_incomplete".to_string())
+                }
+                Status::Partial => Some("missing_field_mini_task".to_string()),
+                Status::Failed | Status::Unsupported => Some("field_feed_failed".to_string()),
+            };
+            let summary = match (&verifier_status, mini_task.as_deref()) {
+                (Status::Satisfied, Some(task)) => format!(
+                    "auto verifier: Feed returned {:?}; mini task {task} provided explicit pass evidence",
+                    feed.status
+                ),
+                (Status::Satisfied, None) => format!(
+                    "auto verifier: Feed returned {:?}; verifier accepted explicit pass evidence",
+                    feed.status
+                ),
+                (_, Some(task)) => format!(
+                    "auto verifier: Feed returned {:?}; mini task {task} still needs explicit pass evidence",
+                    feed.status
+                ),
+                (_, None) => format!(
+                    "auto verifier: Feed returned {:?}; field mini task still needs explicit pass evidence",
+                    feed.status
+                ),
+            };
+            harness
+                .state
+                .record_field_verifier_result(index, verifier_status, error_category, None, summary)
+            .ok()
+    });
+    let trace_arg = feed_trace_index
+        .map(|index| index.to_string())
+        .unwrap_or_else(|| "latest".to_string());
+    let next = vec![
+        format!("octopus fields score {trace_arg} satisfied verifier_pass \"record field verifier result\""),
+        format!("octopus fields score {trace_arg} failed error_category \"record field failure\""),
+        "octopus status".to_string(),
+    ];
+    Ok((
+        NeedRunReport {
+            taken,
+            feed,
+            feed_trace_index,
+            field,
+            verifier_result,
+            next,
+        },
+        harness.state,
+    ))
+}
+
+fn run_queued_needs(
+    mut state: HarnessState,
+    limit: usize,
+) -> Result<(NeedRunBatchReport, HarnessState), String> {
+    let pending = state.pending_need_queue_count();
+    if pending == 0 {
+        return Err("no pending Need to run".to_string());
+    }
+    let requested = if limit == usize::MAX {
+        pending
+    } else {
+        limit.max(1).min(pending)
+    };
+    let mut reports = Vec::new();
+    for _ in 0..requested {
+        let (report, next_state) = run_queued_need(state, NeedRunSelector::First)?;
+        state = next_state;
+        reports.push(report);
+    }
+    let remaining_pending = state.pending_need_queue_count();
+    let next = if remaining_pending > 0 {
+        vec![format!(
+            "octopus needs run --workers {}",
+            remaining_pending.min(requested.max(1))
+        )]
+    } else {
+        vec![
+            "octopus fields summary".to_string(),
+            "octopus status".to_string(),
+        ]
+    };
+    Ok((
+        NeedRunBatchReport {
+            requested,
+            ran: reports.len(),
+            reports,
+            remaining_pending,
+            next,
+        },
+        state,
+    ))
+}
+
+fn run_queued_need_indices(
+    mut state: HarnessState,
+    indices: &[u64],
+) -> Result<(NeedRunBatchReport, HarnessState), String> {
+    if indices.is_empty() {
+        return Err("no queued Need indices to run".to_string());
+    }
+    let mut reports = Vec::new();
+    for index in indices {
+        let (report, next_state) = run_queued_need(state, NeedRunSelector::Index(*index))?;
+        state = next_state;
+        reports.push(report);
+    }
+    let remaining_pending = state.pending_need_queue_count();
+    let next = if remaining_pending > 0 {
+        vec![format!(
+            "octopus needs run --workers {}",
+            remaining_pending.min(indices.len().max(1))
+        )]
+    } else {
+        vec![
+            "octopus fields summary".to_string(),
+            "octopus status".to_string(),
+        ]
+    };
+    Ok((
+        NeedRunBatchReport {
+            requested: indices.len(),
+            ran: reports.len(),
+            reports,
+            remaining_pending,
+            next,
+        },
+        state,
+    ))
+}
+
+fn field_hint_from_queue_item(item: &NeedQueueItem) -> Option<String> {
+    if item.source != "field evolution" {
+        return None;
+    }
+    let text = format!(
+        "{} {} {}",
+        item.need.query.to_ascii_lowercase(),
+        item.prompt.to_ascii_lowercase(),
+        item.summary.to_ascii_lowercase()
+    );
+    if let Some(field) = explicit_field_hint_from_text(&text) {
+        return Some(field);
+    }
+    for (field, aliases) in [
+        ("math", &["math", "mathematical"][..]),
+        ("search", &["search", "retrieval"]),
+        ("code", &["code", "coding"]),
+        ("swe", &["swe", "issue-style", "repo task"]),
+        ("research", &["research", "claim"]),
+        (
+            "computer-use",
+            &["computer-use", "computer use", "desktop", "browser"],
+        ),
+        ("ib", &["ib", "investment banking", "finance-work"]),
+        ("robotics", &["robotics", "simulator", "robot"]),
+    ] {
+        if aliases.iter().any(|alias| text.contains(alias)) {
+            return Some(field.to_string());
+        }
+    }
+    None
+}
+
+fn explicit_field_hint_from_text(text: &str) -> Option<String> {
+    for field in [
+        "math",
+        "search",
+        "code",
+        "swe",
+        "research",
+        "computer-use",
+        "ib",
+        "robotics",
+    ] {
+        if text.contains(&format!("field: {field}"))
+            || text.contains(&format!("run {field} mini task"))
+            || contains_field_mini_marker(text, field)
+        {
+            return Some(field.to_string());
+        }
+    }
+    None
+}
+
+fn contains_field_mini_marker(text: &str, field: &str) -> bool {
+    let marker = format!("{field}-mini-");
+    let mut start = 0;
+    while let Some(offset) = text[start..].find(&marker) {
+        let index = start + offset;
+        let before = text[..index].chars().next_back();
+        let has_boundary = before
+            .map(|value| !value.is_ascii_alphanumeric() && value != '-')
+            .unwrap_or(true);
+        if has_boundary {
+            return true;
+        }
+        start = index + marker.len();
+    }
+    false
+}
+
+fn field_mini_task_context(field: &str, item: &NeedQueueItem) -> Option<(String, String)> {
+    let catalog = default_field_pack_catalog().ok()?;
+    let pack = catalog.packs.iter().find(|pack| pack.id == field)?;
+    let query = item.need.query.to_ascii_lowercase();
+    let task = pack
+        .mini_tasks
+        .iter()
+        .find(|task| query.contains(&task.id.to_ascii_lowercase()))
+        .or_else(|| pack.mini_tasks.first())?;
+    Some((task.id.clone(), task.expected_feed.clone()))
+}
+
 fn parse_queue_index(value: &str) -> Result<u64, String> {
     value
         .parse::<u64>()
@@ -14521,27 +16137,39 @@ fn parse_status(value: &str) -> Result<Status, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        app_open_command, append_preflight_record, bridge_command_allowed, bridge_command_name,
-        bridge_static, bridge_static_asset, check_benchmark_record, check_preflight_record,
-        check_provider_matrix_record, check_report, default_first_run_objective,
-        default_tentacles_root_for, download_artifacts_preflight_check, download_report,
-        first_run_report, git_short_head, http_content_length, install_report,
-        is_broken_pipe_panic, localize_summary, materialize_bundled_tentacles_root,
+        adapt_environment_with_bundled_seed_fallback, app_open_command, append_preflight_record,
+        bridge_command_allowed, bridge_command_name, bridge_static, bridge_static_asset,
+        check_benchmark_record, check_preflight_record, check_provider_matrix_record, check_report,
+        command_ready, default_first_run_objective, default_tentacles_root,
+        default_tentacles_root_for, doctor_report, download_artifacts_preflight_check,
+        download_report, ensure_field_mini_task_tentacle,
+        ensure_field_mini_task_tentacle_from_root, field_hint_from_queue_item, first_run_report,
+        git_short_head, http_content_length, inspect_tentacle_manifests_with_bundled_seed_fallback,
+        install_report, is_broken_pipe_panic, localize_summary, materialize_bundled_tentacles_root,
         parse_bridge_env_overlay, parse_first_run_args, parse_start_check_addr,
         parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
         preflight_report, prepare_bridge_state, product_report, provider_coverage_ready,
         provider_env_report, provider_status_report, real_machine_record_status_from_parts,
-        repair_continue_report, repair_report, run, run_bridge_command, run_provider_matrix_record,
-        save_provider_env_report_with_key, shell_arg, skill_reports, start_check_requested,
-        starter_report, tentacles_root_ready, update_report, usage, write_benchmark_record,
-        write_pet_image_report, write_provider_matrix_record, Language,
+        repair_continue_report, repair_report, resolve_tentacle_manifest_root, run,
+        run_bridge_command, run_provider_matrix_record, save_provider_env_report_with_key,
+        shell_arg, skill_reports, start_check_requested, starter_report, tentacles_root_ready,
+        update_report, usage, write_benchmark_record, write_pet_image_report,
+        write_provider_matrix_record, Language,
     };
+    use super::{
+        parse_need_run_request, run_queued_need_indices, run_queued_needs, NeedRunRequest,
+        NeedRunSelector,
+    };
+    use crate::contains_field_mini_marker;
     use octopus_core::{
         default_tentacle_profiles, load_tentacle_manifests, load_tentacle_profiles_from_path,
-        CheckHistoryInput, Feed, Goal, GoalStatus, HarnessState, Need, NeedKind, NeedQueueStatus,
-        StarterFeedbackInput, StarterFeedbackStatus, Status,
+        CheckHistoryInput, Feed, Goal, GoalNeedSuggestion, GoalStatus, HarnessState,
+        InstalledTentacle, Need, NeedKind, NeedQueueItem, NeedQueueStatus, StarterFeedbackInput,
+        StarterFeedbackStatus, Status,
     };
+    use std::collections::BTreeSet;
     use std::fs;
+    use std::io::Write as _;
     use std::path::{Path, PathBuf};
     use std::sync::{Mutex, MutexGuard, OnceLock};
 
@@ -14560,6 +16188,124 @@ mod tests {
         } else {
             std::env::remove_var(key);
         }
+    }
+
+    #[test]
+    fn field_queue_hint_prefers_explicit_mini_task_field() {
+        let item = NeedQueueItem {
+            index: 1,
+            need: GoalNeedSuggestion {
+                kind: NeedKind::Verify,
+                query: "Run ib mini task ib-mini-1: Create a tiny revenue growth table from provided numbers and draft a neutral memo sentence.".to_string(),
+            },
+            source: "field evolution".to_string(),
+            prompt: "eight parallel field objectives".to_string(),
+            summary: "field: ib; mini task: ib-mini-1; expected Feed: Checked table math, assumptions, and a non-advisory memo line.".to_string(),
+            status: NeedQueueStatus::Pending,
+        };
+
+        assert_eq!(field_hint_from_queue_item(&item).as_deref(), Some("ib"));
+    }
+
+    #[test]
+    fn field_queue_hint_does_not_steal_research_into_search() {
+        let item = NeedQueueItem {
+            index: 2,
+            need: GoalNeedSuggestion {
+                kind: NeedKind::Verify,
+                query: "Run research mini task research-mini-1: Ground one sentence about octopus distributed control using provided sources.".to_string(),
+            },
+            source: "field evolution".to_string(),
+            prompt: "eight parallel field objectives".to_string(),
+            summary: "field: research; mini task: research-mini-1; expected Feed: A short synthesis with source coverage and uncertainty.".to_string(),
+            status: NeedQueueStatus::Pending,
+        };
+
+        assert_eq!(
+            field_hint_from_queue_item(&item).as_deref(),
+            Some("research")
+        );
+        assert!(!contains_field_mini_marker("research-mini-1", "search"));
+        assert!(contains_field_mini_marker("search-mini-1", "search"));
+    }
+
+    #[test]
+    fn need_run_request_parses_batch_workers() {
+        assert_eq!(
+            parse_need_run_request(&[]).unwrap(),
+            NeedRunRequest::Single(NeedRunSelector::First)
+        );
+        assert_eq!(
+            parse_need_run_request(&["latest".to_string()]).unwrap(),
+            NeedRunRequest::Single(NeedRunSelector::Latest)
+        );
+        assert_eq!(
+            parse_need_run_request(&["all".to_string()]).unwrap(),
+            NeedRunRequest::Batch(usize::MAX)
+        );
+        assert_eq!(
+            parse_need_run_request(&["--workers".to_string(), "3".to_string()]).unwrap(),
+            NeedRunRequest::Batch(3)
+        );
+        assert!(parse_need_run_request(&["--workers".to_string()]).is_err());
+    }
+
+    #[test]
+    fn need_run_batch_consumes_multiple_pending_needs() {
+        let mut state = HarnessState::default();
+        for query in ["alpha memory", "beta memory", "gamma memory"] {
+            state.queue_need_suggestion(
+                GoalNeedSuggestion {
+                    kind: NeedKind::Remember,
+                    query: query.to_string(),
+                },
+                "test",
+                "batch",
+                "memory batch",
+            );
+        }
+
+        let (report, mut state) = run_queued_needs(state, 2).unwrap();
+
+        assert_eq!(report.requested, 2);
+        assert_eq!(report.ran, 2);
+        assert_eq!(report.remaining_pending, 1);
+        assert_eq!(state.pending_need_queue_count(), 1);
+        assert_eq!(report.reports[0].taken.item.index, 1);
+        assert_eq!(report.reports[1].taken.item.index, 2);
+        assert!(report
+            .reports
+            .iter()
+            .all(|item| item.feed.status == Status::Satisfied));
+        assert_eq!(state.memory.recall("memory", 10).len(), 2);
+    }
+
+    #[test]
+    fn need_run_batch_can_target_current_parallel_indices() {
+        let mut state = HarnessState::default();
+        for query in ["alpha memory", "beta memory", "gamma memory"] {
+            state.queue_need_suggestion(
+                GoalNeedSuggestion {
+                    kind: NeedKind::Remember,
+                    query: query.to_string(),
+                },
+                "test",
+                "batch",
+                "memory batch",
+            );
+        }
+
+        let (report, state) = run_queued_need_indices(state, &[2, 3]).unwrap();
+
+        assert_eq!(report.requested, 2);
+        assert_eq!(report.ran, 2);
+        assert_eq!(report.remaining_pending, 1);
+        assert_eq!(state.pending_need_queue_count(), 1);
+        assert_eq!(report.reports[0].taken.item.index, 2);
+        assert_eq!(report.reports[1].taken.item.index, 3);
+        assert_eq!(state.need_queue[0].status, NeedQueueStatus::Pending);
+        assert_eq!(state.need_queue[1].status, NeedQueueStatus::Taken);
+        assert_eq!(state.need_queue[2].status, NeedQueueStatus::Taken);
     }
 
     #[test]
@@ -14614,6 +16360,66 @@ mod tests {
     impl Drop for CwdGuard {
         fn drop(&mut self) {
             let _ = std::env::set_current_dir(&self.original);
+        }
+    }
+
+    fn create_partial_bash_only_tentacles(dir: &Path) {
+        create_partial_seed_tentacle(dir, "bash-only");
+    }
+
+    fn create_partial_seed_tentacle(dir: &Path, tentacle_id: &str) {
+        let project_tentacle = dir.join("tentacles").join(tentacle_id);
+        fs::create_dir_all(&project_tentacle).unwrap();
+        fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join("tentacles")
+                .join(tentacle_id)
+                .join("manifest.json"),
+            project_tentacle.join("manifest.json"),
+        )
+        .unwrap();
+    }
+
+    fn broken_installed_field_mini_task(dir: &Path) -> InstalledTentacle {
+        let manifest = dir
+            .join("tentacles")
+            .join("field-mini-task")
+            .join("manifest.json");
+        InstalledTentacle {
+            id: "field-mini-task".to_string(),
+            name: "Field Mini Task".to_string(),
+            source: manifest.to_string_lossy().to_string(),
+            brain_kind: "llm".to_string(),
+            brain_prompt: "broken old local seed".to_string(),
+            feedback_contract: None,
+            runtime_kinds: vec!["shell".to_string()],
+            needs: vec!["verify".to_string()],
+            tools: vec!["run_field_mini_task:shell:tools/run_field_mini_task.sh".to_string()],
+            tool_meta: Vec::new(),
+            editable: vec!["manifest.json".to_string(), "tools/*".to_string()],
+            evolution_surfaces: vec!["runtime_code".to_string()],
+        }
+    }
+
+    fn broken_installed_bash_only(dir: &Path) -> InstalledTentacle {
+        let manifest = dir
+            .join("tentacles")
+            .join("bash-only")
+            .join("manifest.json");
+        InstalledTentacle {
+            id: "bash-only".to_string(),
+            name: "Bash Only".to_string(),
+            source: manifest.to_string_lossy().to_string(),
+            brain_kind: "llm".to_string(),
+            brain_prompt: "broken old local seed".to_string(),
+            feedback_contract: None,
+            runtime_kinds: vec!["shell".to_string()],
+            needs: vec!["execute".to_string(), "verify".to_string()],
+            tools: vec!["write_and_run:shell:tools/write_and_run.sh".to_string()],
+            tool_meta: Vec::new(),
+            editable: vec!["manifest.json".to_string(), "tools/*".to_string()],
+            evolution_surfaces: vec!["runtime_code".to_string()],
         }
     }
 
@@ -16821,6 +18627,46 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     }
 
     #[test]
+    fn cli_beat_repairs_broken_installed_seed_source() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-beat-installed-broken-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_seed_tentacle(&dir, "bash-only");
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+        let state_arg = state_path.to_string_lossy().to_string();
+        let mut state = HarnessState::default();
+        state
+            .installed_tentacles
+            .push(broken_installed_bash_only(&dir));
+        state.save(&state_path).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state_arg,
+            "beat".to_string(),
+            "200".to_string(),
+        ])
+        .unwrap();
+        let restored = HarnessState::load(&state_path).unwrap();
+        let bash = restored
+            .installed_tentacles
+            .iter()
+            .find(|tentacle| tentacle.id == "bash-only")
+            .unwrap();
+
+        assert!(bash.source.contains(".octopus/bundled-tentacles"));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn cli_beat_writes_harness_evolution_hint_from_failed_check() {
         let _env = env_guard();
         let _cwd = CwdGuard::new();
@@ -16869,6 +18715,120 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let plan_content = fs::read_to_string(plan).unwrap();
         assert!(plan_content.contains("feedback focus:"));
         assert!(plan_content.contains("range output failed"));
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn cli_beat_uses_bundled_seed_for_harness_evolution_when_project_tentacles_shadow_root() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let workspace = std::env::temp_dir().join(format!(
+            "octopus-beat-evolution-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&workspace);
+        fs::create_dir_all(&workspace).unwrap();
+        create_partial_bash_only_tentacles(&workspace);
+        std::env::set_current_dir(&workspace).unwrap();
+        let state_path = workspace.join("state.json");
+        let state_arg = state_path.to_string_lossy().to_string();
+        let mut state = HarnessState::default();
+        state.record_check_history(CheckHistoryInput {
+            tentacle_id: "swe-agent".to_string(),
+            source_kind: "manifest".to_string(),
+            command_index: Some(1),
+            command: "tools/read.sh README.md 1 2".to_string(),
+            cwd: "tentacles/swe-agent".to_string(),
+            status: Status::Failed,
+            code: Some(1),
+            stdout: String::new(),
+            stderr: "range output failed".to_string(),
+        });
+        state.save(&state_path).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state_arg,
+            "beat".to_string(),
+            "200".to_string(),
+        ])
+        .unwrap();
+        let restored = HarnessState::load(&state_path).unwrap();
+        let proposal = fs::read_to_string(
+            workspace
+                .join(".octopus")
+                .join("evolution")
+                .join("swe-agent")
+                .join("proposal.json"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            restored.last_pet_event.as_ref().unwrap().source,
+            "harness beat"
+        );
+        assert!(proposal.contains(".octopus/bundled-tentacles"));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn cli_beat_skips_incomplete_same_id_seed_for_harness_evolution() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let workspace = std::env::temp_dir().join(format!(
+            "octopus-beat-evolution-broken-local-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&workspace);
+        fs::create_dir_all(&workspace).unwrap();
+        create_partial_seed_tentacle(&workspace, "swe-agent");
+        std::env::set_current_dir(&workspace).unwrap();
+        let state_path = workspace.join("state.json");
+        let state_arg = state_path.to_string_lossy().to_string();
+        let mut state = HarnessState::default();
+        state.record_check_history(CheckHistoryInput {
+            tentacle_id: "swe-agent".to_string(),
+            source_kind: "manifest".to_string(),
+            command_index: Some(1),
+            command: "tools/read.sh README.md 1 2".to_string(),
+            cwd: "tentacles/swe-agent".to_string(),
+            status: Status::Failed,
+            code: Some(1),
+            stdout: String::new(),
+            stderr: "range output failed".to_string(),
+        });
+        state.save(&state_path).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state_arg,
+            "beat".to_string(),
+            "200".to_string(),
+        ])
+        .unwrap();
+        let proposal = fs::read_to_string(
+            workspace
+                .join(".octopus")
+                .join("evolution")
+                .join("swe-agent")
+                .join("proposal.json"),
+        )
+        .unwrap();
+        let proposal_json: serde_json::Value = serde_json::from_str(&proposal).unwrap();
+        let manifest_path = proposal_json
+            .get("manifest_path")
+            .and_then(serde_json::Value::as_str)
+            .unwrap();
+
+        assert!(manifest_path.contains(".octopus/bundled-tentacles"));
+        assert_ne!(
+            Path::new(manifest_path),
+            workspace.join("tentacles/swe-agent/manifest.json")
+        );
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(workspace);
     }
 
@@ -16929,6 +18889,57 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(swe.first_need_command.contains(" need execute "));
         assert!(state.feed_traces.is_empty());
         assert!(state.routes.scores.is_empty());
+    }
+
+    #[test]
+    fn starter_report_keeps_bundled_seeds_visible_when_project_tentacles_shadow_root() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-starter-fallback-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let project_tentacle = dir.join("tentacles").join("bash-only");
+        fs::create_dir_all(&project_tentacle).unwrap();
+        fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join("tentacles/bash-only/manifest.json"),
+            project_tentacle.join("manifest.json"),
+        )
+        .unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+
+        let state = HarnessState::default();
+        let report = starter_report(
+            &state,
+            Path::new(".octopus/state.json"),
+            default_tentacles_root(),
+            Some("improve field feed".to_string()),
+        )
+        .unwrap();
+
+        assert!(report
+            .recommendations
+            .iter()
+            .any(|item| item.id == "bash-only"));
+        assert!(report
+            .recommendations
+            .iter()
+            .any(|item| item.id == "swe-agent"));
+        let skill_sources = skill_reports(&state, default_tentacles_root())
+            .unwrap()
+            .into_iter()
+            .map(|skill| skill.source)
+            .collect::<BTreeSet<_>>();
+        assert!(skill_sources.contains("field-mini-task"));
+        assert!(skill_sources.contains("computer-use-agent"));
+        assert!(report
+            .recommendations
+            .iter()
+            .any(|item| item.id == "harness-repair-agent"));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -17059,7 +19070,9 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt]"
         ));
         assert!(usage().contains("explore [--save] [prompt]"));
-        assert!(usage().contains("needs [take|drop|script [path]|session [--live] [prompt]]"));
+        assert!(usage().contains(
+            "needs [run [index|latest|all|--workers n]|take|drop|script [path]|session [--live] [prompt]]"
+        ));
         assert!(usage().contains("repair [query]"));
         assert!(usage().contains("repair continue [query]"));
         assert!(usage().contains("repair score <trace-index>"));
@@ -17213,6 +19226,136 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     }
 
     #[test]
+    fn cli_bootstrap_installs_bundled_seed_tentacles_when_project_tentacles_shadow_root() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-bootstrap-fallback-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_bash_only_tentacles(&dir);
+        std::env::set_current_dir(&dir).unwrap();
+        let state = dir
+            .join(".octopus/state.json")
+            .to_string_lossy()
+            .to_string();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "bootstrap".to_string(),
+        ])
+        .unwrap();
+        let restored = HarnessState::load(&state).unwrap();
+        let installed = restored
+            .installed_tentacles
+            .iter()
+            .map(|tentacle| tentacle.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(installed.contains(&"swe-agent"));
+        assert!(installed.contains(&"json-feed"));
+        assert!(installed.contains(&"computer-use-agent"));
+        assert!(installed.contains(&"harness-repair-agent"));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn adapt_and_default_manifests_merge_bundled_seeds_with_project_tentacles() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-adapt-fallback-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".git")).unwrap();
+        fs::write(dir.join("README.md"), "sample").unwrap();
+        create_partial_bash_only_tentacles(&dir);
+        std::env::set_current_dir(&dir).unwrap();
+        let root = default_tentacles_root();
+        let mut state = HarnessState::default();
+
+        let report =
+            adapt_environment_with_bundled_seed_fallback(&mut state, dir.clone(), root.clone());
+        let manifest_reports =
+            inspect_tentacle_manifests_with_bundled_seed_fallback(&root).unwrap();
+        let manifest_ids = manifest_reports
+            .iter()
+            .map(|report| report.id.as_str())
+            .collect::<Vec<_>>();
+        let bash_report = manifest_reports
+            .iter()
+            .find(|report| report.id == "bash-only")
+            .expect("bash-only should be visible through bundled fallback");
+        let installed = state
+            .installed_tentacles
+            .iter()
+            .map(|tentacle| tentacle.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(!report.skipped_manifests.contains(&"swe-agent".to_string()));
+        assert!(!report.skipped_manifests.contains(&"json-feed".to_string()));
+        assert!(!report
+            .skipped_manifests
+            .contains(&"field-mini-task".to_string()));
+        assert!(installed.contains(&"swe-agent"));
+        assert!(installed.contains(&"json-feed"));
+        assert!(manifest_ids.contains(&"bash-only"));
+        assert!(manifest_ids.contains(&"field-mini-task"));
+        assert!(manifest_ids.contains(&"computer-use-agent"));
+        assert!(bash_report.missing_entrypoints.is_empty());
+        assert!(bash_report.path.contains(".octopus/bundled-tentacles"));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn product_and_doctor_reports_merge_bundled_seeds_with_project_tentacles() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-report-fallback-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_bash_only_tentacles(&dir);
+        std::env::set_current_dir(&dir).unwrap();
+        let state = HarnessState::default();
+        let state_path = dir.join(".octopus/state.json");
+
+        let product = product_report(&state, &state_path).unwrap();
+        let tentacle_capability = product
+            .capabilities
+            .iter()
+            .find(|capability| capability.id == "tentacle_brains")
+            .unwrap();
+        let runtime_capability = product
+            .capabilities
+            .iter()
+            .find(|capability| capability.id == "runtime_neutral_harness")
+            .unwrap();
+        let doctor = doctor_report(&state, state_path).unwrap();
+
+        assert!(tentacle_capability.evidence.contains("manifests"));
+        assert!(!tentacle_capability.evidence.contains("1 manifests"));
+        assert_eq!(runtime_capability.status, "ready");
+        assert!(doctor.manifest_count > 1);
+        assert!(!doctor
+            .broken_manifests
+            .iter()
+            .any(|item| item.contains("bash-only")));
+        assert!(!doctor
+            .broken_manifests
+            .iter()
+            .any(|item| item.contains("field-mini-task")));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn bundled_tentacles_materialize_as_editable_startup_surface() {
         let _env = env_guard();
         let _cwd = CwdGuard::new();
@@ -17235,14 +19378,27 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(tentacles_root_ready(&root));
         assert!(ids.contains(&"swe-agent"));
         assert!(ids.contains(&"computer-use-agent"));
+        assert!(ids.contains(&"field-mini-task"));
         assert!(ids.contains(&"visual"));
         assert!(root.join("swe-agent/tools/read.sh").exists());
         assert!(root.join("computer-use-agent/tools/mcp.sh").exists());
+        assert!(root
+            .join("field-mini-task/tools/run_field_mini_task.sh")
+            .exists());
+        assert!(root
+            .join("field-mini-task/repair-templates/math/math-mini-1.pyfrag")
+            .exists());
+        assert!(root.join("field-packs/index.json").exists());
+        assert!(root.join("field-packs/math/field-pack.json").exists());
+        assert!(root.join("README.md").exists());
+        assert!(root.join("docs/app.html").exists());
+        assert!(root.join("docs/references.md").exists());
         assert!(dir.join(".octopus/docs/pet.html").exists());
 
         let mut state = HarnessState::default();
         state.install_manifest(&root, "swe-agent").unwrap();
         state.install_manifest(&root, "visual").unwrap();
+        state.install_manifest(&root, "field-mini-task").unwrap();
 
         #[cfg(unix)]
         {
@@ -17275,6 +19431,224 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             fs::canonicalize(dir.join(".octopus/bundled-tentacles")).unwrap()
         );
         assert!(tentacles_root_ready(&root));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn bundled_field_mini_task_runner_uses_bundled_templates_without_source_tree() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-bundled-runner-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let root = materialize_bundled_tentacles_root().unwrap();
+        let payload = r#"{"schema_version":"octopus-tool-call-v1","need":{"kind":"verify","query":"Run math mini task sample","context":{"field_pack":"math","field_mini_task":"math-mini-1","field_expected_feed":"Derivative 3x^2 + 2 with a numeric check near 14."}},"tool":{"id":"run_field_mini_task"},"tentacle":{"id":"field-mini-task"}}"#;
+
+        let mut child =
+            std::process::Command::new(root.join("field-mini-task/tools/run_field_mini_task.sh"))
+                .arg(&root)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .spawn()
+                .unwrap();
+        child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(payload.as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+
+        assert!(output.status.success());
+        assert_eq!(value["status"], "satisfied");
+        assert_eq!(value["metadata"]["runtime_template"], "repair-template");
+        assert!(value["metadata"]["repair_template"]
+            .as_str()
+            .unwrap()
+            .contains("field-mini-task/repair-templates/math/math-mini-1.pyfrag"));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn bundled_field_mini_task_checker_executes_templates_without_source_tree() {
+        if !command_ready("python3") {
+            return;
+        }
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-bundled-checker-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let root = materialize_bundled_tentacles_root().unwrap();
+
+        let output = std::process::Command::new("python3")
+            .arg("tools/check_repair_templates.py")
+            .current_dir(root.join("field-mini-task"))
+            .output()
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(value["status"], "ok");
+        assert_eq!(value["checked_count"], 24);
+        assert_eq!(value["executed_count"], 24);
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn parallel_evolution_prepares_field_mini_task_seed_once() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+
+        let first = ensure_field_mini_task_tentacle_from_root(&mut state, &root).unwrap();
+        let installed_after_first = state.installed_tentacles.len();
+        let second = ensure_field_mini_task_tentacle_from_root(&mut state, &root).unwrap();
+
+        assert!(first);
+        assert!(!second);
+        assert_eq!(state.installed_tentacles.len(), installed_after_first);
+        assert!(state
+            .installed_tentacles
+            .iter()
+            .any(|tentacle| tentacle.id == "field-mini-task"));
+    }
+
+    #[test]
+    fn field_mini_task_seed_reinstalls_when_installed_source_is_incomplete() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-field-installed-broken-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_seed_tentacle(&dir, "field-mini-task");
+        std::env::set_current_dir(&dir).unwrap();
+        let mut state = HarnessState::default();
+        state
+            .installed_tentacles
+            .push(broken_installed_field_mini_task(&dir));
+
+        let installed = ensure_field_mini_task_tentacle(&mut state).unwrap();
+        let field_seed = state
+            .installed_tentacles
+            .iter()
+            .find(|tentacle| tentacle.id == "field-mini-task")
+            .unwrap();
+
+        assert!(installed);
+        assert!(field_seed.source.contains(".octopus/bundled-tentacles"));
+        assert!(dir
+            .join(".octopus/bundled-tentacles/field-mini-task/tools/run_field_mini_task.sh")
+            .exists());
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn needs_run_reinstalls_field_mini_task_when_installed_source_is_incomplete() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-needs-run-field-installed-broken-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_seed_tentacle(&dir, "field-mini-task");
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+        let state_arg = state_path.to_string_lossy().to_string();
+        let mut state = HarnessState::default();
+        state
+            .installed_tentacles
+            .push(broken_installed_field_mini_task(&dir));
+        state.queue_need_suggestion(
+            GoalNeedSuggestion {
+                kind: NeedKind::Verify,
+                query: "Run math mini task math-mini-1".to_string(),
+            },
+            "field evolution",
+            "field: math",
+            "math-mini-1",
+        );
+        state.save(&state_path).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state_arg.clone(),
+            "--json".to_string(),
+            "needs".to_string(),
+            "run".to_string(),
+            "latest".to_string(),
+        ])
+        .unwrap();
+        let restored = HarnessState::load(&state_path).unwrap();
+        let field_seed = restored
+            .installed_tentacles
+            .iter()
+            .find(|tentacle| tentacle.id == "field-mini-task")
+            .unwrap();
+        let trace = restored.feed_traces.last().unwrap();
+
+        assert!(field_seed.source.contains(".octopus/bundled-tentacles"));
+        assert_eq!(trace.tentacle.as_deref(), Some("field-mini-task"));
+        assert_eq!(trace.status, Status::Satisfied);
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn parallel_evolution_field_seed_falls_back_to_bundled_root() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-field-fallback-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let project_tentacle = dir.join("tentacles").join("bash-only");
+        fs::create_dir_all(&project_tentacle).unwrap();
+        fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join("tentacles/bash-only/manifest.json"),
+            project_tentacle.join("manifest.json"),
+        )
+        .unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let mut state = HarnessState::default();
+
+        let installed = ensure_field_mini_task_tentacle(&mut state).unwrap();
+        let field_seed = state
+            .installed_tentacles
+            .iter()
+            .find(|tentacle| tentacle.id == "field-mini-task")
+            .unwrap();
+
+        assert!(installed);
+        assert!(field_seed.source.contains(".octopus/bundled-tentacles"));
+        assert!(dir
+            .join(".octopus/bundled-tentacles/field-mini-task/tools/run_field_mini_task.sh")
+            .exists());
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
@@ -17354,6 +19728,50 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(record.contains("\"web_try_app\""));
         assert!(record.contains("browser-tentacle Feed demo present"));
         let loaded = HarnessState::load(&state).unwrap();
+        let preflight = preflight_report(&loaded, Path::new(&state), false).unwrap();
+        assert!(preflight
+            .checks
+            .iter()
+            .any(|check| check.id == "local_app_run" && check.status == "pass"));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn start_check_uses_bundled_seed_when_project_tentacles_shadow_seed() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-start-check-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_bash_only_tentacles(&dir);
+        std::env::set_current_dir(&dir).unwrap();
+        let state = dir
+            .join(".octopus/state.json")
+            .to_string_lossy()
+            .to_string();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "start".to_string(),
+            "--check".to_string(),
+        ])
+        .unwrap();
+
+        let record_path = dir.join(".octopus/local-app-run.json");
+        let record = fs::read_to_string(&record_path).unwrap();
+        assert!(record.contains("\"ready\": true"));
+        assert!(record.contains("\"skipped_tentacles\": []"));
+        let loaded = HarnessState::load(&state).unwrap();
+        assert!(loaded.installed_tentacles.iter().any(|tentacle| {
+            tentacle.id == "bash-only" && tentacle.source.contains(".octopus/bundled-tentacles")
+        }));
         let preflight = preflight_report(&loaded, Path::new(&state), false).unwrap();
         assert!(preflight
             .checks
@@ -17528,6 +19946,91 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(queued.source, "harness-repair-agent");
         assert_eq!(queued.need.kind, NeedKind::Verify);
         assert!(queued.need.query.contains("Feed trace"));
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_repair_uses_bundled_harness_repair_when_project_tentacles_shadow_root() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-repair-fallback-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_bash_only_tentacles(&dir);
+        std::env::set_current_dir(&dir).unwrap();
+        let state = dir
+            .join(".octopus/state.json")
+            .to_string_lossy()
+            .to_string();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "repair".to_string(),
+            ".".to_string(),
+        ])
+        .unwrap();
+        let restored = HarnessState::load(&state).unwrap();
+        let installed = restored
+            .installed_tentacles
+            .iter()
+            .find(|tentacle| tentacle.id == "harness-repair-agent")
+            .expect("harness-repair-agent should install from bundled seed");
+
+        assert!(installed.source.contains(".octopus/bundled-tentacles"));
+        assert_eq!(restored.feed_traces.len(), 1);
+        assert_eq!(
+            restored.feed_traces[0].tentacle.as_deref(),
+            Some("harness-repair-agent")
+        );
+        assert_eq!(restored.pending_need_queue_count(), 1);
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_repair_skips_incomplete_same_id_harness_repair_seed() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-repair-broken-local-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_seed_tentacle(&dir, "harness-repair-agent");
+        std::env::set_current_dir(&dir).unwrap();
+        let state = dir
+            .join(".octopus/state.json")
+            .to_string_lossy()
+            .to_string();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "--json".to_string(),
+            "repair".to_string(),
+            ".".to_string(),
+        ])
+        .unwrap();
+        let restored = HarnessState::load(&state).unwrap();
+        let installed = restored
+            .installed_tentacles
+            .iter()
+            .find(|tentacle| tentacle.id == "harness-repair-agent")
+            .expect("harness-repair-agent should fall back to bundled seed");
+
+        assert!(installed.source.contains(".octopus/bundled-tentacles"));
+        assert_eq!(restored.feed_traces.len(), 1);
+        assert_eq!(
+            restored.feed_traces[0].tentacle.as_deref(),
+            Some("harness-repair-agent")
+        );
+
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
     }
@@ -18422,6 +20925,440 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     }
 
     #[test]
+    fn check_report_falls_back_to_bundled_field_mini_task() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-check-fallback-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let project_tentacle = dir.join("tentacles").join("bash-only");
+        fs::create_dir_all(&project_tentacle).unwrap();
+        fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join("tentacles/bash-only/manifest.json"),
+            project_tentacle.join("manifest.json"),
+        )
+        .unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+
+        let report = check_report("field-mini-task", None).unwrap();
+
+        assert_eq!(report.id, "field-mini-task");
+        assert_eq!(report.source_kind, "manifest");
+        assert!(report.passed);
+        assert!(report.cwd.contains(".octopus/bundled-tentacles"));
+        assert!(report
+            .results
+            .iter()
+            .any(|result| result.command.contains("check_repair_templates.py")));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn check_report_skips_incomplete_same_id_seed() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-check-broken-local-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_bash_only_tentacles(&dir);
+        std::env::set_current_dir(&dir).unwrap();
+
+        let report = check_report("bash-only", None).unwrap();
+
+        assert_eq!(report.id, "bash-only");
+        assert_eq!(report.source_kind, "manifest");
+        assert!(report.passed);
+        assert!(report.cwd.contains(".octopus/bundled-tentacles"));
+        assert!(report
+            .results
+            .iter()
+            .any(|result| result.command.contains("write_and_run.sh")));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn direct_tentacle_resolver_falls_back_to_bundled_seed() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-resolve-fallback-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let project_tentacle = dir.join("tentacles").join("bash-only");
+        fs::create_dir_all(&project_tentacle).unwrap();
+        fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join("tentacles/bash-only/manifest.json"),
+            project_tentacle.join("manifest.json"),
+        )
+        .unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+
+        let root = resolve_tentacle_manifest_root("field-mini-task").unwrap();
+
+        assert!(root.ends_with(".octopus/bundled-tentacles"));
+        assert!(root.join("field-mini-task/manifest.json").exists());
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn direct_tentacle_resolver_skips_incomplete_same_id_seed() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-resolve-broken-local-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_bash_only_tentacles(&dir);
+        std::env::set_current_dir(&dir).unwrap();
+
+        let root = resolve_tentacle_manifest_root("bash-only").unwrap();
+
+        assert!(root.ends_with(".octopus/bundled-tentacles"));
+        assert!(root.join("bash-only/tools/write_and_run.sh").exists());
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_think_falls_back_when_local_seed_manifest_is_incomplete() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-think-broken-local-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_bash_only_tentacles(&dir);
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+
+        run(vec![
+            "--state".to_string(),
+            state_path.to_string_lossy().to_string(),
+            "--json".to_string(),
+            "think".to_string(),
+            "bash-only".to_string(),
+            "execute".to_string(),
+            "echo ok".to_string(),
+        ])
+        .unwrap();
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_probe_falls_back_when_local_seed_manifest_is_incomplete() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-probe-broken-local-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_bash_only_tentacles(&dir);
+        std::env::set_current_dir(&dir).unwrap();
+
+        run(vec![
+            "--json".to_string(),
+            "probe".to_string(),
+            "bash-only".to_string(),
+            "execute".to_string(),
+            "echo ok".to_string(),
+        ])
+        .unwrap();
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_install_uses_bundled_manifest_when_project_tentacles_shadow_seed() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-install-fallback-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let project_tentacle = dir.join("tentacles").join("bash-only");
+        fs::create_dir_all(&project_tentacle).unwrap();
+        fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join("tentacles/bash-only/manifest.json"),
+            project_tentacle.join("manifest.json"),
+        )
+        .unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+
+        run(vec![
+            "--state".to_string(),
+            state_path.to_string_lossy().to_string(),
+            "--json".to_string(),
+            "install".to_string(),
+            "field-mini-task".to_string(),
+        ])
+        .unwrap();
+        let restored = HarnessState::load(&state_path).unwrap();
+        let installed = restored
+            .installed_tentacles
+            .iter()
+            .find(|tentacle| tentacle.id == "field-mini-task")
+            .expect("field-mini-task should install from bundled seed");
+
+        assert!(installed.source.contains(".octopus/bundled-tentacles"));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_install_falls_back_when_local_seed_manifest_is_incomplete() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-install-broken-local-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_bash_only_tentacles(&dir);
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+
+        run(vec![
+            "--state".to_string(),
+            state_path.to_string_lossy().to_string(),
+            "--json".to_string(),
+            "install".to_string(),
+            "bash-only".to_string(),
+        ])
+        .unwrap();
+        let restored = HarnessState::load(&state_path).unwrap();
+        let installed = restored
+            .installed_tentacles
+            .iter()
+            .find(|tentacle| tentacle.id == "bash-only")
+            .expect("bash-only should fall back to bundled seed");
+
+        assert!(installed.source.contains(".octopus/bundled-tentacles"));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_evolve_recommend_uses_bundled_manifest_when_project_tentacles_shadow_seed() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolve-recommend-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        let project_tentacle = dir.join("tentacles").join("bash-only");
+        fs::create_dir_all(&project_tentacle).unwrap();
+        fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join("tentacles/bash-only/manifest.json"),
+            project_tentacle.join("manifest.json"),
+        )
+        .unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+
+        run(vec![
+            "--state".to_string(),
+            state_path.to_string_lossy().to_string(),
+            "--json".to_string(),
+            "evolve".to_string(),
+            "recommend".to_string(),
+            "field-mini-task".to_string(),
+            "improve".to_string(),
+            "field".to_string(),
+            "feed".to_string(),
+        ])
+        .unwrap();
+        let proposal = fs::read_to_string(
+            dir.join(".octopus")
+                .join("evolution")
+                .join("field-mini-task")
+                .join("proposal.json"),
+        )
+        .unwrap();
+
+        assert!(proposal.contains("\"tentacle_id\": \"field-mini-task\""));
+        assert!(proposal.contains(".octopus/bundled-tentacles"));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_evolve_recommend_skips_incomplete_same_id_seed() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolve-recommend-broken-local-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_bash_only_tentacles(&dir);
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+
+        run(vec![
+            "--state".to_string(),
+            state_path.to_string_lossy().to_string(),
+            "--json".to_string(),
+            "evolve".to_string(),
+            "recommend".to_string(),
+            "bash-only".to_string(),
+            "improve".to_string(),
+            "script".to_string(),
+            "feed".to_string(),
+        ])
+        .unwrap();
+        let proposal = fs::read_to_string(
+            dir.join(".octopus")
+                .join("evolution")
+                .join("bash-only")
+                .join("proposal.json"),
+        )
+        .unwrap();
+
+        assert!(proposal.contains("\"tentacle_id\": \"bash-only\""));
+        assert!(proposal.contains(".octopus/bundled-tentacles"));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_evolve_apply_skips_incomplete_same_id_seed() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolve-apply-broken-local-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_bash_only_tentacles(&dir);
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+
+        run(vec![
+            "--state".to_string(),
+            state_path.to_string_lossy().to_string(),
+            "--json".to_string(),
+            "evolve".to_string(),
+            "apply".to_string(),
+            "bash-only".to_string(),
+            "03-runtime-code".to_string(),
+            "improve".to_string(),
+            "script".to_string(),
+            "feed".to_string(),
+        ])
+        .unwrap();
+        let proposal = fs::read_to_string(
+            dir.join(".octopus")
+                .join("evolution")
+                .join("bash-only")
+                .join("proposal.json"),
+        )
+        .unwrap();
+        let apply_plan = fs::read_to_string(
+            dir.join(".octopus")
+                .join("evolution")
+                .join("bash-only")
+                .join("apply")
+                .join("03-runtime-code.md"),
+        )
+        .unwrap();
+
+        assert!(proposal.contains("\"tentacle_id\": \"bash-only\""));
+        assert!(proposal.contains(".octopus/bundled-tentacles"));
+        assert!(apply_plan.contains("03-runtime-code"));
+        assert!(apply_plan.contains("needs_authorization"));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_evolve_score_skips_incomplete_same_id_seed() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolve-score-broken-local-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_bash_only_tentacles(&dir);
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+
+        run(vec![
+            "--state".to_string(),
+            state_path.to_string_lossy().to_string(),
+            "--json".to_string(),
+            "evolve".to_string(),
+            "score".to_string(),
+            "bash-only".to_string(),
+            "03-runtime-code".to_string(),
+            "satisfied".to_string(),
+            "reviewed".to_string(),
+        ])
+        .unwrap();
+        let proposal = fs::read_to_string(
+            dir.join(".octopus")
+                .join("evolution")
+                .join("bash-only")
+                .join("proposal.json"),
+        )
+        .unwrap();
+        let apply_plan = fs::read_to_string(
+            dir.join(".octopus")
+                .join("evolution")
+                .join("bash-only")
+                .join("apply")
+                .join("03-runtime-code.md"),
+        )
+        .unwrap();
+        let restored = HarnessState::load(&state_path).unwrap();
+
+        assert!(proposal.contains("\"tentacle_id\": \"bash-only\""));
+        assert!(proposal.contains(".octopus/bundled-tentacles"));
+        assert!(apply_plan.contains("continue from scored evolution feedback"));
+        assert_eq!(restored.evolution_outcomes.len(), 1);
+        assert_eq!(restored.evolution_outcomes[0].tentacle_id, "bash-only");
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn cli_check_persists_history_in_state() {
         let _env = env_guard();
         let path =
@@ -18510,6 +21447,47 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     }
 
     #[test]
+    fn cli_init_uses_bundled_seed_when_project_tentacles_shadow_root() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir =
+            std::env::temp_dir().join(format!("octopus-cli-init-fallback-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_bash_only_tentacles(&dir);
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join("state.json");
+
+        run(vec![
+            "--state".to_string(),
+            state_path.to_string_lossy().to_string(),
+            "--json".to_string(),
+            "init".to_string(),
+            dir.join("tentacles").to_string_lossy().to_string(),
+        ])
+        .unwrap();
+        let restored = HarnessState::load(&state_path).unwrap();
+        let installed = restored
+            .installed_tentacles
+            .iter()
+            .map(|tentacle| tentacle.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(installed.contains(&"field-mini-task"));
+        assert!(restored
+            .installed_profiles
+            .iter()
+            .any(|profile| profile == "bash-only"));
+        assert!(restored
+            .installed_tentacles
+            .iter()
+            .any(|tentacle| tentacle.source.contains(".octopus/bundled-tentacles")));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn skills_report_profiles_manifests_and_install_status() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
@@ -18542,7 +21520,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let report = pet_report("route").unwrap();
 
         assert_eq!(report.state, "harness");
-        assert_eq!(report.fallback, "🟥");
+        assert_eq!(report.fallback, "🟦");
         assert!(report.target.starts_with("file://"));
         assert!(report.target.contains("docs/pet.html?state=harness"));
         assert!(report.exists);
@@ -20148,6 +23126,60 @@ JSON
     }
 
     #[test]
+    fn cli_need_reinstalls_broken_installed_seed_before_feed() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-need-installed-broken-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_seed_tentacle(&dir, "bash-only");
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+        let state_arg = state_path.to_string_lossy().to_string();
+        let mut state = HarnessState::default();
+        state
+            .installed_tentacles
+            .push(broken_installed_bash_only(&dir));
+        state.save(&state_path).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state_arg.clone(),
+            "oauth".to_string(),
+            "octopus".to_string(),
+            "tool:bash-only".to_string(),
+            "tool:execute".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state_arg,
+            "--json".to_string(),
+            "need".to_string(),
+            "execute".to_string(),
+            "echo ok".to_string(),
+        ])
+        .unwrap();
+        let restored = HarnessState::load(&state_path).unwrap();
+        let bash = restored
+            .installed_tentacles
+            .iter()
+            .find(|tentacle| tentacle.id == "bash-only")
+            .unwrap();
+        let trace = restored.feed_traces.last().unwrap();
+
+        assert!(bash.source.contains(".octopus/bundled-tentacles"));
+        assert_eq!(trace.tentacle.as_deref(), Some("bash-only"));
+        assert_eq!(trace.status, Status::Satisfied);
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn cli_feedback_scores_existing_feed_trace() {
         let _env = env_guard();
         let path = std::env::temp_dir().join(format!(
@@ -20346,6 +23378,51 @@ JSON
         assert!(content.contains("goal_turns"));
         restore_env("OCTOPUS_CHAT_LLM", old_chat);
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cli_chat_repairs_broken_installed_seed_source() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let old_chat = std::env::var("OCTOPUS_CHAT_LLM").ok();
+        std::env::remove_var("OCTOPUS_CHAT_LLM");
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-chat-installed-broken-fallback-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        create_partial_seed_tentacle(&dir, "bash-only");
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+        let state_arg = state_path.to_string_lossy().to_string();
+        let mut state = HarnessState::default();
+        state
+            .installed_tentacles
+            .push(broken_installed_bash_only(&dir));
+        state.save(&state_path).unwrap();
+
+        run(vec![
+            "--state".to_string(),
+            state_arg,
+            "chat".to_string(),
+            "build".to_string(),
+            "octopus".to_string(),
+        ])
+        .unwrap();
+        let restored = HarnessState::load(&state_path).unwrap();
+        let bash = restored
+            .installed_tentacles
+            .iter()
+            .find(|tentacle| tentacle.id == "bash-only")
+            .unwrap();
+
+        assert!(bash.source.contains(".octopus/bundled-tentacles"));
+        assert_eq!(restored.goal.as_ref().unwrap().objective, "build octopus");
+
+        restore_env("OCTOPUS_CHAT_LLM", old_chat);
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

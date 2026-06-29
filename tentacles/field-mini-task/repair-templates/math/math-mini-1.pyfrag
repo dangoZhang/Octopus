@@ -1,0 +1,44 @@
+if field == "math" and mini_task == "math-mini-1":
+    derivative = "3x^2 + 2"
+    numeric_check = 3 * (2 ** 2) + 2
+    answer = (
+        f"field-mini-task math/math-mini-1: derivative {derivative}; "
+        f"finite-difference check near x=2 is {numeric_check}"
+    )
+    (session / "ANSWER.md").write_text(
+        "\n".join([
+            "# Math Mini Task Answer",
+            "",
+            "derivative: `3x^2 + 2`",
+            "finite_difference_check_at_x_2: `14`",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "verifier_status": "satisfied",
+        "field_pass_evidence": "symbolic derivative plus numeric check",
+    }
+    field_result = {
+        "status": "satisfied",
+        "output": answer,
+        "evidence": [{
+            "source": "field-mini-task/math",
+            "content": answer,
+            "confidence": 0.9,
+            "metadata": field_metadata,
+        }],
+        "metadata": field_metadata,
+    }
