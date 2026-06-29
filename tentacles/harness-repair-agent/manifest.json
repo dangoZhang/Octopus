@@ -31,9 +31,9 @@
     },
     {
       "id": "heartbeat_repair",
-      "description": "Inspect the latest repair-session action plan, similar action-trace recall, and tool-side action trace, then harness-beat evolution artifacts, and suggest the next review, grant, apply, or score action.",
+      "description": "Inspect the latest repair-session action plan, similar action-trace recall, repair lesson effectiveness, and tool-side action trace, then harness-beat evolution artifacts, and suggest the next review, grant, apply, or score action.",
       "input": "octopus-json-v1 tool call or workspace root",
-      "output": "JSON Feed with latest REPAIR_PLAN, REPAIR_RECALL.json signal, ACTION_TRACE.md, ACTION_TRACE.json, review boundary, grant/apply/score commands, next_need_kind, and next_need_query",
+      "output": "JSON Feed with latest REPAIR_PLAN, REPAIR_RECALL.json signal, REPAIR_LESSON_EFFECTIVENESS, ACTION_TRACE.md, ACTION_TRACE.json, review boundary, grant/apply/score commands, next_need_kind, and next_need_query",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/heartbeat_repair.sh",
@@ -42,9 +42,9 @@
     },
     {
       "id": "repair_session",
-      "description": "Write a reviewable self-repair session, local outcome memory, similar action-trace recall, reusable repair lessons, adapter context, target code context, field trajectory context, tool-side action trace, review bundle, action plan, and optional provider-generated repair draft from heartbeat, evolution, adapter, and reviewed-outcome signals.",
+      "description": "Write a reviewable self-repair session, local outcome memory, similar action-trace recall, reusable repair lessons, measured lesson effectiveness, adapter context, target code context, field trajectory context, tool-side action trace, review bundle, action plan, and optional provider-generated repair draft from heartbeat, evolution, adapter, and reviewed-outcome signals.",
       "input": "workspace root or octopus-json-v1 Need",
-      "output": "JSON Feed with SESSION, PROMPT, DRAFT, REVIEW, NEXT_NEED, COMMANDS, OUTCOME_MEMORY, REPAIR_RECALL.json, REPAIR_LESSONS.md/json, ADAPTER_CONTEXT, CODE_CONTEXT, FIELD_TRAJECTORY, ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_PLAN paths, and the next repair Need",
+      "output": "JSON Feed with SESSION, PROMPT, DRAFT, REVIEW, NEXT_NEED, COMMANDS, OUTCOME_MEMORY, REPAIR_RECALL.json, REPAIR_LESSONS.md/json, REPAIR_LESSON_EFFECTIVENESS.md/json, ADAPTER_CONTEXT, CODE_CONTEXT, FIELD_TRAJECTORY, ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_PLAN paths, and the next repair Need",
       "implementation": {
         "kind": "shell",
         "entrypoint": "tools/repair_session.sh",
@@ -114,6 +114,7 @@
       "Record ACTION_TRACE.json lesson usage into repair outcomes before using those outcomes as future evidence.",
       "Select similar action-trace repair outcomes into REPAIR_RECALL.json before drafting the next repair session.",
       "Compress reviewed outcomes and similar recall into REPAIR_LESSONS before drafting the next repair session.",
+      "Measure repair lesson effectiveness from reviewed outcomes before drafting the next repair session.",
       "Feed repair-session planning with local OUTCOME_MEMORY, never raw tool logs in clean-brain context.",
       "Feed repair-session planning with ADAPTER_CONTEXT from local command, provider, desktop, and GitHub adapter probes.",
       "Feed repair-session planning with CODE_CONTEXT from the target tentacle manifest and tool code.",
@@ -122,6 +123,7 @@
       "Keep REPAIR_PLAN commands reviewable and grant-bound before any harness write.",
       "Let heartbeat_repair read the latest REPAIR_PLAN before older evolution artifacts.",
       "Let heartbeat_repair read REPAIR_RECALL.json and expose match count plus top recalled outcome before grant/apply/score.",
+      "Let heartbeat_repair read REPAIR_LESSON_EFFECTIVENESS and expose lesson usage success rates before grant/apply/score.",
       "Expose provider DRAFT and CODE_CONTEXT as repair-plan Feed metadata before grant, apply, or score.",
       "Expose ACTION_TRACE as repair-plan Feed metadata before grant, apply, or score.",
       "Prefer ACTION_TRACE.json as heartbeat's structured tool-side thinking signal, with ACTION_TRACE.md kept for human review.",

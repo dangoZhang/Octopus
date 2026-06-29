@@ -597,6 +597,16 @@ struct RepairPlanReport {
     repair_lessons_avoid_count: String,
     repair_lessons_top_reuse: String,
     repair_lessons_top_avoid: String,
+    repair_lesson_effectiveness: String,
+    repair_lesson_effectiveness_json: String,
+    repair_lesson_effectiveness_used_count: String,
+    repair_lesson_effectiveness_satisfied_count: String,
+    repair_lesson_effectiveness_partial_count: String,
+    repair_lesson_effectiveness_failed_count: String,
+    repair_lesson_effectiveness_success_rate: String,
+    repair_lesson_effectiveness_failure_rate: String,
+    repair_lesson_effectiveness_top_reuse: String,
+    repair_lesson_effectiveness_top_avoid: String,
     code_context: String,
     adapter_context: String,
     adapter_context_status: String,
@@ -3768,6 +3778,14 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("repair_recall_status", &repair_plan_recall_label(plan));
                 print_optional_line("repair_lessons", &plan.repair_lessons);
                 print_optional_line("repair_lessons_status", &repair_plan_lessons_label(plan));
+                print_optional_line(
+                    "repair_lesson_effectiveness",
+                    &plan.repair_lesson_effectiveness,
+                );
+                print_optional_line(
+                    "repair_lesson_effectiveness_status",
+                    &repair_plan_lesson_effectiveness_label(plan),
+                );
                 print_optional_line("code_context", &plan.code_context);
                 print_optional_line("adapter_context", &plan.adapter_context);
                 print_optional_line("adapter_status", &repair_plan_adapter_label(plan));
@@ -3814,6 +3832,11 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("修复召回状态", &repair_plan_recall_label(plan));
                 print_optional_line("修复教训", &plan.repair_lessons);
                 print_optional_line("修复教训状态", &repair_plan_lessons_label(plan));
+                print_optional_line("教训有效性", &plan.repair_lesson_effectiveness);
+                print_optional_line(
+                    "教训有效性状态",
+                    &repair_plan_lesson_effectiveness_label(plan),
+                );
                 print_optional_line("代码上下文", &plan.code_context);
                 print_optional_line("适配器上下文", &plan.adapter_context);
                 print_optional_line("适配器状态", &repair_plan_adapter_label(plan));
@@ -3949,6 +3972,63 @@ fn repair_plan_lessons_label(plan: &RepairPlanReport) -> String {
     }
     if !plan.repair_lessons_top_avoid.trim().is_empty() {
         parts.push(format!("top_avoid={}", plan.repair_lessons_top_avoid));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_lesson_effectiveness_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan
+        .repair_lesson_effectiveness_used_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "used={}",
+            plan.repair_lesson_effectiveness_used_count
+        ));
+    }
+    if !plan
+        .repair_lesson_effectiveness_satisfied_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "satisfied={}",
+            plan.repair_lesson_effectiveness_satisfied_count
+        ));
+    }
+    if !plan
+        .repair_lesson_effectiveness_failed_count
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "failed={}",
+            plan.repair_lesson_effectiveness_failed_count
+        ));
+    }
+    if !plan
+        .repair_lesson_effectiveness_success_rate
+        .trim()
+        .is_empty()
+    {
+        parts.push(format!(
+            "success_rate={}",
+            plan.repair_lesson_effectiveness_success_rate
+        ));
+    }
+    if !plan.repair_lesson_effectiveness_top_reuse.trim().is_empty() {
+        parts.push(format!(
+            "top_reuse={}",
+            plan.repair_lesson_effectiveness_top_reuse
+        ));
+    }
+    if !plan.repair_lesson_effectiveness_top_avoid.trim().is_empty() {
+        parts.push(format!(
+            "top_avoid={}",
+            plan.repair_lesson_effectiveness_top_avoid
+        ));
     }
     parts.join(" ")
 }
@@ -8530,6 +8610,12 @@ fn repair_report(
         if !plan.repair_lessons.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.repair_lessons)));
         }
+        if !plan.repair_lesson_effectiveness.trim().is_empty() {
+            next.push(format!(
+                "review {}",
+                shell_arg(&plan.repair_lesson_effectiveness)
+            ));
+        }
         if !plan.code_context.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.code_context)));
         }
@@ -8698,6 +8784,43 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         repair_lessons_avoid_count: metadata_value(metadata, "repair_lessons_avoid_count"),
         repair_lessons_top_reuse: metadata_value(metadata, "repair_lessons_top_reuse"),
         repair_lessons_top_avoid: metadata_value(metadata, "repair_lessons_top_avoid"),
+        repair_lesson_effectiveness: metadata_value(metadata, "repair_lesson_effectiveness"),
+        repair_lesson_effectiveness_json: metadata_value(
+            metadata,
+            "repair_lesson_effectiveness_json",
+        ),
+        repair_lesson_effectiveness_used_count: metadata_value(
+            metadata,
+            "repair_lesson_effectiveness_used_count",
+        ),
+        repair_lesson_effectiveness_satisfied_count: metadata_value(
+            metadata,
+            "repair_lesson_effectiveness_satisfied_count",
+        ),
+        repair_lesson_effectiveness_partial_count: metadata_value(
+            metadata,
+            "repair_lesson_effectiveness_partial_count",
+        ),
+        repair_lesson_effectiveness_failed_count: metadata_value(
+            metadata,
+            "repair_lesson_effectiveness_failed_count",
+        ),
+        repair_lesson_effectiveness_success_rate: metadata_value(
+            metadata,
+            "repair_lesson_effectiveness_success_rate",
+        ),
+        repair_lesson_effectiveness_failure_rate: metadata_value(
+            metadata,
+            "repair_lesson_effectiveness_failure_rate",
+        ),
+        repair_lesson_effectiveness_top_reuse: metadata_value(
+            metadata,
+            "repair_lesson_effectiveness_top_reuse",
+        ),
+        repair_lesson_effectiveness_top_avoid: metadata_value(
+            metadata,
+            "repair_lesson_effectiveness_top_avoid",
+        ),
         code_context: metadata_value(metadata, "code_context"),
         adapter_context: metadata_value(metadata, "adapter_context"),
         adapter_context_status: metadata_value(metadata, "adapter_context_status"),
@@ -20648,6 +20771,16 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(plan.repair_lessons_count, "0");
         assert_eq!(plan.repair_lessons_reuse_count, "0");
         assert_eq!(plan.repair_lessons_avoid_count, "0");
+        assert!(plan
+            .repair_lesson_effectiveness
+            .ends_with("REPAIR_LESSON_EFFECTIVENESS.md"));
+        assert!(plan
+            .repair_lesson_effectiveness_json
+            .ends_with("REPAIR_LESSON_EFFECTIVENESS.json"));
+        assert_eq!(plan.repair_lesson_effectiveness_used_count, "0");
+        assert_eq!(plan.repair_lesson_effectiveness_satisfied_count, "0");
+        assert_eq!(plan.repair_lesson_effectiveness_failed_count, "0");
+        assert_eq!(plan.repair_lesson_effectiveness_success_rate, "0.00");
         assert!(plan.code_context.ends_with("CODE_CONTEXT.md"));
         assert!(plan.adapter_context.ends_with("ADAPTER_CONTEXT.md"));
         assert_eq!(plan.adapter_context_status, "satisfied");
@@ -20683,6 +20816,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("REPAIR_LESSONS.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_LESSON_EFFECTIVENESS.md")));
         assert!(report
             .next
             .iter()
@@ -24402,6 +24539,37 @@ JSON
                     .unwrap_or(false)
             });
         assert!(memory_has_recall_usage);
+        let effectiveness_found = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry.ok()?.path().join("REPAIR_LESSON_EFFECTIVENESS.json");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains("\"used_count\": 1")
+                            && content.contains("\"satisfied_count\": 1")
+                            && content.contains("\"success_rate\": \"1.00\"")
+                            && content.contains("repair improved harness")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(effectiveness_found);
+        let mut restored = HarnessState::load(&path).unwrap();
+        let report = repair_report(&path, &mut restored, ".".to_string()).unwrap();
+        let plan = report
+            .repair_plan
+            .expect("repair lesson effectiveness plan report");
+        assert_eq!(plan.repair_lesson_effectiveness_used_count, "1");
+        assert_eq!(plan.repair_lesson_effectiveness_satisfied_count, "1");
+        assert_eq!(plan.repair_lesson_effectiveness_failed_count, "0");
+        assert_eq!(plan.repair_lesson_effectiveness_success_rate, "1.00");
+        assert!(plan
+            .repair_lesson_effectiveness_top_reuse
+            .contains("repair improved harness"));
         let _ = fs::remove_dir_all(workspace);
     }
 
