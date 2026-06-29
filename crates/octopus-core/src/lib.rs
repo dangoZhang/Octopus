@@ -4403,6 +4403,17 @@ impl HarnessState {
             .unwrap_or_default();
         let harness_learning = self.harness_learning_summary(&state_args);
         let field_pool = self.field_pool_status_report(state_path);
+        let completed_field_pool_next_action = field_pool.as_ref().and_then(|pool| {
+            if pool.field_slot_count > 0 && pool.completed_fields == pool.field_slot_count {
+                pool.next
+                    .iter()
+                    .find(|action| action.contains("evolve recommend field-mini-task"))
+                    .cloned()
+                    .or_else(|| pool.next.last().cloned())
+            } else {
+                None
+            }
+        });
         let next_action = if self.installed_tentacles.is_empty() {
             format!("octopus{state_args} adapt")
         } else if self.goal.is_none() {
@@ -4430,6 +4441,8 @@ impl HarnessState {
                 shell_arg(&tentacle),
                 shell_arg(&format!("improve {} harness after {reason}", result.field))
             )
+        } else if let Some(action) = completed_field_pool_next_action {
+            action
         } else if self.routes.scores.is_empty() {
             format!("octopus{state_args} need observe .")
         } else if self.has_active_parallel_field_goal() {
@@ -5432,6 +5445,10 @@ impl HarnessState {
         verifier_result_index: Option<u64>,
         status: Status,
     ) -> Option<ParallelEvolutionRun> {
+        let trace_tentacle = source_trace_index
+            .and_then(|index| self.feed_traces.iter().find(|trace| trace.index == index))
+            .and_then(|trace| trace.tentacle.clone())
+            .unwrap_or_else(|| "field-mini-task".to_string());
         let run = self
             .parallel_evolution_runs
             .iter_mut()
@@ -5442,8 +5459,20 @@ impl HarnessState {
             .find(|worker| worker.queued_need_index == Some(queued_need_index))?;
         worker.source_trace_index = source_trace_index.or(worker.source_trace_index);
         worker.verifier_result_index = verifier_result_index.or(worker.verifier_result_index);
-        worker.status = status;
+        worker.status = status.clone();
         worker.updated_at_secs = unix_timestamp_secs();
+        worker.next_action = if status == Status::Satisfied {
+            "octopus fields summary".to_string()
+        } else {
+            format!(
+                "octopus evolve recommend {} {}",
+                shell_arg(&trace_tentacle),
+                shell_arg(&format!(
+                    "improve {} harness from field traces",
+                    worker.field
+                ))
+            )
+        };
         Some(run.clone())
     }
 
@@ -12914,6 +12943,24 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
         assert!(stateful_report.next.iter().any(|item| item.contains(
             "octopus --state '/tmp/octopus fields/state.json' evolve recommend field-mini-task"
         )));
+
+        state.goal = Some(Goal::new(
+            "Adapt Octopus tentacles across eight parallel field objectives toward v0.2.0",
+        ));
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        state.install_manifest(&root, "field-mini-task").unwrap();
+        state
+            .routes
+            .scores
+            .insert(route_key(&NeedKind::Verify, "field-mini-task"), 1.0);
+        let status =
+            state.status_report_with_state(Some(Path::new("/tmp/octopus fields/state.json")));
+        assert!(status
+            .next_action
+            .contains("evolve recommend field-mini-task"));
+        assert!(!status.next_action.contains("evolve parallel"));
     }
 
     #[test]
@@ -13137,6 +13184,53 @@ next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
             Some(verifier.index)
         );
         assert_eq!(updated.workers[0].status, Status::Satisfied);
+        assert_eq!(updated.workers[0].next_action, "octopus fields summary");
+    }
+
+    #[test]
+    fn parallel_evolution_worker_refreshes_failed_target_to_field_mini_task() {
+        let mut state = HarnessState::default();
+        let run = state
+            .start_parallel_evolution("eight parallel field objectives", 1)
+            .unwrap();
+        let queued_need_index = run.workers[0].queued_need_index.unwrap();
+        let trace = state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Verify, "Run math mini task math-mini-1"),
+            status: Status::Partial,
+            evidence: vec![Evidence::new("field-mini-task", "missing pass evidence")],
+            summary: "math partial".to_string(),
+            metadata: BTreeMap::from([
+                ("tentacle".to_string(), "field-mini-task".to_string()),
+                ("tool".to_string(), "run_field_mini_task".to_string()),
+                ("field_pack".to_string(), "math".to_string()),
+                ("field_mini_task".to_string(), "math-mini-1".to_string()),
+            ]),
+        });
+        let verifier = state
+            .record_field_verifier_result(
+                trace.index,
+                Status::Partial,
+                Some("field_mini_task_incomplete".to_string()),
+                None,
+                "math verifier partial".to_string(),
+            )
+            .unwrap();
+
+        let updated = state
+            .update_parallel_evolution_worker_result(
+                run.index,
+                queued_need_index,
+                Some(trace.index),
+                Some(verifier.index),
+                Status::Partial,
+            )
+            .unwrap();
+
+        assert_eq!(updated.workers[0].status, Status::Partial);
+        assert!(updated.workers[0]
+            .next_action
+            .contains("evolve recommend field-mini-task"));
+        assert!(!updated.workers[0].next_action.contains("field:math"));
     }
 
     #[test]

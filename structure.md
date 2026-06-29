@@ -14,7 +14,7 @@ Octopus/
 ├── Cargo.lock
 ├── structure.md               Current structure and module map.
 ├── crates/octopus-core/
-│   ├── Cargo.toml             `octopus-core`, version 0.1.1, binary `octopus`.
+│   ├── Cargo.toml             `octopus-core`, version 0.1.8, binary `octopus`.
 │   ├── examples/
 │   │   └── thinking_tentacle.rs
 │   └── src/
@@ -84,7 +84,7 @@ Octopus/
 
 | Module | Role | Main files | Lines |
 | --- | --- | --- | ---: |
-| Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, evolution data, field-pool status snapshots, resolved field-pack evolution targets, harder-layer recommendation routing, and provider patch target checks | `crates/octopus-core/src/lib.rs` | 18,207 |
+| Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, evolution data, field-pool status snapshots, resolved field-pack evolution targets, harder-layer recommendation routing, and provider patch target checks | `crates/octopus-core/src/lib.rs` | 18,301 |
 | Field adaptation core | Field-pack loading, matching, editable aliases, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, field trajectory summaries, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, and compile/execute template checks | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 3,852 |
 | CLI and product backend | Command dispatch, Goal/chat/brain, provider setup, doctor/report/preflight aggregation, starter/install/check flows | `crates/octopus-core/src/main.rs` | 34,923 |
 | Local app bridge | Local HTTP/SSE server, app policy, command allow-list, static app/docs/demo fallback, field activity observer | `app_bridge.rs`, `docs/app.html` | 2,430 |
@@ -182,9 +182,9 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 12 | 57,036 |
+| `crates/octopus-core/src` | 12 | 57,130 |
 | `crates/octopus-core/examples` | 1 | 27 |
-| `tentacles` | 66 | 16,754 |
+| `tentacles` | 66 | 17,242 |
 | `field-packs` | 12 | 499 |
 | `desktop/pet` | 1 | 844 |
 | `docs` | 27 md/html files | 8,034 |
@@ -196,7 +196,7 @@ field-packs/
 | File | Lines |
 | --- | ---: |
 | `main.rs` | 34,923 |
-| `lib.rs` | 18,207 |
+| `lib.rs` | 18,301 |
 | `app_bridge.rs` | 1,144 |
 | `release_gate.rs` | 622 |
 | `field_pack.rs` | 741 |
@@ -212,7 +212,7 @@ field-packs/
 
 | Tentacle | Files | Lines |
 | --- | ---: | ---: |
-| `harness-repair-agent` | 6 | 11,714 |
+| `harness-repair-agent` | 6 | 12,202 |
 | `repo-maintainer` | 8 | 719 |
 | `computer-use-agent` | 10 | 644 |
 | `profile-registry` | 1 | 600 |
@@ -225,6 +225,6 @@ field-packs/
 
 ## Notes
 
-- The pasted tree was stale: it said version `0.0.19`; current package line is `0.1.1`.
+- The pasted tree was stale: it said version `0.0.19`; current package line is `0.1.8`.
 - The stable core is still too concentrated in `main.rs` and `lib.rs`. During `0.1.x`, split by capability before the `v0.2.0` field gate.
 - Product demo is now static screenshot-first. Dynamic Try App remains in `docs/app.html`, not as the demo page's main story.
