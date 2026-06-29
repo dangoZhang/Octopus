@@ -572,6 +572,9 @@ enum NeedRunRequest {
 struct RepairPlanReport {
     path: String,
     review: String,
+    outcome: String,
+    outcome_status: String,
+    outcome_summary: String,
     field_trajectory: String,
     field_trajectory_field: String,
     field_trajectory_mini_task: String,
@@ -3725,6 +3728,8 @@ fn print_repair_report(report: &RepairReport, language: Language) {
             if let Some(plan) = &report.repair_plan {
                 println!("repair_plan: {}", plan.path);
                 print_optional_line("review", &plan.review);
+                print_optional_line("outcome", &plan.outcome);
+                print_optional_line("outcome_status", &plan.outcome_status);
                 print_optional_line("field_trajectory", &plan.field_trajectory);
                 print_optional_line("field_target", &repair_plan_field_label(plan));
                 print_optional_line("field_verifier", &repair_plan_field_verifier(plan));
@@ -3757,6 +3762,8 @@ fn print_repair_report(report: &RepairReport, language: Language) {
             if let Some(plan) = &report.repair_plan {
                 println!("修复计划: {}", plan.path);
                 print_optional_line("审阅", &plan.review);
+                print_optional_line("结果", &plan.outcome);
+                print_optional_line("结果状态", &plan.outcome_status);
                 print_optional_line("领域轨迹", &plan.field_trajectory);
                 print_optional_line("领域目标", &repair_plan_field_label(plan));
                 print_optional_line("领域验证", &repair_plan_field_verifier(plan));
@@ -8256,6 +8263,9 @@ fn repair_report(
         if !plan.review.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.review)));
         }
+        if !plan.outcome.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.outcome)));
+        }
         if !plan.field_trajectory.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.field_trajectory)));
         }
@@ -8393,6 +8403,9 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
     Some(RepairPlanReport {
         path,
         review: metadata_value(metadata, "review"),
+        outcome: metadata_value(metadata, "outcome"),
+        outcome_status: metadata_value(metadata, "outcome_status"),
+        outcome_summary: metadata_value(metadata, "outcome_summary"),
         field_trajectory: metadata_value(metadata, "field_trajectory"),
         field_trajectory_field: metadata_value(metadata, "field_trajectory_field"),
         field_trajectory_mini_task: metadata_value(metadata, "field_trajectory_mini_task"),
@@ -20342,6 +20355,73 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
     }
 
     #[test]
+    fn cli_repair_report_uses_reviewed_repair_outcome() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-repair-reviewed-outcome-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+        let state = state_path.to_string_lossy().to_string();
+
+        run(vec![
+            "--state".to_string(),
+            state.clone(),
+            "install".to_string(),
+            "harness-repair-agent".to_string(),
+        ])
+        .unwrap();
+        run(vec![
+            "--state".to_string(),
+            state,
+            "need".to_string(),
+            "execute".to_string(),
+            dir.to_string_lossy().to_string(),
+        ])
+        .unwrap();
+
+        let repair_root = dir.join(".octopus/harness-repair");
+        let session_dir = fs::read_dir(&repair_root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| path.join("REPAIR_PLAN.json").exists())
+            .expect("repair session dir");
+        fs::write(
+            session_dir.join("OUTCOME.md"),
+            "# Harness Repair Outcome\n\nstatus: `satisfied`\n\nreviewed locally\n",
+        )
+        .unwrap();
+
+        let mut restored = HarnessState::load(&state_path).unwrap();
+        let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        let plan = report.repair_plan.expect("repair plan report");
+
+        assert!(plan.outcome.ends_with("OUTCOME.md"));
+        assert_eq!(plan.outcome_status, "satisfied");
+        assert!(plan.outcome_summary.contains("reviewed locally"));
+        assert_eq!(plan.status, "outcome_satisfied");
+        assert!(plan.grant_command.is_empty());
+        assert!(plan.apply_command.is_empty());
+        assert!(plan.score_command.is_empty());
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("OUTCOME.md")));
+        assert!(!report
+            .next
+            .iter()
+            .any(|command| command.contains("repair score")));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn cli_provider_save_writes_env_file() {
         let _env = env_guard();
         let _cwd = CwdGuard::new();
@@ -21119,6 +21199,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
 
     #[test]
     fn check_report_runs_manifest_checks() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        std::env::set_current_dir(crate::repo_root()).unwrap();
+
         let report = check_report("json-feed", None).unwrap();
 
         assert_eq!(report.id, "json-feed");

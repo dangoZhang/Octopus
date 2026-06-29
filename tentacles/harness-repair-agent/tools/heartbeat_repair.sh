@@ -123,6 +123,31 @@ def field_trajectory_metadata(root, value, target):
     return metadata
 
 
+def repair_outcome_metadata(root, latest_repair_plan, repair_plan):
+    session_path = resolve_artifact(root, repair_plan.get("session"))
+    if not session_path and latest_repair_plan:
+        session_path = latest_repair_plan.parent / "SESSION.json"
+    if not session_path:
+        return {}
+    outcome_path = session_path.parent / "OUTCOME.md"
+    if not outcome_path.exists():
+        return {}
+    text = outcome_path.read_text(encoding="utf-8", errors="replace")
+    outcome_status = ""
+    for line in text.splitlines():
+        key, _, raw = line.partition(":")
+        if key.strip().lower() == "status":
+            outcome_status = clean_markdown_value(raw)
+            break
+    if not outcome_status:
+        outcome_status = "reviewed"
+    return {
+        "outcome": rel(outcome_path, root),
+        "outcome_status": outcome_status,
+        "outcome_summary": compact(text, 500),
+    }
+
+
 def as_list(value):
     if isinstance(value, list):
         return [str(item) for item in value if str(item).strip()]
@@ -201,14 +226,37 @@ if latest_repair_plan:
         ]
         if item
     )
-    status = "satisfied"
-    next_need = "review latest repair action plan"
-    output = (
-        f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
-        f"status={plan_status}; target={target_tentacle}/{target_tool}; "
-        f"next={next_need_kind} {next_need_query}; "
-        f"field={field_label or 'none'}; review before grant/apply/score"
-    )
+    outcome_metadata = repair_outcome_metadata(root, latest_repair_plan, repair_plan)
+    has_outcome = bool(outcome_metadata.get("outcome"))
+    if has_outcome:
+        outcome_status = outcome_metadata.get("outcome_status", "reviewed")
+        plan_status = f"outcome_{outcome_status}"
+        if outcome_status in {"failed", "partial"}:
+            status = "partial"
+            next_need = f"continue repair after {outcome_status} outcome"
+            next_need_kind = "execute"
+            next_need_query = f"octopus repair . after {outcome_status} repair outcome"
+        else:
+            status = "satisfied"
+            next_need = "retain reviewed repair outcome"
+            next_need_kind = "verify"
+            next_need_query = "harness repair outcome retained"
+        output = (
+            f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
+            f"outcome={outcome_metadata.get('outcome')}; status={outcome_status}; "
+            f"target={target_tentacle}/{target_tool}; next={next_need_kind} {next_need_query}"
+        )
+        checks = []
+        suggested = []
+    else:
+        status = "satisfied"
+        next_need = "review latest repair action plan"
+        output = (
+            f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
+            f"status={plan_status}; target={target_tentacle}/{target_tool}; "
+            f"next={next_need_kind} {next_need_query}; "
+            f"field={field_label or 'none'}; review before grant/apply/score"
+        )
     repair_metadata = {
         "repair_plan": rel(latest_repair_plan, root),
         "repair_plan_status": plan_status,
@@ -221,12 +269,13 @@ if latest_repair_plan:
         "candidate": candidate,
         "review_boundary": str(repair_plan.get("review_boundary") or ""),
         "check_command": " && ".join(checks),
-        "grant_command": command_value(commands, "grant"),
-        "apply_command": command_value(commands, "apply"),
-        "score_command": command_value(commands, "score"),
+        "grant_command": "" if has_outcome else command_value(commands, "grant"),
+        "apply_command": "" if has_outcome else command_value(commands, "apply"),
+        "score_command": "" if has_outcome else command_value(commands, "score"),
         "suggested_commands": " && ".join(suggested),
     }
     repair_metadata.update(field_metadata)
+    repair_metadata.update(outcome_metadata)
 elif not tentacles:
     status = "partial"
     next_need = "run beat after failed check or scored Feed"
