@@ -325,6 +325,94 @@ def repair_patch_draft_effectiveness_metadata(root, value, json_value=""):
     return metadata
 
 
+def repair_patch_review_metadata(root, value, json_value=""):
+    path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
+    metadata = {
+        "repair_patch_review": rel(path, root) if path else "",
+        "repair_patch_review_json": rel(json_path, root) if json_path else "",
+        "repair_patch_review_status": "",
+        "repair_patch_review_check_status": "",
+        "repair_patch_review_has_patch": "",
+        "repair_patch_review_target": "",
+        "repair_patch_review_summary": "",
+        "repair_patch_review_patch_file": "",
+        "repair_patch_review_next_need_kind": "",
+        "repair_patch_review_next_need_query": "",
+        "repair_patch_review_preview": "",
+    }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        target = data.get("target") if isinstance(data.get("target"), dict) else {}
+        next_need = data.get("next_need") if isinstance(data.get("next_need"), dict) else {}
+        target_label = str(data.get("target_label") or "")
+        if not target_label:
+            target_label = "/".join(
+                item
+                for item in [
+                    str(target.get("tentacle") or ""),
+                    str(target.get("tool") or ""),
+                ]
+                if item
+            )
+        metadata.update({
+            "repair_patch_review_status": str(data.get("status") or ""),
+            "repair_patch_review_check_status": str(data.get("check_status") or ""),
+            "repair_patch_review_has_patch": "true" if data.get("has_patch") else "false",
+            "repair_patch_review_target": target_label,
+            "repair_patch_review_summary": compact(data.get("summary") or "", 360),
+            "repair_patch_review_patch_file": str(data.get("patch_file") or ""),
+            "repair_patch_review_next_need_kind": str(next_need.get("kind") or ""),
+            "repair_patch_review_next_need_query": compact(next_need.get("query") or "", 320),
+            "repair_patch_review_preview": compact(json.dumps(data, sort_keys=True), 700),
+        })
+    if path and path.exists() and not metadata["repair_patch_review_preview"]:
+        metadata["repair_patch_review_preview"] = compact(path.read_text(encoding="utf-8", errors="replace"), 700)
+    return metadata
+
+
+def repair_patch_review_effectiveness_metadata(root, value, json_value=""):
+    path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
+    metadata = {
+        "repair_patch_review_effectiveness": rel(path, root) if path else "",
+        "repair_patch_review_effectiveness_json": rel(json_path, root) if json_path else "",
+        "repair_patch_review_effectiveness_used_count": "",
+        "repair_patch_review_effectiveness_satisfied_count": "",
+        "repair_patch_review_effectiveness_partial_count": "",
+        "repair_patch_review_effectiveness_failed_count": "",
+        "repair_patch_review_effectiveness_success_rate": "",
+        "repair_patch_review_effectiveness_failure_rate": "",
+        "repair_patch_review_effectiveness_top_reuse": "",
+        "repair_patch_review_effectiveness_top_avoid": "",
+        "repair_patch_review_effectiveness_preview": "",
+    }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        metadata.update({
+            "repair_patch_review_effectiveness_used_count": str(data.get("used_count") or 0),
+            "repair_patch_review_effectiveness_satisfied_count": str(data.get("satisfied_count") or 0),
+            "repair_patch_review_effectiveness_partial_count": str(data.get("partial_count") or 0),
+            "repair_patch_review_effectiveness_failed_count": str(data.get("failed_count") or 0),
+            "repair_patch_review_effectiveness_success_rate": str(data.get("success_rate") or "0.00"),
+            "repair_patch_review_effectiveness_failure_rate": str(data.get("failure_rate") or "0.00"),
+            "repair_patch_review_effectiveness_top_reuse": compact(data.get("top_reuse") or "", 320),
+            "repair_patch_review_effectiveness_top_avoid": compact(data.get("top_avoid") or "", 320),
+            "repair_patch_review_effectiveness_preview": compact(json.dumps(data, sort_keys=True), 700),
+        })
+    if path and path.exists() and not metadata["repair_patch_review_effectiveness_preview"]:
+        metadata["repair_patch_review_effectiveness_preview"] = compact(path.read_text(encoding="utf-8", errors="replace"), 700)
+    return metadata
+
+
 def repair_command_effectiveness_metadata(root, value, json_value=""):
     path = resolve_artifact(root, value)
     json_path = resolve_artifact(root, json_value)
@@ -1037,6 +1125,10 @@ if latest_repair_plan:
     repair_patch_draft_json = str(inputs.get("repair_patch_draft_json") or "")
     repair_patch_draft_effectiveness = str(inputs.get("repair_patch_draft_effectiveness") or "")
     repair_patch_draft_effectiveness_json = str(inputs.get("repair_patch_draft_effectiveness_json") or "")
+    repair_patch_review = str(inputs.get("repair_patch_review") or "")
+    repair_patch_review_json = str(inputs.get("repair_patch_review_json") or "")
+    repair_patch_review_effectiveness = str(inputs.get("repair_patch_review_effectiveness") or "")
+    repair_patch_review_effectiveness_json = str(inputs.get("repair_patch_review_effectiveness_json") or "")
     repair_command_effectiveness = str(inputs.get("repair_command_effectiveness") or "")
     repair_command_effectiveness_json = str(inputs.get("repair_command_effectiveness_json") or "")
     repair_command_strategy = str(inputs.get("repair_command_strategy") or "")
@@ -1087,6 +1179,16 @@ if latest_repair_plan:
         root,
         repair_patch_draft_effectiveness,
         repair_patch_draft_effectiveness_json,
+    )
+    patch_review_metadata = repair_patch_review_metadata(
+        root,
+        repair_patch_review,
+        repair_patch_review_json,
+    )
+    patch_review_effectiveness_metadata = repair_patch_review_effectiveness_metadata(
+        root,
+        repair_patch_review_effectiveness,
+        repair_patch_review_effectiveness_json,
     )
     command_effectiveness_metadata = repair_command_effectiveness_metadata(
         root,
@@ -1191,6 +1293,11 @@ if latest_repair_plan:
     patch_draft_has_patch = patch_draft_metadata.get("repair_patch_draft_has_patch", "")
     patch_draft_effectiveness_used = patch_draft_effectiveness_metadata.get("repair_patch_draft_effectiveness_used_count", "")
     patch_draft_effectiveness_success = patch_draft_effectiveness_metadata.get("repair_patch_draft_effectiveness_success_rate", "")
+    patch_review_status = patch_review_metadata.get("repair_patch_review_status", "")
+    patch_review_check = patch_review_metadata.get("repair_patch_review_check_status", "")
+    patch_review_summary = patch_review_metadata.get("repair_patch_review_summary", "")
+    patch_review_effectiveness_used = patch_review_effectiveness_metadata.get("repair_patch_review_effectiveness_used_count", "")
+    patch_review_effectiveness_success = patch_review_effectiveness_metadata.get("repair_patch_review_effectiveness_success_rate", "")
     command_effectiveness_used = command_effectiveness_metadata.get("repair_command_effectiveness_used_count", "")
     command_effectiveness_success = command_effectiveness_metadata.get("repair_command_effectiveness_success_rate", "")
     command_strategy_status = command_strategy_metadata.get("repair_command_strategy_status", "")
@@ -1240,6 +1347,13 @@ if latest_repair_plan:
         and not adapter_blocked
         and not draft_blocked
         and action_trace_status in {"failed", "missing_context"}
+    )
+    patch_review_blocked = (
+        not has_outcome
+        and not adapter_blocked
+        and not draft_blocked
+        and not action_trace_blocked
+        and patch_review_status == "check_failed"
     )
     if has_outcome:
         outcome_status = outcome_metadata.get("outcome_status", "reviewed")
@@ -1309,6 +1423,21 @@ if latest_repair_plan:
         )
         checks = []
         suggested = []
+    elif patch_review_blocked:
+        plan_status = "patch_review_blocked"
+        status = "partial"
+        blocker = patch_review_summary or patch_review_check or "failed local patch check"
+        next_need = f"repair provider patch draft: {blocker}"
+        next_need_kind = patch_review_metadata.get("repair_patch_review_next_need_kind") or "execute"
+        next_need_query = patch_review_metadata.get("repair_patch_review_next_need_query") or "repair provider patch draft after failed local check"
+        next_need_source = "repair_patch_review"
+        output = (
+            f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
+            f"patch_review={patch_review_status}; check={patch_review_check or 'failed'}; "
+            f"target={target_tentacle}/{target_tool}; next={next_need_kind} {next_need_query}"
+        )
+        checks = []
+        suggested = []
     else:
         status = "satisfied"
         next_need = (
@@ -1331,6 +1460,8 @@ if latest_repair_plan:
             f"draft_effectiveness={draft_effectiveness_used or '0'} success_rate={draft_effectiveness_success or '0.00'}; "
             f"patch_draft={patch_draft_status or 'none'} has_patch={patch_draft_has_patch or 'false'}; "
             f"patch_draft_effectiveness={patch_draft_effectiveness_used or '0'} success_rate={patch_draft_effectiveness_success or '0.00'}; "
+            f"patch_review={patch_review_status or 'none'} check={patch_review_check or 'none'}; "
+            f"patch_review_effectiveness={patch_review_effectiveness_used or '0'} success_rate={patch_review_effectiveness_success or '0.00'}; "
             f"command_effectiveness={command_effectiveness_used or '0'} success_rate={command_effectiveness_success or '0.00'}; "
             f"command_strategy={command_strategy_status or 'none'} focus={command_strategy_focus or 'none'}; "
             f"command_strategy_effectiveness={command_strategy_effectiveness_used or '0'} success_rate={command_strategy_effectiveness_success or '0.00'}; "
@@ -1366,6 +1497,10 @@ if latest_repair_plan:
         "repair_patch_draft_json": repair_patch_draft_json,
         "repair_patch_draft_effectiveness": repair_patch_draft_effectiveness,
         "repair_patch_draft_effectiveness_json": repair_patch_draft_effectiveness_json,
+        "repair_patch_review": repair_patch_review,
+        "repair_patch_review_json": repair_patch_review_json,
+        "repair_patch_review_effectiveness": repair_patch_review_effectiveness,
+        "repair_patch_review_effectiveness_json": repair_patch_review_effectiveness_json,
         "repair_command_effectiveness": repair_command_effectiveness,
         "repair_command_effectiveness_json": repair_command_effectiveness_json,
         "repair_command_strategy": repair_command_strategy,
@@ -1399,10 +1534,11 @@ if latest_repair_plan:
         "adapter_blocker": adapter_missing_core if adapter_blocked else "",
         "draft_blocker": draft_status if draft_blocked else "",
         "action_trace_blocker": action_trace_status if action_trace_blocked else "",
-        "grant_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked else command_value(commands, "grant"),
-        "apply_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked else command_value(commands, "apply"),
-        "score_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked else command_value(commands, "score"),
-        "score_commands": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked else command_lines(commands, "score_options"),
+        "patch_review_blocker": patch_review_status if patch_review_blocked else "",
+        "grant_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked or patch_review_blocked else command_value(commands, "grant"),
+        "apply_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked or patch_review_blocked else command_value(commands, "apply"),
+        "score_command": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked or patch_review_blocked else command_value(commands, "score"),
+        "score_commands": "" if has_outcome or adapter_blocked or draft_blocked or action_trace_blocked or patch_review_blocked else command_lines(commands, "score_options"),
         "suggested_commands": " && ".join(suggested),
         "next_need_source": next_need_source,
     }
@@ -1414,6 +1550,8 @@ if latest_repair_plan:
     repair_metadata.update(draft_effectiveness_metadata)
     repair_metadata.update(patch_draft_metadata)
     repair_metadata.update(patch_draft_effectiveness_metadata)
+    repair_metadata.update(patch_review_metadata)
+    repair_metadata.update(patch_review_effectiveness_metadata)
     repair_metadata.update(command_effectiveness_metadata)
     repair_metadata.update(command_strategy_metadata)
     repair_metadata.update(command_strategy_effectiveness_metadata)

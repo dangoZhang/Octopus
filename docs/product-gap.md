@@ -74,6 +74,7 @@ Updated: 2026-06-29
 - Harness repair now writes `HARNESS_ENVIRONMENT_DRIFT_EFFECTIVENESS.md/json`, so scored outcomes teach whether responding to environment drift actually helped.
 - Harness repair now writes `REPAIR_DRAFT_EFFECTIVENESS.md/json`, so provider-generated repair drafts get scored into future repair prompts instead of staying one-off text.
 - Harness repair now writes `REPAIR_PATCH_DRAFT.md/json` and `REPAIR_PATCH_DRAFT_EFFECTIVENESS.md/json`, so provider repair drafts can carry reviewable patch intent and later outcome scores teach whether that patch-draft mode helped.
+- Harness repair now writes `REPAIR_PATCH_REVIEW.md/json` and `REPAIR_PATCH_REVIEW_EFFECTIVENESS.md/json`, so provider patch drafts are checked locally with `git apply --check` before grant/apply and later scores teach whether that pre-review helped.
 - Harness repair now writes `REPAIR_COMMAND_EFFECTIVENESS.md/json`, so scored outcomes teach which reviewable check/grant/apply/score command recipes should be reused or avoided.
 - Harness repair now writes `REPAIR_COMMAND_STRATEGY_EFFECTIVENESS.md/json`, so reviewed outcomes can teach whether command-strategy choices themselves help future repair sessions.
 - Harness repair now writes `REPAIR_DECISION_EFFECTIVENESS.md/json`, so reviewed outcomes teach whether the repair decision itself helped later repair sessions.
@@ -460,7 +461,7 @@ Updated: 2026-06-29
 - Apply and score the next Feed-trace- or check-driven seed-tentacle improvement through the app review/grant loop.
 - Run `repair continue` after bootstrap on real projects, then score whether the continued Feed improves the harness from the app.
 - Use `octopus report` after every product cycle to pick the next highest-impact gap.
-- Exercise provider-assisted patch drafts with a real LLM provider and score the result through the review/grant loop.
+- Exercise provider-assisted patch drafts with a real LLM provider and score the local patch-review result through the review/grant loop.
 - Turn window/browser diagnostics into richer native control adapters.
 - Add provider-specific fixes from real-machine feedback.
 - Continue the `0.1.1` cycle by collecting installed-user feedback and tightening the local installed-user onboarding path.
