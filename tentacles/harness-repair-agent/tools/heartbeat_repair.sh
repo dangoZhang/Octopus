@@ -205,22 +205,53 @@ def repair_draft_metadata(root, value):
     return metadata
 
 
-def action_trace_metadata(root, value):
+def action_trace_metadata(root, value, json_value=""):
     path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
     metadata = {
+        "action_trace_json": rel(json_path, root) if json_path else "",
         "action_trace_status": "",
         "action_trace_stage_count": "",
         "action_trace_last_action": "",
+        "action_trace_repair_hint": "",
+        "action_trace_next_need_kind": "",
+        "action_trace_next_need_query": "",
+        "action_trace_failed_stage": "",
         "action_trace_preview": "",
     }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        next_need = data.get("next_need") if isinstance(data.get("next_need"), dict) else {}
+        metadata.update({
+            "action_trace_status": clean_markdown_value(data.get("status")),
+            "action_trace_stage_count": clean_markdown_value(data.get("stage_count")),
+            "action_trace_last_action": clean_markdown_value(data.get("last_action")),
+            "action_trace_repair_hint": clean_markdown_value(data.get("repair_hint")),
+            "action_trace_next_need_kind": clean_markdown_value(next_need.get("kind")),
+            "action_trace_next_need_query": clean_markdown_value(next_need.get("query")),
+        })
+        for stage in data.get("stages") if isinstance(data.get("stages"), list) else []:
+            if not isinstance(stage, dict):
+                continue
+            stage_status = clean_markdown_value(stage.get("status"))
+            if stage_status in {"failed", "missing_context"}:
+                metadata["action_trace_failed_stage"] = clean_markdown_value(stage.get("action"))
+                break
+        metadata["action_trace_preview"] = compact(json.dumps(data, sort_keys=True), 600)
     if not path or not path.exists():
         return metadata
     text = path.read_text(encoding="utf-8", errors="replace")
-    metadata["action_trace_preview"] = compact(text, 600)
+    if not metadata["action_trace_preview"]:
+        metadata["action_trace_preview"] = compact(text, 600)
     key_map = {
         "status": "action_trace_status",
         "stage_count": "action_trace_stage_count",
         "last_action": "action_trace_last_action",
+        "repair_hint": "action_trace_repair_hint",
     }
     for line in text.splitlines():
         key, _, raw = line.partition(":")
@@ -327,8 +358,9 @@ if latest_repair_plan:
     draft = str(inputs.get("draft") or "")
     code_context = str(inputs.get("code_context") or "")
     action_trace = str(inputs.get("action_trace") or "")
+    action_trace_json = str(inputs.get("action_trace_json") or "")
     draft_metadata = repair_draft_metadata(root, draft)
-    action_metadata = action_trace_metadata(root, action_trace)
+    action_metadata = action_trace_metadata(root, action_trace, action_trace_json)
     adapter_metadata = adapter_context_metadata(
         root,
         adapter_context,
@@ -423,12 +455,13 @@ if latest_repair_plan:
         plan_status = "action_trace_blocked"
         status = "partial"
         blocker = action_trace_status or "failed"
-        next_need = f"repair tool-side action trace: {blocker}"
-        next_need_kind = "execute"
-        next_need_query = f"repair harness action trace: {blocker}"
+        next_need = action_metadata.get("action_trace_repair_hint") or f"repair tool-side action trace: {blocker}"
+        next_need_kind = action_metadata.get("action_trace_next_need_kind") or "execute"
+        next_need_query = action_metadata.get("action_trace_next_need_query") or f"repair harness action trace: {blocker}"
         output = (
             f"heartbeat repair: repair_plan={rel(latest_repair_plan, root)}; "
             f"action_trace_status={blocker}; "
+            f"failed_stage={action_metadata.get('action_trace_failed_stage') or 'unknown'}; "
             f"target={target_tentacle}/{target_tool}; next={next_need_kind} {next_need_query}"
         )
         checks = []
@@ -452,6 +485,7 @@ if latest_repair_plan:
         "draft": draft,
         "code_context": code_context,
         "action_trace": action_trace,
+        "action_trace_json": action_trace_json or action_metadata.get("action_trace_json", ""),
         "adapter_context": adapter_context,
         "field_trajectory": field_trajectory,
         "target_tentacle": target_tentacle,

@@ -580,6 +580,7 @@ struct RepairPlanReport {
     draft_prefix: String,
     draft_model: String,
     action_trace: String,
+    action_trace_json: String,
     action_trace_status: String,
     action_trace_stage_count: String,
     action_trace_last_action: String,
@@ -3748,6 +3749,7 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("draft", &plan.draft);
                 print_optional_line("draft_status", &repair_plan_draft_label(plan));
                 print_optional_line("action_trace", &plan.action_trace);
+                print_optional_line("action_trace_json", &plan.action_trace_json);
                 print_optional_line("action_trace_status", &repair_plan_action_trace_label(plan));
                 print_optional_line("code_context", &plan.code_context);
                 print_optional_line("adapter_context", &plan.adapter_context);
@@ -3789,6 +3791,7 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("草稿", &plan.draft);
                 print_optional_line("草稿状态", &repair_plan_draft_label(plan));
                 print_optional_line("行动轨迹", &plan.action_trace);
+                print_optional_line("行动轨迹JSON", &plan.action_trace_json);
                 print_optional_line("行动轨迹状态", &repair_plan_action_trace_label(plan));
                 print_optional_line("代码上下文", &plan.code_context);
                 print_optional_line("适配器上下文", &plan.adapter_context);
@@ -8358,6 +8361,9 @@ fn repair_report(
         if !plan.action_trace.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.action_trace)));
         }
+        if !plan.action_trace_json.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.action_trace_json)));
+        }
         if !plan.code_context.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.code_context)));
         }
@@ -8509,6 +8515,7 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         draft_prefix: metadata_value(metadata, "draft_prefix"),
         draft_model: metadata_value(metadata, "draft_model"),
         action_trace: metadata_value(metadata, "action_trace"),
+        action_trace_json: metadata_value(metadata, "action_trace_json"),
         action_trace_status: metadata_value(metadata, "action_trace_status"),
         action_trace_stage_count: metadata_value(metadata, "action_trace_stage_count"),
         action_trace_last_action: metadata_value(metadata, "action_trace_last_action"),
@@ -20449,6 +20456,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(plan.draft_status, "disabled");
         assert_eq!(plan.draft_prefix, "OCTOPUS_LLM");
         assert!(plan.action_trace.ends_with("ACTION_TRACE.md"));
+        assert!(plan.action_trace_json.ends_with("ACTION_TRACE.json"));
         assert_eq!(plan.action_trace_status, "satisfied");
         assert_eq!(plan.action_trace_stage_count, "6");
         assert!(plan
@@ -20477,6 +20485,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("ACTION_TRACE.md")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("ACTION_TRACE.json")));
         assert!(report
             .next
             .iter()
@@ -20676,7 +20688,37 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .expect("repair session dir");
         fs::write(
             session_dir.join("ACTION_TRACE.md"),
-            "# Tool-Side Action Trace\n\nstatus: `failed`\nstage_count: `2`\nlast_action: `provider draft missing evidence`\n",
+            "# Tool-Side Action Trace\n\nstatus: `missing_context`\nstage_count: `2`\nlast_action: `select target code evidence`\nrepair_hint: `repair harness action trace: missing target context`\n",
+        )
+        .unwrap();
+        fs::write(
+            session_dir.join("ACTION_TRACE.json"),
+            r#"{
+  "schema_version": "octopus-harness-repair-action-trace-v1",
+  "status": "missing_context",
+  "stage_count": 2,
+  "last_action": "select target code evidence",
+  "repair_hint": "repair harness action trace: missing target context",
+  "next_need": {
+    "kind": "execute",
+    "query": "repair harness action trace: missing target context"
+  },
+  "stages": [
+    {
+      "kind": "Need",
+      "action": "read cognitive repair need",
+      "result": "verify repair",
+      "status": "satisfied"
+    },
+    {
+      "kind": "Action",
+      "action": "select target code evidence",
+      "result": "unknown/unknown",
+      "status": "missing_context"
+    }
+  ]
+}
+"#,
         )
         .unwrap();
 
@@ -20686,18 +20728,19 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
 
         assert_eq!(report.feed.status, Status::Partial);
         assert_eq!(plan.status, "action_trace_blocked");
-        assert_eq!(plan.action_trace_status, "failed");
+        assert_eq!(plan.action_trace_status, "missing_context");
         assert_eq!(plan.action_trace_stage_count, "2");
         assert!(plan
             .action_trace_last_action
-            .contains("provider draft missing evidence"));
+            .contains("select target code evidence"));
+        assert!(plan.action_trace_json.ends_with("ACTION_TRACE.json"));
         assert!(plan.grant_command.is_empty());
         assert!(plan.apply_command.is_empty());
         assert!(plan.score_command.is_empty());
         assert!(report.queued.iter().any(|item| item
             .need
             .query
-            .contains("repair harness action trace: failed")));
+            .contains("repair harness action trace: missing target context")));
         assert!(!report
             .next
             .iter()

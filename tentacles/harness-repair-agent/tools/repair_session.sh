@@ -737,7 +737,7 @@ def draft_markdown(draft, prompt_path, session_path, workspace):
     return "\n".join(lines)
 
 
-def action_trace_markdown(
+def action_trace_record(
     workspace,
     session_path,
     need_kind,
@@ -749,57 +749,88 @@ def action_trace_markdown(
     draft,
     repair_plan,
 ):
-    actions = [
-        ("Need", "read cognitive repair need", f"{need_kind} {need_query}"),
-        (
-            "Tool",
-            "probe local execution substrate",
-            f"adapter={adapter_context['status']} missing_core={adapter_context['missing_core'] or 'none'}",
-        ),
-        (
-            "Action",
-            "select target code evidence",
-            f"{code_context['tentacle']}/{code_context['tool']}",
-        ),
-        (
-            "Action",
-            "merge field and outcome evidence",
-            f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']}",
-        ),
-        (
-            "Tool",
-            "ask optional repair provider for a draft",
-            f"draft={draft['status']} prefix={draft['prefix']}",
-        ),
-        (
-            "Feed",
-            "write reviewable repair plan",
-            f"plan={rel(session_path.parent / 'REPAIR_PLAN.json', workspace)} status={repair_plan['status']}",
-        ),
+    stages = [
+        {
+            "kind": "Need",
+            "action": "read cognitive repair need",
+            "result": f"{need_kind} {need_query}",
+            "status": "satisfied",
+        },
+        {
+            "kind": "Tool",
+            "action": "probe local execution substrate",
+            "result": f"adapter={adapter_context['status']} missing_core={adapter_context['missing_core'] or 'none'}",
+            "status": adapter_context["status"] or "unknown",
+        },
+        {
+            "kind": "Action",
+            "action": "select target code evidence",
+            "result": f"{code_context['tentacle']}/{code_context['tool']}",
+            "status": "missing_context" if code_context["tentacle"] == "unknown" else "satisfied",
+        },
+        {
+            "kind": "Action",
+            "action": "merge field and outcome evidence",
+            "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']}",
+            "status": "satisfied",
+        },
+        {
+            "kind": "Tool",
+            "action": "ask optional repair provider for a draft",
+            "result": f"draft={draft['status']} prefix={draft['prefix']}",
+            "status": draft["status"],
+        },
+        {
+            "kind": "Feed",
+            "action": "write reviewable repair plan",
+            "result": f"plan={rel(session_path.parent / 'REPAIR_PLAN.json', workspace)} status={repair_plan['status']}",
+            "status": repair_plan["status"],
+        },
     ]
-    status = "satisfied" if code_context["tentacle"] != "unknown" else "partial"
-    last_action = actions[-1][1]
+    status = "satisfied" if code_context["tentacle"] != "unknown" else "missing_context"
+    repair_hint = "review repair action plan"
+    if status == "missing_context":
+        repair_hint = "repair harness action trace: missing target context"
+    return {
+        "schema_version": "octopus-harness-repair-action-trace-v1",
+        "status": status,
+        "stage_count": len(stages),
+        "last_action": stages[-1]["action"],
+        "session": rel(session_path, workspace),
+        "source": source,
+        "next_need": {
+            "kind": "execute" if status == "missing_context" else need_kind,
+            "query": repair_hint if status == "missing_context" else need_query,
+        },
+        "repair_hint": repair_hint,
+        "stages": stages,
+    }
+
+
+def action_trace_markdown(record, workspace, repair_plan):
     lines = [
         "# Tool-Side Action Trace",
         "",
         "This is the harness-repair tentacle's local thinking trace.",
         "It is Feed evidence for heartbeat repair, not clean-brain context.",
         "",
-        f"status: `{status}`",
-        f"stage_count: `{len(actions)}`",
-        f"last_action: `{last_action}`",
-        f"session: `{rel(session_path, workspace)}`",
-        f"source: `{source}`",
+        f"status: `{record['status']}`",
+        f"stage_count: `{record['stage_count']}`",
+        f"last_action: `{record['last_action']}`",
+        f"session: `{record['session']}`",
+        f"source: `{record['source']}`",
+        f"repair_hint: `{record['repair_hint']}`",
         "",
         "## Need -> Tool -> Action -> Feed",
         "",
     ]
-    for index, (kind, action, result) in enumerate(actions, start=1):
+    for index, stage in enumerate(record["stages"], start=1):
         lines.extend(
             [
-                f"{index}. {kind}",
-                f"   action: {action}",
-                f"   result: {result}",
+                f"{index}. {stage['kind']}",
+                f"   action: {stage['action']}",
+                f"   result: {stage['result']}",
+                f"   status: {stage['status']}",
             ]
         )
     lines.extend(["", "## Review Boundary", "", repair_plan["review_boundary"], ""])
@@ -926,6 +957,7 @@ adapter_context_md = session_dir / "ADAPTER_CONTEXT.md"
 code_context_md = session_dir / "CODE_CONTEXT.md"
 field_trajectory_md = session_dir / "FIELD_TRAJECTORY.md"
 action_trace_md = session_dir / "ACTION_TRACE.md"
+action_trace_json = session_dir / "ACTION_TRACE.json"
 repair_plan_json = session_dir / "REPAIR_PLAN.json"
 outcome_command = (
     "octopus repair score <trace-index> satisfied \"repair improved Feed\""
@@ -961,6 +993,7 @@ session = {
     "code_context": rel(code_context_md, workspace),
     "field_trajectory": rel(field_trajectory_md, workspace),
     "action_trace": rel(action_trace_md, workspace),
+    "action_trace_json": rel(action_trace_json, workspace),
     "review": rel(review_md, workspace),
     "repair_plan": rel(repair_plan_json, workspace),
     "code_context_target": {
@@ -1033,6 +1066,7 @@ repair_plan = build_action_plan(
 repair_plan["inputs"]["field_trajectory"] = rel(field_trajectory_md, workspace)
 repair_plan["inputs"]["adapter_context"] = rel(adapter_context_md, workspace)
 repair_plan["inputs"]["action_trace"] = rel(action_trace_md, workspace)
+repair_plan["inputs"]["action_trace_json"] = rel(action_trace_json, workspace)
 repair_plan["field_trajectory_target"] = {
     "field": field_trajectory["field"],
     "mini_task": field_trajectory["mini_task"],
@@ -1040,7 +1074,7 @@ repair_plan["field_trajectory_target"] = {
     "verifier_status": field_trajectory["verifier_status"],
     "verifier_error": field_trajectory["verifier_error"],
 }
-repair_plan["review_boundary"] = "Review ACTION_TRACE, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
+repair_plan["review_boundary"] = "Review ACTION_TRACE.md, ACTION_TRACE.json, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
 repair_plan_json.write_text(
     json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
     encoding="utf-8",
@@ -1151,6 +1185,7 @@ prompt_md.write_text(
             f"- code context: `{rel(code_context_md, workspace)}`",
             f"- field trajectory: `{rel(field_trajectory_md, workspace)}`",
             f"- action trace: `{rel(action_trace_md, workspace)}`",
+            f"- action trace json: `{rel(action_trace_json, workspace)}`",
             f"- repair plan: `{rel(repair_plan_json, workspace)}`",
         ]
     )
@@ -1159,8 +1194,7 @@ prompt_md.write_text(
 )
 draft = llm_draft(prompt_md.read_text(encoding="utf-8"), session, workspace)
 draft_md.write_text(draft_markdown(draft, prompt_md, session_json, workspace), encoding="utf-8")
-action_trace_md.write_text(
-    action_trace_markdown(
+action_trace = action_trace_record(
         workspace,
         session_json,
         next_need_kind,
@@ -1171,7 +1205,13 @@ action_trace_md.write_text(
         field_trajectory,
         draft,
         repair_plan,
-    ),
+)
+action_trace_json.write_text(
+    json.dumps(action_trace, ensure_ascii=True, indent=2) + "\n",
+    encoding="utf-8",
+)
+action_trace_md.write_text(
+    action_trace_markdown(action_trace, workspace, repair_plan),
     encoding="utf-8",
 )
 session["draft"] = {
@@ -1181,9 +1221,11 @@ session["draft"] = {
     "model": draft.get("model", ""),
 }
 session["action_trace"] = rel(action_trace_md, workspace)
+session["action_trace_json"] = rel(action_trace_json, workspace)
 repair_plan["inputs"]["draft"] = rel(draft_md, workspace)
 repair_plan["inputs"]["review"] = rel(review_md, workspace)
 repair_plan["inputs"]["action_trace"] = rel(action_trace_md, workspace)
+repair_plan["inputs"]["action_trace_json"] = rel(action_trace_json, workspace)
 repair_plan_json.write_text(
     json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
     encoding="utf-8",
@@ -1206,6 +1248,7 @@ review_md.write_text(
             "",
             f"- adapter context: `{rel(adapter_context_md, workspace)}`",
             f"- action trace: `{rel(action_trace_md, workspace)}`",
+            f"- action trace json: `{rel(action_trace_json, workspace)}`",
             f"- field trajectory: `{rel(field_trajectory_md, workspace)}`",
             f"- code context: `{rel(code_context_md, workspace)}`",
             f"- outcome memory: `{rel(outcome_memory_md, workspace)}`",
@@ -1260,6 +1303,7 @@ session_md.write_text(
             f"code context: `{rel(code_context_md, workspace)}`",
             f"field trajectory: `{rel(field_trajectory_md, workspace)}`",
             f"action trace: `{rel(action_trace_md, workspace)}`",
+            f"action trace json: `{rel(action_trace_json, workspace)}`",
             f"repair plan: `{rel(repair_plan_json, workspace)}`",
             f"outcome command: `{outcome_command}`",
         ]
@@ -1286,7 +1330,12 @@ metadata = {
     "code_context": rel(code_context_md, workspace),
     "field_trajectory": rel(field_trajectory_md, workspace),
     "action_trace": rel(action_trace_md, workspace),
+    "action_trace_json": rel(action_trace_json, workspace),
     "repair_plan": rel(repair_plan_json, workspace),
+    "action_trace_status": action_trace["status"],
+    "action_trace_stage_count": str(action_trace["stage_count"]),
+    "action_trace_last_action": action_trace["last_action"],
+    "action_trace_repair_hint": action_trace["repair_hint"],
     "repair_plan_status": repair_plan["status"],
     "code_context_tentacle": code_context["tentacle"],
     "code_context_tool": code_context["tool"],
