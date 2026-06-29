@@ -590,6 +590,13 @@ struct RepairPlanReport {
     repair_recall_top_score: String,
     repair_recall_top_reasons: String,
     repair_recall_top_summary: String,
+    repair_lessons: String,
+    repair_lessons_json: String,
+    repair_lessons_count: String,
+    repair_lessons_reuse_count: String,
+    repair_lessons_avoid_count: String,
+    repair_lessons_top_reuse: String,
+    repair_lessons_top_avoid: String,
     code_context: String,
     adapter_context: String,
     adapter_context_status: String,
@@ -3759,6 +3766,8 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("action_trace_status", &repair_plan_action_trace_label(plan));
                 print_optional_line("repair_recall", &plan.repair_recall);
                 print_optional_line("repair_recall_status", &repair_plan_recall_label(plan));
+                print_optional_line("repair_lessons", &plan.repair_lessons);
+                print_optional_line("repair_lessons_status", &repair_plan_lessons_label(plan));
                 print_optional_line("code_context", &plan.code_context);
                 print_optional_line("adapter_context", &plan.adapter_context);
                 print_optional_line("adapter_status", &repair_plan_adapter_label(plan));
@@ -3803,6 +3812,8 @@ fn print_repair_report(report: &RepairReport, language: Language) {
                 print_optional_line("行动轨迹状态", &repair_plan_action_trace_label(plan));
                 print_optional_line("修复召回", &plan.repair_recall);
                 print_optional_line("修复召回状态", &repair_plan_recall_label(plan));
+                print_optional_line("修复教训", &plan.repair_lessons);
+                print_optional_line("修复教训状态", &repair_plan_lessons_label(plan));
                 print_optional_line("代码上下文", &plan.code_context);
                 print_optional_line("适配器上下文", &plan.adapter_context);
                 print_optional_line("适配器状态", &repair_plan_adapter_label(plan));
@@ -3918,6 +3929,26 @@ fn repair_plan_recall_label(plan: &RepairPlanReport) -> String {
     }
     if !plan.repair_recall_top_reasons.trim().is_empty() {
         parts.push(format!("reason={}", plan.repair_recall_top_reasons));
+    }
+    parts.join(" ")
+}
+
+fn repair_plan_lessons_label(plan: &RepairPlanReport) -> String {
+    let mut parts = Vec::new();
+    if !plan.repair_lessons_count.trim().is_empty() {
+        parts.push(format!("lessons={}", plan.repair_lessons_count));
+    }
+    if !plan.repair_lessons_reuse_count.trim().is_empty() {
+        parts.push(format!("reuse={}", plan.repair_lessons_reuse_count));
+    }
+    if !plan.repair_lessons_avoid_count.trim().is_empty() {
+        parts.push(format!("avoid={}", plan.repair_lessons_avoid_count));
+    }
+    if !plan.repair_lessons_top_reuse.trim().is_empty() {
+        parts.push(format!("top_reuse={}", plan.repair_lessons_top_reuse));
+    }
+    if !plan.repair_lessons_top_avoid.trim().is_empty() {
+        parts.push(format!("top_avoid={}", plan.repair_lessons_top_avoid));
     }
     parts.join(" ")
 }
@@ -8461,6 +8492,9 @@ fn repair_report(
         if !plan.repair_recall.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.repair_recall)));
         }
+        if !plan.repair_lessons.trim().is_empty() {
+            next.push(format!("review {}", shell_arg(&plan.repair_lessons)));
+        }
         if !plan.code_context.trim().is_empty() {
             next.push(format!("review {}", shell_arg(&plan.code_context)));
         }
@@ -8622,6 +8656,13 @@ fn repair_plan_report_from_feed(feed: &Feed) -> Option<RepairPlanReport> {
         repair_recall_top_score: metadata_value(metadata, "repair_recall_top_score"),
         repair_recall_top_reasons: metadata_value(metadata, "repair_recall_top_reasons"),
         repair_recall_top_summary: metadata_value(metadata, "repair_recall_top_summary"),
+        repair_lessons: metadata_value(metadata, "repair_lessons"),
+        repair_lessons_json: metadata_value(metadata, "repair_lessons_json"),
+        repair_lessons_count: metadata_value(metadata, "repair_lessons_count"),
+        repair_lessons_reuse_count: metadata_value(metadata, "repair_lessons_reuse_count"),
+        repair_lessons_avoid_count: metadata_value(metadata, "repair_lessons_avoid_count"),
+        repair_lessons_top_reuse: metadata_value(metadata, "repair_lessons_top_reuse"),
+        repair_lessons_top_avoid: metadata_value(metadata, "repair_lessons_top_avoid"),
         code_context: metadata_value(metadata, "code_context"),
         adapter_context: metadata_value(metadata, "adapter_context"),
         adapter_context_status: metadata_value(metadata, "adapter_context_status"),
@@ -20567,6 +20608,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .contains("write reviewable repair plan"));
         assert!(plan.repair_recall.ends_with("REPAIR_RECALL.json"));
         assert_eq!(plan.repair_recall_match_count, "0");
+        assert!(plan.repair_lessons.ends_with("REPAIR_LESSONS.md"));
+        assert!(plan.repair_lessons_json.ends_with("REPAIR_LESSONS.json"));
+        assert_eq!(plan.repair_lessons_count, "0");
+        assert_eq!(plan.repair_lessons_reuse_count, "0");
+        assert_eq!(plan.repair_lessons_avoid_count, "0");
         assert!(plan.code_context.ends_with("CODE_CONTEXT.md"));
         assert!(plan.adapter_context.ends_with("ADAPTER_CONTEXT.md"));
         assert_eq!(plan.adapter_context_status, "satisfied");
@@ -20598,6 +20644,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .next
             .iter()
             .any(|command| command.contains("REPAIR_RECALL.json")));
+        assert!(report
+            .next
+            .iter()
+            .any(|command| command.contains("REPAIR_LESSONS.md")));
         assert!(report
             .next
             .iter()
@@ -24222,6 +24272,24 @@ JSON
                     .unwrap_or(false)
             });
         assert!(memory_has_recall);
+        let lessons_found = workspace
+            .join(".octopus/harness-repair")
+            .read_dir()
+            .unwrap()
+            .filter_map(|entry| {
+                let candidate = entry.ok()?.path().join("REPAIR_LESSONS.json");
+                candidate.exists().then_some(candidate)
+            })
+            .any(|path| {
+                fs::read_to_string(path)
+                    .map(|content| {
+                        content.contains("\"lesson_count\": 1")
+                            && content.contains("\"reuse_count\": 1")
+                            && content.contains("repair improved harness")
+                    })
+                    .unwrap_or(false)
+            });
+        assert!(lessons_found);
         let mut restored = HarnessState::load(&path).unwrap();
         let report = repair_report(&path, &mut restored, ".".to_string()).unwrap();
         let plan = report.repair_plan.expect("repair recall plan report");
@@ -24231,6 +24299,10 @@ JSON
             .repair_recall_top_reasons
             .contains("same target tentacle"));
         assert!(plan.repair_recall_top_summary.contains("repair improved"));
+        assert_eq!(plan.repair_lessons_count, "1");
+        assert_eq!(plan.repair_lessons_reuse_count, "1");
+        assert_eq!(plan.repair_lessons_avoid_count, "0");
+        assert!(plan.repair_lessons_top_reuse.contains("repair improved"));
         run(vec![
             "--state".to_string(),
             state.clone(),

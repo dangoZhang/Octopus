@@ -243,6 +243,38 @@ def repair_recall_metadata(root, value):
     return metadata
 
 
+def repair_lessons_metadata(root, value, json_value=""):
+    path = resolve_artifact(root, value)
+    json_path = resolve_artifact(root, json_value)
+    if not json_path and path:
+        candidate = path.with_suffix(".json")
+        if candidate.exists():
+            json_path = candidate
+    metadata = {
+        "repair_lessons": rel(path, root) if path else "",
+        "repair_lessons_json": rel(json_path, root) if json_path else "",
+        "repair_lessons_count": "",
+        "repair_lessons_reuse_count": "",
+        "repair_lessons_avoid_count": "",
+        "repair_lessons_top_reuse": "",
+        "repair_lessons_top_avoid": "",
+        "repair_lessons_preview": "",
+    }
+    if json_path and json_path.exists():
+        data = load_json(json_path)
+        metadata.update({
+            "repair_lessons_count": str(data.get("lesson_count") or 0),
+            "repair_lessons_reuse_count": str(data.get("reuse_count") or 0),
+            "repair_lessons_avoid_count": str(data.get("avoid_count") or 0),
+            "repair_lessons_top_reuse": compact(data.get("top_reuse") or "", 320),
+            "repair_lessons_top_avoid": compact(data.get("top_avoid") or "", 320),
+            "repair_lessons_preview": compact(json.dumps(data, sort_keys=True), 700),
+        })
+    if path and path.exists() and not metadata["repair_lessons_preview"]:
+        metadata["repair_lessons_preview"] = compact(path.read_text(encoding="utf-8", errors="replace"), 700)
+    return metadata
+
+
 def action_trace_metadata(root, value, json_value=""):
     path = resolve_artifact(root, value)
     json_path = resolve_artifact(root, json_value)
@@ -396,10 +428,13 @@ if latest_repair_plan:
     draft = str(inputs.get("draft") or "")
     code_context = str(inputs.get("code_context") or "")
     repair_recall = str(inputs.get("repair_recall") or "")
+    repair_lessons = str(inputs.get("repair_lessons") or "")
+    repair_lessons_json = str(inputs.get("repair_lessons_json") or "")
     action_trace = str(inputs.get("action_trace") or "")
     action_trace_json = str(inputs.get("action_trace_json") or "")
     draft_metadata = repair_draft_metadata(root, draft)
     recall_metadata = repair_recall_metadata(root, repair_recall)
+    lessons_metadata = repair_lessons_metadata(root, repair_lessons, repair_lessons_json)
     action_metadata = action_trace_metadata(root, action_trace, action_trace_json)
     adapter_metadata = adapter_context_metadata(
         root,
@@ -440,6 +475,9 @@ if latest_repair_plan:
     recall_count = recall_metadata.get("repair_recall_match_count", "")
     recall_top_status = recall_metadata.get("repair_recall_top_status", "")
     recall_top_reason = recall_metadata.get("repair_recall_top_reasons", "")
+    lesson_count = lessons_metadata.get("repair_lessons_count", "")
+    lesson_reuse = lessons_metadata.get("repair_lessons_reuse_count", "")
+    lesson_avoid = lessons_metadata.get("repair_lessons_avoid_count", "")
     action_trace_blocked = (
         not has_outcome
         and not adapter_blocked
@@ -519,6 +557,7 @@ if latest_repair_plan:
             f"field={field_label or 'none'}; action_trace={action_trace_status or 'none'}; "
             f"recall={recall_count or '0'} top={recall_top_status or 'none'} "
             f"reason={recall_top_reason or 'none'}; "
+            f"lessons={lesson_count or '0'} reuse={lesson_reuse or '0'} avoid={lesson_avoid or '0'}; "
             "review before grant/apply/score"
         )
     repair_metadata = {
@@ -530,6 +569,8 @@ if latest_repair_plan:
         "draft": draft,
         "code_context": code_context,
         "repair_recall": repair_recall,
+        "repair_lessons": repair_lessons,
+        "repair_lessons_json": repair_lessons_json,
         "action_trace": action_trace,
         "action_trace_json": action_trace_json or action_metadata.get("action_trace_json", ""),
         "adapter_context": adapter_context,
@@ -549,6 +590,7 @@ if latest_repair_plan:
     }
     repair_metadata.update(draft_metadata)
     repair_metadata.update(recall_metadata)
+    repair_metadata.update(lessons_metadata)
     repair_metadata.update(action_metadata)
     repair_metadata.update(adapter_metadata)
     repair_metadata.update(field_metadata)
@@ -581,6 +623,9 @@ metadata = {
     "grant_boundary": "octopus oauth octopus evolve:<tentacle> harness:write",
 }
 metadata.update(repair_metadata)
+for key in list(metadata.keys()):
+    if key.endswith("_preview"):
+        metadata[key] = compact(metadata[key], 320)
 
 print(json.dumps({
     "status": status,

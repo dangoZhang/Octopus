@@ -317,6 +317,129 @@ def build_repair_recall(outcomes, target_tentacle, target_tool, latest_trace, la
     }
 
 
+def lesson_direction(status):
+    if status == "satisfied":
+        return "reuse"
+    if status in {"failed", "partial"}:
+        return "avoid"
+    return "inspect"
+
+
+def lesson_from_outcome(outcome, source, reasons=None, score=""):
+    status = outcome.get("outcome_status") or "unknown"
+    hint = outcome.get("action_trace_repair_hint") or ""
+    if hint.strip().lower() in {"review repair action plan", "review latest repair action plan"}:
+        hint = ""
+    hint = hint or outcome.get("summary") or ""
+    failed_stage = outcome.get("action_trace_failed_stage") or ""
+    recall_count = outcome.get("action_trace_recall_count") or "0"
+    recall_status = outcome.get("action_trace_recall_top_status") or ""
+    return {
+        "direction": lesson_direction(status),
+        "source": source,
+        "score": str(score or ""),
+        "status": status,
+        "target_tentacle": outcome.get("target_tentacle") or "unknown",
+        "candidate": outcome.get("candidate") or "none",
+        "tool": outcome.get("tool") or "",
+        "summary": compact(outcome.get("summary") or "", 360),
+        "action_trace_status": outcome.get("action_trace_status") or "",
+        "action_trace_hint": compact(hint, 280),
+        "failed_stage": compact(failed_stage, 180),
+        "recall_used": str(recall_count),
+        "recall_top_status": str(recall_status),
+        "reasons": [str(reason) for reason in reasons or []],
+    }
+
+
+def dedupe_lessons(lessons, limit=6):
+    deduped = []
+    seen = set()
+    for lesson in lessons:
+        key = (
+            lesson.get("direction"),
+            lesson.get("target_tentacle"),
+            lesson.get("candidate"),
+            lesson.get("status"),
+            lesson.get("summary"),
+            lesson.get("action_trace_hint"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(lesson)
+    return deduped[:limit]
+
+
+def build_repair_lessons(outcomes, repair_recall):
+    lessons = []
+    for match in repair_recall.get("matches", []) if isinstance(repair_recall, dict) else []:
+        if not isinstance(match, dict):
+            continue
+        outcome = match.get("outcome") if isinstance(match.get("outcome"), dict) else {}
+        if outcome:
+            lessons.append(
+                lesson_from_outcome(
+                    outcome,
+                    "repair_recall",
+                    match.get("reasons") if isinstance(match.get("reasons"), list) else [],
+                    match.get("score"),
+                )
+            )
+    for outcome in reversed(outcomes[-6:]):
+        lessons.append(lesson_from_outcome(outcome, "outcome_memory"))
+    lessons = dedupe_lessons(lessons)
+    reuse = [lesson for lesson in lessons if lesson["direction"] == "reuse"]
+    avoid = [lesson for lesson in lessons if lesson["direction"] == "avoid"]
+    inspect = [lesson for lesson in lessons if lesson["direction"] == "inspect"]
+    return {
+        "schema_version": "octopus-harness-repair-lessons-v1",
+        "lesson_count": len(lessons),
+        "reuse_count": len(reuse),
+        "avoid_count": len(avoid),
+        "inspect_count": len(inspect),
+        "top_reuse": reuse[0]["action_trace_hint"] or reuse[0]["summary"] if reuse else "",
+        "top_avoid": avoid[0]["action_trace_hint"] or avoid[0]["summary"] if avoid else "",
+        "lessons": lessons,
+    }
+
+
+def repair_lessons_markdown(lessons, workspace, lessons_json):
+    lines = [
+        "# Harness Repair Lessons",
+        "",
+        "This file compresses reviewed outcomes and similar recall into local tentacle lessons.",
+        "It is Feed evidence for repair-session planning, not clean-brain context.",
+        "",
+        f"json: `{rel(lessons_json, workspace)}`",
+        f"lesson_count: `{lessons.get('lesson_count', 0)}`",
+        f"reuse_count: `{lessons.get('reuse_count', 0)}`",
+        f"avoid_count: `{lessons.get('avoid_count', 0)}`",
+        "",
+    ]
+    if not lessons.get("lessons"):
+        lines.append("No reviewed repair lessons yet.")
+        return "\n".join(lines) + "\n"
+    lines.extend(["## Lessons", ""])
+    for lesson in lessons["lessons"]:
+        reasons = compact(", ".join(lesson.get("reasons") or []), 180)
+        lines.extend(
+            [
+                (
+                    f"- `{lesson.get('direction')}` status=`{lesson.get('status')}` "
+                    f"target=`{lesson.get('target_tentacle')}` candidate=`{lesson.get('candidate')}` "
+                    f"source=`{lesson.get('source')}` score=`{lesson.get('score')}`"
+                ),
+                f"  summary: {compact(lesson.get('summary'), 260)}",
+                f"  carry_forward: {compact(lesson.get('action_trace_hint'), 240) or 'none'}",
+                f"  failed_stage: {compact(lesson.get('failed_stage'), 160) or 'none'}",
+                f"  recall_used: matches=`{lesson.get('recall_used') or '0'}` top=`{lesson.get('recall_top_status') or 'none'}`",
+                f"  reasons: {reasons or 'none'}",
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
 def read_text(path, limit=12000):
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -921,6 +1044,7 @@ def action_trace_record(
     adapter_context,
     field_trajectory,
     repair_recall,
+    repair_lessons,
     draft,
     repair_plan,
 ):
@@ -941,6 +1065,13 @@ def action_trace_record(
     }
     recall_count = recall_summary["match_count"]
     recall_top_status = recall_summary["top_status"] or "none"
+    lessons_summary = {
+        "lesson_count": str(repair_lessons.get("lesson_count") or 0),
+        "reuse_count": str(repair_lessons.get("reuse_count") or 0),
+        "avoid_count": str(repair_lessons.get("avoid_count") or 0),
+        "top_reuse": compact(repair_lessons.get("top_reuse") or "", 240),
+        "top_avoid": compact(repair_lessons.get("top_avoid") or "", 240),
+    }
     stages = [
         {
             "kind": "Need",
@@ -962,8 +1093,8 @@ def action_trace_record(
         },
         {
             "kind": "Action",
-            "action": "merge field, recall, and outcome evidence",
-            "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']} recalled={recall_count} top={recall_top_status}",
+            "action": "merge field, recall, lessons, and outcome evidence",
+            "result": f"field={field_trajectory['field']} mini_task={field_trajectory['mini_task']} recalled={recall_count} top={recall_top_status} lessons={lessons_summary['lesson_count']}",
             "status": "satisfied",
         },
         {
@@ -996,6 +1127,7 @@ def action_trace_record(
         },
         "repair_hint": repair_hint,
         "repair_recall": recall_summary,
+        "repair_lessons": lessons_summary,
         "stages": stages,
     }
 
@@ -1016,6 +1148,9 @@ def action_trace_markdown(record, workspace, repair_plan):
         f"recall_matches: `{record.get('repair_recall', {}).get('match_count', '0')}`",
         f"recall_top: `{record.get('repair_recall', {}).get('top_status', 'none') or 'none'}`",
         f"recall_reasons: `{record.get('repair_recall', {}).get('top_reasons', 'none') or 'none'}`",
+        f"lesson_count: `{record.get('repair_lessons', {}).get('lesson_count', '0')}`",
+        f"lesson_reuse: `{record.get('repair_lessons', {}).get('reuse_count', '0')}`",
+        f"lesson_avoid: `{record.get('repair_lessons', {}).get('avoid_count', '0')}`",
         "",
         "## Need -> Tool -> Action -> Feed",
         "",
@@ -1150,6 +1285,8 @@ next_need_json = session_dir / "NEXT_NEED.json"
 command_script = session_dir / "COMMANDS.sh"
 outcome_memory_md = session_dir / "OUTCOME_MEMORY.md"
 repair_recall_json = session_dir / "REPAIR_RECALL.json"
+repair_lessons_json = session_dir / "REPAIR_LESSONS.json"
+repair_lessons_md = session_dir / "REPAIR_LESSONS.md"
 adapter_context_md = session_dir / "ADAPTER_CONTEXT.md"
 code_context_md = session_dir / "CODE_CONTEXT.md"
 field_trajectory_md = session_dir / "FIELD_TRAJECTORY.md"
@@ -1184,6 +1321,7 @@ repair_recall = build_repair_recall(
     latest_check,
     field_trajectory,
 )
+repair_lessons = build_repair_lessons(repair_outcomes, repair_recall)
 session = {
     "schema_version": "octopus-harness-repair-session-v1",
     "workspace": str(workspace),
@@ -1195,6 +1333,8 @@ session = {
     "commands": commands,
     "outcome_memory": rel(outcome_memory_md, workspace),
     "repair_recall": rel(repair_recall_json, workspace),
+    "repair_lessons": rel(repair_lessons_md, workspace),
+    "repair_lessons_json": rel(repair_lessons_json, workspace),
     "adapter_context": rel(adapter_context_md, workspace),
     "code_context": rel(code_context_md, workspace),
     "field_trajectory": rel(field_trajectory_md, workspace),
@@ -1224,6 +1364,13 @@ session = {
         "verifier_error": field_trajectory["verifier_error"],
     },
     "repair_recall_target": repair_recall["target"],
+    "repair_lessons_summary": {
+        "lesson_count": repair_lessons["lesson_count"],
+        "reuse_count": repair_lessons["reuse_count"],
+        "avoid_count": repair_lessons["avoid_count"],
+        "top_reuse": repair_lessons["top_reuse"],
+        "top_avoid": repair_lessons["top_avoid"],
+    },
     "signals": {
         "feed_traces": len(feed_traces),
         "check_history": len(check_history),
@@ -1249,6 +1396,14 @@ session_json.write_text(json.dumps(session, ensure_ascii=True, indent=2) + "\n",
 next_need_json.write_text(json.dumps(next_need_payload, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
 repair_recall_json.write_text(
     json.dumps(repair_recall, ensure_ascii=True, indent=2) + "\n",
+    encoding="utf-8",
+)
+repair_lessons_json.write_text(
+    json.dumps(repair_lessons, ensure_ascii=True, indent=2) + "\n",
+    encoding="utf-8",
+)
+repair_lessons_md.write_text(
+    repair_lessons_markdown(repair_lessons, workspace, repair_lessons_json),
     encoding="utf-8",
 )
 outcome_memory_md.write_text(
@@ -1277,6 +1432,8 @@ repair_plan = build_action_plan(
 repair_plan["inputs"]["field_trajectory"] = rel(field_trajectory_md, workspace)
 repair_plan["inputs"]["adapter_context"] = rel(adapter_context_md, workspace)
 repair_plan["inputs"]["repair_recall"] = rel(repair_recall_json, workspace)
+repair_plan["inputs"]["repair_lessons"] = rel(repair_lessons_md, workspace)
+repair_plan["inputs"]["repair_lessons_json"] = rel(repair_lessons_json, workspace)
 repair_plan["inputs"]["action_trace"] = rel(action_trace_md, workspace)
 repair_plan["inputs"]["action_trace_json"] = rel(action_trace_json, workspace)
 repair_plan["field_trajectory_target"] = {
@@ -1287,7 +1444,8 @@ repair_plan["field_trajectory_target"] = {
     "verifier_error": field_trajectory["verifier_error"],
 }
 repair_plan["repair_recall_target"] = repair_recall["target"]
-repair_plan["review_boundary"] = "Review ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_RECALL.json, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
+repair_plan["repair_lessons_summary"] = session["repair_lessons_summary"]
+repair_plan["review_boundary"] = "Review ACTION_TRACE.md, ACTION_TRACE.json, REPAIR_RECALL.json, REPAIR_LESSONS, ADAPTER_CONTEXT, FIELD_TRAJECTORY, CODE_CONTEXT, OUTCOME_MEMORY, DRAFT, and this plan before running commands."
 repair_plan_json.write_text(
     json.dumps(repair_plan, ensure_ascii=True, indent=2) + "\n",
     encoding="utf-8",
@@ -1328,6 +1486,15 @@ recalled_outcome_lines = [
     )
     for match in repair_recall.get("matches", [])
 ] or ["- none"]
+lesson_lines = [
+    (
+        f"- {lesson.get('direction')}"
+        f" status={compact(lesson.get('status') or 'unknown')}"
+        f" target={compact(lesson.get('target_tentacle') or 'unknown')}"
+        f" carry={compact(lesson.get('action_trace_hint') or lesson.get('summary') or '', 220)}"
+    )
+    for lesson in repair_lessons.get("lessons", [])[:4]
+] or ["- none"]
 prompt_md.write_text(
     "\n".join(
         [
@@ -1366,6 +1533,12 @@ prompt_md.write_text(
             f"- recall artifact: `{rel(repair_recall_json, workspace)}`",
             f"- matches: `{repair_recall.get('match_count', 0)}`",
             *recalled_outcome_lines,
+            "",
+            "repair lessons:",
+            f"- lessons artifact: `{rel(repair_lessons_md, workspace)}`",
+            f"- lessons json: `{rel(repair_lessons_json, workspace)}`",
+            f"- count: `{repair_lessons.get('lesson_count', 0)}` reuse: `{repair_lessons.get('reuse_count', 0)}` avoid: `{repair_lessons.get('avoid_count', 0)}`",
+            *lesson_lines,
             "",
             "code context:",
             f"- artifact: `{rel(code_context_md, workspace)}`",
@@ -1409,6 +1582,8 @@ prompt_md.write_text(
             f"- draft: `{rel(draft_md, workspace)}`",
             f"- outcome memory: `{rel(outcome_memory_md, workspace)}`",
             f"- repair recall: `{rel(repair_recall_json, workspace)}`",
+            f"- repair lessons: `{rel(repair_lessons_md, workspace)}`",
+            f"- repair lessons json: `{rel(repair_lessons_json, workspace)}`",
             f"- adapter context: `{rel(adapter_context_md, workspace)}`",
             f"- code context: `{rel(code_context_md, workspace)}`",
             f"- field trajectory: `{rel(field_trajectory_md, workspace)}`",
@@ -1432,6 +1607,7 @@ action_trace = action_trace_record(
         adapter_context,
         field_trajectory,
         repair_recall,
+        repair_lessons,
         draft,
         repair_plan,
 )
@@ -1479,6 +1655,8 @@ review_md.write_text(
             f"- action trace: `{rel(action_trace_md, workspace)}`",
             f"- action trace json: `{rel(action_trace_json, workspace)}`",
             f"- repair recall: `{rel(repair_recall_json, workspace)}`",
+            f"- repair lessons: `{rel(repair_lessons_md, workspace)}`",
+            f"- repair lessons json: `{rel(repair_lessons_json, workspace)}`",
             f"- field trajectory: `{rel(field_trajectory_md, workspace)}`",
             f"- code context: `{rel(code_context_md, workspace)}`",
             f"- outcome memory: `{rel(outcome_memory_md, workspace)}`",
@@ -1530,6 +1708,8 @@ session_md.write_text(
             f"commands: `{rel(command_script, workspace)}`",
             f"outcome memory: `{rel(outcome_memory_md, workspace)}`",
             f"repair recall: `{rel(repair_recall_json, workspace)}`",
+            f"repair lessons: `{rel(repair_lessons_md, workspace)}`",
+            f"repair lessons json: `{rel(repair_lessons_json, workspace)}`",
             f"adapter context: `{rel(adapter_context_md, workspace)}`",
             f"code context: `{rel(code_context_md, workspace)}`",
             f"field trajectory: `{rel(field_trajectory_md, workspace)}`",
@@ -1560,6 +1740,13 @@ metadata = {
     "repair_recall": rel(repair_recall_json, workspace),
     "repair_recall_count": str(repair_recall.get("match_count", 0)),
     "repair_recall_target": json.dumps(repair_recall.get("target", {}), ensure_ascii=True, sort_keys=True),
+    "repair_lessons": rel(repair_lessons_md, workspace),
+    "repair_lessons_json": rel(repair_lessons_json, workspace),
+    "repair_lessons_count": str(repair_lessons.get("lesson_count", 0)),
+    "repair_lessons_reuse_count": str(repair_lessons.get("reuse_count", 0)),
+    "repair_lessons_avoid_count": str(repair_lessons.get("avoid_count", 0)),
+    "repair_lessons_top_reuse": repair_lessons.get("top_reuse", ""),
+    "repair_lessons_top_avoid": repair_lessons.get("top_avoid", ""),
     "adapter_context": rel(adapter_context_md, workspace),
     "code_context": rel(code_context_md, workspace),
     "field_trajectory": rel(field_trajectory_md, workspace),
@@ -1575,6 +1762,9 @@ metadata = {
     "action_trace_recall_top_score": action_trace["repair_recall"]["top_score"],
     "action_trace_recall_top_reasons": action_trace["repair_recall"]["top_reasons"],
     "action_trace_recall_top_summary": action_trace["repair_recall"]["top_summary"],
+    "action_trace_lesson_count": action_trace["repair_lessons"]["lesson_count"],
+    "action_trace_lesson_reuse_count": action_trace["repair_lessons"]["reuse_count"],
+    "action_trace_lesson_avoid_count": action_trace["repair_lessons"]["avoid_count"],
     "repair_plan_status": repair_plan["status"],
     "code_context_tentacle": code_context["tentacle"],
     "code_context_tool": code_context["tool"],
