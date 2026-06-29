@@ -8,7 +8,7 @@ Octopus core loads these packs from `field-packs/` or the embedded release copy.
 
 The packs describe task shape. Concrete tentacle behavior should be iterated by Octopus from trajectories, verifier results, and repair attempts.
 
-Current `0.1.x` scope: keep the required v0.2 field goals as peer slots in one pool, allow expansion packs such as writing, open worker slots from that pool, record traces, record verifier results, and route failed field evidence into harness repair. The field list is not a backlog. Worker count controls concurrency only. Required seed packs now have three mini tasks, and all three layers are satisfied after repair/rerun/score cycles.
+Current `0.2.x` scope: keep the required v0.2 field goals as peer slots in one pool, add expansion packs such as writing and translation, open worker slots from that pool, record traces, record verifier results, and route failed field evidence into harness repair. The field list is not a backlog. Worker count controls concurrency only. Required seed packs now have three mini tasks, and all three layers are satisfied after repair/rerun/score cycles.
 
 ## Contract
 
@@ -34,6 +34,7 @@ field-packs/
   ib/field-pack.json
   robotics/field-pack.json
   write/field-pack.json
+  translate/field-pack.json
 ```
 
 ## Pack Rules
@@ -43,7 +44,7 @@ field-packs/
 - Keep permissions explicit. Observation, local writes, network use, external accounts, and physical actions must be separate.
 - Verifiers should produce pass, fail, or partial with an error category.
 - Mini tasks must be small enough for repeated evolution runs.
-- Put easier tasks before harder tasks inside one field. Math, search, code, SWE, research, computer-use, IB, and robotics stay peer slots in one worker pool.
+- Put easier tasks before harder tasks inside one field. Math, search, code, SWE, research, computer-use, IB, robotics, writing, and translation stay peer slots in one worker pool.
 - Treat `--workers n` as execution capacity. `n=1` opens one visible slot from the same parallel pool; larger values open more slots without changing the field objective set.
 - Trajectory labels should make failed runs reusable.
 

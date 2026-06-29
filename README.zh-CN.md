@@ -35,6 +35,8 @@ Heartbeat -> run data -> memory and harness updates
 
 `v0.2.0` 的目标是让 Octopus 适应 math、search、code、SWE、research、computer-use、IB work、robotics。八个领域留在同一个 Goal pool 里；`--workers n` 只改变同时打开几个执行槽，不把领域变成队列。
 
+`v0.2.0` 之后，`0.2.x` 会继续为 `v0.3.0` 预进化更多可安装 field pack。第一批扩展是写作和翻译。
+
 **章鱼会变色。**
 
 像素章鱼是只读桌面观察器。它读取 `.octopus/state.json`：Need 出现时头部变色，触手执行时挥动，code-as-harness 运行时吐泡泡，蓝色表示进化，红色表示卡住，Feed 返回后变绿。

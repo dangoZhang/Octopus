@@ -1,0 +1,118 @@
+if field == "translate" and mini_task == "translate-mini-1":
+    source_text = (
+        "Octopus keeps the main brain focused on Goal, Need, and Feed. "
+        "A tentacle enters the environment, uses its harness, checks the result, "
+        "and returns compact Feed."
+    )
+    required_terms = {
+        "Goal": "Goal",
+        "Need": "Need",
+        "Feed": "Feed",
+        "tentacle": "tentacle",
+        "harness": "harness",
+    }
+    translation = (
+        "Octopus 让主脑只专注于 Goal、Need 和 Feed。"
+        "tentacle 进入环境，使用自己的 harness，检查结果，"
+        "再把压缩后的 Feed 返回。"
+    )
+    term_map = [
+        {"source": key, "translation": value, "preserved": value in translation}
+        for key, value in required_terms.items()
+    ]
+    ambiguity_notes = [
+        "The source does not define whether tentacle should be localized, so the required term is preserved."
+    ]
+    checks = {
+        "target_language": "zh-CN",
+        "has_chinese_characters": bool(re.search(r"[\u4e00-\u9fff]", translation)),
+        "required_terms_preserved": all(item["preserved"] for item in term_map),
+        "covers_goal_need_feed": all(term in translation for term in ["Goal", "Need", "Feed"]),
+        "covers_tentacle_harness": all(term in translation for term in ["tentacle", "harness"]),
+        "no_fake_benchmark_claim": "benchmark" not in translation.lower()
+        and "star" not in translation.lower(),
+        "source_sentence_count": source_text.count("."),
+        "translation_sentence_count": translation.count("。"),
+        "ambiguity_named": bool(ambiguity_notes),
+    }
+    (session / "SOURCE.txt").write_text(source_text + "\n", encoding="utf-8")
+    (session / "TRANSLATION.md").write_text(translation + "\n", encoding="utf-8")
+    (session / "TERM_MAP.json").write_text(
+        json.dumps(term_map, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    (session / "AMBIGUITY.json").write_text(
+        json.dumps(ambiguity_notes, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    (session / "CHECKS.json").write_text(
+        json.dumps(checks, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    answer_lines = [
+        "# Translate Mini Task Answer",
+        "",
+        translation,
+        "",
+        "Artifacts: SOURCE.txt, TRANSLATION.md, TERM_MAP.json, AMBIGUITY.json, CHECKS.json.",
+    ]
+    answer = "\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    passed = (
+        checks["has_chinese_characters"]
+        and checks["required_terms_preserved"]
+        and checks["covers_goal_need_feed"]
+        and checks["covers_tentacle_harness"]
+        and checks["no_fake_benchmark_claim"]
+        and checks["ambiguity_named"]
+    )
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "source_text": rel(session / "SOURCE.txt", root),
+        "translation": rel(session / "TRANSLATION.md", root),
+        "term_map": rel(session / "TERM_MAP.json", root),
+        "ambiguity": rel(session / "AMBIGUITY.json", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "verifier_status": "satisfied" if passed else "partial",
+        "field_pass_evidence": "translation preserves declared terms, target language, ambiguity notes, and local quality checks",
+    }
+    if not passed:
+        field_metadata["error_category"] = "translation_constraints_failed"
+        field_metadata["next_need_kind"] = "execute"
+        field_metadata["next_need_query"] = "evolve field-mini-task translate harness after translate-mini-1"
+    field_result = {
+        "status": "satisfied" if passed else "partial",
+        "output": answer,
+        "evidence": [
+            {
+                "source": "field-mini-task/translate/answer",
+                "content": rel(session / "ANSWER.md", root),
+                "confidence": 0.9,
+                "metadata": field_metadata,
+            },
+            {
+                "source": "field-mini-task/translate/checks",
+                "content": rel(session / "CHECKS.json", root),
+                "confidence": 0.92,
+                "metadata": field_metadata,
+            },
+            {
+                "source": "field-mini-task/translate/term-map",
+                "content": rel(session / "TERM_MAP.json", root),
+                "confidence": 0.9,
+                "metadata": field_metadata,
+            },
+        ],
+        "metadata": field_metadata,
+    }

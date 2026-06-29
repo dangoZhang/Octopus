@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-06-30, `0.1.x` parallel field-adaptation foundation toward `v0.2.0`.
+Updated: 2026-06-30, `0.2.x` field-pack expansion toward `v0.3.0`.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -14,7 +14,7 @@ Octopus/
 ├── Cargo.lock
 ├── structure.md               Current structure and module map.
 ├── crates/octopus-core/
-│   ├── Cargo.toml             `octopus-core`, version 0.1.8, binary `octopus`.
+│   ├── Cargo.toml             `octopus-core`, version 0.2.0, binary `octopus`.
 │   └── src/
 │       ├── lib.rs             Kernel contracts, state, routes, providers, traces, evolution.
 │       ├── main.rs            CLI/product backend aggregation and command dispatch.
@@ -51,7 +51,9 @@ Octopus/
 │   ├── research/
 │   ├── computer-use/
 │   ├── ib/
-│   └── robotics/
+│   ├── robotics/
+│   ├── write/
+│   └── translate/
 ├── desktop/
 │   └── pet/
 │       └── OctopusDesktopPet.swift
@@ -82,14 +84,14 @@ Octopus/
 
 | Module | Role | Main files | Lines |
 | --- | --- | --- | ---: |
-| Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, evolution data, field-pool status snapshots, resolved field-pack evolution targets, harder-layer recommendation routing, and provider patch target checks | `crates/octopus-core/src/lib.rs` | 14,214 |
-| Field adaptation core | Field-pack loading, matching, editable aliases, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, field trajectory summaries, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, and compile/execute template checks | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 3,851 |
-| CLI and product backend | Command dispatch, Goal/chat/brain, provider setup, doctor/report/preflight aggregation, starter/install/check flows | `crates/octopus-core/src/main.rs` | 34,972 |
-| Local app bridge | Local HTTP/SSE server, app policy, command allow-list, embedded app/docs/demo assets, field activity observer | `app_bridge.rs`, `docs/app.html` | 1,977 |
-| Release and install gates | Release records, benchmark evidence, download/install manifest, real-machine checks | `release_gate.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 1,130 |
+| Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, evolution data, field-pool status snapshots, resolved field-pack evolution targets, harder-layer recommendation routing, and provider patch target checks | `crates/octopus-core/src/lib.rs` | 14,686 |
+| Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, field trajectory summaries, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, and compile/execute template checks | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 4,620 |
+| CLI and product backend | Command dispatch, Goal/chat/brain, provider setup, doctor/report/preflight aggregation, starter/install/check flows | `crates/octopus-core/src/main.rs` | 35,396 |
+| Local app bridge | Local HTTP/SSE server, app policy, command allow-list, embedded app/docs/demo assets, field activity observer | `app_bridge.rs`, `docs/app.html` | 1,978 |
+| Release and install gates | Release records, benchmark evidence, download/install manifest, real-machine checks | `release_gate.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 1,211 |
 | Pet and visual state | Pixel Octopus state, SVG/export helpers, native read-only observer, desktop source preflight, HTML preview | `pet.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 2,114 |
-| Product docs/site | README, landing/demo/tutorial/use/recipes/about/docs pages | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 7,705 |
-| Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 17,241 |
+| Product docs/site | README, landing/demo/tutorial/use/recipes/about/docs pages | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 7,922 |
+| Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 17,862 |
 
 ## Core, Distinctive, Editable
 
@@ -106,7 +108,7 @@ These should remain stable and hard to accidentally mutate:
 - Parallel worker next actions follow queued, satisfied, and repair-needed outcomes.
 - `status` JSON exposes a read-only `field_pool` snapshot for peer slots, completion, active slot, mini-task progress, latest status, latest worker update time, and next action.
 - Field trajectory summaries for parallel field pool learning.
-- Product report field-pool block: required v0.2 peer fields plus expansion packs, latest worker execution-slot count, latest field activity, active slot, and worker-slot policy.
+- Product report field-pool block: required v0.2 peer fields plus expansion packs such as write and translate, latest worker execution-slot count, latest field activity, active slot, and worker-slot policy.
 - Route scoring, provider clients, memory/heartbeat state, grants, permissions.
 - Product bridge rule: user-facing writes go through Goal; internal actions feed the agent.
 - Release gates: preflight, benchmark evidence, field-pool visibility, real-machine records, local app readiness.
@@ -156,7 +158,7 @@ Where they live now:
 - `tentacles/`
 - `field-packs/`
 - `.octopus/` at runtime
-- `docs/field-adaptation.md` for the `0.1.x` TODO and `v0.2.0` gate
+- `docs/field-adaptation.md` for the `0.2.x` field expansion TODO and `v0.3.0` path
 
 Current field pack layout:
 
@@ -171,6 +173,8 @@ field-packs/
   computer-use/
   ib/
   robotics/
+  write/
+  translate/
 ```
 
 ## Code Size
@@ -179,12 +183,12 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 12 | 57,215 |
+| `crates/octopus-core/src` | 12 | 54,168 |
 | `crates/octopus-core/examples` | 1 | 27 |
-| `tentacles` | 66 | 17,242 |
-| `field-packs` | 12 | 499 |
+| `tentacles` | 70 | 17,862 |
+| `field-packs` | 14 | 573 |
 | `desktop/pet` | 1 | 844 |
-| `docs` | 27 md/html files | 8,034 |
+| `docs` | 27 md/html files | 7,774 |
 | `cowork` | 3 | 101 |
 | `local/docs` | 12 | 507 |
 
@@ -192,14 +196,14 @@ field-packs/
 
 | File | Lines |
 | --- | ---: |
-| `main.rs` | 34,923 |
-| `lib.rs` | 18,386 |
-| `app_bridge.rs` | 1,144 |
-| `release_gate.rs` | 622 |
-| `field_pack.rs` | 741 |
+| `main.rs` | 35,396 |
+| `lib.rs` | 14,686 |
+| `app_bridge.rs` | 1,142 |
+| `release_gate.rs` | 703 |
+| `field_pack.rs` | 809 |
 | `pet.rs` | 271 |
-| `bundled_harness.rs` | 379 |
-| `download.rs` | 166 |
+| `bundled_harness.rs` | 403 |
+| `download.rs` | 175 |
 | `desktop_pet.rs` | 364 |
 | `core_boundary.rs` | 123 |
 | `profile_registry.rs` | 78 |
@@ -213,7 +217,7 @@ field-packs/
 | `repo-maintainer` | 8 | 719 |
 | `computer-use-agent` | 10 | 644 |
 | `profile-registry` | 1 | 600 |
-| `field-mini-task` | 28 | 2,399 |
+| `field-mini-task` | 32 | 3,019 |
 | `swe-agent` | 6 | 217 |
 | `json-feed` | 2 | 162 |
 | `bash-only` | 2 | 77 |
@@ -222,6 +226,5 @@ field-packs/
 
 ## Notes
 
-- The pasted tree was stale: it said version `0.0.19`; current package line is `0.1.8`.
-- The stable core is still too concentrated in `main.rs` and `lib.rs`. During `0.1.x`, split by capability before the `v0.2.0` field gate.
+- The stable core is still too concentrated in `main.rs` and `lib.rs`; future cleanup should split product backend aggregation without moving field behavior back into Rust.
 - Product demo is static screenshot-first. The local app surface in `docs/app.html` only observes and updates the real local Octopus loop.

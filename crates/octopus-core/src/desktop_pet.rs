@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn desktop_pet_source_observes_peer_field_pool_without_control() {
         assert!(DESKTOP_PET_SOURCE.contains("struct FieldPoolObservation"));
-        assert!(DESKTOP_PET_SOURCE.contains("let peerFieldIds = [\"math\", \"search\", \"code\", \"swe\", \"research\", \"computer-use\", \"ib\", \"robotics\"]"));
+        assert!(DESKTOP_PET_SOURCE.contains("let peerFieldIds = [\"math\", \"search\", \"code\", \"swe\", \"research\", \"computer-use\", \"ib\", \"robotics\", \"write\", \"translate\"]"));
         assert!(DESKTOP_PET_SOURCE.contains("observeFieldPool(root)"));
         assert!(DESKTOP_PET_SOURCE.contains("dict(root[\"field_pool\"])"));
         assert!(DESKTOP_PET_SOURCE.contains("observeSerializedFieldPool"));

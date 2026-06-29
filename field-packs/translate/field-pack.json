@@ -1,0 +1,30 @@
+{
+  "id": "translate",
+  "version": "0.2.x",
+  "description": "Translate supplied text while preserving terminology, constraints, and uncertainty notes.",
+  "aliases": ["translate", "translation", "localize", "localization", "bilingual", "翻译", "译文", "本地化", "双语"],
+  "task_schema": {
+    "inputs": ["source text", "target language", "terminology", "constraints"],
+    "outputs": ["translation", "term map", "quality checks"],
+    "constraints": ["preserve declared terms", "do not add unsupported claims", "name ambiguous source text"]
+  },
+  "capability_hints": ["read_source", "translate", "preserve_terms", "check_fidelity", "report_ambiguity"],
+  "permission_boundary": {
+    "safe": ["translate supplied text", "write local translation drafts", "produce local quality notes"],
+    "requires_grant": ["publish externally", "send messages", "edit user files"],
+    "blocked_by_default": ["fabricated source additions", "hidden tone changes", "sensitive personal disclosure"]
+  },
+  "verifier": {
+    "method": "term preservation, source coverage, and unsupported-addition checks",
+    "pass_signal": "translation preserves required terms, covers the supplied source, names ambiguity, and avoids new claims",
+    "error_categories": ["missing_term", "source_omission", "unsupported_addition", "wrong_target_language"]
+  },
+  "trajectory_labels": ["source_text", "terminology", "translation", "term_map", "checks", "feed"],
+  "mini_tasks": [
+    {
+      "id": "translate-mini-1",
+      "goal": "Translate a short Octopus product paragraph into Chinese while preserving Goal, Need, Feed, tentacle, and harness terminology.",
+      "expected_feed": "A Chinese translation, term map, ambiguity notes, quality checks, and artifact-backed verifier evidence."
+    }
+  ]
+}

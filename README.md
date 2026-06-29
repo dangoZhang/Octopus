@@ -35,6 +35,8 @@ Seed tentacles live under `tentacles/`. Their prompts, manifests, tools, and rep
 
 The `v0.2.0` target is broad field adaptation across math, search, code, SWE, research, computer-use, IB work, and robotics. Octopus keeps those fields in one Goal pool. `--workers n` only changes how many execution slots are open; it does not turn the fields into a queue.
 
+Post-`v0.2.0`, `0.2.x` releases pre-evolve more installable field packs toward `v0.3.0`. The first expansion packs are writing and translation.
+
 **The Octopus shows state.**
 
 The pixel pet is a read-only desktop observer. It watches `.octopus/state.json`: head color marks Need, moving tentacles mark action, bubbles mark code-as-harness work, blue marks evolution, red marks blocked, and green marks Feed.

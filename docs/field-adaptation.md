@@ -1,12 +1,12 @@
 # Field Adaptation TODO
 
-Target: `v0.2.0`.
+Target: `0.2.x` foundation toward `v0.3.0`.
 
-当前 `0.1.x` 只做基建：让 Octopus 识别任务领域、保存轨迹、记录验证结果，并把失败交给 harness evolution。具体触手功能代码优先由 Octopus 通过轨迹自己迭代；人类只在它无法自修复时补基建。
+`v0.2.0` 已发布：Octopus 已能识别任务领域、保存轨迹、记录验证结果，并把失败交给 harness evolution。`0.2.x` 的任务是把更多领域预进化成可安装 field pack。具体触手功能代码优先由 Octopus 通过轨迹自己迭代；人类只在它无法自修复时补基建。
 
-目标：让 Octopus 在八个同级 field slot 里长出合适触手，同时保持 Brain 只表达 Need。八个 field 是同一个 Goal 的并列适应面；调度器看状态、失败轨迹和最近运行记录来选择当前 worker slot。
+目标：让 Octopus 在同级 field slot 里长出合适触手，同时保持 Brain 只表达 Need。field 是同一个 Goal 的并列适应面；调度器看状态、失败轨迹和最近运行记录来选择当前 worker slot。
 
-`--workers n` 只表示一次打开几个执行槽。`--workers 1` 是单槽观察模式；未点名具体领域时，Goal 层仍然同时保留 math、search、code、SWE、research、computer-use、IB work、robotics。Goal 点名一个或多个领域时，这组领域会成为本次候选池。`mini-*` 是单个 field 内部的训练阶梯，不给八个 field 排序。
+`--workers n` 只表示一次打开几个执行槽。`--workers 1` 是单槽观察模式；未点名具体领域时，Goal 层仍然同时保留 v0.2 required field pool，并允许写作、翻译等扩展 field 加入候选。Goal 点名一个或多个领域时，这组领域会成为本次候选池。`mini-*` 是单个 field 内部的训练阶梯，不给 field 排序。
 
 ```text
 Goal -> field signal -> Need -> tentacle selection/generation
@@ -36,6 +36,8 @@ Goal -> field signal -> Need -> tentacle selection/generation
 | computer-use | 屏幕、浏览器、文件、系统动作闭环 |
 | IB work | 金融分析、表格、memo、market data、合规边界 |
 | robotics | 仿真优先的感知、动作计划、执行反馈 |
+| write | 来源约束写作、改写、claim map |
+| translate | 术语保真、双语转换、歧义说明 |
 
 这些 pack 只写 task shape，避免把工具流程写死。Octopus 后续从 pack、轨迹和 verifier 结果里选择或修复触手。
 
@@ -87,6 +89,7 @@ Need 稳定，实现可替换。相同 Need 可以路由到不同触手组合。
 ## TODO
 
 - [x] 加入 math、search、code、SWE、research、computer-use、IB work、robotics 的 Field Pack。
+- [x] 加入 write 和 translate 扩展 Field Pack，作为 `0.2.x` 预进化到 `v0.3.0` 的起点。
 - [x] 核心加载 `field-packs/`。
 - [x] `octopus fields` 可检查和匹配领域。
 - [x] Need context 和 Feed trace 写入 `field_pack`。
@@ -161,6 +164,7 @@ Need 稳定，实现可替换。相同 Need 可以路由到不同触手组合。
 - [x] `bootstrap`、`adapt` 和默认 `manifests` 也保留本地触手优先级，同时补齐缺失 bundled seeds。
 - [x] `repair` 自修复入口也使用 bundled seed resolver，partial `tentacles/` 不会阻断 harness-repair-agent。
 - [x] `beat` 的 harness evolution 先用本地触手，缺失时再用 bundled seed 写 evolution/apply artifact。
+- [x] `translate-mini-1` 已进入可进化 repair-template 表面，运行时会生成翻译、term map、ambiguity notes 和 verifier checks。
 
 ## v0.2.0 Gate
 
@@ -203,12 +207,13 @@ field-packs/
   ib/
   robotics/
   write/
+  translate/
 
 .octopus/trajectories/
 .octopus/field-scores/
 ```
 
-`field-packs/` contains the first reusable pack template, the eight required v0.2 field skeletons, and expansion packs such as `write`. Rust core loads these packs, `octopus fields` exposes them, and Feed traces now carry the selected `field_pack`.
+`field-packs/` contains the first reusable pack template, the eight required v0.2 field skeletons, and expansion packs such as `write` and `translate`. Rust core loads these packs, `octopus fields` exposes them, and Feed traces now carry the selected `field_pack`.
 
 
 稳定 Rust kernel 只保留 Field Pack 读取、轨迹记录、路由信号、Need/Feed 传输和 heartbeat。领域实现继续留在可进化 harness 中。

@@ -44,6 +44,10 @@ const EMBEDDED_FIELD_PACKS: &[(&str, &str)] = &[
         "write",
         include_str!("../../../field-packs/write/field-pack.json"),
     ),
+    (
+        "translate",
+        include_str!("../../../field-packs/translate/field-pack.json"),
+    ),
 ];
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -307,11 +311,17 @@ pub fn select_field_pack(
     let mut best: Option<(f32, Vec<String>, &FieldPack)> = None;
     for pack in packs {
         let haystack = pack_tokens(pack);
-        let matched = signals
+        let mut matched = signals
             .iter()
             .filter(|signal| haystack.contains(*signal))
             .cloned()
             .collect::<Vec<_>>();
+        let alias_matches = non_ascii_alias_matches(pack, need);
+        for alias in &alias_matches {
+            if !matched.iter().any(|existing| existing == alias) {
+                matched.push(alias.clone());
+            }
+        }
         if matched.is_empty() {
             continue;
         }
@@ -319,7 +329,7 @@ pub fn select_field_pack(
             .iter()
             .filter(|signal| pack.id.split('-').any(|part| part == signal.as_str()))
             .count() as f32;
-        let score = matched.len() as f32 + id_bonus;
+        let score = matched.len() as f32 + id_bonus + alias_matches.len() as f32;
         if best
             .as_ref()
             .map(|(best_score, _, _)| score > *best_score)
@@ -441,6 +451,27 @@ fn field_selection_tokens(need: &Need) -> BTreeSet<String> {
         .collect()
 }
 
+fn non_ascii_alias_matches(pack: &FieldPack, need: &Need) -> Vec<String> {
+    let text = field_signal_text(need);
+    pack.aliases
+        .iter()
+        .map(|alias| normalize_text(alias))
+        .filter(|alias| alias.chars().count() >= 2 && !alias.is_ascii() && text.contains(alias))
+        .collect()
+}
+
+fn field_signal_text(need: &Need) -> String {
+    let mut text = format!("{:?} {}", need.kind, need.query);
+    for (key, value) in &need.context {
+        if FIELD_SELECTION_CONTEXT_SKIP_KEYS.contains(&key.as_str()) {
+            continue;
+        }
+        text.push(' ');
+        text.push_str(value);
+    }
+    normalize_text(&text)
+}
+
 fn pack_tokens(pack: &FieldPack) -> BTreeSet<String> {
     let mut text = format!("{} {}", pack.id, pack.description);
     for value in pack
@@ -477,7 +508,7 @@ fn pack_tokens(pack: &FieldPack) -> BTreeSet<String> {
 fn tokens(value: &str) -> BTreeSet<String> {
     let mut tokens = BTreeSet::new();
     let mut current = String::new();
-    for character in value.chars().flat_map(char::to_lowercase) {
+    for character in normalize_text(value).chars() {
         if character.is_ascii_alphanumeric() {
             current.push(character);
         } else {
@@ -486,6 +517,10 @@ fn tokens(value: &str) -> BTreeSet<String> {
     }
     push_token(&mut tokens, &mut current);
     tokens
+}
+
+fn normalize_text(value: &str) -> String {
+    value.chars().flat_map(char::to_lowercase).collect()
 }
 
 fn push_token(tokens: &mut BTreeSet<String>, current: &mut String) {
@@ -575,7 +610,8 @@ mod tests {
                 "computer-use",
                 "ib",
                 "robotics",
-                "write"
+                "write",
+                "translate"
             ]
         );
         let research = catalog
@@ -586,6 +622,13 @@ mod tests {
         assert!(research.aliases.contains(&"reserach".to_string()));
         let ib = catalog.packs.iter().find(|pack| pack.id == "ib").unwrap();
         assert!(ib.aliases.contains(&"work in ib".to_string()));
+        let translate = catalog
+            .packs
+            .iter()
+            .find(|pack| pack.id == "translate")
+            .unwrap();
+        assert!(translate.aliases.contains(&"translation".to_string()));
+        assert!(translate.aliases.contains(&"翻译".to_string()));
     }
 
     #[test]
@@ -602,6 +645,7 @@ mod tests {
                 "ib".to_string(),
                 "robotics".to_string(),
                 "write".to_string(),
+                "translate".to_string(),
             ]
         );
         let aliases = default_field_pack_aliases();
@@ -612,6 +656,12 @@ mod tests {
         assert!(research.1.contains(&"reserach".to_string()));
         let ib = aliases.iter().find(|(field, _)| field == "ib").unwrap();
         assert!(ib.1.contains(&"work in ib".to_string()));
+        let translate = aliases
+            .iter()
+            .find(|(field, _)| field == "translate")
+            .unwrap();
+        assert!(translate.1.contains(&"translation".to_string()));
+        assert!(translate.1.contains(&"翻译".to_string()));
     }
 
     #[test]
@@ -666,6 +716,18 @@ mod tests {
 
         assert_eq!(selection.field, "search");
         assert!(selection.score > 0.0);
+    }
+
+    #[test]
+    fn selection_uses_multilingual_pack_alias() {
+        let catalog = embedded_field_pack_catalog().unwrap();
+        let need = Need::new(NeedKind::Verify, "翻译一段中文到英文并保留术语");
+
+        let selection = select_field_pack(&catalog.packs, None, &need).unwrap();
+
+        assert_eq!(selection.field, "translate");
+        assert_eq!(selection.signals, vec!["翻译".to_string()]);
+        assert_eq!(selection.score, 2.0);
     }
 
     #[test]

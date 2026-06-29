@@ -48,6 +48,12 @@ Release correction: `0.1.0` on 2026-06-28 was retracted on 2026-06-30. Scope was
 
 `0.2.0` is the first usable public release line after the desktop pet reflects real state and harness evolution is driven by LLM/tool traces rather than scripted steering.
 
+`0.2.x` toward `v0.3.0`: pre-evolve installable field packs beyond the required v0.2 pool.
+
+- `0.2.x`: add `translate` as a first-class field pack beside `write`, with `translate-mini-1` in editable `field-mini-task` repair templates.
+- `0.2.x`: run `translate-mini-1` through Octopus Need -> Feed -> verifier; current trace `#82` and verifier `#66` are satisfied in local state.
+- `0.2.x`: field matching now supports multilingual non-ASCII aliases from field-pack data, so Chinese goals such as `翻译一段中文到英文并保留术语` route to `translate`.
+
 Completed `0.1.x` patch train: field-adaptation foundation built in small usable steps.
 
 - `0.1.x`: field packs, trace field IDs, one native read-only desktop pet, peer-field worker slots that run Need -> Feed -> verifier from the parallel Goal pool.

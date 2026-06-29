@@ -29,7 +29,7 @@ struct FieldPoolObservation {
     var updatedAt: [Int] = []
 }
 
-let peerFieldIds = ["math", "search", "code", "swe", "research", "computer-use", "ib", "robotics"]
+let peerFieldIds = ["math", "search", "code", "swe", "research", "computer-use", "ib", "robotics", "write", "translate"]
 
 let rows = [
     ".....bbbbb.....",

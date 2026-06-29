@@ -35,6 +35,7 @@ Updated: 2026-06-30
 - `report` now exposes `native_desktop_pet` as a product capability with macOS, `swiftc`, and `desktop_pet_source` release-gate evidence.
 - `docs/pet.html` remains a read-only HTML preview for docs/screenshots. It no longer exposes state-control buttons.
 - README now states the `v0.2.0` fields as one peer Goal pool, with `--workers n` only controlling execution-slot capacity.
+- `0.2.x` field expansion has started toward `v0.3.0`: `write` and `translate` are installable field packs, with translation kept in editable `field-mini-task` repair templates instead of Rust core logic.
 - `evolve parallel` now treats fields named in the objective as the current candidate pool, so a targeted math/search run opens worker slots only inside that peer subset while the default run keeps all required v0.2 fields available.
 - Parallel evolution run state now persists `candidate_fields` and `requested_worker_count`, so JSON, CLI, and observers can distinguish the requested worker capacity from the active worker slots opened inside the candidate field pool.
 - Native desktop pet Goal detail now reads those run fields and shows requested worker capacity, active worker slots, and the candidate field pool as observation-only state.

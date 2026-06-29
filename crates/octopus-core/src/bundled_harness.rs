@@ -199,6 +199,10 @@ const BUNDLED_TENTACLE_FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../../tentacles/field-mini-task/repair-templates/write/write-mini-1.pyfrag"),
     ),
     (
+        "field-mini-task/repair-templates/translate/translate-mini-1.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/translate/translate-mini-1.pyfrag"),
+    ),
+    (
         "json-feed/manifest.json",
         include_bytes!("../../../tentacles/json-feed/manifest.json"),
     ),
@@ -308,6 +312,10 @@ const BUNDLED_FIELD_PACK_FILES: &[(&str, &[u8])] = &[
     (
         "field-packs/write/field-pack.json",
         include_bytes!("../../../field-packs/write/field-pack.json"),
+    ),
+    (
+        "field-packs/translate/field-pack.json",
+        include_bytes!("../../../field-packs/translate/field-pack.json"),
     ),
 ];
 

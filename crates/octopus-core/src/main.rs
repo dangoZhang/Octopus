@@ -23172,7 +23172,8 @@ mod tests {
         }
 
         let field_adaptation = fs::read_to_string(repo.join("docs/field-adaptation.md")).unwrap();
-        assert!(field_adaptation.contains("八个 field 是同一个 Goal 的并列适应面"));
+        assert!(field_adaptation.contains("field 是同一个 Goal 的并列适应面"));
+        assert!(field_adaptation.contains("translate"));
         assert!(field_adaptation.contains("`--workers n` 只表示一次打开几个执行槽"));
         assert!(field_adaptation.contains("Goal 层仍然同时保留"));
 
@@ -23737,6 +23738,7 @@ mod tests {
                 "ib".to_string(),
                 "robotics".to_string(),
                 "write".to_string(),
+                "translate".to_string(),
             ]
         );
     }
@@ -27756,8 +27758,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             String::from_utf8_lossy(&output.stderr)
         );
         assert_eq!(value["status"], "ok");
-        assert_eq!(value["checked_count"], 27);
-        assert_eq!(value["executed_count"], 27);
+        assert_eq!(value["checked_count"], 28);
+        assert_eq!(value["executed_count"], 28);
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
@@ -32447,7 +32449,7 @@ JSON
             )
             .replace(
                 "- Field mini task harness:",
-                "- Field mini task harness: pass checked_count=27 executed_count=27",
+                "- Field mini task harness: pass checked_count=28 executed_count=28",
             )
             .replace("- Desktop pet source:", "- Desktop pet source: pass")
             .replace("- Start/app:", "- Start/app: pass")
@@ -32507,8 +32509,8 @@ JSON
             .iter()
             .any(|item| item.id == "field_mini_task_harness_record" && item.status == "fail"));
         let filled = filled.replace(
-            "- Field mini task harness: pass checked_count=27 executed_count=27",
-            "- Field mini task harness: pass checked_count=27 executed_count=27 status=ok",
+            "- Field mini task harness: pass checked_count=28 executed_count=28",
+            "- Field mini task harness: pass checked_count=28 executed_count=28 status=ok",
         );
         fs::write(&record_path, &filled).unwrap();
         let audit = check_preflight_record(&record_path).unwrap();
@@ -32518,8 +32520,8 @@ JSON
             .iter()
             .any(|item| item.id == "field_mini_task_harness_record" && item.status == "fail"));
         let filled = filled.replace(
-            "- Field mini task harness: pass checked_count=27 executed_count=27 status=ok",
-            "- Field mini task harness: pass checked_count=27 executed_count=27 satisfied_count=27 partial_count=0 missing_count=0 invalid_count=0 status=ok",
+            "- Field mini task harness: pass checked_count=28 executed_count=28 status=ok",
+            "- Field mini task harness: pass checked_count=28 executed_count=28 satisfied_count=28 partial_count=0 missing_count=0 invalid_count=0 status=ok",
         );
         fs::write(&record_path, filled).unwrap();
         let audit = check_preflight_record(&record_path).unwrap();
