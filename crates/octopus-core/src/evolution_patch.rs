@@ -19,9 +19,28 @@ pub(crate) fn clean_suggested_patch(patch: Option<String>) -> Option<String> {
 fn normalize_suggested_patch_text(patch: &str) -> Option<String> {
     let patch = patch.trim();
     (!patch.is_empty()).then(|| {
-        let patch = normalize_patch_file_headers(patch);
+        let patch = strip_patch_wrappers(patch);
+        let patch = normalize_patch_file_headers(&patch);
         format!("{}\n", normalize_new_file_hunks(&patch).trim())
     })
+}
+
+fn strip_patch_wrappers(patch: &str) -> String {
+    patch
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if matches!(
+                trimmed,
+                "*** Begin Patch" | "*** End Patch" | "```" | "```diff" | "```patch"
+            ) {
+                None
+            } else {
+                Some(line)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn normalize_patch_file_headers(patch: &str) -> String {
@@ -242,4 +261,52 @@ fn collapse_repeated_tentacle_prefix(value: &str) -> String {
         }
     }
     value.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clean_suggested_patch_strips_apply_patch_wrappers() {
+        let patch = r#"*** Begin Patch
+diff --git a/tentacles/field-mini-task/repair-templates/swe/swe-mini-4.pyfrag b/tentacles/field-mini-task/repair-templates/swe/swe-mini-4.pyfrag
+--- a/tentacles/field-mini-task/repair-templates/swe/swe-mini-4.pyfrag
++++ b/tentacles/field-mini-task/repair-templates/swe/swe-mini-4.pyfrag
+@@ -1 +1 @@
+-old
++new
+*** End Patch
+"#;
+
+        let cleaned = clean_suggested_patch(Some(patch.to_string())).unwrap();
+
+        assert!(!cleaned.contains("*** Begin Patch"));
+        assert!(!cleaned.contains("*** End Patch"));
+        assert_eq!(
+            diff_paths(&cleaned),
+            vec!["tentacles/field-mini-task/repair-templates/swe/swe-mini-4.pyfrag"]
+        );
+    }
+
+    #[test]
+    fn clean_suggested_patch_strips_markdown_fence_wrappers() {
+        let patch = r#"```diff
+diff --git a/field-packs/swe/field-pack.json b/field-packs/swe/field-pack.json
+--- a/field-packs/swe/field-pack.json
++++ b/field-packs/swe/field-pack.json
+@@ -1 +1 @@
+-{}
++{"ok":true}
+```
+"#;
+
+        let cleaned = clean_suggested_patch(Some(patch.to_string())).unwrap();
+
+        assert!(!cleaned.contains("```"));
+        assert_eq!(
+            diff_paths(&cleaned),
+            vec!["field-packs/swe/field-pack.json"]
+        );
+    }
 }

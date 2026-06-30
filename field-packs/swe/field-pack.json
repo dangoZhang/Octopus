@@ -35,6 +35,11 @@
       "id": "swe-mini-3",
       "goal": "Triage a tiny multi-file issue, identify the failing contract, patch it, and record a regression check.",
       "expected_feed": "Files inspected, failing contract, root cause, patch summary, and regression check output."
+    },
+    {
+      "id": "swe-mini-4",
+      "goal": "Review a repository maintenance migration where a public helper rename removes a public entry point; implement a compatibility shim and verify with before/after unit tests.",
+      "expected_feed": "Provide a compact patch-review summary with before-vs-after test outcome, function-level diff, and a .octopus/field-mini-task trajectory artifact path."
     }
   ]
 }

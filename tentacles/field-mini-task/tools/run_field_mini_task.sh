@@ -10,6 +10,26 @@ if [ ! -t 0 ]; then
   cat > "$payload_file" || true
 fi
 
+python3 - "$script_dir" <<'PY'
+import ast
+import sys
+from pathlib import Path
+
+tentacle_root = Path(sys.argv[1])
+syntax_errors = []
+for path in sorted(tentacle_root.rglob("*.pyfrag")):
+    try:
+        ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except SyntaxError as exc:
+        syntax_errors.append((str(path), exc.lineno or 0, exc.msg))
+
+if syntax_errors:
+    print("repair-template pre-validation failed:", file=sys.stderr)
+    for path, line, msg in syntax_errors:
+        print(f"{path}:{line}: {msg}", file=sys.stderr)
+    raise SystemExit(2)
+PY
+
 python3 - "$workspace" "$payload_file" "$script_dir" <<'PY'
 import datetime as dt
 import json

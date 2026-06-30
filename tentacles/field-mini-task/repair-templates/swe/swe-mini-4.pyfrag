@@ -1,0 +1,109 @@
+if field == "swe" and mini_task == "swe-mini-4":
+    import difflib
+    import json
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    scratch = session / "scratch-swe-review"
+    scratch.mkdir(parents=True, exist_ok=True)
+
+    module = scratch / "inventory.py"
+    test_file = scratch / "test_inventory.py"
+    fixture = scratch / "inventory_fixture.json"
+    artifact_root = session / ".octopus" / "field-mini-task" / "swe" / "swe-mini-4"
+    artifact_root.mkdir(parents=True, exist_ok=True)
+
+    before_source = (
+        "from pathlib import Path\n"
+        "import json\n"
+        "\n"
+        "def item_total(path):\n"
+        "    data = json.loads(Path(path).read_text(encoding='utf-8'))\n"
+        "    return sum(int(row['qty']) for row in data['items'])\n"
+    )
+    after_source = (
+        "from pathlib import Path\n"
+        "import json\n"
+        "\n"
+        "def load_inventory(path):\n"
+        "    data = json.loads(Path(path).read_text(encoding='utf-8'))\n"
+        "    return sum(int(row['qty']) for row in data['items'])\n"
+        "\n"
+        "def item_total(path):\n"
+        "    return load_inventory(path)\n"
+    )
+    test_source = """import json\nimport unittest\nfrom pathlib import Path\nfrom inventory import item_total, load_inventory\n\n\nclass InventoryReviewTask(unittest.TestCase):\n    def setUp(self):\n        fixture = Path(__file__).with_name(\"inventory_fixture.json\")\n        fixture.write_text(json.dumps({\"items\": [{\"qty\": 2}, {\"qty\": 3}]}, indent=2), encoding=\"utf-8\")\n\n    def tearDown(self):\n        fixture = Path(__file__).with_name(\"inventory_fixture.json\")\n        if fixture.exists():\n            fixture.unlink()\n\n    def test_item_total_and_compatibility(self):\n        fixture = Path(__file__).with_name(\"inventory_fixture.json\")\n        self.assertEqual(item_total(str(fixture)), 5)\n        self.assertEqual(load_inventory(str(fixture)), 5)\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n"""
+    module.write_text(before_source, encoding="utf-8")
+    test_file.write_text(test_source, encoding="utf-8")
+    fixture.write_text(
+        json.dumps({"items": [{"qty": 2}, {"qty": 3}]}, indent=2), encoding="utf-8"
+    )
+
+    before_run = subprocess.run(
+        [sys.executable, "-B", "-m", "unittest", "test_inventory.py"],
+        cwd=str(scratch),
+        text=True,
+        capture_output=True,
+    )
+
+    module.write_text(after_source, encoding="utf-8")
+    shutil.rmtree(scratch / "__pycache__", ignore_errors=True)
+    after_run = subprocess.run(
+        [sys.executable, "-B", "-m", "unittest", "test_inventory.py"],
+        cwd=str(scratch),
+        text=True,
+        capture_output=True,
+    )
+
+    diff_lines = list(
+        difflib.unified_diff(
+            before_source.splitlines(),
+            after_source.splitlines(),
+            fromfile="inventory.py (before)",
+            tofile="inventory.py (after)",
+            lineterm="",
+        )
+    )
+
+    satisfied = (before_run.returncode != 0) and (after_run.returncode == 0)
+
+    artifact_path = artifact_root / "trajectory.json"
+    artifact_payload = {
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": globals().get(
+            "field_expected_feed",
+            "Review a repository maintenance migration with artifact-backed regression checks.",
+        ),
+        "before_unit_test_returncode": before_run.returncode,
+        "after_unit_test_returncode": after_run.returncode,
+        "diff_line_count": len(diff_lines),
+    }
+    artifact_path.write_text(json.dumps(artifact_payload, indent=2), encoding="utf-8")
+
+    field_result = {
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": artifact_payload["field_expected_feed"],
+        "verifier_status": "satisfied" if satisfied else "partial",
+        "field_pass_evidence": "before_rc={} after_rc={}".format(
+            before_run.returncode, after_run.returncode
+        ),
+        "trajectory_path": str(artifact_path),
+        "checks": {
+            "before": {"returncode": before_run.returncode},
+            "after": {"returncode": after_run.returncode},
+            "diff_lines": len(diff_lines),
+        },
+    }
+    if not satisfied:
+        field_result.update(
+            {
+                "error_category": "test_failure",
+                "missing_regions": [
+                    "Need to produce a failing baseline and passing post-fix outcome."
+                ],
+            }
+        )

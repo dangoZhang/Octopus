@@ -40,7 +40,7 @@ pub(crate) fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Resu
             "target_file_bytes_for_small_scope": llm_evolution_file_bytes_for_path_count(8)
         },
         "patch_requirements": {
-            "format": "suggested_patch must be a complete git unified diff that starts with diff --git, includes --- and +++ file headers, includes @@ -line,count +line,count @@ hunk headers, and can be applied by git apply. Use exact nearby lines from target_file_contents; do not invent line numbers. Do not return apply_patch, *** Begin Patch, or prose-only patches.",
+            "format": "suggested_patch must be a complete git unified diff that starts with diff --git, includes --- and +++ file headers, includes @@ -line,count +line,count @@ hunk headers, and can be applied by git apply. Use exact nearby lines from target_file_contents.content and target_file_contents.line_numbered_content; do not invent line numbers or old context. On apply retry, treat line_numbered_content as the current file. Do not return apply_patch, *** Begin Patch, or prose-only patches.",
             "field_pack_tasks": "suggested_patch is required for this surface. If required_surfaces contains field_pack_tasks, at least one candidate must use surface_id=field_pack_tasks. Patch only the named field-pack JSON files and matching tentacles/<tentacle>/repair-templates/<field>/<mini-task>.pyfrag files needed by the objective. New mini task layers must add both the field-pack entry and matching repair template. Do not merely harden an existing mini task when the objective asks for a harder layer. Do not patch kernel Rust or unrelated runtime code from this surface.",
             "runtime_code": "suggested_patch is preferred when the objective names an executable harness gap. Patch declared harness targets only."
         },
@@ -171,6 +171,9 @@ fn compact_evolution_file_targets(files: &[EvolutionFileTarget]) -> Vec<serde_js
 fn evolution_target_file_contexts(proposal: &TentacleEvolutionProposal) -> Vec<serde_json::Value> {
     let mut paths = Vec::new();
     let file_limit = llm_evolution_file_limit();
+    for path in objective_path_hints(&proposal.objective) {
+        push_unique_limited(&mut paths, path, file_limit);
+    }
     let manifest_dir = Path::new(&proposal.manifest_path)
         .parent()
         .map(Path::to_path_buf)
@@ -206,10 +209,33 @@ fn evolution_target_file_contexts(proposal: &TentacleEvolutionProposal) -> Vec<s
             Some(serde_json::json!({
                 "path": path,
                 "content": short_text(&content, file_bytes),
+                "line_numbered_content": short_text(&line_numbered_text(&content), file_bytes),
                 "truncated": content.len() > file_bytes
             }))
         })
         .collect()
+}
+
+fn objective_path_hints(objective: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    for token in objective
+        .split(|ch: char| ch.is_whitespace() || matches!(ch, ':' | ',' | ';' | '"' | '\''))
+        .map(|value| value.trim_matches(|ch: char| matches!(ch, '(' | ')' | '[' | ']')))
+    {
+        if token.contains('/') && Path::new(token).exists() {
+            push_unique_limited(&mut paths, token.to_string(), 16);
+        }
+    }
+    paths
+}
+
+fn line_numbered_text(content: &str) -> String {
+    content
+        .lines()
+        .enumerate()
+        .map(|(index, line)| format!("{:>4}: {line}", index + 1))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn prioritized_evolution_surfaces(surfaces: &[EvolutionSurface]) -> Vec<&EvolutionSurface> {
@@ -251,4 +277,39 @@ fn env_usize_optional(key: &str) -> Option<usize> {
     env::var(key)
         .ok()
         .and_then(|value| value.parse::<usize>().ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn line_numbered_text_preserves_current_patch_context() {
+        let numbered = line_numbered_text("alpha\nbeta\n");
+
+        assert!(numbered.contains("   1: alpha"));
+        assert!(numbered.contains("   2: beta"));
+    }
+
+    #[test]
+    fn objective_path_hints_prioritize_existing_retry_targets() {
+        let dir = env::temp_dir().join(format!(
+            "octopus-evolution-prompt-paths-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("retry.pyfrag");
+        fs::write(&file, "if field:\n    pass\n").unwrap();
+        let objective = format!(
+            "regenerate patch after git apply failed: error: patch failed: {}:18",
+            file.display()
+        );
+
+        let paths = objective_path_hints(&objective);
+
+        assert_eq!(paths, vec![file.to_string_lossy().to_string()]);
+        let _ = fs::remove_dir_all(dir);
+    }
 }
