@@ -59,6 +59,11 @@ pub(crate) struct RunResponse {
     pub(crate) suggested_args: Vec<Vec<String>>,
 }
 
+#[derive(serde::Serialize)]
+struct AppConfig {
+    state_path: String,
+}
+
 pub(crate) fn run_start(rest: &[String], state_path: PathBuf) -> Result<(), String> {
     let options = parse_start_options(rest)?;
     run_bridge(&options.addr, state_path, options.open)
@@ -244,6 +249,8 @@ fn app_surface_preflight_check() -> PreflightCheck {
         "Current Need",
         "Current Feed",
         "Latest Feed",
+        "loadBridgeConfig",
+        "/api/config",
         r#"runJson([...baseArgs(), "status"])"#,
     ];
     let missing = markers
@@ -490,6 +497,9 @@ fn run_bridge(addr: &str, state_path: PathBuf, open_app: bool) -> Result<(), Str
     let listener =
         TcpListener::bind(addr).map_err(|error| format!("start bind failed: {error}"))?;
     let startup = prepare_state(state_path)?;
+    let app_config = AppConfig {
+        state_path: startup.state_path.clone(),
+    };
     print_startup(&startup, addr);
     if open_app {
         let url = format!("http://{addr}/app.html");
@@ -500,7 +510,7 @@ fn run_bridge(addr: &str, state_path: PathBuf, open_app: bool) -> Result<(), Str
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
-                if let Err(error) = handle_connection(&mut stream) {
+                if let Err(error) = handle_connection(&mut stream, &app_config) {
                     let body = serde_json::json!({ "error": error }).to_string();
                     let _ =
                         write_http_response(&mut stream, 500, "application/json", body.as_bytes());
@@ -568,11 +578,15 @@ fn shell_arg(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-fn handle_connection(stream: &mut TcpStream) -> Result<(), String> {
+fn handle_connection(stream: &mut TcpStream, app_config: &AppConfig) -> Result<(), String> {
     let request = read_http_request(stream)?;
     match (request.method.as_str(), request.path.as_str()) {
-        ("OPTIONS", "/api/run" | "/api/stream") => {
+        ("OPTIONS", "/api/run" | "/api/stream" | "/api/config") => {
             write_http_response(stream, 204, "text/plain", b"")
+        }
+        ("GET", "/api/config") => {
+            let body = serde_json::to_vec_pretty(app_config).map_err(|error| error.to_string())?;
+            write_http_response(stream, 200, "application/json", &body)
         }
         ("POST", "/api/run") => {
             let request = serde_json::from_slice::<RunRequest>(&request.body)
@@ -1077,7 +1091,17 @@ fn pet_observe_allowed(args: &[String]) -> bool {
         return false;
     };
     let rest = &args[index + 1..];
-    rest.len() <= 1 && rest.first().is_none_or(|value| value != "image")
+    match rest.first().map(String::as_str) {
+        None => true,
+        Some("image") | Some("desktop") | Some("open") => false,
+        Some("events") | Some("log") => {
+            rest.len() <= 2
+                && rest
+                    .get(1)
+                    .is_none_or(|value| value.parse::<usize>().is_ok())
+        }
+        Some(_) => rest.len() == 1,
+    }
 }
 
 fn preflight_observe_allowed(args: &[String]) -> bool {

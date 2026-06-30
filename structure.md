@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-06-30, after modular user-surface/evolution/pet diagnostics refactor.
+Updated: 2026-06-30, after app state-path and pet-event supervision refactor.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -18,7 +18,7 @@ Octopus/
 │   └── src/
 │       ├── lib.rs             Kernel contracts, state, routes, providers, traces, evolution orchestration.
 │       ├── main.rs            CLI/product backend aggregation and command dispatch.
-│       ├── app_bridge.rs      Local app bridge, HTTP/SSE, embedded app assets, bridge policy.
+│       ├── app_bridge.rs      Local app bridge, HTTP/SSE, `/api/config`, embedded assets, bridge policy.
 │       ├── bundled_harness.rs Installed-binary seed harness materializer, including field-mini-task and fixtures.
 │       ├── core_boundary.rs   Stable-core vs editable-harness boundary diagnostics.
 │       ├── diagnostics.rs     Strategy diagnostics for clean brain, intelligent tentacles, editable goal, pet freshness.
@@ -27,7 +27,7 @@ Octopus/
 │       ├── evolution.rs       Manifest-owned evolution surface requirement validation.
 │       ├── field_pack.rs      Field-pack loader, matcher, and Need/trace metadata.
 │       ├── pet.rs             Pixel Octopus state, SVG export, file URL helpers.
-│       ├── pet_events.rs      Unified state event write path for desktop/pet observers.
+│       ├── pet_events.rs      Unified state event write path and JSONL audit log for desktop/pet observers.
 │       ├── profile_registry.rs Seed profile registry loading and status.
 │       ├── release_gate.rs    Preflight records, benchmark and real-machine gates.
 │       ├── shell_words.rs     Shared shell command display quoting.
@@ -92,11 +92,11 @@ Octopus/
 | User surface boundary | Converts internal state into human Goal hints; keeps agent commands in observer fields so app/CLI users edit Goal only | `user_surface.rs`, `StatusReport`, `ContextReport`, `NeedQueueReport`, `FieldPoolStatusReport`, `ProductReport` | 123 |
 | Evolution contract | Manifest-owned surface requirements, required-surface validation, candidate ID normalization, LLM retry guardrails without field-specific Rust branches | `evolution.rs`, `tentacles/*/manifest.json`, `tentacles/tentacle.schema.json` | 471 |
 | Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, field trajectory summaries, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, and compile/execute template checks | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 4,012 |
-| CLI and product backend | Command dispatch, Goal/chat/brain, provider setup, doctor/report/preflight aggregation, starter/install/check flows, field summary, repair/evolve commands, strategy diagnostics entry | `crates/octopus-core/src/main.rs` | 36,153 |
-| Local app bridge | Local HTTP/SSE server, app policy, command allow-list, embedded app/docs/showcase assets, field activity observer with fresh pet-event handling | `app_bridge.rs`, `docs/app.html` | 1,988 |
+| CLI and product backend | Command dispatch, Goal/chat/brain, provider setup, doctor/report/preflight aggregation, starter/install/check flows, field summary, repair/evolve commands, strategy diagnostics entry, pet event log viewer | `crates/octopus-core/src/main.rs` | 36,284 |
+| Local app bridge | Local HTTP/SSE server, `/api/config` state-path injection, app policy, command allow-list, embedded app/docs/showcase assets, field activity observer with fresh pet-event handling | `app_bridge.rs`, `docs/app.html` | 2,026 |
 | Release and install gates | Release records, benchmark evidence, download/install manifest, real-machine checks | `release_gate.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 1,211 |
-| Pet and visual state | Pixel Octopus state, SVG/export helpers, unified event writes, native read-only observer, desktop source preflight, HTML preview | `pet.rs`, `pet_events.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 2,158 |
-| Strategy diagnostics | Checks the three core traits, user-surface policy, and desktop observer chain: clean brain context, LLM tool-side tentacles, editable goal, field surface, pet freshness, Feed/evolution evidence | `diagnostics.rs`, `octopus diagnose strategy --json` | 388 |
+| Pet and visual state | Pixel Octopus state, SVG/export helpers, unified event writes, JSONL event audit, native read-only observer, desktop source preflight, HTML preview | `pet.rs`, `pet_events.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 2,206 |
+| Strategy diagnostics | Checks the three core traits, user-surface policy, and desktop observer chain: clean brain context, LLM tool-side tentacles, editable goal, field surface, pet freshness, pet event log, Feed/evolution evidence | `diagnostics.rs`, `octopus diagnose strategy --json` | 409 |
 | Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,178 |
 | Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, declared evolution requirements, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 18,268 |
 
@@ -119,6 +119,8 @@ These should remain stable and hard to accidentally mutate:
 - Route scoring, provider clients, memory/heartbeat state, grants, permissions.
 - Product bridge rule: user-facing writes go through Goal; internal actions feed the agent.
 - User surface rule: `next` on status/context/Need queue/field pool/product report means human Goal hint; internal execution commands stay in `agent_next` or `agent_next_action`.
+- App state rule: browser app gets the real bridge state path from `/api/config`; file preview may fall back to `.octopus/state.json`.
+- Pet supervision rule: `last_pet_event` is the live state, `.octopus/pet-events.jsonl` is the append-only audit trail for supervisors.
 - Release gates: preflight, benchmark evidence, field-pool visibility, real-machine records, local app readiness.
 - Strategy diagnostics: `octopus diagnose strategy --json` checks clean-brain context, user-surface command leakage, tool-side LLM tentacles, editable Goal, field-pack evolution surface, fresh pet events, and Feed/evolution evidence.
 
@@ -197,12 +199,12 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 16 | 56,579 |
+| `crates/octopus-core/src` | 16 | 56,803 |
 | `crates/octopus-core/examples` | 1 | 27 |
 | `tentacles` | 70 | 18,268 |
 | `field-packs` | 14 | 583 |
 | `desktop/pet` | 1 | 844 |
-| `docs` | 29 md/html/json/sh files | 7,923 |
+| `docs` | 29 md/html/json/sh files | 7,937 |
 | `cowork` | 3 | 101 |
 | `local/docs` | 12 | 507 |
 
@@ -210,12 +212,12 @@ field-packs/
 
 | File | Lines |
 | --- | ---: |
-| `main.rs` | 36,153 |
+| `main.rs` | 36,284 |
 | `lib.rs` | 15,645 |
-| `app_bridge.rs` | 1,142 |
+| `app_bridge.rs` | 1,166 |
 | `release_gate.rs` | 703 |
 | `field_pack.rs` | 868 |
-| `diagnostics.rs` | 388 |
+| `diagnostics.rs` | 409 |
 | `pet.rs` | 280 |
 | `bundled_harness.rs` | 411 |
 | `download.rs` | 175 |
@@ -224,7 +226,7 @@ field-packs/
 | `user_surface.rs` | 123 |
 | `evolution.rs` | 78 |
 | `profile_registry.rs` | 78 |
-| `pet_events.rs` | 26 |
+| `pet_events.rs` | 74 |
 | `shell_words.rs` | 18 |
 
 ### Tentacles
@@ -245,7 +247,7 @@ field-packs/
 ## Notes
 
 - The stable core is still too concentrated in `main.rs` and `lib.rs`; `0.2.x` cleanup should split product backend aggregation without moving field behavior back into Rust.
-- If desktop Octopus looks wrong, start with `octopus diagnose strategy --json`, then inspect `.octopus/state.json:last_pet_event`, pending Needs, latest Feed trace, latest parallel worker update, and provider/evolution artifact status.
+- If desktop Octopus looks wrong, start with `octopus diagnose strategy --json`, then inspect `.octopus/state.json:last_pet_event`, `.octopus/pet-events.jsonl`, pending Needs, latest Feed trace, latest parallel worker update, and provider/evolution artifact status.
 - Evolution surface requirements now belong to manifests. Rust validates declared missing surfaces and must not grow domain-specific trigger rules.
 - The next `0.2.x` track should let Octopus add harder mini task layers one field at a time: math, write, translate, search, code, SWE, research, computer-use, IB, robotics.
 - The release showcase is screenshot-first. The local app surface in `docs/app.html` observes and updates the real local Octopus loop.

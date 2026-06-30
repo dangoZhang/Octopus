@@ -31,7 +31,7 @@ use octopus_core::{
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::panic;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -136,6 +136,15 @@ struct DoctorLlmReport {
 struct DoctorPetReport {
     path: String,
     exists: bool,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct PetEventLogReport {
+    path: String,
+    exists: bool,
+    count: usize,
+    events: Vec<PetEvent>,
+    next: Vec<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -3406,6 +3415,28 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 return Ok(());
             }
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            if matches!(rest.get(1).map(String::as_str), Some("events" | "log")) {
+                let limit = rest
+                    .get(2)
+                    .map(|value| {
+                        value
+                            .parse::<usize>()
+                            .map_err(|_| format!("invalid pet events limit: {value}"))
+                    })
+                    .transpose()?
+                    .unwrap_or(20)
+                    .clamp(1, 200);
+                let report = pet_event_log_report(&state, limit)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_pet_event_log_report(&report, language);
+                }
+                return Ok(());
+            }
             if rest.get(1).map(String::as_str) == Some("image") {
                 let pet_state = rest.get(2).map(String::as_str).unwrap_or("auto");
                 let report = pet_report_for_state(&loaded, &state, pet_state)?;
@@ -3465,6 +3496,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
             }
             loaded.save(&state).map_err(|error| error.to_string())?;
+            pet_events::append_latest(&state, &loaded)?;
             if json {
                 println!(
                     "{}",
@@ -3619,6 +3651,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     }
                 }
                 loaded.save(&state).map_err(|error| error.to_string())?;
+                pet_events::append_latest(&state, &loaded)?;
                 let next = parallel_evolution_next_actions(&auto_feed);
                 if json {
                     let worker_policy = run.worker_policy.clone();
@@ -3854,6 +3887,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     summary,
                 );
                 loaded.save(&state).map_err(|error| error.to_string())?;
+                pet_events::append_latest(&state, &loaded)?;
                 let cwd = env::current_dir().map_err(|error| error.to_string())?;
                 let objective_summary = outcome.summary.clone();
                 let report =
@@ -8476,6 +8510,55 @@ fn print_pet_report(report: &PetReport, language: Language) {
     }
 }
 
+fn print_pet_event_log_report(report: &PetEventLogReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus pet events");
+            println!("path: {}", report.path);
+            println!("exists: {}", report.exists);
+            println!("count: {}", report.count);
+            if report.events.is_empty() {
+                println!("events: none");
+            } else {
+                println!("events:");
+                for event in &report.events {
+                    println!(
+                        "- {} {} {} {:?}: {}",
+                        event.timestamp_secs,
+                        event.state,
+                        event.source,
+                        event.status,
+                        event.summary
+                    );
+                }
+            }
+            println!("next: {}", join_or_none(&report.next));
+        }
+        Language::Zh => {
+            println!("章鱼桌宠事件");
+            println!("路径: {}", report.path);
+            println!("存在: {}", report.exists);
+            println!("总数: {}", report.count);
+            if report.events.is_empty() {
+                println!("事件: 无");
+            } else {
+                println!("事件:");
+                for event in &report.events {
+                    println!(
+                        "- {} {} {} {:?}: {}",
+                        event.timestamp_secs,
+                        event.state,
+                        event.source,
+                        event.status,
+                        event.summary
+                    );
+                }
+            }
+            println!("下一步: {}", join_or_none(&report.next));
+        }
+    }
+}
+
 fn print_pet_image_report(report: &PetImageReport, language: Language) {
     match language {
         Language::En => {
@@ -10642,6 +10725,7 @@ fn bootstrap_workspace(
     }
     state.beat(200);
     state.save(&state_path).map_err(|error| error.to_string())?;
+    pet_events::append_latest(&state_path, &state)?;
     let report = product_report(&state, &state_path)?;
     let state_arg = shell_arg(&state_path.to_string_lossy());
     let mut next = vec![
@@ -10734,6 +10818,7 @@ fn first_run_report(
         .state
         .save(&state_path)
         .map_err(|error| error.to_string())?;
+    pet_events::append_latest(&state_path, &harness.state)?;
     let product = product_report(&harness.state, &state_path)?;
     let preflight = preflight_report(&harness.state, &state_path, live)?;
     let doctor = doctor_report(&harness.state, state_path.clone())?;
@@ -10938,6 +11023,48 @@ fn pet_report_for_state(
         enrich_pet_target(&mut report, status);
     }
     Ok(report)
+}
+
+fn pet_event_log_report(state_path: &Path, limit: usize) -> Result<PetEventLogReport, String> {
+    let path = pet_events::event_log_path(state_path);
+    if !path.exists() {
+        return Ok(PetEventLogReport {
+            path: path.to_string_lossy().to_string(),
+            exists: false,
+            count: 0,
+            events: Vec::new(),
+            next: vec![
+                "Run the current Goal until the next Need or Feed writes a pet event.".to_string(),
+            ],
+        });
+    }
+    let file = fs::File::open(&path).map_err(|error| error.to_string())?;
+    let reader = BufReader::new(file);
+    let mut events = Vec::new();
+    for line in reader.lines() {
+        let line = line.map_err(|error| error.to_string())?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let event = serde_json::from_str::<PetEvent>(&line).map_err(|error| {
+            format!(
+                "invalid pet event log entry in {}: {error}",
+                path.to_string_lossy()
+            )
+        })?;
+        events.push(event);
+    }
+    let count = events.len();
+    if count > limit {
+        events = events.split_off(count.saturating_sub(limit));
+    }
+    Ok(PetEventLogReport {
+        path: path.to_string_lossy().to_string(),
+        exists: true,
+        count,
+        events,
+        next: vec!["Use strategy diagnostics if the latest pet event is stale.".to_string()],
+    })
 }
 
 fn enrich_pet_target(report: &mut PetReport, status: &StatusReport) {
@@ -16295,25 +16422,16 @@ fn print_product_report(report: &ProductReport, language: Language) {
             }
             println!("capabilities:");
             for capability in &report.capabilities {
-                let command = capability
-                    .command
-                    .as_ref()
-                    .map(|command| format!(" observer={command}"))
-                    .unwrap_or_default();
                 println!(
-                    "- {} [{}]: {}{}",
-                    capability.id, capability.status, capability.evidence, command
+                    "- {} [{}]: {}",
+                    capability.id, capability.status, capability.evidence
                 );
             }
             println!("gaps:");
             for gap in &report.gaps {
-                println!(
-                    "- {}: {}; hint={}; observer={}",
-                    gap.id, gap.impact, gap.user_goal_hint, gap.agent_next
-                );
+                println!("- {}: {}; hint={}", gap.id, gap.impact, gap.user_goal_hint);
             }
             println!("next: {}", join_or_none(&report.next));
-            println!("agent_next: {}", join_or_none(&report.agent_next));
         }
         Language::Zh => {
             println!("章鱼报告");
@@ -16366,25 +16484,16 @@ fn print_product_report(report: &ProductReport, language: Language) {
             }
             println!("能力:");
             for capability in &report.capabilities {
-                let command = capability
-                    .command
-                    .as_ref()
-                    .map(|command| format!(" observer={command}"))
-                    .unwrap_or_default();
                 println!(
-                    "- {} [{}]: {}{}",
-                    capability.id, capability.status, capability.evidence, command
+                    "- {} [{}]: {}",
+                    capability.id, capability.status, capability.evidence
                 );
             }
             println!("缺口:");
             for gap in &report.gaps {
-                println!(
-                    "- {}: {}; 提示={}; observer={}",
-                    gap.id, gap.impact, gap.user_goal_hint, gap.agent_next
-                );
+                println!("- {}: {}; 提示={}", gap.id, gap.impact, gap.user_goal_hint);
             }
             println!("下一步: {}", join_or_none(&report.next));
-            println!("agent_next: {}", join_or_none(&report.agent_next));
         }
     }
 }
@@ -22745,7 +22854,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair apply [query] | repair verify [query] | repair continue [query] [--score status [summary]] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers 1..8]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | diagnose strategy | pet [state]|pet desktop [--workers 1..8]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers 1..8] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair apply [query] | repair verify [query] | repair continue [query] [--score status [summary]] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers 1..8]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | diagnose strategy | pet [state]|pet events [limit]|pet desktop [--workers 1..8]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers 1..8] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -23103,6 +23212,7 @@ fn run_queued_need_with_observer_state(
     state.record_pet_event("need", "need queue", query.clone(), Status::Partial);
     if let Some(path) = observer_state_path {
         state.save(path).map_err(|error| error.to_string())?;
+        pet_events::append_latest(path, &state)?;
     }
     let field_hint = field_hint_from_queue_item(&taken.item);
     if field_hint.is_some() {
@@ -23134,6 +23244,7 @@ fn run_queued_need_with_observer_state(
             .state
             .save(path)
             .map_err(|error| error.to_string())?;
+        pet_events::append_latest(path, &harness.state)?;
     }
     Ok((
         NeedRunReport {
@@ -28787,6 +28898,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(!app_text.contains(r#"goal.status === "Blocked""#));
         assert!(app_text.contains("Ready. Latest Feed is visible."));
         assert!(app_text.contains("octopus.app.goal"));
+        assert!(app_text.contains("let statePath = \".octopus/state.json\""));
+        assert!(app_text.contains("async function loadBridgeConfig()"));
+        assert!(app_text.contains("\"/api/config\""));
+        assert!(app_text.contains("statePath = config.state_path"));
+        assert!(app_text.contains("await loadBridgeConfig();"));
         assert!(!app_text.contains("octopus.app.model"));
         assert!(!app_text.contains("octopus.app.endpoint"));
         assert!(!app_text.contains(r#"queryValue("demo")"#));
@@ -31806,6 +31922,14 @@ JSON
             "--state".to_string(),
             "state.json".to_string(),
             "--json".to_string(),
+            "pet".to_string(),
+            "events".to_string(),
+            "5".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
             "starter".to_string(),
             "make this repo easier".to_string()
         ]));
@@ -31937,6 +32061,13 @@ JSON
             "feedback".to_string(),
             "swe-agent".to_string(),
             "accepted".to_string()
+        ]));
+        assert!(!bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "pet".to_string(),
+            "desktop".to_string()
         ]));
         assert!(!bridge_command_allowed(&[
             "--state".to_string(),

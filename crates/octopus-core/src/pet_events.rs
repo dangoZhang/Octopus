@@ -1,5 +1,7 @@
 use octopus_core::{HarnessState, PetEvent, Status};
-use std::path::Path;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 pub(crate) fn record_and_save(
     state_path: &Path,
@@ -12,7 +14,36 @@ pub(crate) fn record_and_save(
     let summary = summary.into();
     let event = state.record_pet_event(pet_state, source, summary_text(&summary), status);
     state.save(state_path).map_err(|error| error.to_string())?;
+    append_event(state_path, &event)?;
     Ok(event)
+}
+
+pub(crate) fn append_latest(state_path: &Path, state: &HarnessState) -> Result<(), String> {
+    if let Some(event) = &state.last_pet_event {
+        append_event(state_path, event)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn append_event(state_path: &Path, event: &PetEvent) -> Result<(), String> {
+    let path = event_log_path(state_path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|error| error.to_string())?;
+    let line = serde_json::to_string(event).map_err(|error| error.to_string())?;
+    writeln!(file, "{line}").map_err(|error| error.to_string())
+}
+
+pub(crate) fn event_log_path(state_path: &Path) -> PathBuf {
+    state_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("pet-events.jsonl")
 }
 
 pub(crate) fn summary_text(value: &str) -> String {
@@ -23,4 +54,21 @@ pub(crate) fn summary_text(value: &str) -> String {
         summary.push_str("...");
     }
     summary
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pet_event_log_path_sits_next_to_state() {
+        assert_eq!(
+            event_log_path(Path::new(".octopus/state.json")),
+            PathBuf::from(".octopus/pet-events.jsonl")
+        );
+        assert_eq!(
+            event_log_path(Path::new("state.json")),
+            PathBuf::from("pet-events.jsonl")
+        );
+    }
 }

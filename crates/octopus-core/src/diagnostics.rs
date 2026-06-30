@@ -2,6 +2,7 @@ use octopus_core::{
     HarnessState, TentacleManifestReport, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
 };
 use serde::Serialize;
+use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -215,6 +216,7 @@ fn field_evolution_surface_check(manifests: &[TentacleManifestReport]) -> Strate
 fn desktop_pet_observer_check(state_path: &Path, state: &HarnessState) -> StrategyDiagnosticCheck {
     let last = state.last_pet_event.as_ref();
     let fresh = last.map(pet_event_fresh).unwrap_or(false);
+    let log_evidence = pet_event_log_evidence(state_path);
     let healthy_state = last
         .map(|event| {
             matches!(
@@ -244,19 +246,38 @@ fn desktop_pet_observer_check(state_path: &Path, state: &HarnessState) -> Strate
         evidence: last
             .map(|event| {
                 format!(
-                    "state_path={}; fresh={}; last={} {}/{}",
+                    "state_path={}; fresh={}; {}; last={} {}/{}",
                     state_path.display(),
                     fresh,
+                    log_evidence,
                     event.state,
                     event.source,
                     event.summary
                 )
             })
-            .unwrap_or_else(|| format!("state_path={}; last=none", state_path.display())),
+            .unwrap_or_else(|| {
+                format!(
+                    "state_path={}; {}; last=none",
+                    state_path.display(),
+                    log_evidence
+                )
+            }),
         next:
             "run a real goal/evolution step and confirm it records a live pet event in state.json"
                 .to_string(),
     }
+}
+
+fn pet_event_log_evidence(state_path: &Path) -> String {
+    let path = crate::pet_events::event_log_path(state_path);
+    let Ok(content) = fs::read_to_string(&path) else {
+        return format!("event_log={} missing", path.display());
+    };
+    let count = content
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .count();
+    format!("event_log={} count={count}", path.display())
 }
 
 fn pet_event_fresh(event: &octopus_core::PetEvent) -> bool {

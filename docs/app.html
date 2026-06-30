@@ -472,7 +472,7 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const statePath = ".octopus/state.json";
+      let statePath = ".octopus/state.json";
       const storageKeys = {
         goal: "octopus.app.goal"
       };
@@ -523,6 +523,19 @@
 
       function baseArgs() {
         return ["--state", statePath, "--json"];
+      }
+
+      async function loadBridgeConfig() {
+        try {
+          const response = await fetch(defaultBridge().replace(/\/$/, "") + "/api/config");
+          if (!response.ok) return;
+          const config = await response.json();
+          if (config && config.state_path) {
+            statePath = config.state_path;
+          }
+        } catch (_) {
+          // File preview fallback keeps the default local state path.
+        }
       }
 
       function goalText() {
@@ -828,7 +841,8 @@
         });
       }
 
-      function runStartupSnapshot() {
+      async function runStartupSnapshot() {
+        await loadBridgeConfig();
         refresh();
       }
 
