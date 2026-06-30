@@ -28,6 +28,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
             "clean-brain-loop",
         ),
         path_report(
+            root.join("crates/octopus-core/src/brain_goal_surface.rs"),
+            "brain-goal-surface",
+        ),
+        path_report(
             root.join("crates/octopus-core/src/llm_provider.rs"),
             "llm-provider",
         ),

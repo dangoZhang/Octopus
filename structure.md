@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-07-01, after modular evolution/pet diagnostics refactor and LLM evolution planner/contract/recommend/prompt/candidate/artifact/patch/target plus tentacle scaffold, brain loop, Need queue, Need runner, route surface, state-report, status surface, field surface, product surface, preflight surface, doctor surface, strategy surface, LLM provider, LLM layer routing, manifest catalog, manifest tentacle runtime, pet observation surface, and provider surface extraction.
+Updated: 2026-07-01, after Brain/Goal command surface extraction plus modular evolution/pet diagnostics refactor, LLM evolution planner/contract/recommend/prompt/candidate/artifact/patch/target, tentacle scaffold, brain loop, Need queue, Need runner, route surface, state-report, status surface, field surface, product surface, preflight surface, doctor surface, strategy surface, LLM provider, LLM layer routing, manifest catalog, manifest tentacle runtime, pet observation surface, and provider surface extraction.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -19,6 +19,8 @@ Octopus/
 │       ├── lib.rs             Kernel contracts, state mutation, routes, traces, public kernel API.
 │       ├── main.rs            CLI/product backend aggregation and command dispatch.
 │       ├── app_bridge.rs      Local app bridge, HTTP/SSE, `/api/config`, embedded assets, bridge policy.
+│       ├── brain_goal_surface.rs
+│       │                      Brain/Goal command handling, Goal editing, Brain session/report printing, Need audit display.
 │       ├── brain_loop.rs      Clean-brain Goal/Mem/Need/Feed loop and Need report builders.
 │       ├── bundled_harness.rs Installed-binary seed harness materializer, including field-mini-task and fixtures.
 │       ├── core_boundary.rs   Stable-core vs editable-harness boundary diagnostics.
@@ -124,6 +126,7 @@ Octopus/
 | --- | --- | --- | ---: |
 | Stable kernel | Goal/Need/Feed contracts, state mutation, route scores, memory, Feed traces, and public kernel API | `crates/octopus-core/src/lib.rs` | 8,999 |
 | Clean brain loop boundary | Converts Goal/Mem/recent Feed into clean cognitive Needs and Goal refinement reports. This is the debug entry when Brain output leaks tool choreography or over-specific implementation steps. | `brain_loop.rs`, `BrainExploreReport`, `BrainGoalReport`, `BrainContextReport` | 1,082 |
+| Brain/Goal command surface | Owns user Goal editing, Brain command validation, Brain session/report dispatch, clean-brain Need audit rendering, and Goal text output. This is the debug entry when the user can change more than Goal, Brain modes leak into the product surface, or Goal/Need audit text is confusing. | `brain_goal_surface.rs`, `handle_goal_command`, `handle_brain_command`, `print_brain_*`, `print_goal` | 1,610 |
 | LLM provider boundary | Shared model request substrate for brain and tentacle intelligence: ChatClient contract, OpenAI-compatible config/body parsing, Codex CLI prompt-file execution, retries, timeout, and Plan JSON recovery. This is the debug entry when model calls, local model routing, or provider response parsing fail. | `llm_provider.rs`, `ChatClient`, `OpenAiCompatibleChatClient`, `CodexCliChatClient`, `ChatPlanner` | 704 |
 | LLM layer routing | Maps configured provider prefixes into chat, clean-brain, tentacle-planning, and harness-evolution clients. This is the debug entry when the provider works but one Octopus layer uses the wrong prefix or disabled layer. | `llm_layers.rs`, `BrainLlmPrefixOverride`, `manifest_llm_factory`, `clean_brain_*_llm_client` | 300 |
 | Provider surface boundary | User-facing provider profiles, `.octopus/llm.env` generation, secret-safe key save, provider check/status, provider matrix evidence, and client factory selection for brain, tentacle, and harness evolution layers. | `provider_surface.rs`, `ProviderProfile`, `ProviderStatusReport`, `ProviderMatrixReport`, `provider_client_factory` | 1,887 |
@@ -155,7 +158,7 @@ Octopus/
 | Evolution target boundary | Resolves manifest editable targets, field-pack targets, repair-template wildcard scopes, candidate target files, and field-name scopes for patch/prompt/candidate modules. | `evolution_target.rs` | 318 |
 | Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, and compile/execute template checks | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 5,357 |
 | Field adaptation surface | CLI/report rendering for field packs, field matching, field trajectory summaries, verifier results, parallel field worker slots, field-pool latest activity, and user-visible field status lines. This is the debug entry when field state exists but the app/CLI explains the wrong active domain or worker slot. | `field_surface.rs`, `FieldMatchReport`, `print_field_trajectory_report`, `field_pool_status_line`, `parallel_run_status_line` | 464 |
-| CLI and product backend | Command dispatch, Goal/chat/brain, starter/install/check flows, repair/evolve commands, and surface entry dispatch | `crates/octopus-core/src/main.rs` | 30,242 |
+| CLI and product backend | Command dispatch, chat, starter/install/check flows, repair/evolve commands, and surface entry dispatch. Goal and Brain command logic now live in `brain_goal_surface.rs`. | `crates/octopus-core/src/main.rs` | 28,556 |
 | Provider env | Loads `.octopus/llm.env` for CLI commands with a scoped guard; existing shell variables win, and values are restored after command execution | `provider_env.rs`, `app_bridge.rs::parse_env_overlay` | 107 |
 | Local app bridge | Local HTTP/SSE server, `/api/config` state-path injection, app policy, command allow-list, embedded app/docs/showcase assets, read-only pet supervision access, field activity observer with fresh pet-event handling | `app_bridge.rs`, `docs/app.html` | 2,027 |
 | Release and install gates | Low-level release records, benchmark evidence, download/install manifest, and real-machine record parsing used by the preflight surface | `release_gate.rs`, `preflight_surface.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 2,312 |
@@ -184,6 +187,7 @@ These should remain stable and hard to accidentally mutate:
 - Product report field-pool block: required v0.2 peer fields plus expansion packs such as write and translate, latest worker execution-slot count, latest field activity, active slot, and worker-slot policy.
 - Route scoring, memory/heartbeat state, grants, permissions.
 - Clean brain loop rule: `brain_loop.rs` may produce Goal reports and Need suggestions, but its Brain context must stay `Goal + Mem + Need + Feed`.
+- Brain/Goal surface rule: `brain_goal_surface.rs` owns Goal editing, Brain command mode validation, Brain session/report dispatch, and clean-brain Need audit rendering. It must not execute tools, mutate Feed traces directly, or become a user control panel beyond Goal changes.
 - LLM provider rule: `llm_provider.rs` owns shared model request, retry, timeout, response-content extraction, and Plan JSON recovery. Brain/tentacle modules may call this boundary but should not hand-roll provider requests.
 - LLM layer routing rule: `llm_layers.rs` owns chat/brain/manifest/evolve prefix selection, enable flags, and client factories. Provider setup lives in `provider_surface.rs`; request execution lives in `llm_provider.rs`.
 - Provider surface rule: `provider_surface.rs` owns provider profiles, env-file generation, secret-safe key save, provider status/check/matrix reports, and client factory selection. CLI/app surfaces may present this data but should not duplicate provider setup logic.
@@ -240,6 +244,7 @@ Use this before changing UI or harness code:
 | Pet red/blocked during checking | `stage=checking`, `error_class=check_failed` | Harness patch applied but its declared check failed | tentacle check policy or editable harness code |
 | Pet red/blocked during feeding | `stage=feeding`, `error_class=feed_missing_queued_need` | No queued Need actually reached Feed; the system must not report fake success | `evolution_feed.rs` queued-Need boundary |
 | Pet shows Need but no Feed follows | inspect `NeedRunReport`, latest pet event, and `.octopus/state.json` around the queue item | Queued Need was taken but did not reach `feed_one`, or observer state was not saved after Feed | `need_runner.rs`, affected manifest runtime |
+| User can change too many things, or Brain/Goal text is confusing | `octopus goal --json`, `octopus brain --session --json`, then compare printed output | Goal/Brain surface leaked internal modes into the user path, or audit text hid polluted Needs | `brain_goal_surface.rs`; Need generation stays in `brain_loop.rs` |
 | Brain suggests tool steps instead of Needs | inspect `brain/context` report and Need audit | Clean-brain loop leaked implementation details into Need | `brain_loop.rs` |
 | LLM call hangs or returns empty/invalid content | inspect provider env and provider response error | Request timeout, retry, response extraction, or JSON recovery failed | `llm_provider.rs`, `provider_env.rs` |
 | Provider appears configured but brain/tentacle/evolution layer does not use it | `octopus provider status --json`, `octopus provider check <PREFIX>`, provider matrix record | Profile/env/status or layer prefix selection is wrong | `provider_surface.rs`, `llm_layers.rs`, `.octopus/llm.env`, `.octopus/providers/*.env` |
@@ -259,6 +264,7 @@ Where they live:
 - `crates/octopus-core/src/lib.rs`
 - `crates/octopus-core/src/main.rs`
 - `crates/octopus-core/src/app_bridge.rs`
+- `crates/octopus-core/src/brain_goal_surface.rs`
 - `crates/octopus-core/src/brain_loop.rs`
 - `crates/octopus-core/src/doctor_surface.rs`
 - `crates/octopus-core/src/llm_layers.rs`
@@ -369,8 +375,8 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 50 | 58,961 |
-| `crates/octopus-core/examples` | 1 | 27 |
+| `crates/octopus-core/src` | 51 | 58,889 |
+| `crates/octopus-core/examples` | 0 | 0 |
 | `tentacles` | 83 | 18,974 |
 | `field-packs` | 14 | 598 |
 | `desktop/pet` | 1 | 841 |
@@ -382,9 +388,10 @@ field-packs/
 
 | File | Lines |
 | --- | ---: |
-| `main.rs` | 30,242 |
+| `main.rs` | 28,556 |
 | `lib.rs` | 8,999 |
 | `provider_surface.rs` | 1,887 |
+| `brain_goal_surface.rs` | 1,610 |
 | `app_bridge.rs` | 1,167 |
 | `preflight_surface.rs` | 1,101 |
 | `manifest_runtime.rs` | 1,090 |
@@ -417,7 +424,7 @@ field-packs/
 | `need_queue.rs` | 234 |
 | `evolution_candidate.rs` | 233 |
 | `evolution_contract.rs` | 222 |
-| `core_boundary.rs` | 195 |
+| `core_boundary.rs` | 199 |
 | `download.rs` | 175 |
 | `evolution_cycle.rs` | 153 |
 | `route_surface.rs` | 143 |
