@@ -1,6 +1,6 @@
 use crate::{
-    authorized_apply_patch, kind_key, one_line, EvolutionApplyArtifact, EvolutionApplyPlan,
-    EvolutionArtifact, EvolutionPatchCandidate, EvolutionPatchFeedback, Status,
+    evolution_patch::authorized_apply_patch, kind_key, one_line, EvolutionApplyArtifact,
+    EvolutionApplyPlan, EvolutionArtifact, EvolutionPatchCandidate, EvolutionPatchFeedback, Status,
     TentacleEvolutionProposal,
 };
 use std::fs;

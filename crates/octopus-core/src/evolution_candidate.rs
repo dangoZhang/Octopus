@@ -1,8 +1,8 @@
 use crate::{
-    clean_suggested_patch, diff_paths, evolution, evolution_candidate_feedback_from_proposal,
-    evolution_candidate_target_files, field_pack_evolution_target, patch_display_path,
-    push_unique_limited, EvolutionPatchCandidate, EvolutionPatchDraft, EvolutionSurface,
-    TentacleEvolutionProposal,
+    evolution, evolution_candidate_feedback_from_proposal, evolution_candidate_target_files,
+    evolution_patch::{clean_suggested_patch, diff_paths, patch_display_path},
+    field_pack_evolution_target, push_unique_limited, EvolutionPatchCandidate, EvolutionPatchDraft,
+    EvolutionSurface, TentacleEvolutionProposal,
 };
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
