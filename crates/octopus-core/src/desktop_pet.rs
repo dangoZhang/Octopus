@@ -299,6 +299,15 @@ mod tests {
     }
 
     #[test]
+    fn desktop_pet_source_does_not_use_stale_feed_as_live_state() {
+        assert!(!DESKTOP_PET_SOURCE.contains("latestFeed != nil"));
+        assert!(!DESKTOP_PET_SOURCE.contains("text(latestFeed?[\"need_query\"])"));
+        assert!(!DESKTOP_PET_SOURCE.contains("text(latestFeed?[\"tentacle\"])"));
+        assert!(DESKTOP_PET_SOURCE.contains("eventFresh, let eventState = eventState"));
+        assert!(DESKTOP_PET_SOURCE.contains("snapshot.showActionBubbles = eventBubbleFresh"));
+    }
+
+    #[test]
     fn desktop_pet_source_maps_worker_windows_to_their_status() {
         assert!(DESKTOP_PET_SOURCE.contains("workerStates"));
         assert!(DESKTOP_PET_SOURCE.contains("latestWorkerStates"));

@@ -109,7 +109,6 @@ func loadSnapshot(config: AppConfig) -> PetSnapshot {
     let goalText = goalDisplay(goal) ?? fallback.goal
     let goalStatus = text(goal?["status"])?.lowercased()
     let pendingNeed = latestNeed(root)
-    let latestFeed = lastDict(root["feed_traces"])
     let latestVerifier = lastDict(root["field_verifier_results"])
     let latestRun = lastDict(root["parallel_evolution_runs"])
     let fieldPool = observeFieldPool(root)
@@ -142,12 +141,10 @@ func loadSnapshot(config: AppConfig) -> PetSnapshot {
     snapshot.source = (eventFresh ? text(lastEvent?["source"]) : nil)
         ?? firstNonEmpty(workerSources)
         ?? (runHasActiveWorker ? latestWorkerId(from: latestRun) : nil)
-        ?? text(latestFeed?["tentacle"])
         ?? fallback.source
     snapshot.need = pendingNeed
         ?? firstNonEmpty(workerNeeds)
         ?? (freshNeedEvent ? eventSummary : nil)
-        ?? text(latestFeed?["need_query"])
         ?? ""
     snapshot.showNeedBubble = pendingNeed != nil || firstNonEmpty(workerNeeds) != nil || (freshNeedEvent && eventSummary != nil)
 
@@ -162,8 +159,6 @@ func loadSnapshot(config: AppConfig) -> PetSnapshot {
         snapshot.state = eventState
     } else if runHasActiveWorker {
         snapshot.state = "harness"
-    } else if latestFeed != nil {
-        snapshot.state = "feed"
     } else if memoryCount(root) > 0 {
         snapshot.state = "memory"
     }

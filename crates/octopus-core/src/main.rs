@@ -45,10 +45,12 @@ mod core_boundary;
 mod desktop_pet;
 mod diagnostics;
 mod download;
+mod evolution_driver;
 mod pet;
 mod pet_events;
 mod pet_supervision;
 mod profile_registry;
+mod provider_env;
 mod release_gate;
 mod shell_words;
 use app_bridge::run_start as run_app_bridge_start;
@@ -64,6 +66,9 @@ use desktop_pet::{
     desktop_pet_source_check, launch_desktop_pet, DesktopPetConfig, DesktopPetReport,
 };
 use download::{download_artifacts_preflight_check, download_report, DownloadReport};
+use evolution_driver::{
+    drive_evolution_cycle, parse_evolution_drive_args, print_evolution_drive_report,
+};
 #[cfg(test)]
 use pet::percent_encode_path;
 use pet::{default_pet_image_path, write_pet_image_report, PetImageReport, PetReport};
@@ -1293,6 +1298,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         println!("octopus {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
+    let _provider_env = provider_env::ProviderEnvGuard::auto(DEFAULT_PROVIDER_ENV_PATH);
 
     let mut state = PathBuf::from(".octopus/state.json");
     let mut json = false;
@@ -1664,6 +1670,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .and_then(|value| resolve_feed_trace_selector(value, &loaded))?;
             let outcome = loaded.record_feed_feedback(trace_index, status, summary)?;
             loaded.save(&state).map_err(|error| error.to_string())?;
+            pet_events::append_latest(&state, &loaded)?;
             if json {
                 println!(
                     "{}",
@@ -1689,6 +1696,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .state
                 .save(&state)
                 .map_err(|error| error.to_string())?;
+            pet_events::append_latest(&state, &harness.state)?;
             if json {
                 println!(
                     "{}",
@@ -3689,6 +3697,19 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 } else {
                     print_parallel_evolution_run(&run, desktop_pet.as_ref(), language);
                     print_need_run_batch_report(&auto_feed, language);
+                }
+                return Ok(());
+            }
+            if rest.get(1).map(String::as_str) == Some("drive") {
+                let args = parse_evolution_drive_args(&rest[2..])?;
+                let report = drive_evolution_cycle(&state, args)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_evolution_drive_report(&report, language);
                 }
                 return Ok(());
             }
@@ -22968,7 +22989,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair apply [query] | repair verify [query] | repair continue [query] [--score status [summary]] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers 1..8]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | diagnose strategy | pet [state]|pet supervise|pet events [limit]|pet desktop [--workers 1..8]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers 1..8] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair apply [query] | repair verify [query] | repair continue [query] [--score status [summary]] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers 1..8]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | diagnose strategy | pet [state]|pet supervise|pet events [limit]|pet desktop [--workers 1..8]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers 1..8] [objective] | evolve drive [--open] [--workers 1..8] <tentacle> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -23583,6 +23604,7 @@ mod tests {
         NeedRunBatchReport, NeedRunReport, NeedRunRequest, NeedRunSelector, MAX_WORKER_COUNT,
     };
     use crate::contains_field_mini_marker;
+    use crate::evolution_driver::parse_evolution_drive_args;
     use octopus_core::{
         default_field_pack_catalog, default_tentacle_profiles, load_tentacle_manifests,
         load_tentacle_profiles_from_path, parallel_field_pool_policy, parallel_worker_policy,
@@ -24511,6 +24533,33 @@ mod tests {
         assert!(
             parse_parallel_evolution_args(&["--workers".to_string(), "99".to_string()]).is_err()
         );
+    }
+
+    #[test]
+    fn evolution_drive_args_validate_worker_slots_and_tentacle() {
+        let parsed = parse_evolution_drive_args(&[
+            "--open".to_string(),
+            "--workers".to_string(),
+            "2".to_string(),
+            "field-mini-task".to_string(),
+            "add".to_string(),
+            "swe".to_string(),
+            "mini".to_string(),
+        ])
+        .unwrap();
+
+        assert!(parsed.open_pet);
+        assert_eq!(parsed.workers, 2);
+        assert_eq!(parsed.tentacle_id, "field-mini-task");
+        assert_eq!(parsed.objective, "add swe mini");
+        assert!(parse_evolution_drive_args(&[]).is_err());
+        assert!(parse_evolution_drive_args(&["--workers".to_string()]).is_err());
+        assert!(parse_evolution_drive_args(&[
+            "--workers".to_string(),
+            "99".to_string(),
+            "field-mini-task".to_string()
+        ])
+        .is_err());
     }
 
     #[test]

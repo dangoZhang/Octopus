@@ -1819,12 +1819,18 @@ impl CodexCliChatClient {
                 .unwrap_or_default()
         );
         let output_path = env::temp_dir().join(format!("octopus-codex-provider-{temp_suffix}.txt"));
+        let prompt_path =
+            env::temp_dir().join(format!("octopus-codex-provider-{temp_suffix}.prompt"));
         let stdout_path =
             env::temp_dir().join(format!("octopus-codex-provider-{temp_suffix}.stdout"));
         let stderr_path =
             env::temp_dir().join(format!("octopus-codex-provider-{temp_suffix}.stderr"));
         let prompt = Self::prompt(messages);
+        fs::write(&prompt_path, prompt)
+            .map_err(|error| format!("failed to write codex prompt file: {error}"))?;
         let mut command = Command::new(&self.config.command);
+        let prompt_file = fs::File::open(&prompt_path)
+            .map_err(|error| format!("failed to open codex prompt file: {error}"))?;
         let stdout_file = fs::File::create(&stdout_path)
             .map_err(|error| format!("failed to create codex stdout capture: {error}"))?;
         let stderr_file = fs::File::create(&stderr_path)
@@ -1844,16 +1850,11 @@ impl CodexCliChatClient {
         }
         let mut child = command
             .arg("-")
-            .stdin(Stdio::piped())
+            .stdin(Stdio::from(prompt_file))
             .stdout(Stdio::from(stdout_file))
             .stderr(Stdio::from(stderr_file))
             .spawn()
             .map_err(|error| format!("{} failed to start: {error}", self.config.command))?;
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin
-                .write_all(prompt.as_bytes())
-                .map_err(|error| format!("failed to write codex prompt: {error}"))?;
-        }
         let deadline = Instant::now() + Duration::from_secs(self.config.timeout_seconds.max(1));
         let status = loop {
             if let Some(status) = child
@@ -1865,6 +1866,7 @@ impl CodexCliChatClient {
             if Instant::now() >= deadline {
                 let _ = child.kill();
                 let _ = child.wait();
+                let _ = fs::remove_file(&prompt_path);
                 let _ = fs::remove_file(&output_path);
                 let _ = fs::remove_file(&stdout_path);
                 let _ = fs::remove_file(&stderr_path);
@@ -1875,6 +1877,7 @@ impl CodexCliChatClient {
             }
             thread::sleep(Duration::from_millis(50));
         };
+        let _ = fs::remove_file(&prompt_path);
         let stdout = fs::read_to_string(&stdout_path).unwrap_or_default();
         let stderr = fs::read_to_string(&stderr_path).unwrap_or_default();
         let _ = fs::remove_file(&stdout_path);
@@ -9047,6 +9050,7 @@ fn normalize_new_file_hunks(patch: &str) -> String {
     let mut normalized = Vec::new();
     let mut pending_new_file = false;
     let mut current_file_is_new = false;
+    let mut current_file_has_new_mode = false;
     let mut in_new_file_hunk = false;
     for line in patch.lines() {
         let line = if in_new_file_hunk && line.starts_with("+diff --git ") {
@@ -9057,7 +9061,13 @@ fn normalize_new_file_hunks(patch: &str) -> String {
         if line.starts_with("diff --git ") {
             pending_new_file = false;
             current_file_is_new = false;
+            current_file_has_new_mode = false;
             in_new_file_hunk = false;
+            normalized.push(line.to_string());
+            continue;
+        }
+        if line.starts_with("new file mode ") {
+            current_file_has_new_mode = true;
             normalized.push(line.to_string());
             continue;
         }
@@ -9065,6 +9075,10 @@ fn normalize_new_file_hunks(patch: &str) -> String {
             pending_new_file = true;
             current_file_is_new = false;
             in_new_file_hunk = false;
+            if !current_file_has_new_mode {
+                normalized.push("new file mode 100644".to_string());
+                current_file_has_new_mode = true;
+            }
             normalized.push(line.to_string());
             continue;
         }
@@ -14542,6 +14556,41 @@ mod tests {
         assert!(patch.contains("+    pass"));
         assert!(patch.contains("\ndiff --git a/tentacles/field-mini-task/repair-templates/translate/translate-mini-2.pyfrag"));
         assert!(!patch.contains("\n+diff --git"));
+    }
+
+    #[test]
+    fn clean_suggested_patch_adds_missing_new_file_mode() {
+        if !command_available("git") {
+            return;
+        }
+        let workspace =
+            std::env::temp_dir().join(format!("octopus-new-file-mode-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&workspace);
+        fs::create_dir_all(&workspace).unwrap();
+        let patch = clean_suggested_patch(Some(
+            "diff --git a/new.txt b/new.txt\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1 @@\nhello\n"
+                .to_string(),
+        ))
+        .unwrap();
+        let patch_path = workspace.join("patch.diff");
+        fs::write(&patch_path, &patch).unwrap();
+        let output = Command::new("git")
+            .arg("apply")
+            .arg("--check")
+            .arg("--recount")
+            .arg("--unidiff-zero")
+            .arg(&patch_path)
+            .current_dir(&workspace)
+            .output()
+            .unwrap();
+
+        assert!(patch.contains("new file mode 100644\n--- /dev/null"));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let _ = fs::remove_dir_all(workspace);
     }
 
     #[test]
