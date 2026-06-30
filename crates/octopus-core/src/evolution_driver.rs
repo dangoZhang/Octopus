@@ -1,4 +1,3 @@
-use crate::desktop_pet::DesktopPetReport;
 use crate::evolution_apply::{
     apply_authorized_suggested_patch, live_apply_summary, EvolutionLiveApplyReport,
 };
@@ -6,80 +5,14 @@ use crate::evolution_cycle::{
     classify_apply_status, classify_planner_error, record_stage_event,
     record_stage_event_with_error, EvolutionDriveStage,
 };
+use crate::evolution_drive_surface::{EvolutionDriveArgs, EvolutionDriveReport};
 use crate::evolution_feed::{run_field_mini_task_feed_cycle, EvolutionFeedCycleArgs};
 use crate::evolution_plan::{recommend_current_patch, retry_apply_objective};
 use crate::shell_words::shell_arg;
-use crate::{
-    check_report, parse_worker_count_1_to_8, pet_events, record_check_report, CheckReport,
-    Language, NeedRunBatchReport,
-};
-use octopus_core::{
-    EvolutionApplyArtifact, EvolutionArtifact, EvolutionRecommendation, FieldTrajectoryReport,
-    HarnessState, ParallelEvolutionRun, Status,
-};
+use crate::{check_report, pet_events, record_check_report};
+use octopus_core::{HarnessState, Status};
 use std::env;
 use std::path::Path;
-
-#[derive(Debug, serde::Serialize)]
-pub(crate) struct EvolutionDriveReport {
-    tentacle_id: String,
-    objective: String,
-    stage: String,
-    recommendation: Option<EvolutionRecommendation>,
-    evolution_artifact: Option<EvolutionArtifact>,
-    apply_artifact: Option<EvolutionApplyArtifact>,
-    live_apply: Option<EvolutionLiveApplyReport>,
-    check: Option<CheckReport>,
-    run: Option<ParallelEvolutionRun>,
-    auto_feed: Option<NeedRunBatchReport>,
-    desktop_pet: Option<DesktopPetReport>,
-    field_summary: Option<FieldTrajectoryReport>,
-    next: Vec<String>,
-}
-
-#[derive(Debug)]
-pub(crate) struct EvolutionDriveArgs {
-    pub(crate) open_pet: bool,
-    pub(crate) workers: usize,
-    pub(crate) tentacle_id: String,
-    pub(crate) objective: String,
-}
-
-pub(crate) fn parse_evolution_drive_args(values: &[String]) -> Result<EvolutionDriveArgs, String> {
-    let mut open_pet = false;
-    let mut workers = 1usize;
-    let mut rest = Vec::new();
-    let mut index = 0;
-    while index < values.len() {
-        match values[index].as_str() {
-            "--open" => open_pet = true,
-            "--workers" => {
-                index += 1;
-                let value = values
-                    .get(index)
-                    .ok_or_else(|| "evolve drive --workers requires 1..8".to_string())?;
-                workers = parse_worker_count_1_to_8(value)?;
-            }
-            value => rest.push(value.to_string()),
-        }
-        index += 1;
-    }
-    let tentacle_id = rest
-        .first()
-        .cloned()
-        .ok_or_else(|| "evolve drive requires a tentacle id".to_string())?;
-    let objective = rest
-        .get(1..)
-        .filter(|values| !values.is_empty())
-        .map(|values| values.join(" "))
-        .unwrap_or_else(|| "drive one autonomous harness evolution cycle".to_string());
-    Ok(EvolutionDriveArgs {
-        open_pet,
-        workers,
-        tentacle_id,
-        objective,
-    })
-}
 
 pub(crate) fn drive_evolution_cycle(
     state_path: &Path,
@@ -316,45 +249,6 @@ pub(crate) fn drive_evolution_cycle(
     Ok(report)
 }
 
-pub(crate) fn print_evolution_drive_report(report: &EvolutionDriveReport, language: Language) {
-    match language {
-        Language::En => {
-            println!("tentacle: {}", report.tentacle_id);
-            println!("stage: {}", report.stage);
-            if let Some(recommendation) = &report.recommendation {
-                println!("recommended: {}", recommendation.candidate_id);
-            }
-            if let Some(live_apply) = &report.live_apply {
-                println!("apply: {}", live_apply.status);
-            }
-            if let Some(check) = &report.check {
-                println!("check: {}", if check.passed { "pass" } else { "fail" });
-            }
-            if let Some(auto_feed) = &report.auto_feed {
-                println!("feeds: {}", auto_feed.ran);
-            }
-            println!("next: {}", join_or_none(&report.next));
-        }
-        Language::Zh => {
-            println!("触手: {}", report.tentacle_id);
-            println!("阶段: {}", report.stage);
-            if let Some(recommendation) = &report.recommendation {
-                println!("推荐: {}", recommendation.candidate_id);
-            }
-            if let Some(live_apply) = &report.live_apply {
-                println!("应用: {}", live_apply.status);
-            }
-            if let Some(check) = &report.check {
-                println!("检查: {}", if check.passed { "通过" } else { "失败" });
-            }
-            if let Some(auto_feed) = &report.auto_feed {
-                println!("Feed: {}", auto_feed.ran);
-            }
-            println!("下一步: {}", join_or_none(&report.next));
-        }
-    }
-}
-
 fn record_drive_event(
     state_path: &Path,
     state: &mut HarnessState,
@@ -421,12 +315,4 @@ fn record_apply_event(
         error_class,
     )
     .map(|_| ())
-}
-
-fn join_or_none(values: &[String]) -> String {
-    if values.is_empty() {
-        "none".to_string()
-    } else {
-        values.join("; ")
-    }
 }

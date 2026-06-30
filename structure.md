@@ -27,6 +27,7 @@ Octopus/
 │       ├── evolution.rs       Manifest-owned evolution surface requirement validation.
 │       ├── evolution_apply.rs Authorized provider patch apply/check execution for harness evolution.
 │       ├── evolution_cycle.rs Stage/error contract for autonomous evolution and pet-visible diagnostics.
+│       ├── evolution_drive_surface.rs CLI/report surface for `evolve drive`.
 │       ├── evolution_driver.rs One-cycle autonomous harness evolution driver: LLM recommendation, patch apply, check, Need/Feed, optional desktop pet.
 │       ├── evolution_feed.rs  Feed-stage runner for field mini-task evolution, worker state, and desktop observer launch.
 │       ├── evolution_plan.rs  LLM patch recommendation artifacts and apply-failure retry objective shaping.
@@ -101,7 +102,8 @@ Octopus/
 | Evolution apply boundary | Authorized provider patch application, `git apply --check`, reverse already-applied detection, summary helpers, safety tests, and live apply reports shared by CLI apply and autonomous drive | `evolution_apply.rs` | 282 |
 | Evolution cycle contract | Stage and error-class event contract for autonomous harness evolution. Pet observers now see whether a block happened in planning, applying, checking, or feeding, and whether it was provider timeout, provider error, patch apply, or check failure. | `evolution_cycle.rs`, `PetEvent.stage`, `PetEvent.error_class` | 153 |
 | Evolution planning boundary | LLM patch recommendation artifact writing and apply-failure retry objective shaping | `evolution_plan.rs` | 84 |
-| Evolution driver | Autonomous harness loop for one cycle: stage events, planning, apply, manifest checks, and Feed delegation. It no longer owns patch execution, Feed execution, or retry objective shaping. | `evolution_driver.rs` | 432 |
+| Evolution drive surface | CLI args, JSON report shape, and human-readable printing for `evolve drive` | `evolution_drive_surface.rs` | 115 |
+| Evolution driver | Autonomous harness loop for one cycle: stage events, planning, apply, manifest checks, and Feed delegation. It no longer owns CLI/report shape, patch execution, Feed execution, or retry objective shaping. | `evolution_driver.rs` | 318 |
 | Evolution Feed boundary | Field mini-task Feed execution, queued Need worker state, desktop pet launch, Feed event writes, and blocked reporting when no queued Need actually reaches Feed | `evolution_feed.rs` | 130 |
 | Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, field trajectory summaries, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, and compile/execute template checks | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 5,821 |
 | CLI and product backend | Command dispatch, Goal/chat/brain, provider setup, doctor/report/preflight aggregation, starter/install/check flows, field summary, repair/evolve commands, strategy diagnostics entry, pet event log and supervision viewer | `crates/octopus-core/src/main.rs` | 36,327 |
@@ -139,7 +141,8 @@ These should remain stable and hard to accidentally mutate:
 - Provider env rule: CLI reads `.octopus/llm.env` through `provider_env.rs`; explicit shell variables are never overwritten.
 - Evolution apply rule: provider patches are checked and applied only through `evolution_apply.rs`; CLI apply and autonomous drive share the same authorized patch execution path.
 - Evolution planning rule: recommendation artifacts and apply-failure retry objectives live in `evolution_plan.rs`; driver only asks for the next plan.
-- Evolution driver rule: `evolve drive` uses `evolution_cycle.rs` for stage/error events; `main.rs` only parses CLI and prints the report. Apply-check failures are fed back to the LLM once for a regenerated current-file patch.
+- Evolution drive surface rule: `evolve drive` CLI/report formatting lives in `evolution_drive_surface.rs`; stage execution stays in `evolution_driver.rs`.
+- Evolution driver rule: `evolve drive` uses `evolution_cycle.rs` for stage/error events. Apply-check failures are fed back to the LLM once for a regenerated current-file patch.
 - Patch apply rule: provider-created new-file patches are normalized before `git apply`; missing `new file mode 100644` is inserted when a diff uses `--- /dev/null`.
 - Provider timeout rule: Codex CLI prompts are passed through a temp prompt file, not blocking `stdin.write_all`; `OCTOPUS_LLM_TIMEOUT` and `OCTOPUS_LLM_RETRIES` can bound harness evolution calls.
 - Release gates: preflight, benchmark evidence, field-pool visibility, real-machine records, local app readiness.
@@ -168,6 +171,7 @@ Where they live:
 - `crates/octopus-core/src/evolution.rs`
 - `crates/octopus-core/src/evolution_apply.rs`
 - `crates/octopus-core/src/evolution_cycle.rs`
+- `crates/octopus-core/src/evolution_drive_surface.rs`
 - `crates/octopus-core/src/evolution_feed.rs`
 - `crates/octopus-core/src/evolution_plan.rs`
 - `crates/octopus-core/src/user_surface.rs`
@@ -179,7 +183,6 @@ Where they live:
 
 These remain intentionally visible:
 
-- `evolution_driver.rs` still owns CLI-ish report formatting. Next split should move report printing/shape out of the stage driver.
 - `evolution_feed.rs` is still field-mini-task specific. The next version should make Feed-stage runners manifest/routing owned so future field packs can choose their own Feed executor.
 - `lib.rs` still owns LLM evolution prompt construction, target-file context budget, candidate target parsing, artifact writing, patch authorization, and diff normalization. These belong outside the stable kernel once public API boundaries are safe.
 - Automatic `cargo test` next step is still suspicious for LLM-native self-evolution and should be removed or pushed into editable manifest/harness policy.
@@ -247,7 +250,7 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 23 | 58,622 |
+| `crates/octopus-core/src` | 24 | 58,623 |
 | `crates/octopus-core/examples` | 1 | 27 |
 | `tentacles` | 83 | 18,974 |
 | `field-packs` | 14 | 598 |
@@ -265,7 +268,7 @@ field-packs/
 | `app_bridge.rs` | 1,167 |
 | `field_pack.rs` | 868 |
 | `release_gate.rs` | 703 |
-| `evolution_driver.rs` | 432 |
+| `evolution_driver.rs` | 318 |
 | `pet_supervision.rs` | 518 |
 | `bundled_harness.rs` | 423 |
 | `desktop_pet.rs` | 377 |
@@ -275,6 +278,7 @@ field-packs/
 | `evolution_apply.rs` | 282 |
 | `evolution_cycle.rs` | 153 |
 | `evolution_feed.rs` | 130 |
+| `evolution_drive_surface.rs` | 115 |
 | `core_boundary.rs` | 123 |
 | `user_surface.rs` | 123 |
 | `provider_env.rs` | 107 |

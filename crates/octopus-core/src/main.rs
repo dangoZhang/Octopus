@@ -47,6 +47,7 @@ mod diagnostics;
 mod download;
 mod evolution_apply;
 mod evolution_cycle;
+mod evolution_drive_surface;
 mod evolution_driver;
 mod evolution_feed;
 mod evolution_plan;
@@ -73,9 +74,8 @@ use download::{download_artifacts_preflight_check, download_report, DownloadRepo
 use evolution_apply::{
     apply_authorized_suggested_patch, live_apply_candidate_summary, EvolutionLiveApplyReport,
 };
-use evolution_driver::{
-    drive_evolution_cycle, parse_evolution_drive_args, print_evolution_drive_report,
-};
+use evolution_drive_surface::{parse_evolution_drive_args, print_evolution_drive_report};
+use evolution_driver::drive_evolution_cycle;
 #[cfg(test)]
 use pet::percent_encode_path;
 use pet::{default_pet_image_path, write_pet_image_report, PetImageReport, PetReport};
@@ -23443,7 +23443,7 @@ mod tests {
         NeedRunBatchReport, NeedRunReport, NeedRunRequest, NeedRunSelector, MAX_WORKER_COUNT,
     };
     use crate::contains_field_mini_marker;
-    use crate::evolution_driver::parse_evolution_drive_args;
+    use crate::evolution_drive_surface::parse_evolution_drive_args;
     use octopus_core::{
         default_field_pack_catalog, default_tentacle_profiles, load_tentacle_manifests,
         load_tentacle_profiles_from_path, parallel_field_pool_policy, parallel_worker_policy,
