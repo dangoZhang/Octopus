@@ -51,6 +51,7 @@ mod evolution_drive_surface;
 mod evolution_driver;
 mod evolution_feed;
 mod evolution_plan;
+mod feedback_surface;
 mod field_surface;
 mod heartbeat_surface;
 mod llm_layers;
@@ -91,6 +92,7 @@ use evolution_apply::{
 };
 use evolution_drive_surface::{parse_evolution_drive_args, print_evolution_drive_report};
 use evolution_driver::drive_evolution_cycle;
+use feedback_surface::*;
 use field_surface::*;
 use heartbeat_surface::*;
 use llm_layers::*;
@@ -686,34 +688,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
-        Some("feedback") => {
-            let status = rest
-                .get(2)
-                .ok_or_else(|| "feedback requires a status".to_string())
-                .and_then(|value| parse_status(value))?;
-            let summary = rest
-                .get(3..)
-                .filter(|values| !values.is_empty())
-                .map(|values| values.join(" "))
-                .unwrap_or_else(|| "recorded feed feedback".to_string());
-            let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            let trace_index = rest
-                .get(1)
-                .ok_or_else(|| "feedback requires a feed trace index or latest".to_string())
-                .and_then(|value| resolve_feed_trace_selector(value, &loaded))?;
-            let outcome = loaded.record_feed_feedback(trace_index, status, summary)?;
-            loaded.save(&state).map_err(|error| error.to_string())?;
-            pet_events::append_latest(&state, &loaded)?;
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&outcome).map_err(|error| error.to_string())?
-                );
-            } else {
-                print_feed_feedback_outcome(&outcome, language);
-            }
-            Ok(())
-        }
+        Some("feedback") => handle_feedback_command(&rest, &state, json, language),
         Some("chat") => {
             let message = rest
                 .get(1..)
@@ -2172,27 +2147,6 @@ fn truncate_chars(value: &str, max: usize) -> String {
         output.push_str("...");
     }
     output
-}
-
-fn print_feed_feedback_outcome(outcome: &FeedFeedbackOutcome, language: Language) {
-    match language {
-        Language::En => {
-            println!("recorded feed feedback #{}", outcome.trace.index);
-            println!("status: {:?}", outcome.status);
-            if let Some(score) = outcome.route_score {
-                println!("route_score: {score:.2}");
-            }
-            println!("pet: {}", outcome.pet_event.state);
-        }
-        Language::Zh => {
-            println!("已记录 Feed 反馈 #{}", outcome.trace.index);
-            println!("状态: {:?}", outcome.status);
-            if let Some(score) = outcome.route_score {
-                println!("路由分数: {score:.2}");
-            }
-            println!("章鱼状态: {}", outcome.pet_event.state);
-        }
-    }
 }
 
 fn print_catalog(profiles: &[octopus_core::TentacleProfile], language: Language) {
