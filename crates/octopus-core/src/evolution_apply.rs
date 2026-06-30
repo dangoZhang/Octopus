@@ -1,5 +1,7 @@
 use crate::shell_words::shell_arg;
 use octopus_core::{EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionRecommendation};
+use std::collections::BTreeSet;
+use std::fs;
 use std::path::Path;
 use std::process::Command;
 
@@ -120,7 +122,55 @@ pub(crate) fn apply_authorized_suggested_patch(
             } else {
                 "failed".to_string()
             };
-            if !applied {
+            let mut stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let mut stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            if applied {
+                if let Err(error) = validate_field_pack_targets(cwd, plan) {
+                    let reverse = Command::new("git")
+                        .arg("apply")
+                        .arg("--reverse")
+                        .arg("--recount")
+                        .arg("--unidiff-zero")
+                        .arg(patch_path)
+                        .current_dir(cwd)
+                        .output();
+                    applied = false;
+                    match reverse {
+                        Ok(reverse) if reverse.status.success() => {
+                            status = "post_apply_validation_failed".to_string();
+                            stderr = join_stderr(
+                                &stderr,
+                                &format!("field-pack schema validation failed: {error}; patch was reversed"),
+                            );
+                            stdout =
+                                join_stdout(&stdout, &String::from_utf8_lossy(&reverse.stdout));
+                        }
+                        Ok(reverse) => {
+                            status = "post_apply_validation_failed_reverse_failed".to_string();
+                            stderr = join_stderr(
+                                &stderr,
+                                &format!(
+                                    "field-pack schema validation failed: {error}; reverse failed: {}",
+                                    String::from_utf8_lossy(&reverse.stderr)
+                                ),
+                            );
+                            stdout =
+                                join_stdout(&stdout, &String::from_utf8_lossy(&reverse.stdout));
+                        }
+                        Err(reverse_error) => {
+                            status = "post_apply_validation_failed_reverse_unavailable".to_string();
+                            stderr = join_stderr(
+                                &stderr,
+                                &format!(
+                                    "field-pack schema validation failed: {error}; reverse unavailable: {reverse_error}",
+                                ),
+                            );
+                        }
+                    }
+                }
+            }
+            let validation_failed = status.starts_with("post_apply_validation_failed");
+            if !applied && !validation_failed {
                 let reverse_check = Command::new("git")
                     .arg("apply")
                     .arg("--reverse")
@@ -142,8 +192,8 @@ pub(crate) fn apply_authorized_suggested_patch(
                 status,
                 command: Some(command_text),
                 patch_path: Some(patch_path.to_string()),
-                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                stdout,
+                stderr,
             }
         }
         Err(error) => EvolutionLiveApplyReport {
@@ -154,6 +204,78 @@ pub(crate) fn apply_authorized_suggested_patch(
             stdout: String::new(),
             stderr: error.to_string(),
         },
+    }
+}
+
+fn validate_field_pack_targets(cwd: &Path, plan: &EvolutionApplyPlan) -> Result<(), String> {
+    for target in field_pack_targets(plan) {
+        let path = cwd.join(&target);
+        let text = fs::read_to_string(&path).map_err(|error| format!("{target}: {error}"))?;
+        let value = serde_json::from_str::<serde_json::Value>(&text)
+            .map_err(|error| format!("{target}: invalid JSON: {error}"))?;
+        validate_field_pack_value(&target, &value)?;
+    }
+    Ok(())
+}
+
+fn field_pack_targets(plan: &EvolutionApplyPlan) -> Vec<String> {
+    let mut targets = BTreeSet::new();
+    for path in &plan.target_files {
+        let path = path.replace('\\', "/");
+        if path.starts_with("field-packs/") && path.ends_with("/field-pack.json") {
+            targets.insert(path);
+        }
+    }
+    let target = plan.target.split('#').next().unwrap_or(&plan.target);
+    let target = target.replace('\\', "/");
+    if target.starts_with("field-packs/") && target.ends_with("/field-pack.json") {
+        targets.insert(target);
+    }
+    targets.into_iter().collect()
+}
+
+fn validate_field_pack_value(target: &str, value: &serde_json::Value) -> Result<(), String> {
+    let Some(tasks) = value.get("mini_tasks") else {
+        return Err(format!("{target}: missing mini_tasks array"));
+    };
+    let Some(tasks) = tasks.as_array() else {
+        return Err(format!("{target}: mini_tasks must be an array"));
+    };
+    for (index, task) in tasks.iter().enumerate() {
+        let Some(task) = task.as_object() else {
+            return Err(format!("{target}: mini_tasks[{index}] must be an object"));
+        };
+        for key in ["id", "goal", "expected_feed"] {
+            if !task.get(key).is_some_and(|value| {
+                value
+                    .as_str()
+                    .map(|text| !text.trim().is_empty())
+                    .unwrap_or(false)
+            }) {
+                return Err(format!(
+                    "{target}: mini_tasks[{index}] missing non-empty {key}",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn join_stderr(existing: &str, detail: &str) -> String {
+    if existing.trim().is_empty() {
+        detail.to_string()
+    } else {
+        format!("{}\n{}", existing.trim_end(), detail)
+    }
+}
+
+fn join_stdout(existing: &str, detail: &str) -> String {
+    if existing.trim().is_empty() {
+        detail.to_string()
+    } else if detail.trim().is_empty() {
+        existing.to_string()
+    } else {
+        format!("{}\n{}", existing.trim_end(), detail)
     }
 }
 
@@ -233,6 +355,41 @@ mod tests {
         assert!(summary.contains("patch failed"));
     }
 
+    #[test]
+    fn apply_reverses_field_pack_patch_that_breaks_json() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolution-apply-field-pack-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("field-packs/translate")).unwrap();
+        run_git(&dir, &["init"]);
+        let pack_path = dir.join("field-packs/translate/field-pack.json");
+        let original = "{\n  \"id\": \"translate\",\n  \"mini_tasks\": []\n}\n";
+        fs::write(&pack_path, original).unwrap();
+        let patch_path = dir.join("candidate.patch");
+        fs::write(
+            &patch_path,
+            "diff --git a/field-packs/translate/field-pack.json b/field-packs/translate/field-pack.json\n--- a/field-packs/translate/field-pack.json\n+++ b/field-packs/translate/field-pack.json\n@@ -2,0 +3,1 @@\n+  ,{\"id\":\"bad\",\"goal\":\"bad\",\"expected_feed\":\"bad\"}\n",
+        )
+        .unwrap();
+        let mut plan = test_plan();
+        plan.candidate_id = "04-field-pack-tasks".to_string();
+        plan.target = "field-packs/translate/field-pack.json".to_string();
+        plan.target_files = vec!["field-packs/translate/field-pack.json".to_string()];
+        plan.suggested_patch = Some(fs::read_to_string(&patch_path).unwrap());
+        let artifact = test_artifact(Some(patch_path.to_str().unwrap()));
+
+        let report = apply_authorized_suggested_patch(&dir, &plan, &artifact);
+
+        assert!(!report.applied);
+        assert_eq!(report.status, "post_apply_validation_failed");
+        assert!(report.stderr.contains("invalid JSON"));
+        assert_eq!(fs::read_to_string(&pack_path).unwrap(), original);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
     fn test_plan() -> EvolutionApplyPlan {
         EvolutionApplyPlan {
             tentacle_id: "field-mini-task".to_string(),
@@ -278,5 +435,19 @@ mod tests {
             reason: "test".to_string(),
             apply: test_plan(),
         }
+    }
+
+    fn run_git(cwd: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 }

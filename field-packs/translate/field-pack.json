@@ -35,6 +35,11 @@
       "id": "translate-mini-3",
       "goal": "Translate two short policy sentences into Chinese, preserve required domain terms, keep ambiguity notes explicit, and return verifiable check artifacts.",
       "expected_feed": "A Chinese translation, complete term map, ambiguity notes, quality checks, and artifact-backed verifier evidence."
+    },
+    {
+      "id": "translate-mini-4",
+      "goal": "Translate a policy context sentence with strict term-preservation and explicit ambiguity handling, and require artifact-backed Feed evidence under .octopus/field-mini-task/.",
+      "expected_feed": "Return translation output, preserved-term map, ambiguity notes, explicit gap metadata when evidence is incomplete, and artifact path under .octopus/field-mini-task/ for verifier evidence."
     }
   ]
 }

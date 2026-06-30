@@ -73,6 +73,10 @@ pub(crate) fn classify_apply_status(status: &str, stderr: &str) -> String {
         "patch_not_authorized".to_string()
     } else if status.contains("no_suggested_patch") || status.contains("missing_patch") {
         "patch_missing".to_string()
+    } else if status.contains("post_apply_validation_failed")
+        || stderr.contains("field-pack schema validation failed")
+    {
+        "field_pack_schema_failed".to_string()
     } else if status.contains("check_failed") || stderr.contains("corrupt patch") {
         "patch_check_failed".to_string()
     } else if status.contains("failed_to_start") {
@@ -135,6 +139,17 @@ mod tests {
         assert_eq!(
             classify_apply_status("check_failed", "error: corrupt patch"),
             "patch_check_failed"
+        );
+    }
+
+    #[test]
+    fn field_pack_schema_failure_class_is_stable() {
+        assert_eq!(
+            classify_apply_status(
+                "post_apply_validation_failed",
+                "field-pack schema validation failed: invalid JSON",
+            ),
+            "field_pack_schema_failed"
         );
     }
 }
