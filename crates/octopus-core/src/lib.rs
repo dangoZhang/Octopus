@@ -9018,9 +9018,29 @@ fn evolution_candidate_feedback_from_proposal(
 }
 
 fn clean_suggested_patch(patch: Option<String>) -> Option<String> {
-    let patch = patch?;
+    normalize_suggested_patch_text(patch?.as_str())
+}
+
+fn normalize_suggested_patch_text(patch: &str) -> Option<String> {
     let patch = patch.trim();
-    (!patch.is_empty()).then(|| format!("{}\n", normalize_new_file_hunks(patch).trim()))
+    (!patch.is_empty()).then(|| {
+        let patch = normalize_patch_file_headers(patch);
+        format!("{}\n", normalize_new_file_hunks(&patch).trim())
+    })
+}
+
+fn normalize_patch_file_headers(patch: &str) -> String {
+    patch
+        .lines()
+        .map(|line| {
+            if line.trim_start().starts_with("diff --git ") {
+                line.trim_start()
+            } else {
+                line
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn normalize_new_file_hunks(patch: &str) -> String {
@@ -9218,7 +9238,8 @@ fn resolve_wildcard_targets(value: &str) -> Vec<PathBuf> {
 }
 
 fn provider_patch_for_plan(plan: &EvolutionApplyPlan, patch: &str) -> Option<String> {
-    let paths = diff_paths(patch);
+    let patch = normalize_suggested_patch_text(patch)?;
+    let paths = diff_paths(&patch);
     if paths.is_empty() {
         return None;
     }
@@ -9255,8 +9276,7 @@ fn provider_patch_for_plan(plan: &EvolutionApplyPlan, patch: &str) -> Option<Str
     {
         return None;
     }
-    let patch = patch.trim();
-    (!patch.is_empty()).then(|| format!("{patch}\n"))
+    Some(patch)
 }
 
 fn allowed_field_repair_template_path(path: &str, tentacle_id: &str, fields: &[String]) -> bool {
@@ -14522,6 +14542,44 @@ mod tests {
         assert!(patch.contains("+    pass"));
         assert!(patch.contains("\ndiff --git a/tentacles/field-mini-task/repair-templates/translate/translate-mini-2.pyfrag"));
         assert!(!patch.contains("\n+diff --git"));
+    }
+
+    #[test]
+    fn clean_suggested_patch_normalizes_indented_diff_file_headers() {
+        if !command_available("git") {
+            return;
+        }
+        let workspace =
+            std::env::temp_dir().join(format!("octopus-indented-diff-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&workspace);
+        fs::create_dir_all(&workspace).unwrap();
+        fs::write(workspace.join("a.txt"), "one\nthree\n").unwrap();
+
+        let patch = clean_suggested_patch(Some(
+            "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,3 @@\n one\n+two\n three\n diff --git a/new.txt b/new.txt\nnew file mode 100644\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1,2 @@\nhello\nworld\n"
+                .to_string(),
+        ))
+        .unwrap();
+        let patch_path = workspace.join("patch.diff");
+        fs::write(&patch_path, &patch).unwrap();
+        let output = Command::new("git")
+            .arg("apply")
+            .arg("--check")
+            .arg("--recount")
+            .arg("--unidiff-zero")
+            .arg(&patch_path)
+            .current_dir(&workspace)
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(patch.contains("\ndiff --git a/new.txt b/new.txt"));
+        assert!(!patch.contains("\n diff --git"));
+        let _ = fs::remove_dir_all(workspace);
     }
 
     #[test]

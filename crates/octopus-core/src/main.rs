@@ -3856,12 +3856,27 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 } else {
                     ("blocked", Status::Failed)
                 };
+                let apply_summary = if live_apply.applied || live_apply.stderr.trim().is_empty() {
+                    format!("{} {}", candidate_id, live_apply.status)
+                } else {
+                    let detail = live_apply
+                        .stderr
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let detail = if detail.chars().count() > 160 {
+                        format!("{}...", detail.chars().take(160).collect::<String>())
+                    } else {
+                        detail
+                    };
+                    format!("{} {}: {}", candidate_id, live_apply.status, detail)
+                };
                 pet_events::record_and_save(
                     &state,
                     &mut loaded,
                     pet_state,
                     format!("evolve apply {tentacle_id}"),
-                    format!("{} {}", candidate_id, live_apply.status),
+                    apply_summary,
                     pet_status,
                 )?;
                 if json {
@@ -19146,6 +19161,59 @@ fn apply_authorized_suggested_patch(
         "git apply --recount --unidiff-zero {}",
         shell_arg(patch_path)
     );
+    let check_output = Command::new("git")
+        .arg("apply")
+        .arg("--check")
+        .arg("--recount")
+        .arg("--unidiff-zero")
+        .arg(patch_path)
+        .current_dir(cwd)
+        .output();
+    match check_output {
+        Ok(check) if check.status.success() => {}
+        Ok(check) => {
+            let reverse_check = Command::new("git")
+                .arg("apply")
+                .arg("--reverse")
+                .arg("--check")
+                .arg("--recount")
+                .arg(patch_path)
+                .current_dir(cwd)
+                .output();
+            let (applied, status) = if reverse_check
+                .as_ref()
+                .is_ok_and(|reverse| reverse.status.success())
+            {
+                (true, "already_applied")
+            } else {
+                (false, "check_failed")
+            };
+            return EvolutionLiveApplyReport {
+                applied,
+                status: status.to_string(),
+                command: Some(format!(
+                    "git apply --check --recount --unidiff-zero {}",
+                    shell_arg(patch_path)
+                )),
+                patch_path: Some(patch_path.to_string()),
+                stdout: String::from_utf8_lossy(&check.stdout).to_string(),
+                stderr: String::from_utf8_lossy(&check.stderr).to_string(),
+            };
+        }
+        Err(error) => {
+            return EvolutionLiveApplyReport {
+                applied: false,
+                status: "check_failed_to_start".to_string(),
+                command: Some(format!(
+                    "git apply --check --recount --unidiff-zero {}",
+                    shell_arg(patch_path)
+                )),
+                patch_path: Some(patch_path.to_string()),
+                stdout: String::new(),
+                stderr: error.to_string(),
+            };
+        }
+    }
     let output = Command::new("git")
         .arg("apply")
         .arg("--recount")
@@ -28527,8 +28595,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             String::from_utf8_lossy(&output.stderr)
         );
         assert_eq!(value["status"], "ok");
-        assert_eq!(value["checked_count"], 32);
-        assert_eq!(value["executed_count"], 32);
+        assert_eq!(value["checked_count"], 33);
+        assert_eq!(value["executed_count"], 33);
+        assert!(root
+            .join("field-mini-task/repair-templates/code/code-mini-4.pyfrag")
+            .exists());
         assert!(root
             .join("field-mini-task/repair-templates/write/write-mini-3.pyfrag")
             .exists());

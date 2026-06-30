@@ -1,0 +1,128 @@
+if field == 'code' and mini_task == 'code-mini-4':
+    import difflib
+    import json
+    import subprocess
+    import sys
+
+    scratch = session / 'scratch-code-mini-4'
+    scratch.mkdir(parents=True, exist_ok=True)
+    module_file = scratch / 'formatter.py'
+    test_file = scratch / 'test_formatter.py'
+    artifact_dir = session / '.octopus' / 'field-mini-task' / 'code-mini-4'
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    before_source = '''def format_users(items):
+    parts = [f'{name}:{value}' for name, value in items]
+    return ';'.join(parts)
+
+if __name__ == '__main__':
+    users = [('alice', 1), ('bob', 2)]
+    print(format_users(users))
+'''
+
+    after_source = '''def format_users(items):
+    parts = []
+    for name, value in items:
+        if name is None:
+            continue
+        name_text = str(name).strip()
+        if not name_text:
+            continue
+        if value is None:
+            continue
+        parts.append(f'{name_text}:{int(value)}')
+    return ';'.join(parts)
+
+if __name__ == '__main__':
+    users = [('alice', 1), ('bob', 2), ('', 3), (None, 4)]
+    print(format_users(users))
+'''
+
+    test_source = '''import unittest
+from formatter import format_users
+
+
+class FormatUsersTests(unittest.TestCase):
+    def test_valid_inputs_unchanged(self):
+        self.assertEqual(
+            format_users([('alice', 1), ('bob', 2)]),
+            'alice:1;bob:2'
+        )
+
+    def test_invalid_inputs_are_skipped(self):
+        self.assertEqual(
+            format_users([('alice', 1), ('', 2), (None, 3)]),
+            'alice:1'
+        )
+
+    def test_string_numbers_normalize(self):
+        self.assertEqual(format_users([('  carol  ', '7')]), 'carol:7')
+
+
+if __name__ == '__main__':
+    unittest.main()
+'''
+
+    module_file.write_text(before_source, encoding='utf-8')
+    before_run = subprocess.run([sys.executable, str(module_file)], cwd=str(scratch), text=True, capture_output=True)
+    before_output = (before_run.stdout + before_run.stderr).strip()
+
+    module_file.write_text(after_source, encoding='utf-8')
+    after_run = subprocess.run([sys.executable, str(module_file)], cwd=str(scratch), text=True, capture_output=True)
+    after_output = (after_run.stdout + after_run.stderr).strip()
+
+    test_file.write_text(test_source, encoding='utf-8')
+    test_result = subprocess.run(
+        [sys.executable, '-m', 'unittest', test_file.stem],
+        cwd=str(scratch),
+        text=True,
+        capture_output=True,
+    )
+
+    diff_lines = list(difflib.unified_diff(
+        before_source.splitlines(),
+        after_source.splitlines(),
+        fromfile='a/formatter.py',
+        tofile='b/formatter.py',
+        lineterm=''
+    ))
+
+    artifact_path = artifact_dir / 'trajectory.json'
+    checks = {
+        'before_output_matches_expected': before_output == 'alice:1;bob:2',
+        'after_output_skips_invalid_inputs': after_output == 'alice:1;bob:2',
+        'unit_tests_pass': test_result.returncode == 0,
+    }
+
+    artifact_payload = {
+        'field': 'code',
+        'mini_task': 'code-mini-4',
+        'checks': checks,
+        'diff_excerpt': '\n'.join(diff_lines[:40]),
+        'test_stdout': test_result.stdout.strip(),
+        'test_stderr': test_result.stderr.strip(),
+        'before_output': before_output,
+        'after_output': after_output,
+    }
+    artifact_path.write_text(json.dumps(artifact_payload, indent=2), encoding='utf-8')
+    checks['artifact_written'] = artifact_path.exists()
+
+    field_metadata = {
+        'field_pack': 'code',
+        'field_mini_task': 'code-mini-4',
+        'field_expected_feed': 'A compact evidence-backed summary with before/after output comparison, exact check outcomes (including unittest pass/fail and invalid-input guard behavior), and artifact-backed trajectory path under .octopus/field-mini-task/.',
+        'tool': 'run_field_mini_task',
+        'runtime_template': 'repair-template',
+        'repair_template': 'tentacles/field-mini-task/repair-templates/code/code-mini-4.pyfrag',
+        'trajectory_artifact': str(artifact_path),
+    }
+
+    satisfied = all(checks.values())
+    field_result = {
+        'satisfied': satisfied,
+        'checks': checks,
+        'verifier_status': 'satisfied' if satisfied else 'partial',
+        'field_metadata': field_metadata,
+        'metadata': field_metadata,
+        'field_pass_evidence': 'Hardened formatter refactor validated with unit tests, invalid-input guard behavior, and .octopus artifact: ' + str(artifact_path),
+    }

@@ -169,17 +169,97 @@ def template_missing_result(template_path):
     }
 
 
-def mark_template_result(result, template_path):
+def base_metadata(template_path=None):
+    metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+    }
+    if template_path is not None:
+        metadata["runtime_template"] = "repair-template"
+        metadata["repair_template"] = rel(template_path, root)
+    return metadata
+
+
+def artifact_path_from_metadata(metadata):
+    for key in (
+        "trajectory_artifact",
+        "answer",
+        "checks",
+        "result",
+        "artifact",
+        "artifact_path",
+    ):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def normalize_field_result(result, template_path=None):
     if not isinstance(result, dict):
         return result
-    metadata = result.setdefault("metadata", {})
-    metadata["runtime_template"] = "repair-template"
-    metadata["repair_template"] = rel(template_path, root)
+    metadata = result.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = result.get("field_metadata") if isinstance(result.get("field_metadata"), dict) else {}
+    merged_metadata = base_metadata(template_path)
+    merged_metadata.update(metadata)
+    if isinstance(result.get("verifier_status"), str):
+        merged_metadata.setdefault("verifier_status", result["verifier_status"])
+    if isinstance(result.get("field_pass_evidence"), str):
+        merged_metadata.setdefault("field_pass_evidence", result["field_pass_evidence"])
+    status = result.get("status")
+    if status not in {"satisfied", "partial", "failed", "unsupported"}:
+        if result.get("satisfied") is True or merged_metadata.get("verifier_status") == "satisfied":
+            status = "satisfied"
+        elif result.get("satisfied") is False or merged_metadata.get("verifier_status") == "partial":
+            status = "partial"
+        else:
+            status = "partial"
+    output = result.get("output")
+    if not isinstance(output, str) or not output.strip():
+        output = (
+            result.get("field_pass_evidence")
+            or result.get("summary")
+            or compact(result.get("checks") or merged_metadata)
+        )
+    evidence = result.get("evidence")
+    if not isinstance(evidence, list) or not evidence:
+        artifact = artifact_path_from_metadata(merged_metadata)
+        evidence = [{
+            "source": f"field-mini-task/{field}/normalized-template",
+            "content": artifact or output,
+            "confidence": 0.86,
+            "metadata": merged_metadata,
+        }]
+    normalized = dict(result)
+    normalized["status"] = status
+    normalized["output"] = output
+    normalized["evidence"] = evidence
+    normalized["metadata"] = merged_metadata
+    return normalized
+
+
+def mark_template_result(result, template_path):
+    result = normalize_field_result(result, template_path)
+    if not isinstance(result, dict):
+        return result
+    metadata = result["metadata"]
     for evidence in result.get("evidence", []):
         if isinstance(evidence, dict):
             evidence_metadata = evidence.setdefault("metadata", {})
             evidence_metadata["runtime_template"] = "repair-template"
             evidence_metadata["repair_template"] = rel(template_path, root)
+            for key, value in metadata.items():
+                evidence_metadata.setdefault(key, value)
     return result
 
 

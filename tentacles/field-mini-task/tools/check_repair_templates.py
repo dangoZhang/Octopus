@@ -32,6 +32,17 @@ def first_nonempty_line(path: Path) -> str:
     return ""
 
 
+def guard_matches(marker: str, field: str, task_id: str) -> bool:
+    pattern = (
+        r"^if\s+field\s*==\s*(['\"])"
+        + re.escape(field)
+        + r"\1\s+and\s+mini_task\s*==\s*(['\"])"
+        + re.escape(task_id)
+        + r"\2\s*:$"
+    )
+    return re.match(pattern, marker) is not None
+
+
 def compact(value: object, limit: int = 240) -> str:
     text = " ".join(str(value or "").split())
     return text if len(text) <= limit else text[: limit - 3] + "..."
@@ -145,6 +156,83 @@ def validate_mini_task_schema(field: str, task: object) -> list[str]:
     return errors
 
 
+def base_metadata(root: Path, session: Path, template: Path, field: str, task_id: str, expected_feed: str) -> dict[str, str]:
+    return {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": task_id,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "runtime_template": "repair-template",
+        "repair_template": rel(template, root),
+    }
+
+
+def artifact_path_from_metadata(metadata: dict[str, object]) -> str | None:
+    for key in (
+        "trajectory_artifact",
+        "answer",
+        "checks",
+        "result",
+        "artifact",
+        "artifact_path",
+    ):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def normalize_field_result(result: object, root: Path, session: Path, template: Path, field: str, task_id: str, expected_feed: str) -> object:
+    if not isinstance(result, dict):
+        return result
+    metadata = result.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = result.get("field_metadata") if isinstance(result.get("field_metadata"), dict) else {}
+    merged_metadata: dict[str, object] = base_metadata(root, session, template, field, task_id, expected_feed)
+    merged_metadata.update(metadata)
+    if isinstance(result.get("verifier_status"), str):
+        merged_metadata.setdefault("verifier_status", result["verifier_status"])
+    if isinstance(result.get("field_pass_evidence"), str):
+        merged_metadata.setdefault("field_pass_evidence", result["field_pass_evidence"])
+    status = result.get("status")
+    if status not in {"satisfied", "partial", "failed", "unsupported"}:
+        if result.get("satisfied") is True or merged_metadata.get("verifier_status") == "satisfied":
+            status = "satisfied"
+        elif result.get("satisfied") is False or merged_metadata.get("verifier_status") == "partial":
+            status = "partial"
+        else:
+            status = "partial"
+    output = result.get("output")
+    if not isinstance(output, str) or not output.strip():
+        output = (
+            result.get("field_pass_evidence")
+            or result.get("summary")
+            or compact(result.get("checks") or merged_metadata)
+        )
+    evidence = result.get("evidence")
+    if not isinstance(evidence, list) or not evidence:
+        artifact = artifact_path_from_metadata(merged_metadata)
+        evidence = [{
+            "source": f"field-mini-task/{field}/normalized-template",
+            "content": artifact or output,
+            "confidence": 0.86,
+            "metadata": merged_metadata,
+        }]
+    normalized = dict(result)
+    normalized["status"] = status
+    normalized["output"] = output
+    normalized["evidence"] = evidence
+    normalized["metadata"] = merged_metadata
+    return normalized
+
+
 def exercise_template(root: Path, template: Path, field: str, task_id: str, expected_feed: str) -> tuple[str | None, str | None]:
     with tempfile.TemporaryDirectory(prefix="octopus-template-check-") as tmp:
         session = Path(tmp) / "session"
@@ -173,6 +261,7 @@ def exercise_template(root: Path, template: Path, field: str, task_id: str, expe
             return f"{field}/{task_id}: execution failed: {type(exc).__name__}: {compact(exc, 360)}", None
 
         result = env.get("field_result")
+        result = normalize_field_result(result, root, session, template, field, task_id, expected_feed)
         if not isinstance(result, dict):
             return f"{field}/{task_id}: did not set field_result dict", None
         status = result.get("status")
@@ -259,8 +348,7 @@ def main() -> int:
             missing.append(f"{label}: missing {rel(template, display_root)}")
             continue
         marker = first_nonempty_line(template)
-        expected_if = f'if field == "{field}" and mini_task == "{task_id}":'
-        if marker != expected_if:
+        if not guard_matches(marker, field, task_id):
             invalid.append(f"{label}: first code line is {marker!r}")
             continue
         if "elif field ==" in template.read_text(encoding="utf-8", errors="replace"):
