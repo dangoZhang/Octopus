@@ -78,6 +78,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
             "provider-surface",
         ),
         path_report(
+            root.join("crates/octopus-core/src/product_surface.rs"),
+            "product-report-surface",
+        ),
+        path_report(
             root.join("crates/octopus-core/src/release_gate.rs"),
             "release-gate",
         ),
