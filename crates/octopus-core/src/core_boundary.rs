@@ -62,6 +62,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
         ),
         path_report(root.join("crates/octopus-core/src/pet.rs"), "pixel-pet"),
         path_report(
+            root.join("crates/octopus-core/src/pet_surface.rs"),
+            "pet-observation-surface",
+        ),
+        path_report(
             root.join("crates/octopus-core/src/profile_registry.rs"),
             "profile-registry-observer",
         ),
@@ -90,6 +94,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
         path_report(
             root.join("crates/octopus-core/src/pet.rs"),
             "pixel-pet-rust",
+        ),
+        path_report(
+            root.join("crates/octopus-core/src/pet_surface.rs"),
+            "pet-observation-surface",
         ),
         path_report(root.join("docs/app.html"), "native-html"),
         path_report(root.join("docs/pet.html"), "pixel-pet"),
