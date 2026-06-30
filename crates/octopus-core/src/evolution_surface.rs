@@ -1,6 +1,9 @@
 use super::*;
 use crate::evolution_drive_surface::{parse_evolution_drive_args, print_evolution_drive_report};
 use crate::evolution_driver::drive_evolution_cycle;
+use crate::observation_contract::{
+    classify_apply_status, classify_planner_error, record_evolution_event, EvolutionStage,
+};
 
 pub(crate) fn handle_evolve_command(
     rest: &[String],
@@ -104,24 +107,28 @@ pub(crate) fn handle_evolve_command(
             .map(|values| values.join(" "))
             .unwrap_or_else(|| "recommend next evolution candidate".to_string());
         let mut loaded = HarnessState::load(state).map_err(|error| error.to_string())?;
-        pet_events::record_and_save(
+        record_evolve_surface_event(
             state,
             &mut loaded,
+            EvolutionStage::Planning,
             "evolution",
             format!("evolve recommend {tentacle_id}"),
             format!("planning {}", pet_events::summary_text(&objective)),
             Status::Partial,
+            None,
         )?;
         let proposal = match propose_evolution_for_cli(tentacle_id, &objective, &loaded) {
             Ok(proposal) => proposal,
             Err(error) => {
-                pet_events::record_and_save(
+                record_evolve_surface_event(
                     state,
                     &mut loaded,
+                    EvolutionStage::Planning,
                     "blocked",
                     format!("evolve recommend {tentacle_id}"),
                     error.clone(),
                     Status::Failed,
+                    Some(classify_planner_error(&error)),
                 )?;
                 return Err(error);
             }
@@ -130,13 +137,15 @@ pub(crate) fn handle_evolve_command(
         let artifact = match write_tentacle_evolution_artifacts(&cwd, &proposal) {
             Ok(artifact) => artifact,
             Err(error) => {
-                pet_events::record_and_save(
+                record_evolve_surface_event(
                     state,
                     &mut loaded,
+                    EvolutionStage::Planning,
                     "blocked",
                     format!("evolve recommend {tentacle_id}"),
                     error.clone(),
                     Status::Failed,
+                    Some(classify_planner_error(&error)),
                 )?;
                 return Err(error);
             }
@@ -144,13 +153,15 @@ pub(crate) fn handle_evolve_command(
         let recommendation = match recommend_tentacle_evolution_apply(&proposal, &loaded) {
             Ok(recommendation) => recommendation,
             Err(error) => {
-                pet_events::record_and_save(
+                record_evolve_surface_event(
                     state,
                     &mut loaded,
+                    EvolutionStage::Recommended,
                     "blocked",
                     format!("evolve recommend {tentacle_id}"),
                     error.clone(),
                     Status::Failed,
+                    Some(classify_planner_error(&error)),
                 )?;
                 return Err(error);
             }
@@ -158,20 +169,23 @@ pub(crate) fn handle_evolve_command(
         let apply_artifact = match write_tentacle_apply_artifacts(&cwd, &recommendation.apply) {
             Ok(apply_artifact) => apply_artifact,
             Err(error) => {
-                pet_events::record_and_save(
+                record_evolve_surface_event(
                     state,
                     &mut loaded,
+                    EvolutionStage::Recommended,
                     "blocked",
                     format!("evolve recommend {tentacle_id}"),
                     error.clone(),
                     Status::Failed,
+                    Some(classify_planner_error(&error)),
                 )?;
                 return Err(error);
             }
         };
-        pet_events::record_and_save(
+        record_evolve_surface_event(
             state,
             &mut loaded,
+            EvolutionStage::Recommended,
             "evolution",
             format!("evolve recommend {tentacle_id}"),
             format!(
@@ -180,6 +194,7 @@ pub(crate) fn handle_evolve_command(
                 pet_events::summary_text(&recommendation.candidate_title)
             ),
             Status::Satisfied,
+            None,
         )?;
         if json {
             println!(
@@ -209,13 +224,15 @@ pub(crate) fn handle_evolve_command(
             .map(|values| values.join(" "))
             .unwrap_or_else(|| "apply evolution candidate".to_string());
         let mut loaded = HarnessState::load(state).map_err(|error| error.to_string())?;
-        pet_events::record_and_save(
+        record_evolve_surface_event(
             state,
             &mut loaded,
+            EvolutionStage::Applying,
             "action",
             format!("evolve apply {tentacle_id}"),
             format!("applying {candidate_id}"),
             Status::Partial,
+            None,
         )?;
         let cwd = env::current_dir().map_err(|error| error.to_string())?;
         let apply_result = (|| {
@@ -241,13 +258,15 @@ pub(crate) fn handle_evolve_command(
         let (plan, evolution_artifact, apply_artifact, live_apply) = match apply_result {
             Ok(result) => result,
             Err(error) => {
-                pet_events::record_and_save(
+                record_evolve_surface_event(
                     state,
                     &mut loaded,
+                    EvolutionStage::Applying,
                     "blocked",
                     format!("evolve apply {tentacle_id}"),
                     error.clone(),
                     Status::Failed,
+                    Some(classify_planner_error(&error)),
                 )?;
                 return Err(error);
             }
@@ -258,13 +277,17 @@ pub(crate) fn handle_evolve_command(
             ("blocked", Status::Failed)
         };
         let apply_summary = live_apply_candidate_summary(candidate_id, &live_apply);
-        pet_events::record_and_save(
+        let error_class = (!live_apply.applied)
+            .then(|| classify_apply_status(&live_apply.status, &live_apply.stderr));
+        record_evolve_surface_event(
             state,
             &mut loaded,
+            EvolutionStage::Applying,
             pet_state,
             format!("evolve apply {tentacle_id}"),
             apply_summary,
             pet_status,
+            error_class,
         )?;
         if json {
             println!(
@@ -331,24 +354,28 @@ pub(crate) fn handle_evolve_command(
         .map(|values| values.join(" "))
         .unwrap_or_else(|| "improve feed quality".to_string());
     let mut loaded = HarnessState::load(state).map_err(|error| error.to_string())?;
-    pet_events::record_and_save(
+    record_evolve_surface_event(
         state,
         &mut loaded,
+        EvolutionStage::Planning,
         "evolution",
         format!("evolve {tentacle_id}"),
         format!("planning {}", pet_events::summary_text(&objective)),
         Status::Partial,
+        None,
     )?;
     let proposal = match propose_evolution_for_cli(tentacle_id, &objective, &loaded) {
         Ok(proposal) => proposal,
         Err(error) => {
-            pet_events::record_and_save(
+            record_evolve_surface_event(
                 state,
                 &mut loaded,
+                EvolutionStage::Planning,
                 "blocked",
                 format!("evolve {tentacle_id}"),
                 error.clone(),
                 Status::Failed,
+                Some(classify_planner_error(&error)),
             )?;
             return Err(error);
         }
@@ -357,20 +384,23 @@ pub(crate) fn handle_evolve_command(
     let artifact = match write_tentacle_evolution_artifacts(cwd, &proposal) {
         Ok(artifact) => artifact,
         Err(error) => {
-            pet_events::record_and_save(
+            record_evolve_surface_event(
                 state,
                 &mut loaded,
+                EvolutionStage::Planning,
                 "blocked",
                 format!("evolve {tentacle_id}"),
                 error.clone(),
                 Status::Failed,
+                Some(classify_planner_error(&error)),
             )?;
             return Err(error);
         }
     };
-    pet_events::record_and_save(
+    record_evolve_surface_event(
         state,
         &mut loaded,
+        EvolutionStage::Recommended,
         "evolution",
         format!("evolve {tentacle_id}"),
         format!(
@@ -378,6 +408,7 @@ pub(crate) fn handle_evolve_command(
             proposal.patch_candidates.len()
         ),
         Status::Satisfied,
+        None,
     )?;
     if json {
         println!(
@@ -392,6 +423,29 @@ pub(crate) fn handle_evolve_command(
         print_evolution_proposal(&proposal, &artifact, language);
     }
     Ok(())
+}
+
+fn record_evolve_surface_event(
+    state_path: &Path,
+    state: &mut HarnessState,
+    stage: EvolutionStage,
+    pet_state: &str,
+    source: impl Into<String>,
+    summary: impl Into<String>,
+    status: Status,
+    error_class: Option<String>,
+) -> Result<(), String> {
+    record_evolution_event(
+        state_path,
+        state,
+        stage,
+        pet_state,
+        source,
+        summary,
+        status,
+        error_class,
+    )
+    .map(|_| ())
 }
 
 fn print_evolution_proposal(

@@ -214,7 +214,7 @@ fn last_event_check(last: Option<&PetEvent>) -> PetSupervisionCheck {
 
 fn last_stage_check(last: Option<&PetEvent>) -> PetSupervisionCheck {
     let requires_stage = last
-        .map(|event| event.source.starts_with("evolve drive"))
+        .map(|event| event.source.starts_with("evolve "))
         .unwrap_or(false);
     let stage = last.and_then(|event| event.stage.as_deref());
     PetSupervisionCheck {
@@ -416,6 +416,8 @@ impl EventLogRead {
                 && event.source == expected.source
                 && event.summary == expected.summary
                 && event.status == expected.status
+                && event.stage == expected.stage
+                && event.error_class == expected.error_class
         })
     }
 }
@@ -686,6 +688,75 @@ mod tests {
             .checks
             .iter()
             .any(|check| check.id == "active_work" && check.status == "warn"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pet_supervision_accepts_structured_evolution_block() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-pet-supervision-structured-block-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
+        let mut state = HarnessState::default();
+        let mut event = state.record_pet_event(
+            "blocked",
+            "evolve recommend field-mini-task",
+            "codex provider timed out after 60s",
+            Status::Failed,
+        );
+        event.stage = Some("planning".to_string());
+        event.error_class = Some("provider_timeout".to_string());
+        state.last_pet_event = Some(event.clone());
+        state.save(&state_path).unwrap();
+        crate::pet_events::append_event(&state_path, &event).unwrap();
+
+        let report = pet_supervision_report(&state_path, &state);
+
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.id == "last_stage" && check.status == "pass"));
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.id == "error_category" && check.status == "pass"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pet_supervision_flags_unstructured_evolution_event() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-pet-supervision-unstructured-evolve-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
+        let mut state = HarnessState::default();
+        let event = state.record_pet_event(
+            "blocked",
+            "evolve recommend field-mini-task",
+            "codex provider timed out after 60s",
+            Status::Failed,
+        );
+        state.save(&state_path).unwrap();
+        crate::pet_events::append_event(&state_path, &event).unwrap();
+
+        let report = pet_supervision_report(&state_path, &state);
+
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.id == "last_stage" && check.status == "warn"));
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.id == "error_category" && check.status == "warn"));
 
         let _ = fs::remove_dir_all(dir);
     }

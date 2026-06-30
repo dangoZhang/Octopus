@@ -58,6 +58,7 @@ mod heartbeat_surface;
 mod llm_layers;
 mod need_runner;
 mod need_surface;
+mod observation_contract;
 mod pet;
 mod pet_events;
 mod pet_supervision;
