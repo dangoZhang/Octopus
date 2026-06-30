@@ -45,6 +45,7 @@ mod core_boundary;
 mod desktop_pet;
 mod diagnostics;
 mod download;
+mod evolution_cycle;
 mod evolution_driver;
 mod pet;
 mod pet_events;

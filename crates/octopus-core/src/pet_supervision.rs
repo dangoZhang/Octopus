@@ -1,8 +1,10 @@
 use octopus_core::{HarnessState, PetEvent};
 use serde::Serialize;
 use std::collections::BTreeSet;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const FRESH_SECONDS: u64 = 300;
@@ -13,6 +15,7 @@ const HEALTHY_EVENT_STATES: &[&str] = &[
     "feed",
     "memory",
     "harness",
+    "heartbeat",
     "evolution",
     "blocked",
     "success",
@@ -46,8 +49,11 @@ pub(crate) fn pet_supervision_report(
     let last_event = state.last_pet_event.clone();
     let checks = vec![
         state_file_check(state_path),
+        desktop_process_check(state_path),
         event_log_check(&event_log_path, &log),
         last_event_check(last_event.as_ref()),
+        last_stage_check(last_event.as_ref()),
+        error_category_check(last_event.as_ref()),
         event_log_contains_last_check(last_event.as_ref(), &log),
         event_state_check(last_event.as_ref()),
         event_freshness_check(last_event.as_ref()),
@@ -100,6 +106,72 @@ fn state_file_check(state_path: &Path) -> PetSupervisionCheck {
     }
 }
 
+fn desktop_process_check(state_path: &Path) -> PetSupervisionCheck {
+    if !cfg!(target_os = "macos") {
+        return PetSupervisionCheck {
+            id: "desktop_process".to_string(),
+            status: "pass".to_string(),
+            evidence: "desktop pet process check skipped outside macOS".to_string(),
+            next: "run this check on macOS when validating the native desktop pet".to_string(),
+        };
+    }
+    if !is_default_octopus_state_path(state_path) {
+        return PetSupervisionCheck {
+            id: "desktop_process".to_string(),
+            status: "pass".to_string(),
+            evidence: format!(
+                "custom_state_path={}; desktop process check scoped to .octopus/state.json",
+                state_path.display()
+            ),
+            next: "run octopus pet supervise on the project .octopus/state.json observer path"
+                .to_string(),
+        };
+    }
+    let expected = absolute_state_path(state_path);
+    let output = Command::new("ps").arg("-axo").arg("pid=,args=").output();
+    let Ok(output) = output else {
+        return PetSupervisionCheck {
+            id: "desktop_process".to_string(),
+            status: "warn".to_string(),
+            evidence: "failed to inspect local processes".to_string(),
+            next: "open the native pet with octopus pet desktop --workers 1".to_string(),
+        };
+    };
+    let text = String::from_utf8_lossy(&output.stdout);
+    let pet_lines = text
+        .lines()
+        .filter(|line| line.contains("OctopusDesktopPet"))
+        .map(|line| line.trim().to_string())
+        .collect::<Vec<_>>();
+    let expected_text = expected.display().to_string();
+    let matching = pet_lines
+        .iter()
+        .any(|line| line.contains("--state-path") && line.contains(&expected_text));
+    let status = if matching {
+        "pass"
+    } else if pet_lines.is_empty() {
+        "warn"
+    } else {
+        "warn"
+    };
+    let evidence = if pet_lines.is_empty() {
+        format!("expected_state={expected_text}; process=none")
+    } else {
+        format!(
+            "expected_state={expected_text}; matching={matching}; process_count={}",
+            pet_lines.len()
+        )
+    };
+    PetSupervisionCheck {
+        id: "desktop_process".to_string(),
+        status: status.to_string(),
+        evidence,
+        next:
+            "restart the native observer with the same state path: octopus pet desktop --workers 1"
+                .to_string(),
+    }
+}
+
 fn event_log_check(path: &Path, log: &EventLogRead) -> PetSupervisionCheck {
     let status = if log.corrupt_count > 0 {
         "fail"
@@ -136,6 +208,53 @@ fn last_event_check(last: Option<&PetEvent>) -> PetSupervisionCheck {
             })
             .unwrap_or_else(|| "none".to_string()),
         next: "drive one Need through the system so state.json records last_pet_event".to_string(),
+    }
+}
+
+fn last_stage_check(last: Option<&PetEvent>) -> PetSupervisionCheck {
+    let requires_stage = last
+        .map(|event| event.source.starts_with("evolve drive"))
+        .unwrap_or(false);
+    let stage = last.and_then(|event| event.stage.as_deref());
+    PetSupervisionCheck {
+        id: "last_stage".to_string(),
+        status: if last.is_none() {
+            "fail"
+        } else if !requires_stage || stage.is_some() {
+            "pass"
+        } else {
+            "warn"
+        }
+        .to_string(),
+        evidence: stage
+            .map(|value| format!("stage={value}"))
+            .unwrap_or_else(|| {
+                format!("stage=missing; required_for_evolve_drive={requires_stage}")
+            }),
+        next: "write evolution and Goal runtime events through structured stage-aware pet events"
+            .to_string(),
+    }
+}
+
+fn error_category_check(last: Option<&PetEvent>) -> PetSupervisionCheck {
+    let blocked = last
+        .map(|event| event.state == "blocked" || event.status == octopus_core::Status::Failed)
+        .unwrap_or(false);
+    let category = last.and_then(|event| event.error_class.as_deref());
+    let status = if last.is_none() {
+        "fail"
+    } else if !blocked || category.is_some() {
+        "pass"
+    } else {
+        "warn"
+    };
+    PetSupervisionCheck {
+        id: "error_category".to_string(),
+        status: status.to_string(),
+        evidence: category
+            .map(|value| format!("error_class={value}"))
+            .unwrap_or_else(|| format!("blocked={blocked}; error_class=missing")),
+        next: "classify blocked pet events at the stage that produced the failure".to_string(),
     }
 }
 
@@ -282,6 +401,25 @@ fn event_age_seconds(event: &PetEvent) -> Option<i64> {
     Some(now as i64 - event.timestamp_secs as i64)
 }
 
+fn absolute_state_path(state_path: &Path) -> PathBuf {
+    if state_path.is_absolute() {
+        return state_path.to_path_buf();
+    }
+    env::current_dir()
+        .map(|cwd| cwd.join(state_path))
+        .unwrap_or_else(|_| state_path.to_path_buf())
+}
+
+fn is_default_octopus_state_path(state_path: &Path) -> bool {
+    state_path
+        .components()
+        .rev()
+        .take(2)
+        .map(|component| component.as_os_str().to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+        == vec!["state.json".to_string(), ".octopus".to_string()]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,8 +455,11 @@ mod tests {
 
         let report = pet_supervision_report(&state_path, &state);
 
-        assert_eq!(report.status, "pass");
-        assert!(report.checks.iter().all(|check| check.status == "pass"));
+        assert!(report
+            .checks
+            .iter()
+            .filter(|check| check.id != "desktop_process")
+            .all(|check| check.status == "pass"));
 
         let _ = fs::remove_dir_all(dir);
     }
@@ -343,6 +484,34 @@ mod tests {
             .checks
             .iter()
             .any(|check| { check.id == "event_log_contains_last" && check.status == "warn" }));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pet_supervision_accepts_heartbeat_without_evolution_stage() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-pet-supervision-heartbeat-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
+        let mut state = HarnessState::default();
+        let event = state.record_pet_event("heartbeat", "heartbeat", "alive", Status::Satisfied);
+        state.save(&state_path).unwrap();
+        crate::pet_events::append_event(&state_path, &event).unwrap();
+
+        let report = pet_supervision_report(&state_path, &state);
+
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.id == "event_state" && check.status == "pass"));
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.id == "last_stage" && check.status == "pass"));
 
         let _ = fs::remove_dir_all(dir);
     }

@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-06-30, after modular evolution driver, provider env loader, pet observer freshness, Codex provider timeout fix, and patch apply normalization.
+Updated: 2026-06-30, after stage-aware evolution cycle events, pet observer process/stage/error diagnostics, provider env loader, Codex provider timeout fix, and patch apply normalization.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -25,6 +25,7 @@ Octopus/
 │       ├── download.rs        Download/install manifest and artifact checks.
 │       ├── desktop_pet.rs     macOS read-only desktop pet launcher.
 │       ├── evolution.rs       Manifest-owned evolution surface requirement validation.
+│       ├── evolution_cycle.rs Stage/error contract for autonomous evolution and pet-visible diagnostics.
 │       ├── evolution_driver.rs One-cycle autonomous harness evolution driver: LLM recommendation, patch apply, check, Need/Feed, optional desktop pet.
 │       ├── field_pack.rs      Field-pack loader, matcher, and Need/trace metadata.
 │       ├── pet.rs             Pixel Octopus state, SVG export, file URL helpers.
@@ -91,17 +92,18 @@ Octopus/
 
 | Module | Role | Main files | Lines |
 | --- | --- | --- | ---: |
-| Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, evolution data, field-pool status snapshots, resolved field-pack evolution targets, provider patch target checks, LLM patch normalization, missing `new file mode` normalization for provider-created files, Codex CLI prompt-file stdin with timeout enforcement, and LLM-native repair/evolve contracts | `crates/octopus-core/src/lib.rs` | 15,752 |
+| Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, evolution data, field-pool status snapshots, resolved field-pack evolution targets, provider patch target checks, LLM patch normalization, missing `new file mode` normalization for provider-created files, Codex CLI prompt-file stdin with timeout enforcement, and LLM-native repair/evolve contracts | `crates/octopus-core/src/lib.rs` | 15,758 |
 | User surface boundary | Converts internal state into human Goal hints; keeps agent commands in observer fields so app/CLI users edit Goal only | `user_surface.rs`, `StatusReport`, `ContextReport`, `NeedQueueReport`, `FieldPoolStatusReport`, `ProductReport` | 123 |
 | Evolution contract | Manifest-owned surface requirements, required-surface validation, candidate ID normalization, LLM retry guardrails without field-specific Rust branches | `evolution.rs`, `tentacles/*/manifest.json`, `tentacles/tentacle.schema.json` | 471 |
-| Evolution driver | Autonomous harness loop for one cycle: mark pet state, ask LLM for candidate, write artifacts, apply authorized patch, retry once with `git apply` failure feedback, run check, optionally run field Need -> Feed and launch desktop pet observer | `evolution_driver.rs` | 462 |
+| Evolution cycle contract | Stage and error-class event contract for autonomous harness evolution. Pet observers now see whether a block happened in planning, applying, checking, or feeding, and whether it was provider timeout, provider error, patch apply, or check failure. | `evolution_cycle.rs`, `PetEvent.stage`, `PetEvent.error_class` | 153 |
+| Evolution driver | Autonomous harness loop for one cycle: mark pet state, ask LLM for candidate, write artifacts, apply authorized patch, retry once with `git apply` failure feedback, run manifest-declared checks, optionally run field Need -> Feed and launch desktop pet observer. This still owns too many surfaces and is the next split target. | `evolution_driver.rs` | 557 |
 | Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, field trajectory summaries, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, and compile/execute template checks | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 5,821 |
 | CLI and product backend | Command dispatch, Goal/chat/brain, provider setup, doctor/report/preflight aggregation, starter/install/check flows, field summary, repair/evolve commands, apply precheck diagnostics, strategy diagnostics entry, pet event log and supervision viewer | `crates/octopus-core/src/main.rs` | 36,478 |
 | Provider env | Loads `.octopus/llm.env` for CLI commands with a scoped guard; existing shell variables win, and values are restored after command execution | `provider_env.rs`, `app_bridge.rs::parse_env_overlay` | 107 |
 | Local app bridge | Local HTTP/SSE server, `/api/config` state-path injection, app policy, command allow-list, embedded app/docs/showcase assets, read-only pet supervision access, field activity observer with fresh pet-event handling | `app_bridge.rs`, `docs/app.html` | 2,027 |
 | Release and install gates | Release records, benchmark evidence, download/install manifest, real-machine checks | `release_gate.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 1,211 |
-| Pet and visual state | Pixel Octopus state, SVG/export helpers, unified event writes, JSONL event audit, latest-event audit coverage, native read-only observer, desktop source preflight, HTML preview. Native pet no longer treats stale Feed traces as live state; colors come from fresh pet events, pending Needs, active worker slots, verifier status, goal status, or memory. | `pet.rs`, `pet_events.rs`, `pet_supervision.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 2,567 |
-| Strategy diagnostics | Checks the three core traits and composes pet supervision: clean brain context, LLM tool-side tentacles, editable goal, field surface, observation-chain freshness, JSONL latest-event coverage, Feed/evolution evidence | `diagnostics.rs`, `pet_supervision.rs`, `octopus diagnose strategy --json`, `octopus pet supervise --json` | 703 |
+| Pet and visual state | Pixel Octopus state, SVG/export helpers, unified event writes, JSONL event audit, latest-event audit coverage, native read-only observer, desktop process/state-path check, stage/error diagnostics, desktop source preflight, HTML preview. Native pet no longer treats stale Feed traces as live state; colors come from fresh pet events, pending Needs, active worker slots, verifier status, goal status, heartbeat, or memory. | `pet.rs`, `pet_events.rs`, `pet_supervision.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 2,744 |
+| Strategy diagnostics | Checks the three core traits and composes pet supervision: clean brain context, LLM tool-side tentacles, editable goal, field surface, observation-chain freshness, native desktop process/state-path evidence, stage/error evidence, JSONL latest-event coverage, Feed/evolution evidence | `diagnostics.rs`, `pet_supervision.rs`, `octopus diagnose strategy --json`, `octopus pet supervise --json` | 872 |
 | Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,178 |
 | Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, declared evolution requirements, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 18,974 |
 
@@ -126,13 +128,27 @@ These should remain stable and hard to accidentally mutate:
 - User surface rule: `next` on status/context/Need queue/field pool/product report means human Goal hint; internal execution commands stay in `agent_next` or `agent_next_action`.
 - App state rule: browser app gets the real bridge state path from `/api/config`; file preview may fall back to `.octopus/state.json`.
 - Pet supervision rule: `last_pet_event` is the live state, `.octopus/pet-events.jsonl` is the append-only audit trail, `event_log_contains_last` must pass, and `octopus pet supervise --json` is the first diagnostic for desktop observer issues.
+- Evolution observation rule: `evolve drive` writes `PetEvent.stage` and `PetEvent.error_class` through `evolution_cycle.rs`; a stuck pet should identify planning/provider, applying/patch, checking, or feeding instead of only showing `blocked`.
 - Desktop observer rule: stale Feed traces cannot drive the native pet's current color or Need bubble. A Feed/action color must come from a fresh `last_pet_event` or an active worker update.
 - Provider env rule: CLI reads `.octopus/llm.env` through `provider_env.rs`; explicit shell variables are never overwritten.
-- Evolution driver rule: `evolve drive` lives in `evolution_driver.rs`; `main.rs` only parses CLI and prints the report. Apply-check failures are fed back to the LLM once for a regenerated current-file patch.
+- Evolution driver rule: `evolve drive` uses `evolution_cycle.rs` for stage/error events; `main.rs` only parses CLI and prints the report. Apply-check failures are fed back to the LLM once for a regenerated current-file patch.
 - Patch apply rule: provider-created new-file patches are normalized before `git apply`; missing `new file mode 100644` is inserted when a diff uses `--- /dev/null`.
 - Provider timeout rule: Codex CLI prompts are passed through a temp prompt file, not blocking `stdin.write_all`; `OCTOPUS_LLM_TIMEOUT` and `OCTOPUS_LLM_RETRIES` can bound harness evolution calls.
 - Release gates: preflight, benchmark evidence, field-pool visibility, real-machine records, local app readiness.
-- Strategy diagnostics: `octopus diagnose strategy --json` checks clean-brain context, user-surface command leakage, tool-side LLM tentacles, editable Goal, field-pack evolution surface, fresh pet events, and Feed/evolution evidence.
+- Strategy diagnostics: `octopus diagnose strategy --json` checks clean-brain context, user-surface command leakage, tool-side LLM tentacles, editable Goal, field-pack evolution surface, fresh pet events, desktop process/state-path evidence, stage/error evidence, and Feed/evolution evidence.
+
+### Desktop Pet / Evolution Failure Map
+
+Use this before changing UI or harness code:
+
+| Symptom | First check | Meaning | Fix location |
+| --- | --- | --- | --- |
+| Pet not visible | `octopus pet supervise --json`, check `desktop_process` | Native observer is not running or is reading another state path | `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift` |
+| Pet visible but stale | `event_freshness` | Active Octopus loop is not writing fresh events | caller that should use `pet_events` or `evolution_cycle.rs` |
+| Pet red/blocked during planning | `last_event.stage=planning`, `error_class=provider_timeout/provider_error` | LLM planner did not return a harness candidate | provider config/client and evolution planner boundary |
+| Pet red/blocked during applying | `stage=applying`, `error_class=patch_*` | LLM produced an invalid, missing, or unauthorized patch | apply/patch normalization boundary |
+| Pet red/blocked during checking | `stage=checking`, `error_class=check_failed` | Harness patch applied but its declared check failed | tentacle check policy or editable harness code |
+| Pet says fed with no real work | compare `auto_feed.ran`, queued Need count, and field summary | The driver reached Feed surface without useful queued work | `evolution_driver.rs` feed boundary; remove fake-empty success paths |
 
 Where they live:
 
@@ -146,6 +162,14 @@ Where they live:
 - `crates/octopus-core/src/diagnostics.rs`
 - `crates/octopus-core/src/pet_events.rs`
 - `crates/octopus-core/src/pet_supervision.rs`
+
+### Known Refactor Debt
+
+These remain intentionally visible:
+
+- `evolution_driver.rs` still owns CLI-ish report formatting, retry policy, check selection, desktop launch, and field-mini-task feeding. Next split should move apply retry, check selection, and field feeding into separate modules.
+- `lib.rs` still owns LLM evolution prompt construction, target-file context budget, candidate target parsing, artifact writing, patch authorization, and diff normalization. These belong outside the stable kernel once public API boundaries are safe.
+- Automatic `cargo test` next step and empty Feed batch reporting are still suspicious for LLM-native self-evolution and should be removed or pushed into editable manifest/harness policy.
 
 ### Distinctive Functions
 
@@ -210,7 +234,7 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 19 | 57,989 |
+| `crates/octopus-core/src` | 20 | 58,413 |
 | `crates/octopus-core/examples` | 1 | 27 |
 | `tentacles` | 83 | 18,974 |
 | `field-packs` | 14 | 598 |
@@ -223,18 +247,19 @@ field-packs/
 
 | File | Lines |
 | --- | ---: |
-| `main.rs` | 36,478 |
-| `lib.rs` | 15,752 |
+| `main.rs` | 36,479 |
+| `lib.rs` | 15,758 |
 | `app_bridge.rs` | 1,167 |
-| `release_gate.rs` | 703 |
 | `field_pack.rs` | 868 |
+| `release_gate.rs` | 703 |
+| `evolution_driver.rs` | 557 |
+| `pet_supervision.rs` | 518 |
 | `bundled_harness.rs` | 423 |
 | `desktop_pet.rs` | 377 |
-| `evolution_driver.rs` | 462 |
 | `diagnostics.rs` | 354 |
-| `pet_supervision.rs` | 349 |
 | `pet.rs` | 280 |
 | `download.rs` | 175 |
+| `evolution_cycle.rs` | 153 |
 | `core_boundary.rs` | 123 |
 | `user_surface.rs` | 123 |
 | `provider_env.rs` | 107 |

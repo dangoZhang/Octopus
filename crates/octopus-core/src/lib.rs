@@ -328,6 +328,10 @@ pub struct PetEvent {
     pub source: String,
     pub summary: String,
     pub status: Status,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_class: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -4921,6 +4925,8 @@ impl HarnessState {
             source: source.into(),
             summary: summary.into(),
             status,
+            stage: None,
+            error_class: None,
         };
         self.last_pet_event = Some(event.clone());
         event

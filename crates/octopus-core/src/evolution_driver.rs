@@ -1,4 +1,8 @@
 use crate::desktop_pet::{launch_desktop_pet, DesktopPetConfig, DesktopPetReport};
+use crate::evolution_cycle::{
+    classify_apply_status, classify_planner_error, record_stage_event,
+    record_stage_event_with_error, EvolutionDriveStage,
+};
 use crate::shell_words::shell_arg;
 use crate::{
     apply_authorized_suggested_patch, check_report, empty_parallel_evolution_batch_report,
@@ -83,6 +87,7 @@ pub(crate) fn drive_evolution_cycle(
     record_drive_event(
         state_path,
         &mut loaded,
+        EvolutionDriveStage::Planning,
         "evolution",
         &args.tentacle_id,
         format!("planning {}", pet_events::summary_text(&args.objective)),
@@ -92,7 +97,7 @@ pub(crate) fn drive_evolution_cycle(
     let mut report = EvolutionDriveReport {
         tentacle_id: args.tentacle_id.clone(),
         objective: args.objective.clone(),
-        stage: "planning".to_string(),
+        stage: EvolutionDriveStage::Planning.as_str().to_string(),
         recommendation: None,
         evolution_artifact: None,
         apply_artifact: None,
@@ -113,13 +118,15 @@ pub(crate) fn drive_evolution_cycle(
         match recommend_current_patch(&cwd, &args.tentacle_id, &args.objective, &loaded) {
             Ok(result) => result,
             Err(error) => {
-                record_drive_event(
+                record_drive_error_event(
                     state_path,
                     &mut loaded,
+                    EvolutionDriveStage::Planning,
                     "blocked",
                     &args.tentacle_id,
                     error.clone(),
                     Status::Failed,
+                    classify_planner_error(&error),
                 )?;
                 return Err(error);
             }
@@ -127,6 +134,7 @@ pub(crate) fn drive_evolution_cycle(
     record_drive_event(
         state_path,
         &mut loaded,
+        EvolutionDriveStage::Recommended,
         "evolution",
         &args.tentacle_id,
         format!(
@@ -136,7 +144,7 @@ pub(crate) fn drive_evolution_cycle(
         ),
         Status::Satisfied,
     )?;
-    report.stage = "recommended".to_string();
+    report.stage = EvolutionDriveStage::Recommended.as_str().to_string();
     report.evolution_artifact = Some(evolution_artifact);
     report.apply_artifact = Some(apply_artifact.clone());
     report.next = vec![format!(
@@ -153,17 +161,18 @@ pub(crate) fn drive_evolution_cycle(
     } else {
         "blocked"
     };
-    record_drive_event(
+    record_apply_event(
         state_path,
         &mut loaded,
-        apply_state,
         &args.tentacle_id,
+        apply_state,
         apply_summary(&recommendation, &live_apply),
         if live_apply.applied {
             Status::Satisfied
         } else {
             Status::Failed
         },
+        &live_apply,
     )?;
     report.live_apply = Some(live_apply.clone());
 
@@ -172,6 +181,7 @@ pub(crate) fn drive_evolution_cycle(
         record_drive_event(
             state_path,
             &mut loaded,
+            EvolutionDriveStage::ApplyRetryPlanning,
             "evolution",
             &args.tentacle_id,
             format!(
@@ -183,7 +193,7 @@ pub(crate) fn drive_evolution_cycle(
         if let Ok((retry_evolution, retry_recommendation, retry_apply_artifact)) =
             recommend_current_patch(&cwd, &args.tentacle_id, &retry_objective, &loaded)
         {
-            report.stage = "retry_recommended".to_string();
+            report.stage = EvolutionDriveStage::ApplyRetryPlanning.as_str().to_string();
             report.objective = retry_objective;
             report.evolution_artifact = Some(retry_evolution);
             report.apply_artifact = Some(retry_apply_artifact.clone());
@@ -202,17 +212,18 @@ pub(crate) fn drive_evolution_cycle(
             } else {
                 "blocked"
             };
-            record_drive_event(
+            record_apply_event(
                 state_path,
                 &mut loaded,
-                retry_state,
                 &args.tentacle_id,
+                retry_state,
                 apply_summary(&retry_recommendation, &live_apply),
                 if live_apply.applied {
                     Status::Satisfied
                 } else {
                     Status::Failed
                 },
+                &live_apply,
             )?;
             report.live_apply = Some(live_apply.clone());
             report.recommendation = Some(retry_recommendation);
@@ -225,7 +236,7 @@ pub(crate) fn drive_evolution_cycle(
             .as_ref()
             .map(|recommendation| recommendation.candidate_id.as_str())
             .unwrap_or(recommendation.candidate_id.as_str());
-        report.stage = "apply_failed".to_string();
+        report.stage = EvolutionDriveStage::Applying.as_str().to_string();
         report.next = vec![format!(
             "octopus evolve apply {} {}",
             shell_arg(&args.tentacle_id),
@@ -234,16 +245,34 @@ pub(crate) fn drive_evolution_cycle(
         return Ok(report);
     }
 
-    let selected_check = (args.tentacle_id == "field-mini-task").then_some(2);
-    let mut check = check_report(&args.tentacle_id, selected_check)?;
+    record_drive_event(
+        state_path,
+        &mut loaded,
+        EvolutionDriveStage::Checking,
+        "harness",
+        &args.tentacle_id,
+        "running configured harness checks".to_string(),
+        Status::Partial,
+    )?;
+    let mut check = check_report(&args.tentacle_id, None)?;
     record_check_report(&mut loaded, &mut check);
     loaded.save(state_path).map_err(|error| error.to_string())?;
     pet_events::append_latest(state_path, &loaded)?;
     report.check = Some(check);
     if report.check.as_ref().is_some_and(|check| !check.passed) {
-        report.stage = "check_failed".to_string();
+        record_drive_error_event(
+            state_path,
+            &mut loaded,
+            EvolutionDriveStage::Checking,
+            "blocked",
+            &args.tentacle_id,
+            "configured harness check failed",
+            Status::Failed,
+            "check_failed",
+        )?;
+        report.stage = EvolutionDriveStage::Checking.as_str().to_string();
         report.next = vec![
-            format!("octopus check {} 2", shell_arg(&args.tentacle_id)),
+            format!("octopus check {}", shell_arg(&args.tentacle_id)),
             format!(
                 "octopus evolve recommend {} {}",
                 shell_arg(&args.tentacle_id),
@@ -256,7 +285,7 @@ pub(crate) fn drive_evolution_cycle(
     if args.tentacle_id == "field-mini-task" {
         feed_field_mini_task_cycle(state_path, args, loaded, &mut report)?;
     } else {
-        report.stage = "checked".to_string();
+        report.stage = EvolutionDriveStage::Checking.as_str().to_string();
         report.next = vec![
             format!("octopus check {}", shell_arg(&report.tentacle_id)),
             "octopus beat 200".to_string(),
@@ -331,7 +360,7 @@ fn feed_field_mini_task_cycle(
     mut loaded: HarnessState,
     report: &mut EvolutionDriveReport,
 ) -> Result<(), String> {
-    report.stage = "feeding".to_string();
+    report.stage = EvolutionDriveStage::Feeding.as_str().to_string();
     let mut run = loaded.start_parallel_evolution(args.objective, args.workers)?;
     loaded.save(state_path).map_err(|error| error.to_string())?;
     let desktop_pet = if args.open_pet {
@@ -387,7 +416,19 @@ fn feed_field_mini_task_cycle(
     report.field_summary = next_state
         .field_trajectory_report_with_state(Some(state_path))
         .ok();
-    report.stage = "fed".to_string();
+    record_drive_event(
+        state_path,
+        &mut next_state,
+        EvolutionDriveStage::Fed,
+        "feed",
+        &report.tentacle_id,
+        format!(
+            "fed {} queued Need(s)",
+            report.auto_feed.as_ref().map(|feed| feed.ran).unwrap_or(0)
+        ),
+        Status::Satisfied,
+    )?;
+    report.stage = EvolutionDriveStage::Fed.as_str().to_string();
     report.next = report
         .field_summary
         .as_ref()
@@ -399,18 +440,67 @@ fn feed_field_mini_task_cycle(
 fn record_drive_event(
     state_path: &Path,
     state: &mut HarnessState,
+    stage: EvolutionDriveStage,
     pet_state: &str,
     tentacle_id: &str,
     summary: String,
     status: Status,
 ) -> Result<(), String> {
-    pet_events::record_and_save(
+    record_stage_event(
         state_path,
         state,
+        stage,
         pet_state,
-        format!("evolve drive {tentacle_id}"),
+        tentacle_id,
         summary,
         status,
+    )
+    .map(|_| ())
+}
+
+fn record_drive_error_event(
+    state_path: &Path,
+    state: &mut HarnessState,
+    stage: EvolutionDriveStage,
+    pet_state: &str,
+    tentacle_id: &str,
+    summary: impl Into<String>,
+    status: Status,
+    error_class: impl Into<String>,
+) -> Result<(), String> {
+    record_stage_event_with_error(
+        state_path,
+        state,
+        stage,
+        pet_state,
+        tentacle_id,
+        summary,
+        status,
+        Some(error_class.into()),
+    )
+    .map(|_| ())
+}
+
+fn record_apply_event(
+    state_path: &Path,
+    state: &mut HarnessState,
+    tentacle_id: &str,
+    pet_state: &str,
+    summary: String,
+    status: Status,
+    live_apply: &EvolutionLiveApplyReport,
+) -> Result<(), String> {
+    let error_class = (!live_apply.applied)
+        .then(|| classify_apply_status(&live_apply.status, &live_apply.stderr));
+    record_stage_event_with_error(
+        state_path,
+        state,
+        EvolutionDriveStage::Applying,
+        pet_state,
+        tentacle_id,
+        summary,
+        status,
+        error_class,
     )
     .map(|_| ())
 }
