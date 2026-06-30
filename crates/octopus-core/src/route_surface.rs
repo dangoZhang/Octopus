@@ -1,5 +1,67 @@
 use super::*;
 
+pub(crate) fn handle_routes_command(
+    rest: &[String],
+    state: &Path,
+    json: bool,
+    language: Language,
+) -> Result<(), String> {
+    let loaded = HarnessState::load(state).map_err(|error| error.to_string())?;
+    if let Some(kind_value) = rest.get(1) {
+        let kind = parse_kind(kind_value)?;
+        let query = if rest.len() > 2 {
+            rest[2..].join(" ")
+        } else {
+            ".".to_string()
+        };
+        let harness = harness_for_need(loaded, &kind)?;
+        let report = harness.route_report(&Need::new(kind, query));
+        if json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+            );
+        } else {
+            print_route_report(&report, language);
+        }
+    } else {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&loaded.routes.scores)
+                .map_err(|error| error.to_string())?
+        );
+    }
+    Ok(())
+}
+
+pub(crate) fn handle_traces_command(
+    rest: &[String],
+    state: &Path,
+    json: bool,
+    language: Language,
+) -> Result<(), String> {
+    let limit = rest
+        .get(1)
+        .map(|value| {
+            value
+                .parse::<usize>()
+                .map_err(|_| format!("invalid trace limit: {value}"))
+        })
+        .transpose()?
+        .unwrap_or(10);
+    let loaded = HarnessState::load(state).map_err(|error| error.to_string())?;
+    let traces = loaded.recent_feed_traces(limit);
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&traces).map_err(|error| error.to_string())?
+        );
+    } else {
+        print_feed_traces(&traces, language);
+    }
+    Ok(())
+}
+
 pub(crate) fn print_feed_traces(traces: &[FeedTraceRecord], language: Language) {
     match language {
         Language::En => println!("Feed traces"),

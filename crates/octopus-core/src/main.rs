@@ -551,57 +551,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
-        Some("routes") => {
-            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            if let Some(kind_value) = rest.get(1) {
-                let kind = parse_kind(kind_value)?;
-                let query = if rest.len() > 2 {
-                    rest[2..].join(" ")
-                } else {
-                    ".".to_string()
-                };
-                let harness = harness_for_need(loaded, &kind)?;
-                let report = harness.route_report(&Need::new(kind, query));
-                if json {
-                    println!(
-                        "{}",
-                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
-                    );
-                } else {
-                    print_route_report(&report, language);
-                }
-            } else {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&loaded.routes.scores)
-                        .map_err(|error| error.to_string())?
-                );
-            }
-            Ok(())
-        }
+        Some("routes") => handle_routes_command(&rest, &state, json, language),
         Some("fields") => handle_fields_command(&rest, &state, json, language),
-        Some("traces") => {
-            let limit = rest
-                .get(1)
-                .map(|value| {
-                    value
-                        .parse::<usize>()
-                        .map_err(|_| format!("invalid trace limit: {value}"))
-                })
-                .transpose()?
-                .unwrap_or(10);
-            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            let traces = loaded.recent_feed_traces(limit);
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&traces).map_err(|error| error.to_string())?
-                );
-            } else {
-                print_feed_traces(&traces, language);
-            }
-            Ok(())
-        }
+        Some("traces") => handle_traces_command(&rest, &state, json, language),
         Some("feedback") => handle_feedback_command(&rest, &state, json, language),
         Some("chat") => {
             let message = rest

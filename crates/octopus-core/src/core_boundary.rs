@@ -119,7 +119,7 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
         ),
         path_report(
             root.join("crates/octopus-core/src/route_surface.rs"),
-            "route-trace-surface",
+            "route-trace-command-surface",
         ),
         path_report(
             root.join("crates/octopus-core/src/shell_words.rs"),
