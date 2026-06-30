@@ -1,7 +1,6 @@
 use crate::evolution_apply::EvolutionLiveApplyReport;
-use crate::{
-    propose_evolution_for_cli, write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts,
-};
+use crate::evolution_surface::propose_evolution_for_cli;
+use crate::{write_tentacle_apply_artifacts, write_tentacle_evolution_artifacts};
 use octopus_core::{
     recommend_tentacle_evolution_apply, EvolutionApplyArtifact, EvolutionArtifact,
     EvolutionRecommendation, HarnessState,

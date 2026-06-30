@@ -42,6 +42,7 @@ Octopus/
 │       ├── evolution_plan.rs  LLM patch recommendation artifacts and apply-failure retry objective shaping.
 │       ├── evolution_prompt.rs LLM evolution prompt, compact trace/history payloads, and target-file context budget.
 │       ├── evolution_recommend.rs Proposal assembly, candidate scoring, apply-plan selection, and harness-beat artifact orchestration.
+│       ├── evolution_surface.rs `evolve` command surface, pet event writes, recommend/apply/score/parallel dispatch.
 │       ├── evolution_target.rs Manifest/field-pack/repair-template target resolution for harness evolution.
 │       ├── feedback_surface.rs Feed feedback command surface, route score outcome rendering, pet event append.
 │       ├── field_pack.rs      Field-pack loader, matcher, and Need/trace metadata.
@@ -148,7 +149,7 @@ Octopus/
 | Product report surface | Builds `octopus report` and app-facing capability/gap summaries. It keeps `next` as human Goal hints and `agent_next` as internal executable actions, so the product surface does not become a hidden control panel. | `product_surface.rs`, `ProductReport`, `ProductCapability`, `ProductGap`, `product_report` | 791 |
 | Preflight surface boundary | Builds `octopus preflight`, preflight scripts, real-machine record templates/audits/appends, release summary, and preflight printing. This is the debug entry when product readiness, real-machine evidence, or desktop/app release checks look wrong. | `preflight_surface.rs`, `PreflightReport`, `PreflightSummary`, `PreflightRecordCheckReport`, `preflight_report` | 1,101 |
 | Doctor surface boundary | Builds `octopus doctor`: state existence, detected environment, bundled/installed manifest health, profile registry, provider setup, pet page, warnings, and next Goal hints. This is the debug entry when a local install looks unhealthy before strategy-level checks. | `doctor_surface.rs`, `DoctorReport`, `DoctorLlmReport`, `doctor_report`, `print_doctor_report` | 302 |
-| Harness repair surface | Owns `octopus repair`: repair plan extraction, repair continuation, patch apply/verify, repair scoring, repair outcome journal, and repair report rendering. This is the debug entry when a harness change, repair plan, score, or post-apply check cannot be diagnosed from Need/Feed traces alone. | `repair_surface.rs`, `RepairReport`, `RepairPlanReport`, `RepairScoreReport`, `handle_repair_command` | 6,669 |
+| Harness repair surface | Owns `octopus repair`: repair plan extraction, repair continuation, patch apply/verify, repair scoring, repair outcome journal, and repair report rendering. This is the debug entry when a harness change, repair plan, score, or post-apply check cannot be diagnosed from Need/Feed traces alone. | `repair_surface.rs`, `RepairReport`, `RepairPlanReport`, `RepairScoreReport`, `handle_repair_command` | 6,670 |
 | Heartbeat command surface | Owns `octopus beat`: memory keep parsing, early heartbeat pet event, seed-source repair before beat, three-heart report rendering, and harness-beat evolution artifact recommendation. This is the debug entry when the desktop pet looks stale during beat, memory/harness beat output is wrong, or harness beat chooses the wrong repair target. | `heartbeat_surface.rs`, `handle_beat_command`, `print_heartbeat_report`, `write_harness_beat_evolution_artifacts_with_bundled_manifest` | 246 |
 | Evolution contract | Manifest-owned surface requirements, required-surface validation, candidate ID normalization, LLM retry guardrails without field-specific Rust branches | `evolution.rs`, `tentacles/*/manifest.json`, `tentacles/tentacle.schema.json` | 471 |
 | Evolution apply boundary | Authorized provider patch application, `git apply --check`, reverse already-applied detection, summary helpers, safety tests, and live apply reports shared by CLI apply and autonomous drive | `evolution_apply.rs` | 282 |
@@ -157,17 +158,18 @@ Octopus/
 | Evolution data contract | Public data shapes for evolution policy, surfaces, requirements, proposals, file targets, patch candidates, feedback, apply plans, artifacts, recommendations, and harness-beat reports. It owns serde defaults for manifest evolution surfaces and keeps contract shape separate from planner/apply execution. | `evolution_contract.rs` | 222 |
 | Evolution cycle contract | Stage and error-class event contract for autonomous harness evolution. Pet observers now see whether a block happened in planning, applying, checking, or feeding, and whether it was provider timeout, provider error, patch apply, or check failure. | `evolution_cycle.rs`, `PetEvent.stage`, `PetEvent.error_class` | 153 |
 | Evolution LLM planner boundary | Builds the harness-planner chat request, preserves the clean-brain/tentacle context policy prompt, retries once with validator feedback, and parses provider JSON into candidate plans. | `evolution_llm_plan.rs` | 52 |
-| Evolution planning boundary | LLM patch recommendation artifact writing and apply-failure retry objective shaping | `evolution_plan.rs` | 84 |
+| Evolution planning boundary | LLM patch recommendation artifact writing and apply-failure retry objective shaping | `evolution_plan.rs` | 83 |
 | Evolution prompt boundary | Builds the LLM planner payload from proposal, trace, check-history, file-target, surface, and prompt-budget data. It owns context compaction for harness evolution while `lib.rs` keeps the public proposal/candidate contract. | `evolution_prompt.rs` | 254 |
 | Evolution recommendation boundary | Assembles proposal context from manifests and state, scores candidates from outcomes/Feed traces/check history, builds apply plans, and writes harness-beat proposal/apply artifacts. This is where a wrong candidate choice or missing harness-beat artifact should be debugged. | `evolution_recommend.rs` | 679 |
-| Evolution drive surface | CLI args, JSON report shape, and human-readable printing for `evolve drive` | `evolution_drive_surface.rs` | 115 |
+| Evolution command surface | Owns `octopus evolve`: parallel worker start, drive dispatch, recommend/apply/score command flow, proposal/apply artifact loading, pet-event writes around evolution actions, and user/JSON output selection. This is the debug entry when self-evolution commands do not light the desktop pet or return misleading command output. | `evolution_surface.rs`, `handle_evolve_command`, `propose_evolution_for_cli`, `evolution_score_report` | 795 |
+| Evolution drive surface | CLI args, JSON report shape, and human-readable printing for `evolve drive` | `evolution_drive_surface.rs` | 116 |
 | Evolution driver | Autonomous harness loop for one cycle: stage events, planning, apply, manifest checks, and Feed delegation. It no longer owns CLI/report shape, patch execution, Feed execution, or retry objective shaping. | `evolution_driver.rs` | 318 |
-| Evolution Feed boundary | Field mini-task Feed execution, queued Need worker state, desktop pet launch, Feed event writes, and blocked reporting when no queued Need actually reaches Feed | `evolution_feed.rs` | 130 |
+| Evolution Feed boundary | Field mini-task Feed execution, queued Need worker state, desktop pet launch, Feed event writes, and blocked reporting when no queued Need actually reaches Feed | `evolution_feed.rs` | 131 |
 | Evolution patch boundary | Normalizes provider patch text, inserts missing new-file headers, extracts diff paths, renders display paths, and filters authorized patch paths before artifact/apply code can write a patch file. | `evolution_patch.rs` | 245 |
 | Evolution target boundary | Resolves manifest editable targets, field-pack targets, repair-template wildcard scopes, candidate target files, and field-name scopes for patch/prompt/candidate modules. | `evolution_target.rs` | 318 |
 | Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, and compile/execute template checks | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 5,357 |
 | Field adaptation surface | Owns `octopus fields`: field-pack reports, field matching, field trajectory summaries, verifier score recording, pet-event append after verifier scoring, parallel field worker slots, field-pool latest activity, and user-visible field status lines. This is the debug entry when field state exists but the app/CLI explains the wrong active domain, score, worker slot, or verifier pet state. | `field_surface.rs`, `handle_fields_command`, `FieldMatchReport`, `print_field_trajectory_report`, `field_pool_status_line`, `parallel_run_status_line` | 558 |
-| CLI and product backend | Command dispatch, chat, starter/install/check flows, evolve commands, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; Need command logic lives in `need_surface.rs`; Route/Trace command logic lives in `route_surface.rs`; Feedback command logic lives in `feedback_surface.rs`; Field command logic lives in `field_surface.rs`; beat command logic lives in `heartbeat_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 20,860 |
+| CLI and product backend | Command dispatch, chat, starter/install/check flows, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; Need command logic lives in `need_surface.rs`; Evolution command logic lives in `evolution_surface.rs`; Route/Trace command logic lives in `route_surface.rs`; Feedback command logic lives in `feedback_surface.rs`; Field command logic lives in `field_surface.rs`; beat command logic lives in `heartbeat_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 20,067 |
 | Provider env | Loads `.octopus/llm.env` for CLI commands with a scoped guard; existing shell variables win, and values are restored after command execution | `provider_env.rs`, `app_bridge.rs::parse_env_overlay` | 107 |
 | Local app bridge | Local HTTP/SSE server, `/api/config` state-path injection, app policy, command allow-list, embedded app/docs/showcase assets, read-only pet supervision access, field activity observer with fresh pet-event handling | `app_bridge.rs`, `docs/app.html` | 2,027 |
 | Release and install gates | Low-level release records, benchmark evidence, download/install manifest, and real-machine record parsing used by the preflight surface | `release_gate.rs`, `preflight_surface.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 2,312 |
@@ -235,6 +237,7 @@ These should remain stable and hard to accidentally mutate:
 - Evolution recommendation rule: proposal assembly, scored candidate choice, apply-plan construction, and harness-beat proposal/apply artifact orchestration live in `evolution_recommend.rs`; it consumes real state traces and must not invent success.
 - Evolution patch rule: provider patch normalization, diff path extraction, display-path collapsing, and authorized patch allow-list checks live in `evolution_patch.rs`; artifact rendering can only ask for an already authorized patch.
 - Evolution target rule: manifest editable targets, field-pack paths, repair-template wildcard scopes, and field-name path extraction live in `evolution_target.rs`; planner/prompt/candidate/patch modules ask this boundary for files.
+- Evolution command surface rule: `evolution_surface.rs` owns `octopus evolve` command handling, proposal/apply artifact loading, evolution score reports reused by repair scoring, and pet-event writes around recommend/apply/score/parallel actions. Driver logic stays in `evolution_driver.rs`; Feed execution stays in `evolution_feed.rs`; patch application stays in `evolution_apply.rs`.
 - Evolution drive surface rule: `evolve drive` CLI/report formatting lives in `evolution_drive_surface.rs`; stage execution stays in `evolution_driver.rs`.
 - Evolution driver rule: `evolve drive` uses `evolution_cycle.rs` for stage/error events. Apply-check failures are fed back to the LLM once for a regenerated current-file patch.
 - Field surface rule: `field_surface.rs` owns field-adaptation command handling, display, matching reports, field-pool lines, verifier score recording, verifier result printing, and parallel field run rendering. It may append the verifier pet event created by `record_field_verifier_result`; it must not mutate harness code or bypass field-pack/manifest runtime execution.
@@ -251,6 +254,7 @@ Use this before changing UI or harness code:
 | --- | --- | --- | --- |
 | Pet not visible | `octopus pet supervise --json`, check `desktop_process` | Native observer is not running or is reading another state path | `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift` |
 | Pet visible but stale | `event_freshness` | Active Octopus loop is not writing fresh events, heartbeat is blocked before its early event, or the report surface is reading the wrong event/state source | caller that should use `pet_events` or `evolution_cycle.rs`; heartbeat entry in `heartbeat_surface.rs`; report mismatch in `pet_surface.rs` |
+| Evolution command runs but pet does not change | compare `octopus evolve ... --json`, `.octopus/state.json.last_pet_event`, and `.octopus/pet-events.jsonl` | The command surface skipped the unified pet-event write before/after an evolution action | `evolution_surface.rs`; stage-aware `drive` events stay in `evolution_driver.rs` and `evolution_cycle.rs` |
 | Doctor reports unhealthy install | `octopus doctor --json`, then warnings and `llm/profile_registry/pet` fields | Local install, provider config, profile registry, manifest health, or pet page is broken before strategy-level execution | `doctor_surface.rs`, then the boundary named by the warning |
 | Preflight says desktop/app is not ready | `octopus preflight --json`, then the failing check id | Product readiness aggregation failed; inspect the check evidence before editing app or harness code | `preflight_surface.rs`, then the boundary named by the check |
 | Pet red/blocked during planning | `last_event.stage=planning`, `error_class=provider_timeout/provider_error` | LLM planner did not return a harness candidate | provider config/client and evolution planner boundary |
@@ -396,7 +400,7 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 55 | 59,002 |
+| `crates/octopus-core/src` | 56 | 59,008 |
 | `crates/octopus-core/examples` | 0 | 0 |
 | `tentacles` | 83 | 18,974 |
 | `field-packs` | 14 | 598 |
@@ -409,9 +413,9 @@ field-packs/
 
 | File | Lines |
 | --- | ---: |
-| `main.rs` | 20,860 |
+| `main.rs` | 20,067 |
 | `lib.rs` | 8,999 |
-| `repair_surface.rs` | 6,669 |
+| `repair_surface.rs` | 6,670 |
 | `provider_surface.rs` | 1,887 |
 | `brain_goal_surface.rs` | 1,610 |
 | `app_bridge.rs` | 1,167 |
@@ -419,15 +423,16 @@ field-packs/
 | `manifest_runtime.rs` | 1,090 |
 | `brain_loop.rs` | 1,082 |
 | `field_pack.rs` | 868 |
+| `evolution_surface.rs` | 795 |
 | `product_surface.rs` | 791 |
 | `state_report.rs` | 734 |
 | `llm_provider.rs` | 704 |
 | `release_gate.rs` | 703 |
 | `evolution_recommend.rs` | 679 |
 | `need_surface.rs` | 663 |
+| `field_surface.rs` | 558 |
 | `need_runner.rs` | 544 |
 | `pet_supervision.rs` | 518 |
-| `field_surface.rs` | 558 |
 | `bundled_harness.rs` | 423 |
 | `evolution_artifact.rs` | 401 |
 | `desktop_pet.rs` | 377 |
@@ -448,7 +453,7 @@ field-packs/
 | `need_queue.rs` | 234 |
 | `evolution_candidate.rs` | 233 |
 | `evolution_contract.rs` | 222 |
-| `core_boundary.rs` | 215 |
+| `core_boundary.rs` | 219 |
 | `route_surface.rs` | 205 |
 | `download.rs` | 175 |
 | `evolution_cycle.rs` | 153 |
@@ -456,7 +461,7 @@ field-packs/
 | `user_surface.rs` | 123 |
 | `evolution_drive_surface.rs` | 116 |
 | `provider_env.rs` | 107 |
-| `evolution_plan.rs` | 84 |
+| `evolution_plan.rs` | 83 |
 | `evolution.rs` | 78 |
 | `profile_registry.rs` | 78 |
 | `pet_events.rs` | 74 |

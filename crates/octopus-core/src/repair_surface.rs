@@ -1,4 +1,5 @@
 use super::*;
+use crate::evolution_surface::evolution_score_report;
 
 #[derive(Debug, serde::Serialize)]
 pub(crate) struct RepairReport {
