@@ -57,6 +57,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
             "download-manifest",
         ),
         path_report(
+            root.join("crates/octopus-core/src/doctor_surface.rs"),
+            "doctor-surface",
+        ),
+        path_report(
             root.join("crates/octopus-core/src/need_queue.rs"),
             "need-queue",
         ),
