@@ -48,6 +48,7 @@ mod download;
 mod evolution_apply;
 mod evolution_cycle;
 mod evolution_driver;
+mod evolution_feed;
 mod pet;
 mod pet_events;
 mod pet_supervision;

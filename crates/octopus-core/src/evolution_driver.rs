@@ -1,14 +1,14 @@
-use crate::desktop_pet::{launch_desktop_pet, DesktopPetConfig, DesktopPetReport};
+use crate::desktop_pet::DesktopPetReport;
 use crate::evolution_apply::{apply_authorized_suggested_patch, EvolutionLiveApplyReport};
 use crate::evolution_cycle::{
     classify_apply_status, classify_planner_error, record_stage_event,
     record_stage_event_with_error, EvolutionDriveStage,
 };
+use crate::evolution_feed::{run_field_mini_task_feed_cycle, EvolutionFeedCycleArgs};
 use crate::shell_words::shell_arg;
 use crate::{
-    check_report, empty_parallel_evolution_batch_report, parse_worker_count_1_to_8, pet_events,
-    propose_evolution_for_cli, record_check_report, record_parallel_evolution_action_event,
-    run_queued_need_indices_with_observer_state, CheckReport, Language, NeedRunBatchReport,
+    check_report, parse_worker_count_1_to_8, pet_events, propose_evolution_for_cli,
+    record_check_report, CheckReport, Language, NeedRunBatchReport,
 };
 use octopus_core::{
     recommend_tentacle_evolution_apply, write_tentacle_apply_artifacts,
@@ -283,7 +283,22 @@ pub(crate) fn drive_evolution_cycle(
     }
 
     if args.tentacle_id == "field-mini-task" {
-        feed_field_mini_task_cycle(state_path, args, loaded, &mut report)?;
+        let feed = run_field_mini_task_feed_cycle(
+            state_path,
+            loaded,
+            EvolutionFeedCycleArgs {
+                tentacle_id: args.tentacle_id,
+                objective: args.objective,
+                workers: args.workers,
+                open_pet: args.open_pet,
+            },
+        )?;
+        report.stage = feed.stage.as_str().to_string();
+        report.run = Some(feed.run);
+        report.auto_feed = Some(feed.auto_feed);
+        report.desktop_pet = feed.desktop_pet;
+        report.field_summary = feed.field_summary;
+        report.next = feed.next;
     } else {
         report.stage = EvolutionDriveStage::Checking.as_str().to_string();
         report.next = vec![
@@ -352,89 +367,6 @@ pub(crate) fn print_evolution_drive_report(report: &EvolutionDriveReport, langua
             println!("下一步: {}", join_or_none(&report.next));
         }
     }
-}
-
-fn feed_field_mini_task_cycle(
-    state_path: &Path,
-    args: EvolutionDriveArgs,
-    mut loaded: HarnessState,
-    report: &mut EvolutionDriveReport,
-) -> Result<(), String> {
-    report.stage = EvolutionDriveStage::Feeding.as_str().to_string();
-    let mut run = loaded.start_parallel_evolution(args.objective, args.workers)?;
-    loaded.save(state_path).map_err(|error| error.to_string())?;
-    let desktop_pet = if args.open_pet {
-        Some(launch_desktop_pet(
-            state_path,
-            DesktopPetConfig {
-                worker_cap: run.worker_count.max(1),
-            },
-        )?)
-    } else {
-        None
-    };
-    let queued_indices = run
-        .workers
-        .iter()
-        .filter_map(|worker| worker.queued_need_index)
-        .collect::<Vec<_>>();
-    if record_parallel_evolution_action_event(&mut loaded, &run).is_some() {
-        loaded.save(state_path).map_err(|error| error.to_string())?;
-        pet_events::append_latest(state_path, &loaded)?;
-    }
-    let (auto_feed, mut next_state) = if queued_indices.is_empty() {
-        (empty_parallel_evolution_batch_report(&loaded), loaded)
-    } else {
-        run_queued_need_indices_with_observer_state(loaded, &queued_indices, Some(state_path))?
-    };
-    for feed_report in &auto_feed.reports {
-        let status = feed_report
-            .verifier_result
-            .as_ref()
-            .map(|result| result.status.clone())
-            .unwrap_or_else(|| feed_report.feed.status.clone());
-        if let Some(updated) = next_state.update_parallel_evolution_worker_result(
-            run.index,
-            feed_report.taken.item.index,
-            feed_report.feed_trace_index,
-            feed_report
-                .verifier_result
-                .as_ref()
-                .map(|result| result.index),
-            status,
-        ) {
-            run = updated;
-        }
-    }
-    next_state
-        .save(state_path)
-        .map_err(|error| error.to_string())?;
-    pet_events::append_latest(state_path, &next_state)?;
-    report.run = Some(run);
-    report.auto_feed = Some(auto_feed);
-    report.desktop_pet = desktop_pet;
-    report.field_summary = next_state
-        .field_trajectory_report_with_state(Some(state_path))
-        .ok();
-    record_drive_event(
-        state_path,
-        &mut next_state,
-        EvolutionDriveStage::Fed,
-        "feed",
-        &report.tentacle_id,
-        format!(
-            "fed {} queued Need(s)",
-            report.auto_feed.as_ref().map(|feed| feed.ran).unwrap_or(0)
-        ),
-        Status::Satisfied,
-    )?;
-    report.stage = EvolutionDriveStage::Fed.as_str().to_string();
-    report.next = report
-        .field_summary
-        .as_ref()
-        .map(|summary| summary.next.clone())
-        .unwrap_or_else(|| vec!["octopus fields summary".to_string()]);
-    Ok(())
 }
 
 fn record_drive_event(
