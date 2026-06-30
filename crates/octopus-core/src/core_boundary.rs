@@ -23,6 +23,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
     let root = repo_root();
     let stable_rust = vec![
         path_report(root.join("crates/octopus-core/src/lib.rs"), "kernel"),
+        path_report(
+            root.join("crates/octopus-core/src/brain_loop.rs"),
+            "clean-brain-loop",
+        ),
         path_report(root.join("crates/octopus-core/src/main.rs"), "cli-dispatch"),
         path_report(
             root.join("crates/octopus-core/src/app_bridge.rs"),
@@ -36,6 +40,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
             root.join("crates/octopus-core/src/download.rs"),
             "download-manifest",
         ),
+        path_report(
+            root.join("crates/octopus-core/src/need_queue.rs"),
+            "need-queue",
+        ),
         path_report(root.join("crates/octopus-core/src/pet.rs"), "pixel-pet"),
         path_report(
             root.join("crates/octopus-core/src/profile_registry.rs"),
@@ -48,6 +56,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
         path_report(
             root.join("crates/octopus-core/src/shell_words.rs"),
             "command-display",
+        ),
+        path_report(
+            root.join("crates/octopus-core/src/state_report.rs"),
+            "state-report",
         ),
     ];
     let product_app = vec![
