@@ -32,6 +32,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
             "llm-provider",
         ),
         path_report(
+            root.join("crates/octopus-core/src/manifest_catalog.rs"),
+            "manifest-catalog",
+        ),
+        path_report(
             root.join("crates/octopus-core/src/manifest_runtime.rs"),
             "manifest-tentacle-runtime",
         ),
