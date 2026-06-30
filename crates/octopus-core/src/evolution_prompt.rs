@@ -9,6 +9,8 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+const FIELD_PACK_SCHEMA_JSON: &str = include_str!("../../../field-packs/field-pack.schema.json");
+
 pub(crate) fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Result<String, String> {
     let required_surfaces = evolution::required_surfaces_for_objective(proposal);
     let payload = serde_json::json!({
@@ -28,6 +30,7 @@ pub(crate) fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Resu
         "recent_check_history": compact_check_history_records(&proposal.recent_check_history),
         "files": compact_evolution_file_targets(&proposal.files),
         "target_file_contents": evolution_target_file_contexts(proposal),
+        "supporting_contracts": supporting_evolution_contracts(&required_surfaces),
         "context_policy": {
             "clean_brain": ["Goal", "Mem", "Need", "Feed"],
             "tentacle_brain": ["Need", "Tool", "Action", "Tool", "Action", "Feed"],
@@ -41,7 +44,7 @@ pub(crate) fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Resu
         },
         "patch_requirements": {
             "format": "suggested_patch must be a complete git unified diff that starts with diff --git, includes --- and +++ file headers, includes @@ -line,count +line,count @@ hunk headers, and can be applied by git apply. Use exact nearby lines from target_file_contents.content and target_file_contents.line_numbered_content; do not invent line numbers or old context. On apply retry, treat line_numbered_content as the current file. Do not return apply_patch, *** Begin Patch, or prose-only patches.",
-            "field_pack_tasks": "suggested_patch is required for this surface. If required_surfaces contains field_pack_tasks, at least one candidate must use surface_id=field_pack_tasks. Patch only the named field-pack JSON files and matching tentacles/<tentacle>/repair-templates/<field>/<mini-task>.pyfrag files needed by the objective. New mini task layers must add both the field-pack entry and matching repair template. Do not merely harden an existing mini task when the objective asks for a harder layer. Do not patch kernel Rust or unrelated runtime code from this surface.",
+            "field_pack_tasks": "suggested_patch is required for this surface. If required_surfaces contains field_pack_tasks, at least one candidate must use surface_id=field_pack_tasks. Patch only the named field-pack JSON files and matching tentacles/<tentacle>/repair-templates/<field>/<mini-task>.pyfrag files needed by the objective. New mini task layers must add both the field-pack entry and matching repair template. Field-pack mini_tasks is an array of objects with id, goal, and expected_feed; append a new object to that array and keep the JSON schema valid. Do not create task_layers or convert mini_tasks to an object. Do not merely harden an existing mini task when the objective asks for a harder layer. Do not patch kernel Rust or unrelated runtime code from this surface.",
             "runtime_code": "suggested_patch is preferred when the objective names an executable harness gap. Patch declared harness targets only."
         },
         "return_schema": {
@@ -63,6 +66,23 @@ pub(crate) fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Resu
     Ok(format!(
         "Generate code-as-harness evolution candidates from this JSON. Keep the clean brain out of tool details and preserve the declared context policy. Return only a JSON object matching return_schema. Any suggested_patch must be a complete git unified diff that starts with diff --git, includes --- and +++ file headers, includes @@ -line,count +line,count @@ hunk headers, and applies with git apply; never return apply_patch or *** Begin Patch format.\n{payload}"
     ))
+}
+
+fn supporting_evolution_contracts(required_surfaces: &[String]) -> Vec<serde_json::Value> {
+    let mut contracts = Vec::new();
+    if required_surfaces
+        .iter()
+        .any(|surface| surface == "field_pack_tasks")
+    {
+        contracts.push(serde_json::json!({
+            "id": "field-pack-schema",
+            "path": "field-packs/field-pack.schema.json",
+            "contract": "mini_tasks is an array; each item has id, goal, expected_feed",
+            "invalid_shapes": ["task_layers", "mini_tasks as object/map"],
+            "content": short_text(FIELD_PACK_SCHEMA_JSON, 2400)
+        }));
+    }
+    contracts
 }
 
 fn compact_evolution_outcomes(outcomes: &[EvolutionOutcome]) -> Vec<serde_json::Value> {
@@ -311,5 +331,15 @@ mod tests {
 
         assert_eq!(paths, vec![file.to_string_lossy().to_string()]);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn field_pack_task_prompt_includes_schema_contract() {
+        let contracts = supporting_evolution_contracts(&["field_pack_tasks".to_string()]);
+
+        let text = serde_json::to_string(&contracts).unwrap();
+        assert!(text.contains("field-pack.schema.json"));
+        assert!(text.contains("mini_tasks is an array"));
+        assert!(text.contains("task_layers"));
     }
 }

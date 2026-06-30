@@ -35,6 +35,11 @@
       "id": "write-mini-3",
       "goal": "From six local source notes, produce a strict two-sentence brief with exactly four claims mapped to source IDs, confidence scores, and at least two explicit unsupported gaps.",
       "expected_feed": "A strict two-sentence brief, 4-item claim-to-source map with confidence levels, explicit unsupported gaps, and artifact-backed verifier checks."
+    },
+    {
+      "id": "write-mini-4",
+      "goal": "From local source notes only, produce a strict 3-sentence write-up that maps exactly five claims to note IDs with confidence scores and keeps Goal, Mem, Need, and Feed as the clean-brain scope.",
+      "expected_feed": "A 3-sentence brief plus exactly five source-backed claims with confidence scores, explicit unsupported gaps, and local artifact-backed verifier evidence under .octopus/field-mini-task/."
     }
   ]
 }

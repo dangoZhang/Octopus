@@ -244,6 +244,8 @@ def normalize_field_result(result, template_path=None):
             status = "partial"
         else:
             status = "partial"
+    if not isinstance(merged_metadata.get("verifier_status"), str):
+        merged_metadata["verifier_status"] = status
     output = result.get("output")
     if not isinstance(output, str) or not output.strip():
         output = (

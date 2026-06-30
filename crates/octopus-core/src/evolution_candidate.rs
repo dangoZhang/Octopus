@@ -104,6 +104,9 @@ fn llm_candidate_to_evolution(
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("tentacles").join(&proposal.tentacle_id));
     let suggested_patch = clean_suggested_patch(candidate.suggested_patch);
+    if let Some(patch) = &suggested_patch {
+        validate_candidate_patch_contract(surface, patch)?;
+    }
     let mut target_files =
         evolution_candidate_target_files(&manifest_dir, surface, &target, &proposal.objective);
     if let Some(patch) = &suggested_patch {
@@ -132,6 +135,28 @@ fn llm_candidate_to_evolution(
     patch_candidate.feedback =
         evolution_candidate_feedback_from_proposal(&patch_candidate, proposal);
     Ok(patch_candidate)
+}
+
+fn validate_candidate_patch_contract(
+    surface: &EvolutionSurface,
+    patch: &str,
+) -> Result<(), String> {
+    if surface.id != "field_pack_tasks" {
+        return Ok(());
+    }
+    if patch.contains("\"task_layers\"") {
+        return Err(
+            "field_pack_tasks patch violates field-pack schema: use mini_tasks array, not task_layers"
+                .to_string(),
+        );
+    }
+    if patch.contains("\"mini_tasks\": {") {
+        return Err(
+            "field_pack_tasks patch violates field-pack schema: mini_tasks must remain an array of {id, goal, expected_feed} objects"
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 pub(crate) fn diff_target_files_for_surface(
@@ -230,4 +255,45 @@ fn extract_json_object(value: &str) -> Option<&str> {
     let start = value.find('{')?;
     let end = value.rfind('}')?;
     (start <= end).then_some(&value[start..=end])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn field_pack_surface() -> EvolutionSurface {
+        EvolutionSurface {
+            id: "field_pack_tasks".to_string(),
+            description: "field tasks".to_string(),
+            targets: vec!["field-packs/*/field-pack.json".to_string()],
+        }
+    }
+
+    #[test]
+    fn field_pack_candidate_rejects_task_layers_shape() {
+        let error = validate_candidate_patch_contract(
+            &field_pack_surface(),
+            r#"diff --git a/field-packs/write/field-pack.json b/field-packs/write/field-pack.json
+@@ -1 +1 @@
++  "task_layers": []
+"#,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("mini_tasks array"));
+    }
+
+    #[test]
+    fn field_pack_candidate_rejects_mini_tasks_object_shape() {
+        let error = validate_candidate_patch_contract(
+            &field_pack_surface(),
+            r#"diff --git a/field-packs/write/field-pack.json b/field-packs/write/field-pack.json
+@@ -1 +1 @@
++  "mini_tasks": {}
+"#,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("mini_tasks must remain an array"));
+    }
 }

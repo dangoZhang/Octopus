@@ -8,6 +8,7 @@ mod evolution_patch;
 mod evolution_prompt;
 mod evolution_recommend;
 mod evolution_target;
+mod field_curriculum;
 mod field_pack;
 mod llm_provider;
 mod manifest_catalog;

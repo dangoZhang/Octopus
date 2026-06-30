@@ -1,4 +1,5 @@
 use super::*;
+use crate::field_curriculum::{field_harder_layer_next_action_for_field, select_next_harder_field};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -379,7 +380,7 @@ impl HarnessState {
                     shell_arg(&format!("improve {field} harness after {reason}"))
                 )
             } else if field_pack_layer_complete {
-                field_harder_layer_next_action(&state_args)
+                field_harder_layer_next_action_for_field(&state_args, &field)
             } else if ready_for_harder_task || has_pending_mini_task {
                 format!(
                     "octopus{state_args} evolve parallel --workers 1 {}",
@@ -466,8 +467,23 @@ impl HarnessState {
                     })
             })
             && summaries.iter().all(|summary| !summary.needs_repair);
+        let curriculum_step = if all_pack_tasks_satisfied {
+            select_next_harder_field(&summaries, &state_args)
+        } else {
+            None
+        };
+        let active_slot_field = if all_pack_tasks_satisfied {
+            curriculum_step.as_ref().map(|step| step.field.clone())
+        } else {
+            active_slot_field
+        };
         let active_slot_reason = if all_pack_tasks_satisfied {
-            "all peer field tasks satisfied; add a harder mini task layer".to_string()
+            curriculum_step
+                .as_ref()
+                .map(|step| step.reason.clone())
+                .unwrap_or_else(|| {
+                    "all peer field tasks satisfied; no curriculum field selected".to_string()
+                })
         } else if let Some(field) = &active_slot_field {
             summaries
                 .iter()
@@ -489,10 +505,13 @@ impl HarnessState {
             .map(|run| run.worker_count)
             .unwrap_or_default();
         let next = if all_pack_tasks_satisfied {
-            vec![
-                format!("octopus{state_args} fields summary"),
-                field_harder_layer_next_action(&state_args),
-            ]
+            let mut actions = vec![format!("octopus{state_args} fields summary")];
+            if let Some(step) = &curriculum_step {
+                actions.push(step.next_action.clone());
+            } else {
+                actions.push(field_harder_layer_next_action(&state_args));
+            }
+            actions
         } else if let Some(field) = &active_slot_field {
             summaries
                 .iter()

@@ -64,7 +64,7 @@ fn normalize_new_file_hunks(patch: &str) -> String {
     let mut current_file_has_new_mode = false;
     let mut in_new_file_hunk = false;
     for line in patch.lines() {
-        let line = if in_new_file_hunk && line.starts_with("+diff --git ") {
+        let line = if line.starts_with("+diff --git a/") && line.contains(" b/") {
             &line[1..]
         } else {
             line
@@ -307,6 +307,34 @@ diff --git a/field-packs/swe/field-pack.json b/field-packs/swe/field-pack.json
         assert_eq!(
             diff_paths(&cleaned),
             vec!["field-packs/swe/field-pack.json"]
+        );
+    }
+
+    #[test]
+    fn clean_suggested_patch_splits_embedded_diff_header() {
+        let patch = r#"diff --git a/field-packs/write/field-pack.json b/field-packs/write/field-pack.json
+--- a/field-packs/write/field-pack.json
++++ b/field-packs/write/field-pack.json
+@@ -1,0 +2,1 @@
++{}
++diff --git a/tentacles/field-mini-task/repair-templates/write/write-mini-4.pyfrag b/tentacles/field-mini-task/repair-templates/write/write-mini-4.pyfrag
+new file mode 100644
+--- /dev/null
++++ b/tentacles/field-mini-task/repair-templates/write/write-mini-4.pyfrag
+@@ -0,0 +1 @@
++if field == "write":
++    pass
+"#;
+
+        let cleaned = clean_suggested_patch(Some(patch.to_string())).unwrap();
+
+        assert!(cleaned.contains("\ndiff --git a/tentacles/field-mini-task"));
+        assert_eq!(
+            diff_paths(&cleaned),
+            vec![
+                "field-packs/write/field-pack.json",
+                "tentacles/field-mini-task/repair-templates/write/write-mini-4.pyfrag"
+            ]
         );
     }
 }
