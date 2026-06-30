@@ -3626,12 +3626,85 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     .filter(|values| !values.is_empty())
                     .map(|values| values.join(" "))
                     .unwrap_or_else(|| "recommend next evolution candidate".to_string());
-                let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-                let proposal = propose_evolution_for_cli(tentacle_id, &objective, &loaded)?;
+                let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                record_pet_event_and_save(
+                    &state,
+                    &mut loaded,
+                    "evolution",
+                    format!("evolve recommend {tentacle_id}"),
+                    format!("planning {}", pet_summary(&objective)),
+                    Status::Partial,
+                )?;
+                let proposal = match propose_evolution_for_cli(tentacle_id, &objective, &loaded) {
+                    Ok(proposal) => proposal,
+                    Err(error) => {
+                        record_pet_event_and_save(
+                            &state,
+                            &mut loaded,
+                            "blocked",
+                            format!("evolve recommend {tentacle_id}"),
+                            error.clone(),
+                            Status::Failed,
+                        )?;
+                        return Err(error);
+                    }
+                };
                 let cwd = env::current_dir().map_err(|error| error.to_string())?;
-                let artifact = write_tentacle_evolution_artifacts(&cwd, &proposal)?;
-                let recommendation = recommend_tentacle_evolution_apply(&proposal, &loaded)?;
-                let apply_artifact = write_tentacle_apply_artifacts(cwd, &recommendation.apply)?;
+                let artifact = match write_tentacle_evolution_artifacts(&cwd, &proposal) {
+                    Ok(artifact) => artifact,
+                    Err(error) => {
+                        record_pet_event_and_save(
+                            &state,
+                            &mut loaded,
+                            "blocked",
+                            format!("evolve recommend {tentacle_id}"),
+                            error.clone(),
+                            Status::Failed,
+                        )?;
+                        return Err(error);
+                    }
+                };
+                let recommendation = match recommend_tentacle_evolution_apply(&proposal, &loaded) {
+                    Ok(recommendation) => recommendation,
+                    Err(error) => {
+                        record_pet_event_and_save(
+                            &state,
+                            &mut loaded,
+                            "blocked",
+                            format!("evolve recommend {tentacle_id}"),
+                            error.clone(),
+                            Status::Failed,
+                        )?;
+                        return Err(error);
+                    }
+                };
+                let apply_artifact =
+                    match write_tentacle_apply_artifacts(&cwd, &recommendation.apply) {
+                        Ok(apply_artifact) => apply_artifact,
+                        Err(error) => {
+                            record_pet_event_and_save(
+                                &state,
+                                &mut loaded,
+                                "blocked",
+                                format!("evolve recommend {tentacle_id}"),
+                                error.clone(),
+                                Status::Failed,
+                            )?;
+                            return Err(error);
+                        }
+                    };
+                record_pet_event_and_save(
+                    &state,
+                    &mut loaded,
+                    "evolution",
+                    format!("evolve recommend {tentacle_id}"),
+                    format!(
+                        "recommended {}: {}",
+                        recommendation.candidate_id,
+                        pet_summary(&recommendation.candidate_title)
+                    ),
+                    Status::Satisfied,
+                )?;
                 if json {
                     println!(
                         "{}",
@@ -3659,25 +3732,63 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     .filter(|values| !values.is_empty())
                     .map(|values| values.join(" "))
                     .unwrap_or_else(|| "apply evolution candidate".to_string());
-                let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+                record_pet_event_and_save(
+                    &state,
+                    &mut loaded,
+                    "action",
+                    format!("evolve apply {tentacle_id}"),
+                    format!("applying {candidate_id}"),
+                    Status::Partial,
+                )?;
                 let cwd = env::current_dir().map_err(|error| error.to_string())?;
-                let (plan, evolution_artifact) = if let Some(proposal) =
-                    maybe_load_evolution_proposal_artifact(&cwd, tentacle_id, candidate_id)?
-                {
-                    let plan = plan_tentacle_evolution_apply(&proposal, &loaded, candidate_id)?;
-                    (plan, None)
-                } else if let Some(plan) =
-                    maybe_load_evolution_apply_plan_artifact(&cwd, tentacle_id, candidate_id)?
-                {
-                    (plan, None)
-                } else {
-                    let proposal = propose_evolution_for_cli(tentacle_id, &objective, &loaded)?;
-                    let artifact = write_tentacle_evolution_artifacts(&cwd, &proposal)?;
-                    let plan = plan_tentacle_evolution_apply(&proposal, &loaded, candidate_id)?;
-                    (plan, Some(artifact))
+                let apply_result = (|| {
+                    let (plan, evolution_artifact) = if let Some(proposal) =
+                        maybe_load_evolution_proposal_artifact(&cwd, tentacle_id, candidate_id)?
+                    {
+                        let plan = plan_tentacle_evolution_apply(&proposal, &loaded, candidate_id)?;
+                        (plan, None)
+                    } else if let Some(plan) =
+                        maybe_load_evolution_apply_plan_artifact(&cwd, tentacle_id, candidate_id)?
+                    {
+                        (plan, None)
+                    } else {
+                        let proposal = propose_evolution_for_cli(tentacle_id, &objective, &loaded)?;
+                        let artifact = write_tentacle_evolution_artifacts(&cwd, &proposal)?;
+                        let plan = plan_tentacle_evolution_apply(&proposal, &loaded, candidate_id)?;
+                        (plan, Some(artifact))
+                    };
+                    let apply_artifact = write_tentacle_apply_artifacts(&cwd, &plan)?;
+                    let live_apply = apply_authorized_suggested_patch(&cwd, &plan, &apply_artifact);
+                    Ok::<_, String>((plan, evolution_artifact, apply_artifact, live_apply))
+                })();
+                let (plan, evolution_artifact, apply_artifact, live_apply) = match apply_result {
+                    Ok(result) => result,
+                    Err(error) => {
+                        record_pet_event_and_save(
+                            &state,
+                            &mut loaded,
+                            "blocked",
+                            format!("evolve apply {tentacle_id}"),
+                            error.clone(),
+                            Status::Failed,
+                        )?;
+                        return Err(error);
+                    }
                 };
-                let apply_artifact = write_tentacle_apply_artifacts(&cwd, &plan)?;
-                let live_apply = apply_authorized_suggested_patch(&cwd, &plan, &apply_artifact);
+                let (pet_state, pet_status) = if live_apply.applied {
+                    ("success", Status::Satisfied)
+                } else {
+                    ("blocked", Status::Failed)
+                };
+                record_pet_event_and_save(
+                    &state,
+                    &mut loaded,
+                    pet_state,
+                    format!("evolve apply {tentacle_id}"),
+                    format!("{} {}", candidate_id, live_apply.status),
+                    pet_status,
+                )?;
                 if json {
                     println!(
                         "{}",
@@ -3741,10 +3852,55 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .filter(|values| !values.is_empty())
                 .map(|values| values.join(" "))
                 .unwrap_or_else(|| "improve feed quality".to_string());
-            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            let proposal = propose_evolution_for_cli(tentacle_id, &objective, &loaded)?;
+            let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            record_pet_event_and_save(
+                &state,
+                &mut loaded,
+                "evolution",
+                format!("evolve {tentacle_id}"),
+                format!("planning {}", pet_summary(&objective)),
+                Status::Partial,
+            )?;
+            let proposal = match propose_evolution_for_cli(tentacle_id, &objective, &loaded) {
+                Ok(proposal) => proposal,
+                Err(error) => {
+                    record_pet_event_and_save(
+                        &state,
+                        &mut loaded,
+                        "blocked",
+                        format!("evolve {tentacle_id}"),
+                        error.clone(),
+                        Status::Failed,
+                    )?;
+                    return Err(error);
+                }
+            };
             let cwd = env::current_dir().map_err(|error| error.to_string())?;
-            let artifact = write_tentacle_evolution_artifacts(cwd, &proposal)?;
+            let artifact = match write_tentacle_evolution_artifacts(cwd, &proposal) {
+                Ok(artifact) => artifact,
+                Err(error) => {
+                    record_pet_event_and_save(
+                        &state,
+                        &mut loaded,
+                        "blocked",
+                        format!("evolve {tentacle_id}"),
+                        error.clone(),
+                        Status::Failed,
+                    )?;
+                    return Err(error);
+                }
+            };
+            record_pet_event_and_save(
+                &state,
+                &mut loaded,
+                "evolution",
+                format!("evolve {tentacle_id}"),
+                format!(
+                    "proposal with {} candidates",
+                    proposal.patch_candidates.len()
+                ),
+                Status::Satisfied,
+            )?;
             if json {
                 println!(
                     "{}",
@@ -18710,6 +18866,30 @@ fn maybe_load_evolution_proposal_artifact(
     Ok(Some(proposal))
 }
 
+fn record_pet_event_and_save(
+    state_path: &Path,
+    state: &mut HarnessState,
+    pet_state: &str,
+    source: impl Into<String>,
+    summary: impl Into<String>,
+    status: Status,
+) -> Result<PetEvent, String> {
+    let summary = summary.into();
+    let event = state.record_pet_event(pet_state, source, pet_summary(&summary), status);
+    state.save(state_path).map_err(|error| error.to_string())?;
+    Ok(event)
+}
+
+fn pet_summary(value: &str) -> String {
+    const LIMIT: usize = 180;
+    let mut summary = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if summary.chars().count() > LIMIT {
+        summary = summary.chars().take(LIMIT).collect::<String>();
+        summary.push_str("...");
+    }
+    summary
+}
+
 fn apply_authorized_suggested_patch(
     cwd: &Path,
     plan: &EvolutionApplyPlan,
@@ -32070,9 +32250,14 @@ JSON
                 .join("proposal.json"),
         )
         .unwrap();
+        let restored = HarnessState::load(&state_path).unwrap();
 
         assert!(proposal.contains("\"tentacle_id\": \"field-mini-task\""));
         assert!(proposal.contains(".octopus/bundled-tentacles"));
+        let event = restored.last_pet_event.as_ref().unwrap();
+        assert_eq!(event.state, "evolution");
+        assert_eq!(event.status, Status::Satisfied);
+        assert!(event.source.contains("evolve recommend field-mini-task"));
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);

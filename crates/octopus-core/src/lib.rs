@@ -7773,7 +7773,7 @@ where
         .map_err(|error| format!("invalid evolution LLM JSON: {error}"))?;
     let parsed = serde_json::from_value::<LlmEvolutionResponse>(parsed_value)
         .map_err(|error| format!("invalid evolution LLM JSON shape: {error}"))?;
-    let candidates = parsed
+    let mut candidates = parsed
         .candidates
         .into_iter()
         .map(|candidate| llm_candidate_to_evolution(proposal, candidate))
@@ -7781,6 +7781,8 @@ where
     if candidates.is_empty() {
         return Err("evolution LLM returned no candidates".to_string());
     }
+    validate_llm_evolution_candidates_for_objective(proposal, &candidates)?;
+    uniquify_evolution_candidate_ids(&mut candidates);
     if parsed.summary.trim().is_empty() {
         return Err("evolution LLM response missing summary".to_string());
     }
@@ -8090,6 +8092,47 @@ fn llm_candidate_to_evolution(
     patch_candidate.feedback =
         evolution_candidate_feedback_from_proposal(&patch_candidate, proposal);
     Ok(patch_candidate)
+}
+
+fn validate_llm_evolution_candidates_for_objective(
+    proposal: &TentacleEvolutionProposal,
+    candidates: &[EvolutionPatchCandidate],
+) -> Result<(), String> {
+    if proposal.tentacle_id == "field-mini-task"
+        && objective_requires_field_pack_tasks(&proposal.objective)
+        && !candidates
+            .iter()
+            .any(|candidate| candidate.surface_id == "field_pack_tasks")
+    {
+        return Err(
+            "evolution LLM must return a field_pack_tasks candidate for field-pack mini task layer objectives"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn objective_requires_field_pack_tasks(objective: &str) -> bool {
+    let lower = objective.to_ascii_lowercase();
+    lower.contains("field pack")
+        || lower.contains("field-pack")
+        || lower.contains("mini task layer")
+        || lower.contains("mini-task layer")
+        || (lower.contains("harder") && lower.contains("mini task"))
+        || (lower.contains("harder") && lower.contains("mini-task"))
+}
+
+fn uniquify_evolution_candidate_ids(candidates: &mut [EvolutionPatchCandidate]) {
+    let mut seen = BTreeMap::<String, usize>::new();
+    for candidate in candidates {
+        let base = candidate.id.clone();
+        let count = seen.entry(base.clone()).or_insert(0);
+        *count += 1;
+        if *count > 1 {
+            candidate.id = format!("{base}-{count}");
+            candidate.draft.path = format!("patches/{}.patch.md", candidate.id);
+        }
+    }
 }
 
 fn diff_target_files_for_surface(
@@ -14084,6 +14127,98 @@ mod tests {
             .target_files
             .iter()
             .any(|path| path.ends_with("repair-templates/math/math-mini-1.pyfrag")));
+    }
+
+    #[test]
+    fn llm_evolution_assigns_unique_ids_for_same_surface_candidates() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let state = HarnessState::default();
+        let mut fake = EvolutionFakeChat {
+            response: r#"{
+              "summary": "two runtime candidates should stay distinct",
+              "candidates": [
+                {
+                  "surface_id": "runtime_code",
+                  "title": "Patch read adapter",
+                  "target": "tools/read.sh",
+                  "rationale": "read evidence needs a narrow runtime change",
+                  "change_plan": ["patch read.sh"],
+                  "checks": ["tentacles/swe-agent/tools/read.sh README.md 1 2"],
+                  "suggested_patch": "diff --git a/tentacles/swe-agent/tools/read.sh b/tentacles/swe-agent/tools/read.sh\n--- a/tentacles/swe-agent/tools/read.sh\n+++ b/tentacles/swe-agent/tools/read.sh\n@@ -1,2 +1,3 @@\n #!/bin/sh\n+# first candidate\n set -eu\n"
+                },
+                {
+                  "surface_id": "runtime_code",
+                  "title": "Patch edit adapter",
+                  "target": "tools/edit.sh",
+                  "rationale": "edit evidence needs a separate runtime change",
+                  "change_plan": ["patch edit.sh"],
+                  "checks": ["tentacles/swe-agent/tools/edit.sh README.md"],
+                  "suggested_patch": "diff --git a/tentacles/swe-agent/tools/edit.sh b/tentacles/swe-agent/tools/edit.sh\n--- a/tentacles/swe-agent/tools/edit.sh\n+++ b/tentacles/swe-agent/tools/edit.sh\n@@ -1,2 +1,3 @@\n #!/bin/sh\n+# second candidate\n set -eu\n"
+                }
+              ]
+            }"#
+            .to_string(),
+            prompt: String::new(),
+        };
+
+        let proposal = propose_tentacle_evolution_with_client(
+            &root,
+            "swe-agent",
+            "improve observe feed",
+            &state,
+            &mut fake,
+        )
+        .unwrap();
+
+        assert_eq!(proposal.patch_candidates[0].id, "03-runtime-code");
+        assert_eq!(proposal.patch_candidates[1].id, "03-runtime-code-2");
+        assert_eq!(
+            proposal.patch_candidates[0].draft.path,
+            "patches/03-runtime-code.patch.md"
+        );
+        assert_eq!(
+            proposal.patch_candidates[1].draft.path,
+            "patches/03-runtime-code-2.patch.md"
+        );
+    }
+
+    #[test]
+    fn field_pack_layer_objective_rejects_runtime_only_llm_candidate() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let state = HarnessState::default();
+        let mut fake = EvolutionFakeChat {
+            response: r#"{
+              "summary": "incorrectly tries to harden existing runtime only",
+              "candidates": [
+                {
+                  "surface_id": "runtime_code",
+                  "title": "Harden write-mini-2",
+                  "target": "repair-templates/write/write-mini-2.pyfrag",
+                  "rationale": "existing task checks could be stricter",
+                  "change_plan": ["patch write-mini-2 only"],
+                  "checks": ["python3 tools/check_repair_templates.py"],
+                  "suggested_patch": "diff --git a/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag b/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag\n--- a/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag\n+++ b/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag\n@@ -1,2 +1,3 @@\n if field == \"write\" and mini_task == \"write-mini-2\":\n+    checks[\"stricter\"] = True\n     pass\n"
+                }
+              ]
+            }"#
+            .to_string(),
+            prompt: String::new(),
+        };
+
+        let error = propose_tentacle_evolution_with_client(
+            &root,
+            "field-mini-task",
+            "add a harder mini task layer to write and translate field packs",
+            &state,
+            &mut fake,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("field_pack_tasks"));
     }
 
     #[test]

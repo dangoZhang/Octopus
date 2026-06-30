@@ -29,6 +29,7 @@ Real-machine test gate for `0.2.0` and later tags:
 - Run `octopus --version`, `doctor`, `first-run`, `chat`, `goal refine`, `pet harness`, and `preflight` on a clean machine.
 - Run `octopus evolve parallel --workers 2 "preflight math and search field adaptation"`, `octopus fields summary`, and `octopus status`; verify `desktop_pet_source` in preflight; fill the `Field pool` result with the required v0.2 named fields, `missing_required=none`, `latest_activity` including `worker=`, and `parallel_run` including `requested_worker_slots=`, `active_worker_slots=`, and a `candidate_pool` containing `math` and `search`.
 - Run `octopus check field-mini-task 2` and fill the `Field mini task harness` result with `checked_count=...`, `executed_count=...`, `satisfied_count=...`, `partial_count=...`, `missing_count=0`, `invalid_count=0`, and `status=ok`. Partial templates are allowed only when they expose the missing evidence.
+- Run one live LLM `evolve recommend` while the native desktop pet is visible. Confirm `.octopus/state.json` and the desktop pet change to `evolution/partial` during the long planner call, then to `evolution/satisfied` or `blocked/failed` when the recommendation finishes.
 - Open `docs/app.html` and `docs/pet.html?state=harness` locally.
 - Record the result with `docs/real-machine-test.md`; summarize any remaining issue in `docs/product-gap.md`.
 

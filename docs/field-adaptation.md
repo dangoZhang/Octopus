@@ -166,6 +166,26 @@ Need 稳定，实现可替换。相同 Need 可以路由到不同触手组合。
 - [x] `beat` 的 harness evolution 先用本地触手，缺失时再用 bundled seed 写 evolution/apply artifact。
 - [x] `translate-mini-1` 已进入可进化 repair-template 表面，运行时会生成翻译、term map、ambiguity notes 和 verifier checks。
 
+## 0.2.1 Supervisor Note
+
+2026-06-30 local state check:
+
+- `octopus --json status` and `octopus fields summary` show 10/10 fields satisfied, 89 Feed traces, 68 verifier results, 71 parallel evolution runs, and no queued Need.
+- `start --check 127.0.0.1:18765` reports the local Goal/Need/Feed app ready, with app surface and bridge policy passing.
+- The real latest Feed chain is `translate-mini-2 -> field-mini-task/run_field_mini_task -> Satisfied Feed #89 -> verifier #68`.
+- Current field pool next action is `evolve recommend field-mini-task 'add a harder mini task layer to the peer field packs and editable field-mini-task harness'`.
+- Provider status is ready after loading `.octopus/llm.env`; the local profile uses Codex CLI login for clean brain, tentacle planning, and harness evolution.
+- LLM evolution now writes desktop-pet observable state before and after long planner calls. Verified `evolve recommend field-mini-task ...` changes `.octopus/state.json` to `evolution/partial` while the LLM is running, then `blocked/failed` when the field-pack-layer gate rejects a runtime-only candidate. Verified `evolve recommend swe-agent ...` changes state to `evolution/satisfied` after a real LLM recommendation.
+- Latest evolution outcome #46 says a supervised repair fixed write/translate templates after provider diff failures. Treat that as supervised repair evidence, not autonomous Octopus self-repair.
+
+Smallest real 0.3.0 push:
+
+- Keep provider readiness in the process environment when running live evolution.
+- Run one LLM-backed `evolve recommend field-mini-task` scoped to a harder write/translate layer, because these 0.3.0 expansion packs currently have only two satisfied mini tasks.
+- Accept only a `field_pack_tasks` proposal that changes editable field-pack task definitions and matching repair-template targets, then verify with `check field-mini-task` plus one real Need -> Feed -> verifier run.
+- If the recommendation again needs supervised repair, record the blocker as structured edit/evolve infrastructure debt before adding more manual field behavior.
+- Do not tag another release until the native desktop pet visibly changes during LLM start, accepted recommendation, and rejected recommendation paths.
+
 ## v0.2.0 Gate
 
 每个领域至少有一个最小真实任务：
