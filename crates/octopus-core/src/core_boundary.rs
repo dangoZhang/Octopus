@@ -32,6 +32,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
             "llm-provider",
         ),
         path_report(
+            root.join("crates/octopus-core/src/llm_layers.rs"),
+            "llm-layer-routing",
+        ),
+        path_report(
             root.join("crates/octopus-core/src/manifest_catalog.rs"),
             "manifest-catalog",
         ),
