@@ -237,8 +237,17 @@ fn pet_state_info(
             "pulse",
             "🟪",
         )),
-        "harness" | "route" | "evolution" | "evolving" => Ok((
+        "harness" | "route" => Ok((
             "harness",
+            "Harness",
+            "Routes or tools are adapting from feedback.",
+            "#2563eb",
+            "#4f8cff",
+            "evolve",
+            "🟦",
+        )),
+        "evolution" | "evolving" => Ok((
+            "evolution",
             "Evolution",
             "Routes or tools are adapting from feedback.",
             "#2563eb",
@@ -265,7 +274,7 @@ fn pet_state_info(
             "🟩",
         )),
         value => Err(format!(
-            "unknown pet state: {value}; expected heartbeat, need, action, feed, memory, harness, blocked, or success"
+            "unknown pet state: {value}; expected heartbeat, need, action, feed, memory, harness, evolution, blocked, or success"
         )),
     }
 }

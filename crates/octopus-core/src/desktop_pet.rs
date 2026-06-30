@@ -223,17 +223,21 @@ mod tests {
     fn desktop_pet_keeps_observation_bubbles_ephemeral() {
         assert!(DESKTOP_PET_SOURCE.contains("func freshEvent"));
         assert!(DESKTOP_PET_SOURCE.contains("let observationFreshSeconds: TimeInterval = 8"));
+        assert!(DESKTOP_PET_SOURCE.contains("let eventStateFreshSeconds: TimeInterval = 300"));
         assert!(DESKTOP_PET_SOURCE.contains("func freshTimestamp"));
-        assert!(DESKTOP_PET_SOURCE.contains("age >= 0 && age <= observationFreshSeconds"));
+        assert!(DESKTOP_PET_SOURCE.contains("age >= 0 && age <= maxAge"));
         assert!(DESKTOP_PET_SOURCE.contains("showNeedBubble(text: needText)"));
         assert!(DESKTOP_PET_SOURCE.contains("drawNeedBubble(text: needText, color: palette.head)"));
         assert!(DESKTOP_PET_SOURCE.contains("func needBubblePulse"));
         assert!(DESKTOP_PET_SOURCE.contains("color.withAlphaComponent(0.10 + pulse * 0.08)"));
         assert!(DESKTOP_PET_SOURCE
-            .contains("let freshNeedEvent = eventFresh && eventState == \"need\""));
+            .contains("let eventFresh = freshEvent(lastEvent, maxAge: eventStateFreshSeconds)"));
+        assert!(DESKTOP_PET_SOURCE.contains("let eventBubbleFresh = freshEvent(lastEvent)"));
+        assert!(DESKTOP_PET_SOURCE
+            .contains("let freshNeedEvent = eventBubbleFresh && eventState == \"need\""));
         assert!(DESKTOP_PET_SOURCE.contains("?? (freshNeedEvent ? eventSummary : nil)"));
         assert!(DESKTOP_PET_SOURCE.contains("return snapshot.showNeedBubble"));
-        assert!(DESKTOP_PET_SOURCE.contains("snapshot.showActionBubbles = eventFresh"));
+        assert!(DESKTOP_PET_SOURCE.contains("snapshot.showActionBubbles = eventBubbleFresh"));
     }
 
     #[test]

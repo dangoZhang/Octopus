@@ -47,6 +47,7 @@ let rows = [
 ]
 
 let observationFreshSeconds: TimeInterval = 8
+let eventStateFreshSeconds: TimeInterval = 300
 let workerPolicyDefault = "workers are execution slots from the peer field pool; fields stay peer"
 
 func parseConfig() -> AppConfig {
@@ -113,9 +114,10 @@ func loadSnapshot(config: AppConfig) -> PetSnapshot {
     let latestRun = lastDict(root["parallel_evolution_runs"])
     let fieldPool = observeFieldPool(root)
     let lastEvent = dict(root["last_pet_event"])
-    let eventFresh = freshEvent(lastEvent)
+    let eventFresh = freshEvent(lastEvent, maxAge: eventStateFreshSeconds)
+    let eventBubbleFresh = freshEvent(lastEvent)
     let eventState = text(lastEvent?["state"])
-    let freshNeedEvent = eventFresh && eventState == "need"
+    let freshNeedEvent = eventBubbleFresh && eventState == "need"
     let eventSummary = text(lastEvent?["summary"])
     let runWorkerNeeds = latestWorkerNeeds(from: latestRun, root: root)
     let runWorkerSources = latestWorkerSources(from: latestRun)
@@ -139,7 +141,7 @@ func loadSnapshot(config: AppConfig) -> PetSnapshot {
     snapshot.workerUpdatedAt = workerUpdatedAt
     snapshot.source = (eventFresh ? text(lastEvent?["source"]) : nil)
         ?? firstNonEmpty(workerSources)
-        ?? latestWorkerId(from: latestRun)
+        ?? (runHasActiveWorker ? latestWorkerId(from: latestRun) : nil)
         ?? text(latestFeed?["tentacle"])
         ?? fallback.source
     snapshot.need = pendingNeed
@@ -156,16 +158,16 @@ func loadSnapshot(config: AppConfig) -> PetSnapshot {
         snapshot.state = "blocked"
     } else if pendingNeed != nil {
         snapshot.state = "need"
-    } else if let eventState = eventState, knownState(eventState) {
+    } else if eventFresh, let eventState = eventState, knownState(eventState) {
         snapshot.state = eventState
-    } else if latestRun != nil {
+    } else if runHasActiveWorker {
         snapshot.state = "harness"
     } else if latestFeed != nil {
         snapshot.state = "feed"
     } else if memoryCount(root) > 0 {
         snapshot.state = "memory"
     }
-    snapshot.showActionBubbles = eventFresh
+    snapshot.showActionBubbles = eventBubbleFresh
         && (eventState.map {
             ["action", "harness", "evolution", "feed", "success"].contains($0)
         } ?? false)
@@ -199,15 +201,15 @@ func latestNeed(_ root: [String: Any]) -> String? {
     return nil
 }
 
-func freshEvent(_ event: [String: Any]?) -> Bool {
+func freshEvent(_ event: [String: Any]?, maxAge: TimeInterval = observationFreshSeconds) -> Bool {
     guard let timestamp = int(event?["timestamp_secs"]), timestamp > 0 else { return false }
-    return freshTimestamp(timestamp)
+    return freshTimestamp(timestamp, maxAge: maxAge)
 }
 
-func freshTimestamp(_ timestamp: Int) -> Bool {
+func freshTimestamp(_ timestamp: Int, maxAge: TimeInterval = observationFreshSeconds) -> Bool {
     guard timestamp > 0 else { return false }
     let age = Date().timeIntervalSince1970 - Double(timestamp)
-    return age >= 0 && age <= observationFreshSeconds
+    return age >= 0 && age <= maxAge
 }
 
 func workerCount(from run: [String: Any]?) -> Int? {

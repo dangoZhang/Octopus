@@ -646,20 +646,30 @@
         return parts.join(" · ");
       }
 
+      function freshPetEvent(event) {
+        const timestamp = Number((event || {}).timestamp_secs || 0);
+        if (!timestamp) return false;
+        const age = Date.now() / 1000 - timestamp;
+        return age >= 0 && age <= 300;
+      }
+
       function applyStatus(report) {
         const event = report.last_pet_event || {};
+        const eventFresh = freshPetEvent(event);
         const goal = report.goal || {};
         const queued = report.latest_need_queue_item;
         const queuedStatus = String((queued || {}).status || "").toLowerCase();
         const hasPendingNeed = Boolean(queued && queued.need && queuedStatus === "pending");
         const queuedContext = queuedNeedContext(queued);
         const queuedText = queued && queued.need ? [queued.need.query, queuedContext].filter(Boolean).join(" · ") : "";
-        const petState = goalStatus(goal) === "blocked" ? "blocked" : (hasPendingNeed ? "need" : (event.state || "heartbeat"));
+        const trace = report.latest_feed_trace;
+        const petState = goalStatus(goal) === "blocked"
+          ? "blocked"
+          : (hasPendingNeed ? "need" : (eventFresh && event.state ? event.state : (trace ? "feed" : "heartbeat")));
         drawPet(petState);
-        setBlock("petText", petState, hasPendingNeed ? (queuedText || "Pending Need") : (event.summary || event.source || "Connected."));
+        setBlock("petText", petState, hasPendingNeed ? (queuedText || "Pending Need") : (eventFresh ? (event.summary || event.source || "Connected.") : "Connected."));
         if (goal.objective) $("goal").value = goal.objective;
 
-        const trace = report.latest_feed_trace;
         if (hasPendingNeed) {
           setBlock("needCard", queued.need.kind || "Need", queuedText || queued.status || "Pending Need");
         } else if (trace) {

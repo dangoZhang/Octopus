@@ -1,3 +1,4 @@
+mod evolution;
 mod field_pack;
 
 pub use field_pack::{
@@ -7310,6 +7311,8 @@ pub struct EvolutionPolicy {
     pub constraints: Vec<String>,
     #[serde(default = "default_evolution_surfaces")]
     pub surfaces: Vec<EvolutionSurface>,
+    #[serde(default)]
+    pub requirements: Vec<EvolutionRequirement>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -7317,6 +7320,16 @@ pub struct EvolutionSurface {
     pub id: String,
     pub description: String,
     pub targets: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EvolutionRequirement {
+    pub id: String,
+    pub description: String,
+    #[serde(default)]
+    pub objective_markers_any: Vec<String>,
+    #[serde(default)]
+    pub required_surfaces: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -7440,6 +7453,8 @@ pub struct TentacleEvolutionProposal {
     pub current_brain_prompt: String,
     pub editable: Vec<String>,
     pub surfaces: Vec<EvolutionSurface>,
+    #[serde(default)]
+    pub requirements: Vec<EvolutionRequirement>,
     pub checks: Vec<String>,
     pub constraints: Vec<String>,
     #[serde(default)]
@@ -7759,13 +7774,43 @@ fn llm_evolution_plan<C>(
 where
     C: ChatClient,
 {
-    let messages = vec![
+    let mut retry_note = None;
+    let mut last_error = None;
+    for _ in 0..2 {
+        match llm_evolution_plan_once(proposal, client, retry_note.as_deref()) {
+            Ok(plan) => return Ok(plan),
+            Err(error) => {
+                retry_note = Some(error.clone());
+                last_error = Some(error);
+            }
+        }
+    }
+    Err(last_error.unwrap_or_else(|| "evolution LLM planner failed".to_string()))
+}
+
+fn llm_evolution_plan_once<C>(
+    proposal: &TentacleEvolutionProposal,
+    client: &mut C,
+    retry_note: Option<&str>,
+) -> Result<ParsedLlmEvolutionPlan, String>
+where
+    C: ChatClient,
+{
+    let mut messages = vec![
         ChatMessage::new(
             ChatRole::System,
             "You are an Octopus harness evolution brain. Preserve this context policy: clean-brain LLM context is only Goal, Mem, Need, and Feed; tentacle LLM context is Need, Tool, Action, Tool, Action, then Feed. Return only JSON and no hidden reasoning.",
         ),
         ChatMessage::new(ChatRole::User, llm_evolution_prompt(proposal)?),
     ];
+    if let Some(note) = retry_note {
+        messages.push(ChatMessage::new(
+            ChatRole::User,
+            format!(
+                "The previous candidate set was rejected by the manifest surface validator. Validator report: {note}. Return corrected JSON only, including candidates for every missing surface named in the report."
+            ),
+        ));
+    }
     let response = client.chat(&messages)?;
     let content = extract_json_object(&response.content)
         .ok_or_else(|| "evolution LLM response did not contain a JSON object".to_string())?;
@@ -7781,8 +7826,8 @@ where
     if candidates.is_empty() {
         return Err("evolution LLM returned no candidates".to_string());
     }
-    validate_llm_evolution_candidates_for_objective(proposal, &candidates)?;
-    uniquify_evolution_candidate_ids(&mut candidates);
+    evolution::validate_candidates_for_objective(proposal, &candidates)?;
+    evolution::uniquify_candidate_ids(&mut candidates);
     if parsed.summary.trim().is_empty() {
         return Err("evolution LLM response missing summary".to_string());
     }
@@ -7793,14 +7838,17 @@ where
 }
 
 fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Result<String, String> {
+    let required_surfaces = evolution::required_surfaces_for_objective(proposal);
     let payload = serde_json::json!({
         "tentacle_id": proposal.tentacle_id,
         "tentacle_name": proposal.tentacle_name,
         "objective": proposal.objective,
+        "required_surfaces": required_surfaces,
         "brain_kind": proposal.brain_kind,
         "current_brain_prompt": short_text(&proposal.current_brain_prompt, 1200),
         "editable": proposal.editable,
         "surfaces": proposal.surfaces,
+        "surface_requirements": proposal.requirements,
         "checks": proposal.checks,
         "constraints": proposal.constraints,
         "previous_outcomes": compact_evolution_outcomes(&proposal.previous_outcomes),
@@ -7821,7 +7869,7 @@ fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Result<String, 
         },
         "patch_requirements": {
             "format": "suggested_patch must be a complete git unified diff that starts with diff --git, includes --- and +++ file headers, includes @@ -line,count +line,count @@ hunk headers, and can be applied by git apply. Use exact nearby lines from target_file_contents; do not invent line numbers. Do not return apply_patch, *** Begin Patch, or prose-only patches.",
-            "field_pack_tasks": "suggested_patch is required for this surface. Patch only the named field-pack JSON files and matching tentacles/<tentacle>/repair-templates/<field>/<mini-task>.pyfrag files needed by the objective. New mini tasks must add both the field-pack entry and matching repair template. Do not patch kernel Rust or unrelated runtime code from this surface.",
+            "field_pack_tasks": "suggested_patch is required for this surface. If required_surfaces contains field_pack_tasks, at least one candidate must use surface_id=field_pack_tasks. Patch only the named field-pack JSON files and matching tentacles/<tentacle>/repair-templates/<field>/<mini-task>.pyfrag files needed by the objective. New mini task layers must add both the field-pack entry and matching repair template. Do not merely harden an existing mini task when the objective asks for a harder layer. Do not patch kernel Rust or unrelated runtime code from this surface.",
             "runtime_code": "suggested_patch is preferred when the objective names an executable harness gap. Patch declared harness targets only."
         },
         "return_schema": {
@@ -8071,9 +8119,14 @@ fn llm_candidate_to_evolution(
     let suggested_patch = clean_suggested_patch(candidate.suggested_patch);
     let mut target_files =
         evolution_candidate_target_files(&manifest_dir, surface, &target, &proposal.objective);
-    if target_files.is_empty() {
-        if let Some(patch) = &suggested_patch {
-            target_files = diff_target_files_for_surface(&manifest_dir, surface, patch);
+    if let Some(patch) = &suggested_patch {
+        let diff_files = diff_target_files_for_surface(&manifest_dir, surface, patch);
+        if target_files.is_empty() {
+            target_files = diff_files;
+        } else if surface.id == "field_pack_tasks" {
+            for file in diff_files {
+                push_unique_limited(&mut target_files, file, usize::MAX);
+            }
         }
     }
     let mut patch_candidate = EvolutionPatchCandidate {
@@ -8092,47 +8145,6 @@ fn llm_candidate_to_evolution(
     patch_candidate.feedback =
         evolution_candidate_feedback_from_proposal(&patch_candidate, proposal);
     Ok(patch_candidate)
-}
-
-fn validate_llm_evolution_candidates_for_objective(
-    proposal: &TentacleEvolutionProposal,
-    candidates: &[EvolutionPatchCandidate],
-) -> Result<(), String> {
-    if proposal.tentacle_id == "field-mini-task"
-        && objective_requires_field_pack_tasks(&proposal.objective)
-        && !candidates
-            .iter()
-            .any(|candidate| candidate.surface_id == "field_pack_tasks")
-    {
-        return Err(
-            "evolution LLM must return a field_pack_tasks candidate for field-pack mini task layer objectives"
-                .to_string(),
-        );
-    }
-    Ok(())
-}
-
-fn objective_requires_field_pack_tasks(objective: &str) -> bool {
-    let lower = objective.to_ascii_lowercase();
-    lower.contains("field pack")
-        || lower.contains("field-pack")
-        || lower.contains("mini task layer")
-        || lower.contains("mini-task layer")
-        || (lower.contains("harder") && lower.contains("mini task"))
-        || (lower.contains("harder") && lower.contains("mini-task"))
-}
-
-fn uniquify_evolution_candidate_ids(candidates: &mut [EvolutionPatchCandidate]) {
-    let mut seen = BTreeMap::<String, usize>::new();
-    for candidate in candidates {
-        let base = candidate.id.clone();
-        let count = seen.entry(base.clone()).or_insert(0);
-        *count += 1;
-        if *count > 1 {
-            candidate.id = format!("{base}-{count}");
-            candidate.draft.path = format!("patches/{}.patch.md", candidate.id);
-        }
-    }
 }
 
 fn diff_target_files_for_surface(
@@ -8282,6 +8294,7 @@ fn tentacle_evolution_context(
         current_brain_prompt: loaded.manifest.brain.prompt,
         editable: loaded.manifest.evolution.editable,
         surfaces: loaded.manifest.evolution.surfaces,
+        requirements: loaded.manifest.evolution.requirements,
         checks: loaded.manifest.evolution.checks,
         constraints: loaded.manifest.evolution.constraints,
         previous_outcomes: previous_outcomes.to_vec(),
@@ -9341,6 +9354,17 @@ pub fn render_tentacle_evolution_proposal(proposal: &TentacleEvolutionProposal) 
             surface.description,
             surface.targets.join(", ")
         ));
+    }
+    if !proposal.requirements.is_empty() {
+        markdown.push_str("\n## Surface Requirements\n\n");
+        for requirement in &proposal.requirements {
+            markdown.push_str(&format!(
+                "- `{}`: {} -> `{}`\n",
+                requirement.id,
+                requirement.description,
+                requirement.required_surfaces.join("`, `")
+            ));
+        }
     }
     markdown.push_str("\n## Constraints\n\n");
     for constraint in &proposal.constraints {
@@ -13789,6 +13813,7 @@ mod tests {
 
     struct EvolutionFakeChat {
         response: String,
+        responses: Vec<String>,
         prompt: String,
     }
 
@@ -13799,8 +13824,13 @@ mod tests {
                 .map(|message| message.content.as_str())
                 .collect::<Vec<_>>()
                 .join("\n");
+            let content = if self.responses.is_empty() {
+                self.response.clone()
+            } else {
+                self.responses.remove(0)
+            };
             Ok(ChatResponse {
-                content: self.response.clone(),
+                content,
                 metadata: BTreeMap::new(),
             })
         }
@@ -13842,6 +13872,7 @@ mod tests {
               ]
             }"#
             .to_string(),
+            responses: Vec::new(),
             prompt: String::new(),
         };
 
@@ -13913,6 +13944,7 @@ mod tests {
               ]
             }"#
             .to_string(),
+            responses: Vec::new(),
             prompt: String::new(),
         };
 
@@ -14001,6 +14033,7 @@ mod tests {
               ]
             }"#
             .to_string(),
+            responses: Vec::new(),
             prompt: String::new(),
         };
 
@@ -14017,10 +14050,7 @@ mod tests {
             .iter()
             .find(|candidate| candidate.surface_id == "field_pack_tasks")
             .unwrap();
-        assert_eq!(
-            candidate.target_files.len(),
-            default_field_pack_ids().len() + 1
-        );
+        assert!(candidate.target_files.len() >= default_field_pack_ids().len() + 1);
         assert!(candidate
             .target_files
             .iter()
@@ -14077,6 +14107,7 @@ mod tests {
               ]
             }"#
             .to_string(),
+            responses: Vec::new(),
             prompt: String::new(),
         };
 
@@ -14160,6 +14191,7 @@ mod tests {
               ]
             }"#
             .to_string(),
+            responses: Vec::new(),
             prompt: String::new(),
         };
 
@@ -14206,6 +14238,7 @@ mod tests {
               ]
             }"#
             .to_string(),
+            responses: Vec::new(),
             prompt: String::new(),
         };
 
@@ -14219,6 +14252,76 @@ mod tests {
         .unwrap_err();
 
         assert!(error.contains("field_pack_tasks"));
+    }
+
+    #[test]
+    fn field_pack_layer_objective_retries_llm_after_surface_rejection() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let state = HarnessState::default();
+        let runtime_only = r#"{
+          "summary": "incorrectly tries runtime only",
+          "candidates": [
+            {
+              "surface_id": "runtime_code",
+              "title": "Harden write-mini-2",
+              "target": "repair-templates/write/write-mini-2.pyfrag",
+              "rationale": "existing task checks could be stricter",
+              "change_plan": ["patch write-mini-2 only"],
+              "checks": ["python3 tools/check_repair_templates.py"],
+              "suggested_patch": "diff --git a/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag b/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag\n--- a/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag\n+++ b/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag\n@@ -1,2 +1,3 @@\n if field == \"write\" and mini_task == \"write-mini-2\":\n+    checks[\"stricter\"] = True\n     pass\n"
+            }
+          ]
+        }"#;
+        let corrected = r#"{
+          "summary": "adds write and translate third-layer field-pack tasks",
+          "candidates": [
+            {
+              "surface_id": "field_pack_tasks",
+              "title": "Add write and translate third mini tasks",
+              "target": "field-packs/*/field-pack.json",
+              "rationale": "harder layers belong in field-pack task definitions and matching repair templates",
+              "change_plan": ["add write-mini-3 and translate-mini-3", "add matching repair templates"],
+              "checks": ["octopus check field-mini-task 2"],
+              "suggested_patch": "diff --git a/field-packs/write/field-pack.json b/field-packs/write/field-pack.json\n--- a/field-packs/write/field-pack.json\n+++ b/field-packs/write/field-pack.json\n@@ -1,2 +1,3 @@\n {\n+  \"write-mini-3-probe\": true,\ndiff --git a/field-packs/translate/field-pack.json b/field-packs/translate/field-pack.json\n--- a/field-packs/translate/field-pack.json\n+++ b/field-packs/translate/field-pack.json\n@@ -1,2 +1,3 @@\n {\n+  \"translate-mini-3-probe\": true,\ndiff --git a/tentacles/field-mini-task/repair-templates/write/write-mini-3.pyfrag b/tentacles/field-mini-task/repair-templates/write/write-mini-3.pyfrag\n--- /dev/null\n+++ b/tentacles/field-mini-task/repair-templates/write/write-mini-3.pyfrag\n@@ -0,0 +1,2 @@\n+if field == \"write\" and mini_task == \"write-mini-3\":\n+    pass\ndiff --git a/tentacles/field-mini-task/repair-templates/translate/translate-mini-3.pyfrag b/tentacles/field-mini-task/repair-templates/translate/translate-mini-3.pyfrag\n--- /dev/null\n+++ b/tentacles/field-mini-task/repair-templates/translate/translate-mini-3.pyfrag\n@@ -0,0 +1,2 @@\n+if field == \"translate\" and mini_task == \"translate-mini-3\":\n+    pass\n"
+            }
+          ]
+        }"#;
+        let mut fake = EvolutionFakeChat {
+            response: String::new(),
+            responses: vec![runtime_only.to_string(), corrected.to_string()],
+            prompt: String::new(),
+        };
+
+        let proposal = propose_tentacle_evolution_with_client(
+            &root,
+            "field-mini-task",
+            "add a harder mini task layer to write and translate field packs",
+            &state,
+            &mut fake,
+        )
+        .unwrap();
+
+        assert!(fake.prompt.contains("previous candidate set was rejected"));
+        assert_eq!(proposal.patch_candidates.len(), 1);
+        assert_eq!(proposal.patch_candidates[0].surface_id, "field_pack_tasks");
+        assert!(proposal.patch_candidates[0]
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("field-packs/write/field-pack.json")));
+        assert!(proposal.patch_candidates[0]
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("field-packs/translate/field-pack.json")));
+        assert!(proposal.patch_candidates[0]
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("repair-templates/write/write-mini-3.pyfrag")));
+        assert!(proposal.patch_candidates[0]
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("repair-templates/translate/translate-mini-3.pyfrag")));
     }
 
     #[test]
@@ -14342,6 +14445,7 @@ mod tests {
               ]
             }"#
             .to_string(),
+            responses: Vec::new(),
             prompt: String::new(),
         };
 

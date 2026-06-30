@@ -91,6 +91,23 @@
         ]
       }
     ],
+    "requirements": [
+      {
+        "id": "field-pack-mini-task-layer",
+        "description": "Objectives that ask for field-pack or harder mini-task layers must evolve task definitions with matching repair templates.",
+        "objective_markers_any": [
+          "field pack",
+          "field-pack",
+          "mini task layer",
+          "mini-task layer",
+          "harder mini task",
+          "harder mini-task"
+        ],
+        "required_surfaces": [
+          "field_pack_tasks"
+        ]
+      }
+    ],
     "checks": [
       "tools/run_field_mini_task.sh . <<'JSON' | python3 -m json.tool > /dev/null\n{\"schema_version\":\"octopus-tool-call-v1\",\"need\":{\"kind\":\"verify\",\"query\":\"Run math mini task\",\"context\":{\"field_pack\":\"math\",\"field_mini_task\":\"math-mini-1\",\"field_expected_feed\":\"Derivative 3x^2 + 2 with a numeric check near 14.\"}},\"tool\":{\"id\":\"run_field_mini_task\"},\"tentacle\":{\"id\":\"field-mini-task\"}}\nJSON",
       "python3 tools/check_repair_templates.py"
@@ -101,6 +118,7 @@
       "Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata.",
       "Keep each repair template standalone with an if field/mini_task guard; check_repair_templates.py must compile and execute every template and expose satisfied_count/partial_count honestly.",
       "When adding or changing a field-pack mini task, update the matching repair-templates/<field>/<mini-task>.pyfrag in the same candidate.",
+      "Prefer Python or Perl for editable tool code when either language fits the task; the tentacle may choose another runtime when its trajectory, verifier, or environment evidence justifies it.",
       "Concrete domain behavior should evolve in this harness, not in the clean brain."
     ]
   }

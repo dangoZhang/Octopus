@@ -95,6 +95,21 @@
             "additionalProperties": false
           }
         },
+        "requirements": {
+          "description": "Optional manifest-owned evolution requirements. Rust only validates these declared surfaces; domain policy stays in harness data.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "description", "required_surfaces"],
+            "properties": {
+              "id": { "type": "string" },
+              "description": { "type": "string" },
+              "objective_markers_any": { "type": "array", "items": { "type": "string" } },
+              "required_surfaces": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+          }
+        },
         "checks": { "type": "array", "items": { "type": "string" } },
         "constraints": { "type": "array", "items": { "type": "string" } }
       },

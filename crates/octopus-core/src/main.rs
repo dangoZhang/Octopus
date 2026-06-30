@@ -43,8 +43,10 @@ mod app_bridge;
 mod bundled_harness;
 mod core_boundary;
 mod desktop_pet;
+mod diagnostics;
 mod download;
 mod pet;
+mod pet_events;
 mod profile_registry;
 mod release_gate;
 mod shell_words;
@@ -3367,6 +3369,25 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
+        Some("diagnose") => {
+            let subject = rest.get(1).map(String::as_str).unwrap_or("strategy");
+            if subject != "strategy" {
+                return Err("diagnose supports: strategy".to_string());
+            }
+            let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            let manifests =
+                inspect_tentacle_manifests_with_bundled_seed_overlay(&default_tentacles_root())?;
+            let report = diagnostics::strategy_diagnostics(&state, &manifests, &loaded);
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                print_strategy_diagnostics(&report, language);
+            }
+            Ok(())
+        }
         Some("pet") => {
             if matches!(rest.get(1).map(String::as_str), Some("desktop" | "open")) {
                 let worker_cap = parse_worker_cap(&rest[2..])?;
@@ -3627,18 +3648,18 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     .map(|values| values.join(" "))
                     .unwrap_or_else(|| "recommend next evolution candidate".to_string());
                 let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-                record_pet_event_and_save(
+                pet_events::record_and_save(
                     &state,
                     &mut loaded,
                     "evolution",
                     format!("evolve recommend {tentacle_id}"),
-                    format!("planning {}", pet_summary(&objective)),
+                    format!("planning {}", pet_events::summary_text(&objective)),
                     Status::Partial,
                 )?;
                 let proposal = match propose_evolution_for_cli(tentacle_id, &objective, &loaded) {
                     Ok(proposal) => proposal,
                     Err(error) => {
-                        record_pet_event_and_save(
+                        pet_events::record_and_save(
                             &state,
                             &mut loaded,
                             "blocked",
@@ -3653,7 +3674,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 let artifact = match write_tentacle_evolution_artifacts(&cwd, &proposal) {
                     Ok(artifact) => artifact,
                     Err(error) => {
-                        record_pet_event_and_save(
+                        pet_events::record_and_save(
                             &state,
                             &mut loaded,
                             "blocked",
@@ -3667,7 +3688,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 let recommendation = match recommend_tentacle_evolution_apply(&proposal, &loaded) {
                     Ok(recommendation) => recommendation,
                     Err(error) => {
-                        record_pet_event_and_save(
+                        pet_events::record_and_save(
                             &state,
                             &mut loaded,
                             "blocked",
@@ -3682,7 +3703,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     match write_tentacle_apply_artifacts(&cwd, &recommendation.apply) {
                         Ok(apply_artifact) => apply_artifact,
                         Err(error) => {
-                            record_pet_event_and_save(
+                            pet_events::record_and_save(
                                 &state,
                                 &mut loaded,
                                 "blocked",
@@ -3693,7 +3714,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                             return Err(error);
                         }
                     };
-                record_pet_event_and_save(
+                pet_events::record_and_save(
                     &state,
                     &mut loaded,
                     "evolution",
@@ -3701,7 +3722,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     format!(
                         "recommended {}: {}",
                         recommendation.candidate_id,
-                        pet_summary(&recommendation.candidate_title)
+                        pet_events::summary_text(&recommendation.candidate_title)
                     ),
                     Status::Satisfied,
                 )?;
@@ -3733,7 +3754,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     .map(|values| values.join(" "))
                     .unwrap_or_else(|| "apply evolution candidate".to_string());
                 let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-                record_pet_event_and_save(
+                pet_events::record_and_save(
                     &state,
                     &mut loaded,
                     "action",
@@ -3765,7 +3786,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 let (plan, evolution_artifact, apply_artifact, live_apply) = match apply_result {
                     Ok(result) => result,
                     Err(error) => {
-                        record_pet_event_and_save(
+                        pet_events::record_and_save(
                             &state,
                             &mut loaded,
                             "blocked",
@@ -3781,7 +3802,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 } else {
                     ("blocked", Status::Failed)
                 };
-                record_pet_event_and_save(
+                pet_events::record_and_save(
                     &state,
                     &mut loaded,
                     pet_state,
@@ -3853,18 +3874,18 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .map(|values| values.join(" "))
                 .unwrap_or_else(|| "improve feed quality".to_string());
             let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            record_pet_event_and_save(
+            pet_events::record_and_save(
                 &state,
                 &mut loaded,
                 "evolution",
                 format!("evolve {tentacle_id}"),
-                format!("planning {}", pet_summary(&objective)),
+                format!("planning {}", pet_events::summary_text(&objective)),
                 Status::Partial,
             )?;
             let proposal = match propose_evolution_for_cli(tentacle_id, &objective, &loaded) {
                 Ok(proposal) => proposal,
                 Err(error) => {
-                    record_pet_event_and_save(
+                    pet_events::record_and_save(
                         &state,
                         &mut loaded,
                         "blocked",
@@ -3879,7 +3900,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let artifact = match write_tentacle_evolution_artifacts(cwd, &proposal) {
                 Ok(artifact) => artifact,
                 Err(error) => {
-                    record_pet_event_and_save(
+                    pet_events::record_and_save(
                         &state,
                         &mut loaded,
                         "blocked",
@@ -3890,7 +3911,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     return Err(error);
                 }
             };
-            record_pet_event_and_save(
+            pet_events::record_and_save(
                 &state,
                 &mut loaded,
                 "evolution",
@@ -10906,7 +10927,7 @@ fn pet_report_for_state(
     let mut report = pet_report(&pet_state)?;
     if let Some(status) = &status {
         if let Some(event) = &status.last_pet_event {
-            if event.state == report.state {
+            if event.state == report.state && pet_event_fresh(event) {
                 report.event_source = Some(event.source.clone());
                 report.event_summary = Some(event.summary.clone());
             }
@@ -10995,7 +11016,7 @@ fn auto_pet_state(report: &StatusReport) -> String {
         return "need".to_string();
     }
     if let Some(event) = &report.last_pet_event {
-        if pet::state_known(&event.state) {
+        if pet_event_fresh(event) && pet::state_known(&event.state) {
             return event.state.clone();
         }
     }
@@ -11012,6 +11033,17 @@ fn auto_pet_state(report: &StatusReport) -> String {
         return "memory".to_string();
     }
     "heartbeat".to_string()
+}
+
+fn pet_event_fresh(event: &PetEvent) -> bool {
+    const FRESH_SECONDS: u64 = 300;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    event.timestamp_secs > 0
+        && event.timestamp_secs <= now
+        && now.saturating_sub(event.timestamp_secs) <= FRESH_SECONDS
 }
 
 fn pet_report(state: &str) -> Result<PetReport, String> {
@@ -18327,6 +18359,31 @@ fn print_doctor_report(report: &DoctorReport, language: Language) {
     }
 }
 
+fn print_strategy_diagnostics(report: &diagnostics::StrategyDiagnosticReport, language: Language) {
+    match language {
+        Language::En => {
+            println!("Octopus strategy diagnostics");
+            println!("status: {}", report.status);
+            for check in &report.checks {
+                println!("{}: {} - {}", check.id, check.status, check.evidence);
+                if check.status != "pass" {
+                    println!("next: {}", check.next);
+                }
+            }
+        }
+        Language::Zh => {
+            println!("章鱼策略诊断");
+            println!("状态: {}", report.status);
+            for check in &report.checks {
+                println!("{}: {} - {}", check.id, check.status, check.evidence);
+                if check.status != "pass" {
+                    println!("下一步: {}", check.next);
+                }
+            }
+        }
+    }
+}
+
 fn doctor_llm_line(report: &DoctorLlmReport) -> String {
     if report.configured {
         format!(
@@ -18864,30 +18921,6 @@ fn maybe_load_evolution_proposal_artifact(
         return Ok(None);
     }
     Ok(Some(proposal))
-}
-
-fn record_pet_event_and_save(
-    state_path: &Path,
-    state: &mut HarnessState,
-    pet_state: &str,
-    source: impl Into<String>,
-    summary: impl Into<String>,
-    status: Status,
-) -> Result<PetEvent, String> {
-    let summary = summary.into();
-    let event = state.record_pet_event(pet_state, source, pet_summary(&summary), status);
-    state.save(state_path).map_err(|error| error.to_string())?;
-    Ok(event)
-}
-
-fn pet_summary(value: &str) -> String {
-    const LIMIT: usize = 180;
-    let mut summary = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    if summary.chars().count() > LIMIT {
-        summary = summary.chars().take(LIMIT).collect::<String>();
-        summary.push_str("...");
-    }
-    summary
 }
 
 fn apply_authorized_suggested_patch(
@@ -22683,7 +22716,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair apply [query] | repair verify [query] | repair continue [query] [--score status [summary]] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers 1..8]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | pet [state]|pet desktop [--workers 1..8]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers 1..8] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair apply [query] | repair verify [query] | repair continue [query] [--score status [summary]] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers 1..8]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | diagnose strategy | pet [state]|pet desktop [--workers 1..8]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers 1..8] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -23627,6 +23660,9 @@ mod tests {
         assert!(app.contains("slot.latest_mini_task || slot.next_mini_task"));
         assert!(app.contains("slot.latest_status || slot.latest_worker_status"));
         assert!(app.contains("Last activity="));
+        assert!(app.contains("function freshPetEvent(event)"));
+        assert!(app.contains("const eventFresh = freshPetEvent(event);"));
+        assert!(app.contains("eventFresh && event.state ? event.state"));
     }
 
     #[test]
@@ -27654,6 +27690,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("preflight record [path]"));
         assert!(usage().contains("preflight record check [path]"));
         assert!(usage().contains("preflight record append [path] [log]"));
+        assert!(usage().contains("diagnose strategy"));
         assert!(usage().contains("traces [limit]"));
         assert!(usage().contains("feedback <trace-index|latest>"));
         assert!(usage().contains("bootstrap [tentacles-root]"));
@@ -28673,6 +28710,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(app_text.contains(r#"id="pixelPet""#));
         assert!(!app_text.contains("clean brain only returns a Need"));
         assert!(app_text.contains("hasPendingNeed ? \"need\""));
+        assert!(app_text.contains("freshPetEvent(event)"));
         assert!(app_text.contains(r#"goalStatus(goal) === "blocked""#));
         assert!(app_text.contains("queuedText || \"Pending Need\""));
         assert!(app_text.contains("queued.need.query, queuedContext"));
@@ -32766,9 +32804,18 @@ JSON
         assert!(swift.contains(
             "let activeRunWorkerCount = runHasActiveWorker ? workerCount(from: latestRun) : nil"
         ));
+        assert!(swift.contains("let eventStateFreshSeconds: TimeInterval = 300"));
+        assert!(swift
+            .contains("let eventFresh = freshEvent(lastEvent, maxAge: eventStateFreshSeconds)"));
+        assert!(swift.contains("let eventBubbleFresh = freshEvent(lastEvent)"));
         assert!(swift.contains(
             "snapshot.workers = observerWindowCount(runWorkers: activeRunWorkerCount, config: config)"
         ));
+        assert!(swift.contains(
+            "} else if eventFresh, let eventState = eventState, knownState(eventState) {"
+        ));
+        assert!(swift.contains("} else if runHasActiveWorker {"));
+        assert!(swift.contains("?? (runHasActiveWorker ? latestWorkerId(from: latestRun) : nil)"));
         assert!(swift.contains("active_slot_reason"));
         assert!(swift.contains("reason:"));
         assert!(swift.contains("freshTimestamp(int(worker[\"updated_at_secs\"]) ?? 0)"));
