@@ -101,6 +101,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
             root.join("crates/octopus-core/src/state_report.rs"),
             "state-report",
         ),
+        path_report(
+            root.join("crates/octopus-core/src/strategy_surface.rs"),
+            "strategy-diagnostics-surface",
+        ),
     ];
     let product_app = vec![
         path_report(

@@ -64,6 +64,7 @@ mod provider_env;
 mod provider_surface;
 mod release_gate;
 mod shell_words;
+mod strategy_surface;
 use app_bridge::run_start as run_app_bridge_start;
 #[cfg(test)]
 use app_bridge::{
@@ -107,6 +108,7 @@ use release_gate::{
     BenchmarkRecordCheckReport, BenchmarkRecordReport, PreflightCheck, RealMachineRecordStatus,
 };
 use shell_words::{shell_arg, shell_command};
+use strategy_surface::*;
 
 const MAX_WORKER_COUNT: usize = 8;
 const REQUIRED_PEER_FIELD_IDS: &[&str] = &[
@@ -3066,9 +3068,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 return Err("diagnose supports: strategy".to_string());
             }
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            let manifests =
-                inspect_tentacle_manifests_with_bundled_seed_overlay(&default_tentacles_root())?;
-            let report = diagnostics::strategy_diagnostics(&state, &manifests, &loaded);
+            let report = strategy_diagnostics_report(&state, &loaded)?;
             if json {
                 println!(
                     "{}",
@@ -14200,31 +14200,6 @@ fn need_queue_context_label(item: &NeedQueueItem) -> String {
         String::new()
     } else {
         format!(" [{}]", parts.join(" "))
-    }
-}
-
-fn print_strategy_diagnostics(report: &diagnostics::StrategyDiagnosticReport, language: Language) {
-    match language {
-        Language::En => {
-            println!("Octopus strategy diagnostics");
-            println!("status: {}", report.status);
-            for check in &report.checks {
-                println!("{}: {} - {}", check.id, check.status, check.evidence);
-                if check.status != "pass" {
-                    println!("next: {}", check.next);
-                }
-            }
-        }
-        Language::Zh => {
-            println!("章鱼策略诊断");
-            println!("状态: {}", report.status);
-            for check in &report.checks {
-                println!("{}: {} - {}", check.id, check.status, check.evidence);
-                if check.status != "pass" {
-                    println!("下一步: {}", check.next);
-                }
-            }
-        }
     }
 }
 
