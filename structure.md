@@ -59,7 +59,7 @@ Octopus/
 │       ├── pet.rs             Pixel Octopus state, SVG export, file URL helpers.
 │       ├── pet_events.rs      Unified state event write path and JSONL audit log for desktop/pet observers.
 │       ├── pet_surface.rs     Pet CLI/report surface: auto state, event log, image/desktop/supervision printing.
-│       ├── pet_supervision.rs Desktop pet observation-chain diagnostics: state file, event log, last event, freshness.
+│       ├── pet_supervision.rs Desktop pet observation-chain diagnostics: state file, event log, last event, freshness, active work.
 │       ├── profile_registry.rs Seed profile registry loading and status.
 │       ├── preflight_surface.rs Release preflight report, script/record templates, record audit, and preflight printing.
 │       ├── provider_env.rs    Scoped `.octopus/llm.env` loader; fills missing provider variables without overriding shell env.
@@ -174,8 +174,8 @@ Octopus/
 | Local app bridge | Local HTTP/SSE server, `/api/config` state-path injection, app policy, command allow-list, embedded app/docs/showcase assets, read-only pet supervision access, field activity observer with fresh pet-event handling | `app_bridge.rs`, `docs/app.html` | 2,027 |
 | Release and install gates | Low-level release records, benchmark evidence, download/install manifest, and real-machine record parsing used by the preflight surface | `release_gate.rs`, `preflight_surface.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 2,312 |
 | Pet observation surface | Builds the user-visible pet report, auto state choice, event-log view, pixel image report, desktop launch report, and supervision printout. This is the first code boundary after `octopus pet supervise --json` finds an observation mismatch. | `pet_surface.rs`, `pet_report_for_state`, `pet_event_log_report`, `print_pet_supervision_report` | 357 |
-| Pet and visual state | Pixel Octopus state, SVG/export helpers, unified event writes, JSONL event audit, latest-event audit coverage, native read-only observer, desktop process/state-path check, stage/error diagnostics, desktop source preflight, HTML preview. Native pet no longer treats stale Feed traces as live state; colors come from fresh pet events, pending Needs, active worker slots, verifier status, goal status, heartbeat, or memory. | `pet.rs`, `pet_surface.rs`, `pet_events.rs`, `pet_supervision.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 3,101 |
-| Strategy diagnostics | Checks the three core traits and composes pet supervision: clean brain context, LLM tool-side tentacles, editable goal, field surface, observation-chain freshness, native desktop process/state-path evidence, stage/error evidence, JSONL latest-event coverage, Feed/evolution evidence | `diagnostics.rs`, `strategy_surface.rs`, `pet_supervision.rs`, `octopus diagnose strategy --json`, `octopus pet supervise --json` | 912 |
+| Pet and visual state | Pixel Octopus state, SVG/export helpers, unified event writes, JSONL event audit, latest-event audit coverage, native read-only observer, desktop process/state-path check, active-work detection, stage/error diagnostics, desktop source preflight, HTML preview. Native pet no longer treats stale Feed traces or stale historical workers as live state; colors come from fresh pet events, pending Needs, fresh active worker slots, verifier status, goal status, heartbeat, or memory. | `pet.rs`, `pet_surface.rs`, `pet_events.rs`, `pet_supervision.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 3,184 |
+| Strategy diagnostics | Checks the three core traits and composes pet supervision: clean brain context, LLM tool-side tentacles, editable goal, field surface, observation-chain freshness, active work, native desktop process/state-path evidence, stage/error evidence, JSONL latest-event coverage, Feed/evolution evidence | `diagnostics.rs`, `strategy_surface.rs`, `pet_supervision.rs`, `octopus diagnose strategy --json`, `octopus pet supervise --json` | 1,086 |
 | Tentacle scaffold boundary | Generates user-owned code-as-harness tentacle manifests and optional python/node/shell seed tools. This is the debug entry when `octopus scaffold` creates an invalid manifest, missing executable, or wrong `octopus-json-v1` contract. | `tentacle_scaffold.rs`, `octopus scaffold` | 291 |
 | Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,085 |
 | Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, declared evolution requirements, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 18,974 |
@@ -220,7 +220,7 @@ These should remain stable and hard to accidentally mutate:
 - Heartbeat surface rule: `heartbeat_surface.rs` owns the command surface for the three hearts. It may call the stable state `beat()` and the LLM harness-beat recommender, but it must not create fake Feed, bypass provider routing, or hide stale-pet evidence.
 - Strategy surface rule: `strategy_surface.rs` owns `diagnose strategy` report assembly and printing. `diagnostics.rs` owns policy checks; command dispatch must not duplicate strategy or pet-observer logic.
 - App state rule: browser app gets the real bridge state path from `/api/config`; file preview may fall back to `.octopus/state.json`.
-- Pet supervision rule: `last_pet_event` is the live state, `.octopus/pet-events.jsonl` is the append-only audit trail, `event_log_contains_last` must pass, and `octopus pet supervise --json` is the first diagnostic for desktop observer issues.
+- Pet supervision rule: `last_pet_event` is the live state, `.octopus/pet-events.jsonl` is the append-only audit trail, `event_log_contains_last` must pass, `active_work` may only count pending Needs or fresh partial workers from the latest run, and `octopus pet supervise --json` is the first diagnostic for desktop observer issues.
 - Heartbeat observation rule: `octopus beat` writes a fresh heartbeat pet event before long harness-beat work starts, then writes the final memory/harness event after the beat finishes. A long LLM/provider call must not leave the desktop observer looking dead.
 - Pet observation surface rule: `pet_surface.rs` owns pet auto-state selection, event-log report reading, pixel image report printing, desktop launch report printing, and supervision printing. Command dispatch and harness execution should not duplicate pet state logic.
 - Evolution observation rule: `evolve drive` writes `PetEvent.stage` and `PetEvent.error_class` through `evolution_cycle.rs`; a stuck pet should identify planning/provider, applying/patch, checking, or feeding instead of only showing `blocked`.
@@ -253,7 +253,7 @@ Use this before changing UI or harness code:
 | Symptom | First check | Meaning | Fix location |
 | --- | --- | --- | --- |
 | Pet not visible | `octopus pet supervise --json`, check `desktop_process` | Native observer is not running or is reading another state path | `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift` |
-| Pet visible but stale | `event_freshness` | Active Octopus loop is not writing fresh events, heartbeat is blocked before its early event, or the report surface is reading the wrong event/state source | caller that should use `pet_events` or `evolution_cycle.rs`; heartbeat entry in `heartbeat_surface.rs`; report mismatch in `pet_surface.rs` |
+| Pet visible but stale | `event_freshness` plus `active_work` | If `active_work=pass`, a real loop exists but is not writing fresh events. If `active_work=warn`, no fresh Need/evolve loop is running. Historical partial workers do not count. | caller that should use `pet_events` or `evolution_cycle.rs`; heartbeat entry in `heartbeat_surface.rs`; active-loop start path in `evolution_surface.rs`/`need_runner.rs`; report mismatch in `pet_surface.rs` |
 | Evolution command runs but pet does not change | compare `octopus evolve ... --json`, `.octopus/state.json.last_pet_event`, and `.octopus/pet-events.jsonl` | The command surface skipped the unified pet-event write before/after an evolution action | `evolution_surface.rs`; stage-aware `drive` events stay in `evolution_driver.rs` and `evolution_cycle.rs` |
 | Doctor reports unhealthy install | `octopus doctor --json`, then warnings and `llm/profile_registry/pet` fields | Local install, provider config, profile registry, manifest health, or pet page is broken before strategy-level execution | `doctor_surface.rs`, then the boundary named by the warning |
 | Preflight says desktop/app is not ready | `octopus preflight --json`, then the failing check id | Product readiness aggregation failed; inspect the check evidence before editing app or harness code | `preflight_surface.rs`, then the boundary named by the check |
@@ -400,7 +400,7 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 56 | 59,008 |
+| `crates/octopus-core/src` | 56 | 59,182 |
 | `crates/octopus-core/examples` | 0 | 0 |
 | `tentacles` | 83 | 18,974 |
 | `field-packs` | 14 | 598 |
@@ -428,11 +428,11 @@ field-packs/
 | `state_report.rs` | 734 |
 | `llm_provider.rs` | 704 |
 | `release_gate.rs` | 703 |
+| `pet_supervision.rs` | 692 |
 | `evolution_recommend.rs` | 679 |
 | `need_surface.rs` | 663 |
 | `field_surface.rs` | 558 |
 | `need_runner.rs` | 544 |
-| `pet_supervision.rs` | 518 |
 | `bundled_harness.rs` | 423 |
 | `evolution_artifact.rs` | 401 |
 | `desktop_pet.rs` | 377 |

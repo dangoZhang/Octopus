@@ -1,4 +1,4 @@
-use octopus_core::{HarnessState, PetEvent};
+use octopus_core::{HarnessState, NeedQueueStatus, PetEvent, Status};
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::env;
@@ -57,6 +57,7 @@ pub(crate) fn pet_supervision_report(
         event_log_contains_last_check(last_event.as_ref(), &log),
         event_state_check(last_event.as_ref()),
         event_freshness_check(last_event.as_ref()),
+        active_work_check(state, last_event.as_ref()),
     ];
     let status = aggregate_status(&checks);
     let next = aggregate_next(&checks);
@@ -330,6 +331,57 @@ fn event_freshness_check(last: Option<&PetEvent>) -> PetSupervisionCheck {
     }
 }
 
+fn active_work_check(state: &HarnessState, last: Option<&PetEvent>) -> PetSupervisionCheck {
+    let pending_needs = state
+        .need_queue
+        .iter()
+        .filter(|item| item.status == NeedQueueStatus::Pending)
+        .count();
+    let latest_run = state.parallel_evolution_runs.last();
+    let latest_partial_workers = latest_run
+        .map(|run| {
+            run.workers
+                .iter()
+                .filter(|worker| worker.status == Status::Partial)
+                .count()
+        })
+        .unwrap_or_default();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default();
+    let fresh_partial_workers = latest_run
+        .map(|run| {
+            run.workers
+                .iter()
+                .filter(|worker| worker.status == Status::Partial)
+                .filter(|worker| worker.updated_at_secs > 0)
+                .filter(|worker| now.saturating_sub(worker.updated_at_secs) <= FRESH_SECONDS)
+                .count()
+        })
+        .unwrap_or_default();
+    let latest_run_label = latest_run
+        .map(|run| run.index.to_string())
+        .unwrap_or_else(|| "none".to_string());
+    let has_active_work = pending_needs > 0 || fresh_partial_workers > 0;
+    let fresh = last.map(pet_event_fresh).unwrap_or(false);
+    let status = if has_active_work || fresh {
+        "pass"
+    } else {
+        "warn"
+    };
+    PetSupervisionCheck {
+        id: "active_work".to_string(),
+        status: status.to_string(),
+        evidence: format!(
+            "pending_needs={pending_needs}; latest_partial_workers={latest_partial_workers}; fresh_partial_workers={fresh_partial_workers}; latest_parallel_run={latest_run_label}; fresh_event={fresh}"
+        ),
+        next: "start a real Goal/Need/evolve loop; desktop pet must observe work, not refresh itself"
+            .to_string(),
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 struct EventLogRead {
     exists: bool,
@@ -423,7 +475,9 @@ fn is_default_octopus_state_path(state_path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use octopus_core::Status;
+    use octopus_core::{
+        GoalNeedSuggestion, NeedKind, ParallelEvolutionRun, ParallelEvolutionWorker,
+    };
 
     #[test]
     fn pet_supervision_pinpoints_missing_observation_chain() {
@@ -512,6 +566,126 @@ mod tests {
             .checks
             .iter()
             .any(|check| check.id == "last_stage" && check.status == "pass"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pet_supervision_warns_when_stale_and_no_active_work_exists() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-pet-supervision-idle-stale-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
+        let mut state = HarnessState::default();
+        let mut event =
+            state.record_pet_event("heartbeat", "heartbeat", "alive", Status::Satisfied);
+        event.timestamp_secs = 1;
+        state.last_pet_event = Some(event.clone());
+        state.save(&state_path).unwrap();
+        crate::pet_events::append_event(&state_path, &event).unwrap();
+
+        let report = pet_supervision_report(&state_path, &state);
+
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.id == "active_work" && check.status == "warn"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pet_supervision_sees_pending_need_as_active_work() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-pet-supervision-active-need-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
+        let mut state = HarnessState::default();
+        let mut event =
+            state.record_pet_event("need", "need queue", "queued verify", Status::Partial);
+        event.timestamp_secs = 1;
+        state.last_pet_event = Some(event.clone());
+        state.need_queue.push(octopus_core::NeedQueueItem {
+            index: 1,
+            need: GoalNeedSuggestion {
+                kind: NeedKind::Verify,
+                query: "verify active work".to_string(),
+            },
+            context: Default::default(),
+            source: "test".to_string(),
+            prompt: "test".to_string(),
+            summary: "test".to_string(),
+            status: NeedQueueStatus::Pending,
+        });
+        state.save(&state_path).unwrap();
+        crate::pet_events::append_event(&state_path, &event).unwrap();
+
+        let report = pet_supervision_report(&state_path, &state);
+
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.id == "active_work" && check.status == "pass"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pet_supervision_ignores_stale_partial_workers_as_active_work() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-pet-supervision-stale-worker-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
+        let mut state = HarnessState::default();
+        let mut event = state.record_pet_event(
+            "harness",
+            "parallel evolution",
+            "old worker",
+            Status::Partial,
+        );
+        event.timestamp_secs = 1;
+        state.last_pet_event = Some(event.clone());
+        state.parallel_evolution_runs.push(ParallelEvolutionRun {
+            index: 1,
+            objective: "old run".to_string(),
+            field_pool_size: 1,
+            field_pool_policy: "test".to_string(),
+            candidate_fields: vec!["math".to_string()],
+            requested_worker_count: 1,
+            worker_count: 1,
+            worker_policy: "test".to_string(),
+            workers: vec![ParallelEvolutionWorker {
+                id: "worker-1".to_string(),
+                field: "math".to_string(),
+                mini_task: None,
+                goal: "test".to_string(),
+                updated_at_secs: 1,
+                queued_need_index: None,
+                source_trace_index: None,
+                verifier_result_index: None,
+                status: Status::Partial,
+                next_action: "test".to_string(),
+            }],
+            summary: "old run".to_string(),
+        });
+        state.save(&state_path).unwrap();
+        crate::pet_events::append_event(&state_path, &event).unwrap();
+
+        let report = pet_supervision_report(&state_path, &state);
+
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.id == "active_work" && check.status == "warn"));
 
         let _ = fs::remove_dir_all(dir);
     }
