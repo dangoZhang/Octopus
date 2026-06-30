@@ -22,6 +22,11 @@
   "trajectory_labels": ["problem_type", "method", "calculation", "check", "feed"],
   "mini_tasks": [
     {
+      "id": "math-mini-5",
+      "goal": "Find and verify the local extrema of f(x)=x^3 - 6x^2 + 9x + 1, including symbolic derivative and second-derivative classification plus finite-difference numeric checks.",
+      "expected_feed": "Show derivative and critical points exactly, classify x=1 as local maximum and x=3 as local minimum, and provide finite-difference checks as artifact-backed verification."
+    },
+    {
       "id": "math-mini-1",
       "goal": "Compute the derivative of x^3 + 2x and verify by finite difference at x = 2.",
       "expected_feed": "Derivative 3x^2 + 2 with a numeric check near 14."

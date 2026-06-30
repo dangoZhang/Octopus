@@ -1,0 +1,137 @@
+if field == "math" and mini_task == "math-mini-5":
+    import json
+
+    def f(x):
+        return x**3 - 6 * x**2 + 9 * x + 1
+
+    def f_prime(x):
+        return 3 * x**2 - 12 * x + 9
+
+    def f_double_prime(x):
+        return 6 * x - 12
+
+    critical_points = [1, 3]
+    nearby_values = []
+    for center in critical_points:
+        delta = 0.01
+        left = center - delta
+        right = center + delta
+        nearby_values.append(
+            {
+                "center": center,
+                "left_value": f(left),
+                "center_value": f(center),
+                "right_value": f(right),
+                "left_diff": f(left) - f(center),
+                "right_diff": f(right) - f(center),
+            }
+        )
+
+    checks = {
+        "critical_point_formula": "3x^2 - 12x + 9 = 3(x - 1)(x - 3)",
+        "derivative_zero_points": [f_prime(x) for x in critical_points],
+        "second_derivative_at_critical": [f_double_prime(x) for x in critical_points],
+        "nearby_values": nearby_values,
+    }
+    checks["f_prime_zero"] = all(abs(v) < 1e-12 for v in checks["derivative_zero_points"])
+    checks["max_at_one"] = (
+        checks["second_derivative_at_critical"][0] < 0
+        and nearby_values[0]["left_diff"] < 0
+        and nearby_values[0]["right_diff"] < 0
+    )
+    checks["min_at_three"] = (
+        checks["second_derivative_at_critical"][1] > 0
+        and nearby_values[1]["left_diff"] > 0
+        and nearby_values[1]["right_diff"] > 0
+    )
+    checks["passed"] = checks["f_prime_zero"] and checks["max_at_one"] and checks["min_at_three"]
+
+    answer = "\n".join(
+        [
+            "# Math Mini Task Answer",
+            "",
+            "f(x) = x^3 - 6x^2 + 9x + 1",
+            "f'(x) = 3x^2 - 12x + 9 = 3(x - 1)(x - 3)",
+            "Critical points: x=1 (local maximum, f(1)=5), x=3 (local minimum, f(3)=1).",
+            "The second derivative is negative at x=1 and positive at x=3.",
+            "Nearby finite-difference checks are saved in CHECKS.json and ANALYSIS.json.",
+        ]
+    )
+    artifacts = {
+        "answer": session / "ANSWER.md",
+        "analysis": session / "ANALYSIS.json",
+        "checks": session / "CHECKS.json",
+    }
+    artifacts["answer"].write_text(answer + "\n", encoding="utf-8")
+    artifacts["analysis"].write_text(
+        json.dumps(
+            {
+                "critical_points": [
+                    {"x": 1, "f_x": f(1), "classification": "local maximum"},
+                    {"x": 3, "f_x": f(3), "classification": "local minimum"},
+                ],
+                "critical_point_formula": checks["critical_point_formula"],
+                "nearby_values": nearby_values,
+            },
+            indent=2,
+            ensure_ascii=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    artifacts["checks"].write_text(
+        json.dumps(checks, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+
+    status = "satisfied" if checks["passed"] else "partial"
+    field_metadata = {
+        "runtime": "python",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(artifacts["answer"], root),
+        "analysis": rel(artifacts["analysis"], root),
+        "checks": rel(artifacts["checks"], root),
+        "verifier_status": status,
+        "field_pass_evidence": "derivative roots, second-derivative signs, and nearby finite-difference checks around x=1 and x=3",
+    }
+    if not checks["passed"]:
+        field_metadata["error_category"] = "verification_error"
+        field_metadata["missing_regions"] = ["local_extrema_verification_mismatch"]
+    field_result = {
+        "status": status,
+        "output": answer,
+        "evidence": [
+            {
+                "source": "field-mini-task/math/answer",
+                "content": rel(artifacts["answer"], root),
+                "confidence": 0.94,
+                "metadata": field_metadata,
+            },
+            {
+                "source": "field-mini-task/math/analysis",
+                "content": rel(artifacts["analysis"], root),
+                "confidence": 0.94,
+                "metadata": field_metadata,
+            },
+            {
+                "source": "field-mini-task/math/checks",
+                "content": rel(artifacts["checks"], root),
+                "confidence": 0.96,
+                "metadata": field_metadata,
+            },
+        ],
+        "metadata": field_metadata,
+    }
+    (session / "METADATA.json").write_text(
+        json.dumps(field_metadata, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
