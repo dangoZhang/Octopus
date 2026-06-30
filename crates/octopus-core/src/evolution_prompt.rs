@@ -1,7 +1,8 @@
 use crate::{
-    evolution, evolution_file_target, evolution_target_files, one_line, push_unique_limited,
-    short_text, CheckHistoryRecord, EvolutionFileTarget, EvolutionOutcome, EvolutionSurface,
-    FeedTraceRecord, TentacleEvolutionProposal,
+    evolution,
+    evolution_target::{evolution_file_target, evolution_target_files},
+    one_line, push_unique_limited, short_text, CheckHistoryRecord, EvolutionFileTarget,
+    EvolutionOutcome, EvolutionSurface, FeedTraceRecord, TentacleEvolutionProposal,
 };
 use std::collections::BTreeMap;
 use std::env;

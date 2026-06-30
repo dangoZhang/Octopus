@@ -1,5 +1,7 @@
 use crate::{
-    field_pack_evolution_targets, fields_mentioned_in_field_paths, resolve_wildcard_targets,
+    evolution_target::{
+        field_pack_evolution_targets, fields_mentioned_in_field_paths, resolve_wildcard_targets,
+    },
     EvolutionApplyPlan,
 };
 use std::path::{Path, PathBuf};
