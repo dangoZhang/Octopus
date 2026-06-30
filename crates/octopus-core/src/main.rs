@@ -16757,7 +16757,10 @@ JSON
         let state_path = Path::new("state.json");
         let mut state = HarnessState::default();
         state.install_manifest(root, "swe-agent").unwrap();
-        state.record_pet_event("memory", "memory", "old memory beat", Status::Satisfied);
+        let mut event =
+            state.record_pet_event("memory", "memory", "old memory beat", Status::Satisfied);
+        event.timestamp_secs = 1;
+        state.last_pet_event = Some(event);
         state.queue_need_suggestion(
             GoalNeedSuggestion {
                 kind: NeedKind::Verify,
@@ -16772,6 +16775,53 @@ JSON
 
         assert_eq!(report.state, "need");
         assert!(report.target.contains("need=current%20pending%20Need"));
+    }
+
+    #[test]
+    fn pet_auto_target_does_not_mix_stale_need_and_feed_with_blocked_event() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let state_path = Path::new("state.json");
+        let mut state = HarnessState::default();
+        state.install_manifest(root, "swe-agent").unwrap();
+        state.goal = Some(Goal::new("search self evolution"));
+        state.queue_need_suggestion(
+            GoalNeedSuggestion {
+                kind: NeedKind::Verify,
+                query: "translate stale pending Need".to_string(),
+            },
+            "test",
+            "prompt",
+            "summary",
+        );
+        let feed = Feed::satisfied(
+            &Need::new(NeedKind::Observe, "math stale Need"),
+            "math stale Feed",
+            "swe-agent",
+        );
+        state.record_feed_trace_from_feed(&feed);
+        let mut event = state.record_pet_event(
+            "blocked",
+            "evolve recommend field-mini-task",
+            "codex provider timed out after 1s",
+            Status::Failed,
+        );
+        event.stage = Some("planning".to_string());
+        event.error_class = Some("provider_timeout".to_string());
+        state.last_pet_event = Some(event);
+
+        let report = pet_report_for_state(&state, state_path, "auto").unwrap();
+
+        assert_eq!(report.state, "blocked");
+        assert!(report.target.contains("goal=search%20self%20evolution"));
+        assert!(report
+            .target
+            .contains("source=evolve%20recommend%20field-mini-task"));
+        assert!(!report.target.contains("translate%20stale"));
+        assert!(!report.target.contains("math%20stale"));
+        assert!(!report.target.contains("&need="));
+        assert!(!report.target.contains("&feed="));
     }
 
     #[test]

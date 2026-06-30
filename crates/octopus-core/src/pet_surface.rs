@@ -1,7 +1,7 @@
 use crate::desktop_pet::DesktopPetReport;
 use crate::pet::{PetImageReport, PetReport};
 use crate::{pet, pet_events, pet_supervision};
-use octopus_core::{GoalStatus, HarnessState, PetEvent, StatusReport};
+use octopus_core::{GoalStatus, HarnessState, NeedQueueStatus, PetEvent, StatusReport};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -259,16 +259,41 @@ fn enrich_pet_target(report: &mut PetReport, status: &StatusReport) {
     if let Some(goal) = &status.goal {
         params.push(("goal", goal.objective.as_str()));
     }
-    if let Some(item) = &status.latest_need_queue_item {
-        params.push(("need", item.need.query.as_str()));
-    } else if let Some(trace) = &status.latest_feed_trace {
-        params.push(("need", trace.need_query.as_str()));
+    let fresh_event = status
+        .last_pet_event
+        .as_ref()
+        .filter(|event| pet_supervision::pet_event_fresh(event));
+    let event_state = fresh_event.map(|event| event.state.as_str());
+    if matches!(event_state, Some("need")) {
+        if let Some(event) = fresh_event {
+            params.push(("need", event.summary.as_str()));
+        }
+    } else if event_state.is_none() {
+        if let Some(item) = status
+            .latest_need_queue_item
+            .as_ref()
+            .filter(|item| item.status == NeedQueueStatus::Pending)
+        {
+            params.push(("need", item.need.query.as_str()));
+        } else if let Some(trace) = &status.latest_feed_trace {
+            params.push(("need", trace.need_query.as_str()));
+        }
     }
-    if let Some(trace) = &status.latest_feed_trace {
-        params.push(("feed", trace.summary.as_str()));
+    if matches!(event_state, Some("feed" | "success")) {
+        if let Some(event) = fresh_event {
+            params.push(("feed", event.summary.as_str()));
+        }
+    } else if event_state.is_none() {
+        if let Some(trace) = &status.latest_feed_trace {
+            params.push(("feed", trace.summary.as_str()));
+        }
     }
-    if let Some(event) = &status.last_pet_event {
+    if let Some(event) = fresh_event {
         params.push(("source", event.source.as_str()));
+    } else if let Some(trace) = &status.latest_feed_trace {
+        if let Some(tentacle) = trace.tentacle.as_deref() {
+            params.push(("source", tentacle));
+        }
     }
     let worker_count = status
         .latest_parallel_evolution_run
@@ -329,13 +354,16 @@ fn auto_pet_state(report: &StatusReport) -> String {
     {
         return "success".to_string();
     }
-    if report.need_queue_count > 0 {
-        return "need".to_string();
-    }
     if let Some(event) = &report.last_pet_event {
-        if pet_supervision::pet_event_fresh(event) && pet::state_known(&event.state) {
+        if pet_supervision::pet_event_fresh(event)
+            && pet::state_known(&event.state)
+            && event.state != "heartbeat"
+        {
             return event.state.clone();
         }
+    }
+    if report.need_queue_count > 0 {
+        return "need".to_string();
     }
     if report.latest_feed_trace.is_some() {
         return "feed".to_string();

@@ -54,6 +54,7 @@ pub(crate) fn pet_supervision_report(
         last_event_check(last_event.as_ref()),
         last_stage_check(last_event.as_ref()),
         error_category_check(last_event.as_ref()),
+        runtime_state_check(last_event.as_ref()),
         event_log_contains_last_check(last_event.as_ref(), &log),
         event_state_check(last_event.as_ref()),
         event_freshness_check(last_event.as_ref()),
@@ -259,6 +260,33 @@ fn error_category_check(last: Option<&PetEvent>) -> PetSupervisionCheck {
     }
 }
 
+fn runtime_state_check(last: Option<&PetEvent>) -> PetSupervisionCheck {
+    let Some(event) = last else {
+        return PetSupervisionCheck {
+            id: "runtime_state".to_string(),
+            status: "fail".to_string(),
+            evidence: "last_event=none".to_string(),
+            next:
+                "drive one real Goal/Need/Feed or evolve step so the pet can observe runtime state"
+                    .to_string(),
+        };
+    };
+    let blocked = event.state == "blocked" || event.status == octopus_core::Status::Failed;
+    let status = if blocked { "warn" } else { "pass" };
+    let stage = event.stage.as_deref().unwrap_or("none");
+    let error_class = event.error_class.as_deref().unwrap_or("none");
+    PetSupervisionCheck {
+        id: "runtime_state".to_string(),
+        status: status.to_string(),
+        evidence: format!(
+            "state={}; status={:?}; source={}; stage={stage}; error_class={error_class}; summary={}",
+            event.state, event.status, event.source, event.summary
+        ),
+        next: "the observer is healthy; fix the reported runtime block before treating Octopus as active"
+            .to_string(),
+    }
+}
+
 fn event_log_contains_last_check(
     last: Option<&PetEvent>,
     log: &EventLogRead,
@@ -366,7 +394,34 @@ fn active_work_check(state: &HarnessState, last: Option<&PetEvent>) -> PetSuperv
         .unwrap_or_else(|| "none".to_string());
     let has_active_work = pending_needs > 0 || fresh_partial_workers > 0;
     let fresh = last.map(pet_event_fresh).unwrap_or(false);
-    let status = if has_active_work || fresh {
+    let fresh_blocked = last
+        .map(|event| {
+            fresh && (event.state == "blocked" || event.status == octopus_core::Status::Failed)
+        })
+        .unwrap_or(false);
+    let fresh_running_event = last
+        .map(|event| {
+            fresh
+                && event.status == Status::Partial
+                && matches!(
+                    event.state.as_str(),
+                    "need" | "action" | "harness" | "evolution" | "heartbeat"
+                )
+        })
+        .unwrap_or(false);
+    let fresh_success_event = last
+        .map(|event| {
+            fresh
+                && event.status == Status::Satisfied
+                && matches!(
+                    event.state.as_str(),
+                    "feed" | "success" | "memory" | "harness" | "heartbeat"
+                )
+        })
+        .unwrap_or(false);
+    let status = if fresh_blocked {
+        "warn"
+    } else if has_active_work || fresh_running_event || fresh_success_event {
         "pass"
     } else {
         "warn"
@@ -375,7 +430,7 @@ fn active_work_check(state: &HarnessState, last: Option<&PetEvent>) -> PetSuperv
         id: "active_work".to_string(),
         status: status.to_string(),
         evidence: format!(
-            "pending_needs={pending_needs}; latest_partial_workers={latest_partial_workers}; fresh_partial_workers={fresh_partial_workers}; latest_parallel_run={latest_run_label}; fresh_event={fresh}"
+            "pending_needs={pending_needs}; latest_partial_workers={latest_partial_workers}; fresh_partial_workers={fresh_partial_workers}; latest_parallel_run={latest_run_label}; fresh_event={fresh}; fresh_blocked={fresh_blocked}; fresh_running_event={fresh_running_event}; fresh_success_event={fresh_success_event}"
         ),
         next: "start a real Goal/Need/evolve loop; desktop pet must observe work, not refresh itself"
             .to_string(),
@@ -716,6 +771,7 @@ mod tests {
 
         let report = pet_supervision_report(&state_path, &state);
 
+        assert_eq!(report.status, "warn");
         assert!(report
             .checks
             .iter()
@@ -724,6 +780,14 @@ mod tests {
             .checks
             .iter()
             .any(|check| check.id == "error_category" && check.status == "pass"));
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.id == "runtime_state" && check.status == "warn"));
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.id == "active_work" && check.status == "warn"));
 
         let _ = fs::remove_dir_all(dir);
     }
@@ -757,6 +821,10 @@ mod tests {
             .checks
             .iter()
             .any(|check| check.id == "error_category" && check.status == "warn"));
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.id == "runtime_state" && check.status == "warn"));
 
         let _ = fs::remove_dir_all(dir);
     }
