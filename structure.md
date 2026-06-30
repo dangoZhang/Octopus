@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-06-30, after modular evolution/pet diagnostics refactor and LLM evolution prompt/context extraction.
+Updated: 2026-06-30, after modular evolution/pet diagnostics refactor and LLM evolution prompt/candidate extraction.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -26,6 +26,7 @@ Octopus/
 │       ├── desktop_pet.rs     macOS read-only desktop pet launcher.
 │       ├── evolution.rs       Manifest-owned evolution surface requirement validation.
 │       ├── evolution_apply.rs Authorized provider patch apply/check execution for harness evolution.
+│       ├── evolution_candidate.rs LLM response parsing, candidate target validation, target-file recovery, and patch draft metadata.
 │       ├── evolution_cycle.rs Stage/error contract for autonomous evolution and pet-visible diagnostics.
 │       ├── evolution_drive_surface.rs CLI/report surface for `evolve drive`.
 │       ├── evolution_driver.rs One-cycle autonomous harness evolution driver: LLM recommendation, patch apply, check, Need/Feed, optional desktop pet.
@@ -97,10 +98,11 @@ Octopus/
 
 | Module | Role | Main files | Lines |
 | --- | --- | --- | ---: |
-| Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, evolution data, field-pool status snapshots, resolved field-pack evolution targets, provider patch target checks, LLM patch normalization, missing `new file mode` normalization for provider-created files, Codex CLI prompt-file stdin with timeout enforcement, and LLM-native repair/evolve contracts | `crates/octopus-core/src/lib.rs` | 15,515 |
+| Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, evolution data, field-pool status snapshots, resolved field-pack evolution targets, provider patch target checks, LLM patch normalization, missing `new file mode` normalization for provider-created files, Codex CLI prompt-file stdin with timeout enforcement, and LLM-native repair/evolve contracts | `crates/octopus-core/src/lib.rs` | 15,301 |
 | User surface boundary | Converts internal state into human Goal hints; keeps agent commands in observer fields so app/CLI users edit Goal only | `user_surface.rs`, `StatusReport`, `ContextReport`, `NeedQueueReport`, `FieldPoolStatusReport`, `ProductReport` | 123 |
 | Evolution contract | Manifest-owned surface requirements, required-surface validation, candidate ID normalization, LLM retry guardrails without field-specific Rust branches | `evolution.rs`, `tentacles/*/manifest.json`, `tentacles/tentacle.schema.json` | 471 |
 | Evolution apply boundary | Authorized provider patch application, `git apply --check`, reverse already-applied detection, summary helpers, safety tests, and live apply reports shared by CLI apply and autonomous drive | `evolution_apply.rs` | 282 |
+| Evolution candidate boundary | Parses provider JSON, validates LLM candidate fields and targets, recovers target files from provider diffs, builds patch-draft metadata, and keeps planner-output errors separate from stable kernel state. | `evolution_candidate.rs` | 231 |
 | Evolution cycle contract | Stage and error-class event contract for autonomous harness evolution. Pet observers now see whether a block happened in planning, applying, checking, or feeding, and whether it was provider timeout, provider error, patch apply, or check failure. | `evolution_cycle.rs`, `PetEvent.stage`, `PetEvent.error_class` | 153 |
 | Evolution planning boundary | LLM patch recommendation artifact writing and apply-failure retry objective shaping | `evolution_plan.rs` | 84 |
 | Evolution prompt boundary | Builds the LLM planner payload from proposal, trace, check-history, file-target, surface, and prompt-budget data. It owns context compaction for harness evolution while `lib.rs` keeps the public proposal/candidate contract. | `evolution_prompt.rs` | 253 |
@@ -142,6 +144,7 @@ These should remain stable and hard to accidentally mutate:
 - Desktop observer rule: stale Feed traces cannot drive the native pet's current color or Need bubble. A Feed/action color must come from a fresh `last_pet_event` or an active worker update.
 - Provider env rule: CLI reads `.octopus/llm.env` through `provider_env.rs`; explicit shell variables are never overwritten.
 - Evolution apply rule: provider patches are checked and applied only through `evolution_apply.rs`; CLI apply and autonomous drive share the same authorized patch execution path.
+- Evolution candidate rule: provider JSON parsing, LLM candidate validation, manifest-relative target parsing, provider-diff target recovery, and patch draft metadata live in `evolution_candidate.rs`; `lib.rs` only asks for a parsed plan.
 - Evolution planning rule: recommendation artifacts and apply-failure retry objectives live in `evolution_plan.rs`; driver only asks for the next plan.
 - Evolution prompt rule: LLM planner payload construction, trace/history compaction, target-file context selection, and prompt-budget env knobs live in `evolution_prompt.rs`; proposal/candidate protocol stays in `lib.rs`.
 - Evolution drive surface rule: `evolve drive` CLI/report formatting lives in `evolution_drive_surface.rs`; stage execution stays in `evolution_driver.rs`.
@@ -173,6 +176,7 @@ Where they live:
 - `crates/octopus-core/src/core_boundary.rs`
 - `crates/octopus-core/src/evolution.rs`
 - `crates/octopus-core/src/evolution_apply.rs`
+- `crates/octopus-core/src/evolution_candidate.rs`
 - `crates/octopus-core/src/evolution_cycle.rs`
 - `crates/octopus-core/src/evolution_drive_surface.rs`
 - `crates/octopus-core/src/evolution_feed.rs`
@@ -187,7 +191,7 @@ Where they live:
 These remain intentionally visible:
 
 - `evolution_feed.rs` is still field-mini-task specific. The next version should make Feed-stage runners manifest/routing owned so future field packs can choose their own Feed executor.
-- `lib.rs` still owns LLM candidate target parsing, artifact writing, recommendation/apply contract types, and diff normalization. These should move out once public API boundaries are safe.
+- `lib.rs` still owns artifact writing, recommendation/apply contract types, shared target-file resolution, and diff normalization. These should move out once public API boundaries are safe.
 - Automatic `cargo test` next step is still suspicious for LLM-native self-evolution and should be removed or pushed into editable manifest/harness policy.
 
 ### Distinctive Functions
@@ -253,7 +257,7 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 24 | 58,623 |
+| `crates/octopus-core/src` | 25 | 58,650 |
 | `crates/octopus-core/examples` | 1 | 27 |
 | `tentacles` | 83 | 18,974 |
 | `field-packs` | 14 | 598 |
@@ -267,23 +271,25 @@ field-packs/
 | File | Lines |
 | --- | ---: |
 | `main.rs` | 36,317 |
-| `lib.rs` | 15,758 |
+| `lib.rs` | 15,301 |
 | `app_bridge.rs` | 1,167 |
 | `field_pack.rs` | 868 |
 | `release_gate.rs` | 703 |
-| `evolution_driver.rs` | 318 |
 | `pet_supervision.rs` | 518 |
 | `bundled_harness.rs` | 423 |
 | `desktop_pet.rs` | 377 |
 | `diagnostics.rs` | 354 |
-| `pet.rs` | 280 |
-| `download.rs` | 175 |
+| `evolution_driver.rs` | 318 |
 | `evolution_apply.rs` | 282 |
+| `pet.rs` | 280 |
+| `evolution_prompt.rs` | 253 |
+| `evolution_candidate.rs` | 231 |
+| `download.rs` | 175 |
 | `evolution_cycle.rs` | 153 |
 | `evolution_feed.rs` | 130 |
-| `evolution_drive_surface.rs` | 115 |
-| `core_boundary.rs` | 123 |
 | `user_surface.rs` | 123 |
+| `core_boundary.rs` | 123 |
+| `evolution_drive_surface.rs` | 115 |
 | `provider_env.rs` | 107 |
 | `evolution_plan.rs` | 84 |
 | `evolution.rs` | 78 |
