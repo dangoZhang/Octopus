@@ -1,14 +1,14 @@
 use crate::desktop_pet::{launch_desktop_pet, DesktopPetConfig, DesktopPetReport};
+use crate::evolution_apply::{apply_authorized_suggested_patch, EvolutionLiveApplyReport};
 use crate::evolution_cycle::{
     classify_apply_status, classify_planner_error, record_stage_event,
     record_stage_event_with_error, EvolutionDriveStage,
 };
 use crate::shell_words::shell_arg;
 use crate::{
-    apply_authorized_suggested_patch, check_report, empty_parallel_evolution_batch_report,
-    parse_worker_count_1_to_8, pet_events, propose_evolution_for_cli, record_check_report,
-    record_parallel_evolution_action_event, run_queued_need_indices_with_observer_state,
-    CheckReport, EvolutionLiveApplyReport, Language, NeedRunBatchReport,
+    check_report, empty_parallel_evolution_batch_report, parse_worker_count_1_to_8, pet_events,
+    propose_evolution_for_cli, record_check_report, record_parallel_evolution_action_event,
+    run_queued_need_indices_with_observer_state, CheckReport, Language, NeedRunBatchReport,
 };
 use octopus_core::{
     recommend_tentacle_evolution_apply, write_tentacle_apply_artifacts,

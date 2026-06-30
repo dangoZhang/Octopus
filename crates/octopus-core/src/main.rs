@@ -45,6 +45,7 @@ mod core_boundary;
 mod desktop_pet;
 mod diagnostics;
 mod download;
+mod evolution_apply;
 mod evolution_cycle;
 mod evolution_driver;
 mod pet;
@@ -67,6 +68,7 @@ use desktop_pet::{
     desktop_pet_source_check, launch_desktop_pet, DesktopPetConfig, DesktopPetReport,
 };
 use download::{download_artifacts_preflight_check, download_report, DownloadReport};
+use evolution_apply::{apply_authorized_suggested_patch, EvolutionLiveApplyReport};
 use evolution_driver::{
     drive_evolution_cycle, parse_evolution_drive_args, print_evolution_drive_report,
 };
@@ -109,16 +111,6 @@ struct DoctorReport {
     self_iteration_mode: String,
     warnings: Vec<String>,
     next: Vec<String>,
-}
-
-#[derive(Clone, Debug, serde::Serialize)]
-struct EvolutionLiveApplyReport {
-    applied: bool,
-    status: String,
-    command: Option<String>,
-    patch_path: Option<String>,
-    stdout: String,
-    stderr: String,
 }
 
 #[derive(serde::Serialize)]
@@ -19142,150 +19134,6 @@ fn maybe_load_evolution_proposal_artifact(
         return Ok(None);
     }
     Ok(Some(proposal))
-}
-
-fn apply_authorized_suggested_patch(
-    cwd: &Path,
-    plan: &EvolutionApplyPlan,
-    artifact: &EvolutionApplyArtifact,
-) -> EvolutionLiveApplyReport {
-    if !plan.authorized {
-        return EvolutionLiveApplyReport {
-            applied: false,
-            status: "skipped_not_authorized".to_string(),
-            command: None,
-            patch_path: artifact.patch_path.clone(),
-            stdout: String::new(),
-            stderr: String::new(),
-        };
-    }
-    if plan.suggested_patch.is_none() {
-        return EvolutionLiveApplyReport {
-            applied: false,
-            status: "skipped_no_suggested_patch".to_string(),
-            command: None,
-            patch_path: artifact.patch_path.clone(),
-            stdout: String::new(),
-            stderr: String::new(),
-        };
-    }
-    let Some(patch_path) = artifact.patch_path.as_deref() else {
-        return EvolutionLiveApplyReport {
-            applied: false,
-            status: "skipped_missing_patch_artifact".to_string(),
-            command: None,
-            patch_path: None,
-            stdout: String::new(),
-            stderr: String::new(),
-        };
-    };
-    let command_text = format!(
-        "git apply --recount --unidiff-zero {}",
-        shell_arg(patch_path)
-    );
-    let check_output = Command::new("git")
-        .arg("apply")
-        .arg("--check")
-        .arg("--recount")
-        .arg("--unidiff-zero")
-        .arg(patch_path)
-        .current_dir(cwd)
-        .output();
-    match check_output {
-        Ok(check) if check.status.success() => {}
-        Ok(check) => {
-            let reverse_check = Command::new("git")
-                .arg("apply")
-                .arg("--reverse")
-                .arg("--check")
-                .arg("--recount")
-                .arg(patch_path)
-                .current_dir(cwd)
-                .output();
-            let (applied, status) = if reverse_check
-                .as_ref()
-                .is_ok_and(|reverse| reverse.status.success())
-            {
-                (true, "already_applied")
-            } else {
-                (false, "check_failed")
-            };
-            return EvolutionLiveApplyReport {
-                applied,
-                status: status.to_string(),
-                command: Some(format!(
-                    "git apply --check --recount --unidiff-zero {}",
-                    shell_arg(patch_path)
-                )),
-                patch_path: Some(patch_path.to_string()),
-                stdout: String::from_utf8_lossy(&check.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&check.stderr).to_string(),
-            };
-        }
-        Err(error) => {
-            return EvolutionLiveApplyReport {
-                applied: false,
-                status: "check_failed_to_start".to_string(),
-                command: Some(format!(
-                    "git apply --check --recount --unidiff-zero {}",
-                    shell_arg(patch_path)
-                )),
-                patch_path: Some(patch_path.to_string()),
-                stdout: String::new(),
-                stderr: error.to_string(),
-            };
-        }
-    }
-    let output = Command::new("git")
-        .arg("apply")
-        .arg("--recount")
-        .arg("--unidiff-zero")
-        .arg(patch_path)
-        .current_dir(cwd)
-        .output();
-    match output {
-        Ok(output) => {
-            let mut applied = output.status.success();
-            let mut status = if applied {
-                "applied".to_string()
-            } else {
-                "failed".to_string()
-            };
-            if !applied {
-                let reverse_check = Command::new("git")
-                    .arg("apply")
-                    .arg("--reverse")
-                    .arg("--check")
-                    .arg("--recount")
-                    .arg(patch_path)
-                    .current_dir(cwd)
-                    .output();
-                if reverse_check
-                    .as_ref()
-                    .is_ok_and(|reverse| reverse.status.success())
-                {
-                    applied = true;
-                    status = "already_applied".to_string();
-                }
-            }
-            EvolutionLiveApplyReport {
-                applied,
-                status,
-                command: Some(command_text),
-                patch_path: Some(patch_path.to_string()),
-                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-            }
-        }
-        Err(error) => EvolutionLiveApplyReport {
-            applied: false,
-            status: "failed_to_start".to_string(),
-            command: Some(command_text),
-            patch_path: Some(patch_path.to_string()),
-            stdout: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 fn print_evolution_live_apply(report: &EvolutionLiveApplyReport, language: Language) {
