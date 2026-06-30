@@ -110,6 +110,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
             "state-report",
         ),
         path_report(
+            root.join("crates/octopus-core/src/status_surface.rs"),
+            "status-context-surface",
+        ),
+        path_report(
             root.join("crates/octopus-core/src/strategy_surface.rs"),
             "strategy-diagnostics-surface",
         ),
