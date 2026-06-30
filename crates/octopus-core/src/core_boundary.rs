@@ -31,6 +31,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
             root.join("crates/octopus-core/src/llm_provider.rs"),
             "llm-provider",
         ),
+        path_report(
+            root.join("crates/octopus-core/src/manifest_runtime.rs"),
+            "manifest-tentacle-runtime",
+        ),
         path_report(root.join("crates/octopus-core/src/main.rs"), "cli-dispatch"),
         path_report(
             root.join("crates/octopus-core/src/app_bridge.rs"),
