@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-07-01, after harness repair surface and Brain/Goal command surface extraction plus modular evolution/pet diagnostics refactor, LLM evolution planner/contract/recommend/prompt/candidate/artifact/patch/target, tentacle scaffold, brain loop, Need queue, Need runner, route surface, state-report, status surface, field surface, product surface, preflight surface, doctor surface, strategy surface, LLM provider, LLM layer routing, manifest catalog, manifest tentacle runtime, pet observation surface, and provider surface extraction.
+Updated: 2026-07-01, after Need command surface, harness repair surface, and Brain/Goal command surface extraction plus modular evolution/pet diagnostics refactor, LLM evolution planner/contract/recommend/prompt/candidate/artifact/patch/target, tentacle scaffold, brain loop, Need queue, Need runner, route surface, state-report, status surface, field surface, product surface, preflight surface, doctor surface, strategy surface, LLM provider, LLM layer routing, manifest catalog, manifest tentacle runtime, pet observation surface, and provider surface extraction.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -50,6 +50,7 @@ Octopus/
 │       ├── manifest_catalog.rs Manifest/profile data types, loading, inspection, and install conversion.
 │       ├── manifest_runtime.rs Manifest-owned tool-side thinking, authorization, execution, and Feed parsing.
 │       ├── need_queue.rs      Queued Need state mutation and queue report boundary.
+│       ├── need_surface.rs    Need command/report surface: queue display, run output, script/session artifacts.
 │       ├── need_runner.rs     Queued Need execution, Feed handoff, field mini-task context, worker events.
 │       ├── pet.rs             Pixel Octopus state, SVG export, file URL helpers.
 │       ├── pet_events.rs      Unified state event write path and JSONL audit log for desktop/pet observers.
@@ -134,6 +135,7 @@ Octopus/
 | Manifest catalog boundary | Manifest/profile structs, registry loading, manifest inspection, missing-entrypoint checks, and conversion into installed tentacles. This is the debug entry when manifests install incorrectly or editable harness metadata is missing. | `manifest_catalog.rs`, `TentacleManifest`, `TentacleProfile`, `InstalledTentacle`, `TentacleManifestReport` | 373 |
 | Manifest tentacle runtime | Tool-side LLM planning, structured field mini-task selection, manifest tool authorization, command/http execution, `octopus-json-v1` parsing, and compact Feed assembly. This is the debug entry when a Need reaches a tentacle but no correct Action/Feed returns. | `manifest_runtime.rs`, `ManifestTentacle`, `TentacleThinkingPlan` | 1,090 |
 | Need queue boundary | Owns queued Need creation, take/drop, queue status, and queue report separation between human Goal hints and agent commands. | `need_queue.rs`, `NeedQueueItem`, `NeedQueueReport` | 234 |
+| Need command surface | Owns `octopus needs`: queue display, run/take/drop output, executable queue script generation, and review-session artifacts. This is the debug entry when queue JSON is right but CLI/app/script/session output hides Need, Feed, field, or trace evidence. | `need_surface.rs`, `handle_needs_command`, `print_need_queue*`, `write_need_queue_*` | 663 |
 | Need runner boundary | Takes queued Needs into the real Feed path, writes the live Need event before Feed and Feed state after execution, attaches field mini-task context, records automatic verifier hints, and emits parallel worker action events. This is the debug entry when the pet shows a Need but no Feed follows. | `need_runner.rs`, `run_queued_need_with_observer_state`, `NeedRunReport`, `record_auto_field_verifier_from_feed` | 544 |
 | Route and trace surface | CLI/report rendering for route reports, Feed traces, and Need queue rows. This is the debug entry when a Need routes correctly in JSON but the CLI/app explanation hides the selected tentacle, field context, or latest trace. | `route_surface.rs`, `print_route_report`, `print_feed_traces`, `trace_line`, `need_queue_line` | 143 |
 | State report boundary | Builds read-only status, context, field trajectory, field pool, and harness-learning reports from `HarnessState`. This is the debug entry when app output, field pool state, or user-vs-agent next actions look wrong. | `state_report.rs`, `StatusReport`, `ContextReport`, `FieldPoolStatusReport` | 734 |
@@ -160,7 +162,7 @@ Octopus/
 | Evolution target boundary | Resolves manifest editable targets, field-pack targets, repair-template wildcard scopes, candidate target files, and field-name scopes for patch/prompt/candidate modules. | `evolution_target.rs` | 318 |
 | Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, and compile/execute template checks | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 5,357 |
 | Field adaptation surface | CLI/report rendering for field packs, field matching, field trajectory summaries, verifier results, parallel field worker slots, field-pool latest activity, and user-visible field status lines. This is the debug entry when field state exists but the app/CLI explains the wrong active domain or worker slot. | `field_surface.rs`, `FieldMatchReport`, `print_field_trajectory_report`, `field_pool_status_line`, `parallel_run_status_line` | 464 |
-| CLI and product backend | Command dispatch, chat, starter/install/check flows, evolve commands, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 21,904 |
+| CLI and product backend | Command dispatch, chat, starter/install/check flows, evolve commands, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; Need command logic lives in `need_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 21,259 |
 | Provider env | Loads `.octopus/llm.env` for CLI commands with a scoped guard; existing shell variables win, and values are restored after command execution | `provider_env.rs`, `app_bridge.rs::parse_env_overlay` | 107 |
 | Local app bridge | Local HTTP/SSE server, `/api/config` state-path injection, app policy, command allow-list, embedded app/docs/showcase assets, read-only pet supervision access, field activity observer with fresh pet-event handling | `app_bridge.rs`, `docs/app.html` | 2,027 |
 | Release and install gates | Low-level release records, benchmark evidence, download/install manifest, and real-machine record parsing used by the preflight surface | `release_gate.rs`, `preflight_surface.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 2,312 |
@@ -196,6 +198,7 @@ These should remain stable and hard to accidentally mutate:
 - Manifest catalog rule: `manifest_catalog.rs` owns manifest/profile structs, registry loading, manifest inspection, missing-entrypoint checks, and installed-tentacle conversion. Runtime/state modules consume installed data and should not parse manifest files directly.
 - Manifest runtime rule: `manifest_runtime.rs` owns tool-side LLM plan selection, permission grants, command/http execution, multi-action summaries, and `octopus-json-v1` Feed parsing. Brain/state/report modules must not run tools directly.
 - Need queue rule: `need_queue.rs` owns queued Need state changes; queue reports must keep `next` user-facing and put executable commands in `agent_next`.
+- Need surface rule: `need_surface.rs` owns CLI/report/script/session surfaces for queued Needs. Queue mutation stays in `need_queue.rs`; Feed execution stays in `need_runner.rs`; tool execution stays in `manifest_runtime.rs`. It must not invent Feed or hide field/trace evidence.
 - Need runner rule: `need_runner.rs` owns the handoff from queued Need to Feed. It must save the Need pet event before `feed_one`, save the Feed state after `feed_one`, and keep field mini-task/parallel worker evidence attached to the Feed path.
 - Route surface rule: `route_surface.rs` owns route report, Feed trace, and Need queue line rendering. It may explain selected tentacles, field context, and latest traces but must not mutate route scores, queues, or Feed records.
 - State report rule: `state_report.rs` is read-only; it may derive status/context/field-pool views from `HarnessState` but must not mutate Goal, Need, Feed, routes, grants, or pet events.
@@ -209,6 +212,7 @@ These should remain stable and hard to accidentally mutate:
 - Strategy surface rule: `strategy_surface.rs` owns `diagnose strategy` report assembly and printing. `diagnostics.rs` owns policy checks; command dispatch must not duplicate strategy or pet-observer logic.
 - App state rule: browser app gets the real bridge state path from `/api/config`; file preview may fall back to `.octopus/state.json`.
 - Pet supervision rule: `last_pet_event` is the live state, `.octopus/pet-events.jsonl` is the append-only audit trail, `event_log_contains_last` must pass, and `octopus pet supervise --json` is the first diagnostic for desktop observer issues.
+- Heartbeat observation rule: `octopus beat` writes a fresh heartbeat pet event before long harness-beat work starts, then writes the final memory/harness event after the beat finishes. A long LLM/provider call must not leave the desktop observer looking dead.
 - Pet observation surface rule: `pet_surface.rs` owns pet auto-state selection, event-log report reading, pixel image report printing, desktop launch report printing, and supervision printing. Command dispatch and harness execution should not duplicate pet state logic.
 - Evolution observation rule: `evolve drive` writes `PetEvent.stage` and `PetEvent.error_class` through `evolution_cycle.rs`; a stuck pet should identify planning/provider, applying/patch, checking, or feeding instead of only showing `blocked`.
 - Desktop observer rule: stale Feed traces cannot drive the native pet's current color or Need bubble. A Feed/action color must come from a fresh `last_pet_event` or an active worker update.
@@ -239,7 +243,7 @@ Use this before changing UI or harness code:
 | Symptom | First check | Meaning | Fix location |
 | --- | --- | --- | --- |
 | Pet not visible | `octopus pet supervise --json`, check `desktop_process` | Native observer is not running or is reading another state path | `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift` |
-| Pet visible but stale | `event_freshness` | Active Octopus loop is not writing fresh events, or the report surface is reading the wrong event/state source | caller that should use `pet_events` or `evolution_cycle.rs`; report mismatch in `pet_surface.rs` |
+| Pet visible but stale | `event_freshness` | Active Octopus loop is not writing fresh events, heartbeat is blocked before its early event, or the report surface is reading the wrong event/state source | caller that should use `pet_events` or `evolution_cycle.rs`; heartbeat entry in `main.rs`; report mismatch in `pet_surface.rs` |
 | Doctor reports unhealthy install | `octopus doctor --json`, then warnings and `llm/profile_registry/pet` fields | Local install, provider config, profile registry, manifest health, or pet page is broken before strategy-level execution | `doctor_surface.rs`, then the boundary named by the warning |
 | Preflight says desktop/app is not ready | `octopus preflight --json`, then the failing check id | Product readiness aggregation failed; inspect the check evidence before editing app or harness code | `preflight_surface.rs`, then the boundary named by the check |
 | Pet red/blocked during planning | `last_event.stage=planning`, `error_class=provider_timeout/provider_error` | LLM planner did not return a harness candidate | provider config/client and evolution planner boundary |
@@ -254,6 +258,7 @@ Use this before changing UI or harness code:
 | Tentacle thinks but no action or wrong Feed returns | `octopus think ... --json`, Feed metadata `plan_source`, `tools`, `contract`, `authorization_required` | Need reached a local tool brain, but planning, authorization, execution, or Feed parsing failed | `manifest_runtime.rs`, affected `tentacles/*/manifest.json`, affected tool code |
 | Manifest install or inspect reports wrong metadata | `octopus manifests <root> --json`, missing entrypoints, installed tentacle metadata | Manifest/profile loading, report derivation, or installed conversion is wrong | `manifest_catalog.rs`, affected `tentacles/*/manifest.json` |
 | Queued Need cannot be run/taken/dropped | inspect `needs --json` and item status | Queue mutation or user/agent next split is wrong | `need_queue.rs` |
+| Need queue text/script/session is wrong | compare `octopus needs --json`, `octopus needs script --json`, `octopus needs session --json`, and generated files | Queue data exists, but the command surface hid evidence or generated the wrong observer artifact | `need_surface.rs`; mutation stays in `need_queue.rs`, execution stays in `need_runner.rs` |
 | Route or trace text hides the selected tentacle/field | compare `routes --json`, `traces --json`, and CLI/app text | Routing or Feed data is present, but the observation surface is misleading | `route_surface.rs`; score data stays in `lib.rs` route reports |
 | App status/context shows wrong next step | compare `next` with `agent_next` in `status/context/needs` JSON | Read-only user hints leaked internal commands, or field-pool state was derived incorrectly | `state_report.rs`, `user_surface.rs` |
 | Status/context text misstates Goal, tentacles, or learning | compare `status --json`, `context --json`, and CLI/app text | Derived state is right, but rendering is misleading | `status_surface.rs`; derivation stays in `state_report.rs` |
@@ -298,6 +303,7 @@ Where they live:
 - `crates/octopus-core/src/evolution_target.rs`
 - `crates/octopus-core/src/field_surface.rs`
 - `crates/octopus-core/src/need_queue.rs`
+- `crates/octopus-core/src/need_surface.rs`
 - `crates/octopus-core/src/need_runner.rs`
 - `crates/octopus-core/src/state_report.rs`
 - `crates/octopus-core/src/status_surface.rs`
@@ -380,7 +386,7 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 52 | 58,910 |
+| `crates/octopus-core/src` | 53 | 58,935 |
 | `crates/octopus-core/examples` | 0 | 0 |
 | `tentacles` | 83 | 18,974 |
 | `field-packs` | 14 | 598 |
@@ -393,7 +399,7 @@ field-packs/
 
 | File | Lines |
 | --- | ---: |
-| `main.rs` | 21,904 |
+| `main.rs` | 21,262 |
 | `lib.rs` | 8,999 |
 | `repair_surface.rs` | 6,669 |
 | `provider_surface.rs` | 1,887 |
@@ -408,6 +414,7 @@ field-packs/
 | `llm_provider.rs` | 704 |
 | `release_gate.rs` | 703 |
 | `evolution_recommend.rs` | 679 |
+| `need_surface.rs` | 663 |
 | `need_runner.rs` | 544 |
 | `pet_supervision.rs` | 518 |
 | `field_surface.rs` | 464 |
@@ -430,13 +437,13 @@ field-packs/
 | `need_queue.rs` | 234 |
 | `evolution_candidate.rs` | 233 |
 | `evolution_contract.rs` | 222 |
-| `core_boundary.rs` | 203 |
+| `core_boundary.rs` | 207 |
 | `download.rs` | 175 |
 | `evolution_cycle.rs` | 153 |
 | `route_surface.rs` | 143 |
-| `evolution_feed.rs` | 130 |
+| `evolution_feed.rs` | 131 |
 | `user_surface.rs` | 123 |
-| `evolution_drive_surface.rs` | 115 |
+| `evolution_drive_surface.rs` | 116 |
 | `provider_env.rs` | 107 |
 | `evolution_plan.rs` | 84 |
 | `evolution.rs` | 78 |

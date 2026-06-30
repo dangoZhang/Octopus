@@ -73,6 +73,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
             "need-queue",
         ),
         path_report(
+            root.join("crates/octopus-core/src/need_surface.rs"),
+            "need-command-surface",
+        ),
+        path_report(
             root.join("crates/octopus-core/src/need_runner.rs"),
             "need-feed-runner",
         ),
