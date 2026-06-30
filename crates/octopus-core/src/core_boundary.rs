@@ -62,6 +62,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
             "profile-registry-observer",
         ),
         path_report(
+            root.join("crates/octopus-core/src/provider_surface.rs"),
+            "provider-surface",
+        ),
+        path_report(
             root.join("crates/octopus-core/src/release_gate.rs"),
             "release-gate",
         ),
