@@ -102,6 +102,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
             "release-gate",
         ),
         path_report(
+            root.join("crates/octopus-core/src/repair_surface.rs"),
+            "harness-repair-surface",
+        ),
+        path_report(
             root.join("crates/octopus-core/src/route_surface.rs"),
             "route-trace-surface",
         ),
