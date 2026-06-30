@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-06-30, after modular evolution/pet diagnostics refactor and LLM evolution planner/contract/recommend/prompt/candidate/artifact/patch/target extraction.
+Updated: 2026-06-30, after modular evolution/pet diagnostics refactor and LLM evolution planner/contract/recommend/prompt/candidate/artifact/patch/target plus tentacle scaffold extraction.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -47,6 +47,7 @@ Octopus/
 │       ├── provider_env.rs    Scoped `.octopus/llm.env` loader; fills missing provider variables without overriding shell env.
 │       ├── release_gate.rs    Preflight records, benchmark and real-machine gates.
 │       ├── shell_words.rs     Shared shell command display quoting.
+│       ├── tentacle_scaffold.rs User-owned code-as-harness tentacle scaffold generation.
 │       └── user_surface.rs    User-facing Goal hints separated from agent/observer commands.
 ├── tentacles/
 │   ├── profile-registry/      Editable seed profile data.
@@ -104,7 +105,7 @@ Octopus/
 
 | Module | Role | Main files | Lines |
 | --- | --- | --- | ---: |
-| Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, field-pool status snapshots, Codex CLI prompt-file stdin with timeout enforcement, and public kernel API | `crates/octopus-core/src/lib.rs` | 13,444 |
+| Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, field-pool status snapshots, Codex CLI prompt-file stdin with timeout enforcement, and public kernel API | `crates/octopus-core/src/lib.rs` | 13,159 |
 | User surface boundary | Converts internal state into human Goal hints; keeps agent commands in observer fields so app/CLI users edit Goal only | `user_surface.rs`, `StatusReport`, `ContextReport`, `NeedQueueReport`, `FieldPoolStatusReport`, `ProductReport` | 123 |
 | Evolution contract | Manifest-owned surface requirements, required-surface validation, candidate ID normalization, LLM retry guardrails without field-specific Rust branches | `evolution.rs`, `tentacles/*/manifest.json`, `tentacles/tentacle.schema.json` | 471 |
 | Evolution apply boundary | Authorized provider patch application, `git apply --check`, reverse already-applied detection, summary helpers, safety tests, and live apply reports shared by CLI apply and autonomous drive | `evolution_apply.rs` | 282 |
@@ -128,6 +129,7 @@ Octopus/
 | Release and install gates | Release records, benchmark evidence, download/install manifest, real-machine checks | `release_gate.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 1,211 |
 | Pet and visual state | Pixel Octopus state, SVG/export helpers, unified event writes, JSONL event audit, latest-event audit coverage, native read-only observer, desktop process/state-path check, stage/error diagnostics, desktop source preflight, HTML preview. Native pet no longer treats stale Feed traces as live state; colors come from fresh pet events, pending Needs, active worker slots, verifier status, goal status, heartbeat, or memory. | `pet.rs`, `pet_events.rs`, `pet_supervision.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 2,744 |
 | Strategy diagnostics | Checks the three core traits and composes pet supervision: clean brain context, LLM tool-side tentacles, editable goal, field surface, observation-chain freshness, native desktop process/state-path evidence, stage/error evidence, JSONL latest-event coverage, Feed/evolution evidence | `diagnostics.rs`, `pet_supervision.rs`, `octopus diagnose strategy --json`, `octopus pet supervise --json` | 872 |
+| Tentacle scaffold boundary | Generates user-owned code-as-harness tentacle manifests and optional python/node/shell seed tools. This is the debug entry when `octopus scaffold` creates an invalid manifest, missing executable, or wrong `octopus-json-v1` contract. | `tentacle_scaffold.rs`, `octopus scaffold` | 291 |
 | Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,085 |
 | Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, declared evolution requirements, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 18,974 |
 
@@ -170,6 +172,7 @@ These should remain stable and hard to accidentally mutate:
 - Patch apply rule: provider-created new-file patches are normalized before `git apply`; missing `new file mode 100644` is inserted when a diff uses `--- /dev/null`.
 - Provider timeout rule: Codex CLI prompts are passed through a temp prompt file, not blocking `stdin.write_all`; `OCTOPUS_LLM_TIMEOUT` and `OCTOPUS_LLM_RETRIES` can bound harness evolution calls.
 - Release gates: preflight, benchmark evidence, field-pool visibility, real-machine records, local app readiness.
+- Tentacle scaffold rule: user-owned code-as-harness seed manifests and python/node/shell starter tools live in `tentacle_scaffold.rs`; new scaffold output must declare LLM brain, tool metadata, runtime code, and editable evolution surfaces.
 - Strategy diagnostics: `octopus diagnose strategy --json` checks clean-brain context, user-surface command leakage, tool-side LLM tentacles, editable Goal, field-pack evolution surface, fresh pet events, desktop process/state-path evidence, stage/error evidence, and Feed/evolution evidence.
 
 ### Desktop Pet / Evolution Failure Map
@@ -185,6 +188,7 @@ Use this before changing UI or harness code:
 | Pet red/blocked during checking | `stage=checking`, `error_class=check_failed` | Harness patch applied but its declared check failed | tentacle check policy or editable harness code |
 | Pet red/blocked during feeding | `stage=feeding`, `error_class=feed_missing_queued_need` | No queued Need actually reached Feed; the system must not report fake success | `evolution_feed.rs` queued-Need boundary |
 | Harness beat suggests the wrong patch | inspect `.octopus/evolution/**/proposal.json` and `.octopus/evolution/**/apply/plan.json` | Candidate scoring or apply-plan selection used the wrong trace/check/outcome evidence | `evolution_recommend.rs` |
+| `octopus scaffold` creates a bad tentacle | `octopus manifests <root>` and install/feed tests | Scaffold manifest, seed tool contract, or executable bit is wrong | `tentacle_scaffold.rs` |
 
 Where they live:
 
@@ -207,6 +211,7 @@ Where they live:
 - `crates/octopus-core/src/evolution_prompt.rs`
 - `crates/octopus-core/src/evolution_recommend.rs`
 - `crates/octopus-core/src/evolution_target.rs`
+- `crates/octopus-core/src/tentacle_scaffold.rs`
 - `crates/octopus-core/src/user_surface.rs`
 - `crates/octopus-core/src/diagnostics.rs`
 - `crates/octopus-core/src/pet_events.rs`
@@ -217,7 +222,7 @@ Where they live:
 These remain intentionally visible:
 
 - `evolution_feed.rs` is still field-mini-task specific. The next version should make Feed-stage runners manifest/routing owned so future field packs can choose their own Feed executor.
-- `lib.rs` still owns tentacle scaffold helpers and broad state/provider APIs. The next split should move scaffold generation into a tentacle scaffold boundary.
+- `lib.rs` still owns broad state/provider APIs. The next cleanup should split state mutation/reporting before touching product backend behavior.
 - Automatic `cargo test` next step is still suspicious for LLM-native self-evolution and should be removed or pushed into editable manifest/harness policy.
 
 ### Distinctive Functions
@@ -283,7 +288,7 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 32 | 58,713 |
+| `crates/octopus-core/src` | 33 | 58,719 |
 | `crates/octopus-core/examples` | 1 | 27 |
 | `tentacles` | 83 | 18,974 |
 | `field-packs` | 14 | 598 |
@@ -297,7 +302,7 @@ field-packs/
 | File | Lines |
 | --- | ---: |
 | `main.rs` | 36,317 |
-| `lib.rs` | 13,444 |
+| `lib.rs` | 13,159 |
 | `app_bridge.rs` | 1,167 |
 | `field_pack.rs` | 868 |
 | `release_gate.rs` | 703 |
@@ -309,6 +314,7 @@ field-packs/
 | `diagnostics.rs` | 354 |
 | `evolution_driver.rs` | 318 |
 | `evolution_target.rs` | 318 |
+| `tentacle_scaffold.rs` | 291 |
 | `evolution_apply.rs` | 282 |
 | `pet.rs` | 280 |
 | `evolution_prompt.rs` | 254 |
@@ -352,7 +358,7 @@ field-packs/
 - If CLI LLM works in the app but not terminal, inspect `.octopus/llm.env` and `provider_env.rs`. The CLI now auto-loads missing OCTOPUS provider variables from that file.
 - If LLM evolution apply fails on new files, inspect `.octopus/evolution/<tentacle>/apply/*.patch`; the normalizer in `evolution_patch.rs` must preserve `/dev/null` and insert `new file mode 100644`.
 - If `evolve drive` stays in planning, run with explicit bounds such as `OCTOPUS_LLM_TIMEOUT=60 OCTOPUS_LLM_RETRIES=0`. A timeout must become a fresh `blocked` pet event; if it does not, inspect `evolution_llm_plan.rs`, `CodexCliChatClient` in `lib.rs`, and stage writes in `evolution_cycle.rs`.
-- Cleanup audit after the eight evolution-boundary commits moved prompt, candidate, artifact, patch, target, contract, recommendation, and LLM planner responsibilities out of `lib.rs`. Remaining discomfort: `main.rs` is still product-backend aggregation, and scaffold generation still lives in `lib.rs`.
+- Cleanup audit after the evolution-boundary commits moved prompt, candidate, artifact, patch, target, contract, recommendation, LLM planner, and scaffold responsibilities out of `lib.rs`. Remaining discomfort: `main.rs` is still product-backend aggregation, and `lib.rs` still owns broad state/provider APIs.
 - Evolution surface requirements now belong to manifests. Rust validates declared missing surfaces and must not grow domain-specific trigger rules.
 - Current field-mini-task template coverage is 33/33 satisfied in source and bundled seed. The apply path now normalizes LLM patch file headers before `git apply`, runs an apply precheck first, and field-mini-task normalizes common LLM template result shapes into `octopus-json-v1` Feed. The next `0.2.x` track should let Octopus add harder mini task layers one field at a time: math, search, SWE, research, computer-use, IB, robotics, then continue write and translate.
 - The release showcase is screenshot-first. The local app surface in `docs/app.html` observes and updates the real local Octopus loop.
