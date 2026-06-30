@@ -45,7 +45,7 @@ Octopus/
 │       ├── evolution_target.rs Manifest/field-pack/repair-template target resolution for harness evolution.
 │       ├── feedback_surface.rs Feed feedback command surface, route score outcome rendering, pet event append.
 │       ├── field_pack.rs      Field-pack loader, matcher, and Need/trace metadata.
-│       ├── field_surface.rs   Field adaptation CLI/report rendering and parallel field status lines.
+│       ├── field_surface.rs   Field adaptation command/report surface, verifier scoring, parallel field status lines.
 │       ├── heartbeat_surface.rs
 │       │                      Three-heart beat command surface, early pet heartbeat event, harness-beat recommendation output.
 │       ├── llm_layers.rs      Chat/brain/manifest/evolve LLM layer prefix and client routing.
@@ -166,8 +166,8 @@ Octopus/
 | Evolution patch boundary | Normalizes provider patch text, inserts missing new-file headers, extracts diff paths, renders display paths, and filters authorized patch paths before artifact/apply code can write a patch file. | `evolution_patch.rs` | 245 |
 | Evolution target boundary | Resolves manifest editable targets, field-pack targets, repair-template wildcard scopes, candidate target files, and field-name scopes for patch/prompt/candidate modules. | `evolution_target.rs` | 318 |
 | Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, and compile/execute template checks | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 5,357 |
-| Field adaptation surface | CLI/report rendering for field packs, field matching, field trajectory summaries, verifier results, parallel field worker slots, field-pool latest activity, and user-visible field status lines. This is the debug entry when field state exists but the app/CLI explains the wrong active domain or worker slot. | `field_surface.rs`, `FieldMatchReport`, `print_field_trajectory_report`, `field_pool_status_line`, `parallel_run_status_line` | 464 |
-| CLI and product backend | Command dispatch, chat, starter/install/check flows, evolve commands, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; Need command logic lives in `need_surface.rs`; Feedback command logic lives in `feedback_surface.rs`; beat command logic lives in `heartbeat_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 20,994 |
+| Field adaptation surface | Owns `octopus fields`: field-pack reports, field matching, field trajectory summaries, verifier score recording, pet-event append after verifier scoring, parallel field worker slots, field-pool latest activity, and user-visible field status lines. This is the debug entry when field state exists but the app/CLI explains the wrong active domain, score, worker slot, or verifier pet state. | `field_surface.rs`, `handle_fields_command`, `FieldMatchReport`, `print_field_trajectory_report`, `field_pool_status_line`, `parallel_run_status_line` | 558 |
+| CLI and product backend | Command dispatch, chat, starter/install/check flows, evolve commands, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; Need command logic lives in `need_surface.rs`; Feedback command logic lives in `feedback_surface.rs`; Field command logic lives in `field_surface.rs`; beat command logic lives in `heartbeat_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 20,908 |
 | Provider env | Loads `.octopus/llm.env` for CLI commands with a scoped guard; existing shell variables win, and values are restored after command execution | `provider_env.rs`, `app_bridge.rs::parse_env_overlay` | 107 |
 | Local app bridge | Local HTTP/SSE server, `/api/config` state-path injection, app policy, command allow-list, embedded app/docs/showcase assets, read-only pet supervision access, field activity observer with fresh pet-event handling | `app_bridge.rs`, `docs/app.html` | 2,027 |
 | Release and install gates | Low-level release records, benchmark evidence, download/install manifest, and real-machine record parsing used by the preflight surface | `release_gate.rs`, `preflight_surface.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 2,312 |
@@ -237,7 +237,7 @@ These should remain stable and hard to accidentally mutate:
 - Evolution target rule: manifest editable targets, field-pack paths, repair-template wildcard scopes, and field-name path extraction live in `evolution_target.rs`; planner/prompt/candidate/patch modules ask this boundary for files.
 - Evolution drive surface rule: `evolve drive` CLI/report formatting lives in `evolution_drive_surface.rs`; stage execution stays in `evolution_driver.rs`.
 - Evolution driver rule: `evolve drive` uses `evolution_cycle.rs` for stage/error events. Apply-check failures are fed back to the LLM once for a regenerated current-file patch.
-- Field surface rule: `field_surface.rs` owns field-adaptation display, matching reports, field-pool lines, verifier result printing, and parallel field run rendering. It must not mutate harness code or bypass field-pack/manifest runtime execution.
+- Field surface rule: `field_surface.rs` owns field-adaptation command handling, display, matching reports, field-pool lines, verifier score recording, verifier result printing, and parallel field run rendering. It may append the verifier pet event created by `record_field_verifier_result`; it must not mutate harness code or bypass field-pack/manifest runtime execution.
 - Patch apply rule: provider-created new-file patches are normalized before `git apply`; missing `new file mode 100644` is inserted when a diff uses `--- /dev/null`.
 - Release gates: preflight, benchmark evidence, field-pool visibility, real-machine records, local app readiness.
 - Tentacle scaffold rule: user-owned code-as-harness seed manifests and python/node/shell starter tools live in `tentacle_scaffold.rs`; new scaffold output must declare LLM brain, tool metadata, runtime code, and editable evolution surfaces.
@@ -271,7 +271,7 @@ Use this before changing UI or harness code:
 | App status/context shows wrong next step | compare `next` with `agent_next` in `status/context/needs` JSON | Read-only user hints leaked internal commands, or field-pool state was derived incorrectly | `state_report.rs`, `user_surface.rs` |
 | Status/context text misstates Goal, tentacles, or learning | compare `status --json`, `context --json`, and CLI/app text | Derived state is right, but rendering is misleading | `status_surface.rs`; derivation stays in `state_report.rs` |
 | Report/app suggests commands as user actions | compare product `next` and `agent_next` | Product surface leaked internal agent controls into the user Goal path | `product_surface.rs`, `user_surface.rs` |
-| Field summary shows wrong active field or worker slot | `octopus fields summary --json`, then compare app/CLI text | Field data exists but the rendering or latest-activity line is misleading | `field_surface.rs`; data derivation stays in `state_report.rs` and `field_pack.rs` |
+| Field summary, score, active field, or worker slot is wrong | `octopus fields summary --json`, `octopus fields score latest <status> --json`, then compare app/CLI text and latest pet event | Field data exists but the command surface, verifier score path, latest-activity line, or pet event append is misleading | `field_surface.rs`; data derivation stays in `state_report.rs` and `field_pack.rs` |
 | Harness beat suggests the wrong patch | inspect `.octopus/evolution/**/proposal.json` and `.octopus/evolution/**/apply/plan.json` | Candidate scoring or apply-plan selection used the wrong trace/check/outcome evidence, or the beat surface selected the wrong latest failing tentacle | `heartbeat_surface.rs`, then `evolution_recommend.rs` |
 | Repair plan, apply, verify, or score output is inconsistent | `octopus repair . --json`, `octopus repair apply . --json`, `octopus repair verify . --json`, then inspect the returned plan/status fields | The repair command surface is misreading Feed metadata, skipping authorization/checks, or recording the wrong outcome journal | `repair_surface.rs`; Feed creation stays in `manifest_runtime.rs` and write checks stay in `evolution_apply.rs`/declared harness policy |
 | `octopus scaffold` creates a bad tentacle | `octopus manifests <root>` and install/feed tests | Scaffold manifest, seed tool contract, or executable bit is wrong | `tentacle_scaffold.rs` |
@@ -396,7 +396,7 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 55 | 58,980 |
+| `crates/octopus-core/src` | 55 | 58,988 |
 | `crates/octopus-core/examples` | 0 | 0 |
 | `tentacles` | 83 | 18,974 |
 | `field-packs` | 14 | 598 |
@@ -409,7 +409,7 @@ field-packs/
 
 | File | Lines |
 | --- | ---: |
-| `main.rs` | 20,994 |
+| `main.rs` | 20,908 |
 | `lib.rs` | 8,999 |
 | `repair_surface.rs` | 6,669 |
 | `provider_surface.rs` | 1,887 |
@@ -427,7 +427,7 @@ field-packs/
 | `need_surface.rs` | 663 |
 | `need_runner.rs` | 544 |
 | `pet_supervision.rs` | 518 |
-| `field_surface.rs` | 464 |
+| `field_surface.rs` | 558 |
 | `bundled_harness.rs` | 423 |
 | `evolution_artifact.rs` | 401 |
 | `desktop_pet.rs` | 377 |

@@ -70,7 +70,7 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
         ),
         path_report(
             root.join("crates/octopus-core/src/field_surface.rs"),
-            "field-adaptation-surface",
+            "field-adaptation-command-surface",
         ),
         path_report(
             root.join("crates/octopus-core/src/heartbeat_surface.rs"),

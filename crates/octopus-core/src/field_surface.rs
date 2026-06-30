@@ -8,6 +8,100 @@ pub(crate) struct FieldMatchReport {
     pub(crate) next: Vec<String>,
 }
 
+pub(crate) fn handle_fields_command(
+    rest: &[String],
+    state: &Path,
+    json: bool,
+    language: Language,
+) -> Result<(), String> {
+    if rest.get(1).map(String::as_str) == Some("score") {
+        let mut loaded = HarnessState::load(state).map_err(|error| error.to_string())?;
+        let trace_index = rest
+            .get(2)
+            .ok_or_else(|| "fields score requires a feed trace index or latest".to_string())
+            .and_then(|value| resolve_feed_trace_selector(value, &loaded))?;
+        let status = rest
+            .get(3)
+            .ok_or_else(|| "fields score requires a status".to_string())
+            .and_then(|value| parse_status(value))?;
+        let error_category = rest.get(4).filter(|value| value.as_str() != "-").cloned();
+        let summary = rest
+            .get(5..)
+            .filter(|values| !values.is_empty())
+            .map(|values| values.join(" "))
+            .unwrap_or_else(|| "recorded field verifier result".to_string());
+        let result = loaded.record_field_verifier_result(
+            trace_index,
+            status,
+            error_category,
+            None,
+            summary,
+        )?;
+        loaded.save(state).map_err(|error| error.to_string())?;
+        pet_events::append_latest(state, &loaded)?;
+        if json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&result).map_err(|error| error.to_string())?
+            );
+        } else {
+            print_field_verifier_result(&result, language);
+        }
+    } else if rest.get(1).map(String::as_str) == Some("summary") {
+        let loaded = HarnessState::load(state).map_err(|error| error.to_string())?;
+        let report = loaded.field_trajectory_report_with_state(Some(state))?;
+        if json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+            );
+        } else {
+            print_field_trajectory_report(&report, language);
+        }
+    } else if rest.get(1).map(String::as_str) == Some("match") {
+        let kind = rest
+            .get(2)
+            .ok_or_else(|| "fields match requires a need kind".to_string())
+            .and_then(|value| parse_kind(value))?;
+        let query = rest
+            .get(3..)
+            .filter(|values| !values.is_empty())
+            .map(|values| values.join(" "))
+            .ok_or_else(|| "fields match requires a query".to_string())?;
+        let catalog = default_field_pack_catalog()?;
+        let need = Need::new(kind, query);
+        let report = FieldMatchReport {
+            selection: select_field_pack(&catalog.packs, None, &need),
+            need,
+            pack_count: catalog.packs.len(),
+            next: vec![
+                "octopus need <kind> <query>".to_string(),
+                "octopus traces 10".to_string(),
+            ],
+        };
+        if json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+            );
+        } else {
+            print_field_match_report(&report, language);
+        }
+    } else {
+        let root = rest.get(1).map(PathBuf::from);
+        let report = field_pack_report(root.as_deref());
+        if json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+            );
+        } else {
+            print_field_pack_report(&report, language);
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn print_field_pack_report(report: &FieldPackReport, language: Language) {
     match language {
         Language::En => {
