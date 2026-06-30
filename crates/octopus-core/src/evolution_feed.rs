@@ -2,10 +2,11 @@ use crate::desktop_pet::{launch_desktop_pet, DesktopPetConfig, DesktopPetReport}
 use crate::evolution_cycle::{
     record_stage_event, record_stage_event_with_error, EvolutionDriveStage,
 };
-use crate::{
-    empty_parallel_evolution_batch_report, pet_events, record_parallel_evolution_action_event,
+use crate::need_runner::{
+    empty_parallel_evolution_batch_report, record_parallel_evolution_action_event,
     run_queued_need_indices_with_observer_state, NeedRunBatchReport,
 };
+use crate::pet_events;
 use octopus_core::{FieldTrajectoryReport, HarnessState, ParallelEvolutionRun, Status};
 use std::path::Path;
 

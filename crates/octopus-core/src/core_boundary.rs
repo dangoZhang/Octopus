@@ -60,6 +60,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
             root.join("crates/octopus-core/src/need_queue.rs"),
             "need-queue",
         ),
+        path_report(
+            root.join("crates/octopus-core/src/need_runner.rs"),
+            "need-feed-runner",
+        ),
         path_report(root.join("crates/octopus-core/src/pet.rs"), "pixel-pet"),
         path_report(
             root.join("crates/octopus-core/src/pet_surface.rs"),
