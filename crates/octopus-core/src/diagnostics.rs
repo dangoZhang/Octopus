@@ -27,6 +27,7 @@ pub(crate) fn strategy_diagnostics(
 ) -> StrategyDiagnosticReport {
     let mut checks = vec![
         clean_brain_context_check(),
+        user_surface_policy_check(state),
         tentacle_intelligence_check(manifests),
         editable_goal_driven_check(manifests, state),
         field_evolution_surface_check(manifests),
@@ -51,6 +52,67 @@ pub(crate) fn strategy_diagnostics(
         checks,
         next,
     }
+}
+
+fn user_surface_policy_check(state: &HarnessState) -> StrategyDiagnosticCheck {
+    let status_report = state.status_report();
+    let context = state.context_report(None, 2);
+    let queue = state.need_queue_report(2);
+    let mut leaked = Vec::new();
+    if looks_internal_command(&status_report.next_action) {
+        leaked.push("status.next_action".to_string());
+    }
+    if let Some(pool) = &status_report.field_pool {
+        leaked.extend(
+            pool.next
+                .iter()
+                .filter(|item| looks_internal_command(item))
+                .map(|_| "field_pool.next".to_string()),
+        );
+        leaked.extend(
+            pool.slots
+                .iter()
+                .filter(|slot| looks_internal_command(&slot.next_action))
+                .map(|_| "field_pool.slots.next_action".to_string()),
+        );
+    }
+    leaked.extend(
+        context
+            .next
+            .iter()
+            .filter(|item| looks_internal_command(item))
+            .map(|_| "context.next".to_string()),
+    );
+    leaked.extend(
+        queue
+            .next
+            .iter()
+            .filter(|item| looks_internal_command(item))
+            .map(|_| "need_queue.next".to_string()),
+    );
+    leaked.sort();
+    leaked.dedup();
+    StrategyDiagnosticCheck {
+        id: "user_surface_policy".to_string(),
+        status: status(leaked.is_empty()),
+        evidence: if leaked.is_empty() {
+            "user next fields contain Goal hints only".to_string()
+        } else {
+            format!("internal commands leaked through {}", join_or_none(&leaked))
+        },
+        next:
+            "route user-visible next fields through user_surface.rs and keep commands in agent_next"
+                .to_string(),
+    }
+}
+
+fn looks_internal_command(value: &str) -> bool {
+    let trimmed = value.trim_start();
+    trimmed.starts_with("octopus ")
+        || trimmed.starts_with("source ")
+        || trimmed.starts_with("cargo ")
+        || trimmed.starts_with("OCTOPUS_")
+        || trimmed.contains("; octopus ")
 }
 
 fn clean_brain_context_check() -> StrategyDiagnosticCheck {
@@ -270,6 +332,10 @@ mod tests {
             .checks
             .iter()
             .any(|check| check.id == "tentacle_intelligence" && check.status == "fail"));
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.id == "user_surface_policy" && check.status == "pass"));
     }
 
     #[test]

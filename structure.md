@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-06-30, after modular evolution/pet diagnostics refactor.
+Updated: 2026-06-30, after modular user-surface/evolution/pet diagnostics refactor.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -30,7 +30,8 @@ Octopus/
 │       ├── pet_events.rs      Unified state event write path for desktop/pet observers.
 │       ├── profile_registry.rs Seed profile registry loading and status.
 │       ├── release_gate.rs    Preflight records, benchmark and real-machine gates.
-│       └── shell_words.rs     Shared shell command display quoting.
+│       ├── shell_words.rs     Shared shell command display quoting.
+│       └── user_surface.rs    User-facing Goal hints separated from agent/observer commands.
 ├── tentacles/
 │   ├── profile-registry/      Editable seed profile data.
 │   ├── bash-only/             Auditable write-and-run shell harness.
@@ -87,14 +88,15 @@ Octopus/
 
 | Module | Role | Main files | Lines |
 | --- | --- | --- | ---: |
-| Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, evolution data, field-pool status snapshots, resolved field-pack evolution targets, provider patch target checks, and LLM-native repair/evolve contracts | `crates/octopus-core/src/lib.rs` | 15,524 |
+| Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, evolution data, field-pool status snapshots, resolved field-pack evolution targets, provider patch target checks, and LLM-native repair/evolve contracts | `crates/octopus-core/src/lib.rs` | 15,645 |
+| User surface boundary | Converts internal state into human Goal hints; keeps agent commands in observer fields so app/CLI users edit Goal only | `user_surface.rs`, `StatusReport`, `ContextReport`, `NeedQueueReport`, `FieldPoolStatusReport`, `ProductReport` | 123 |
 | Evolution contract | Manifest-owned surface requirements, required-surface validation, candidate ID normalization, LLM retry guardrails without field-specific Rust branches | `evolution.rs`, `tentacles/*/manifest.json`, `tentacles/tentacle.schema.json` | 471 |
 | Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, field trajectory summaries, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, and compile/execute template checks | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 4,012 |
-| CLI and product backend | Command dispatch, Goal/chat/brain, provider setup, doctor/report/preflight aggregation, starter/install/check flows, field summary, repair/evolve commands, strategy diagnostics entry | `crates/octopus-core/src/main.rs` | 36,086 |
+| CLI and product backend | Command dispatch, Goal/chat/brain, provider setup, doctor/report/preflight aggregation, starter/install/check flows, field summary, repair/evolve commands, strategy diagnostics entry | `crates/octopus-core/src/main.rs` | 36,153 |
 | Local app bridge | Local HTTP/SSE server, app policy, command allow-list, embedded app/docs/showcase assets, field activity observer with fresh pet-event handling | `app_bridge.rs`, `docs/app.html` | 1,988 |
 | Release and install gates | Release records, benchmark evidence, download/install manifest, real-machine checks | `release_gate.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 1,211 |
 | Pet and visual state | Pixel Octopus state, SVG/export helpers, unified event writes, native read-only observer, desktop source preflight, HTML preview | `pet.rs`, `pet_events.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 2,158 |
-| Strategy diagnostics | Checks the three core traits and desktop observer chain: clean brain context, LLM tool-side tentacles, editable goal, field surface, pet freshness, Feed/evolution evidence | `diagnostics.rs`, `octopus diagnose strategy --json` | 322 |
+| Strategy diagnostics | Checks the three core traits, user-surface policy, and desktop observer chain: clean brain context, LLM tool-side tentacles, editable goal, field surface, pet freshness, Feed/evolution evidence | `diagnostics.rs`, `octopus diagnose strategy --json` | 388 |
 | Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,178 |
 | Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, declared evolution requirements, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 18,268 |
 
@@ -116,8 +118,9 @@ These should remain stable and hard to accidentally mutate:
 - Product report field-pool block: required v0.2 peer fields plus expansion packs such as write and translate, latest worker execution-slot count, latest field activity, active slot, and worker-slot policy.
 - Route scoring, provider clients, memory/heartbeat state, grants, permissions.
 - Product bridge rule: user-facing writes go through Goal; internal actions feed the agent.
+- User surface rule: `next` on status/context/Need queue/field pool/product report means human Goal hint; internal execution commands stay in `agent_next` or `agent_next_action`.
 - Release gates: preflight, benchmark evidence, field-pool visibility, real-machine records, local app readiness.
-- Strategy diagnostics: `octopus diagnose strategy --json` checks clean-brain context, tool-side LLM tentacles, editable Goal, field-pack evolution surface, fresh pet events, and Feed/evolution evidence.
+- Strategy diagnostics: `octopus diagnose strategy --json` checks clean-brain context, user-surface command leakage, tool-side LLM tentacles, editable Goal, field-pack evolution surface, fresh pet events, and Feed/evolution evidence.
 
 Where they live:
 
@@ -127,6 +130,7 @@ Where they live:
 - `crates/octopus-core/src/release_gate.rs`
 - `crates/octopus-core/src/core_boundary.rs`
 - `crates/octopus-core/src/evolution.rs`
+- `crates/octopus-core/src/user_surface.rs`
 - `crates/octopus-core/src/diagnostics.rs`
 - `crates/octopus-core/src/pet_events.rs`
 
@@ -193,7 +197,7 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 15 | 56,474 |
+| `crates/octopus-core/src` | 16 | 56,579 |
 | `crates/octopus-core/examples` | 1 | 27 |
 | `tentacles` | 70 | 18,268 |
 | `field-packs` | 14 | 583 |
@@ -206,17 +210,18 @@ field-packs/
 
 | File | Lines |
 | --- | ---: |
-| `main.rs` | 36,086 |
-| `lib.rs` | 15,524 |
+| `main.rs` | 36,153 |
+| `lib.rs` | 15,645 |
 | `app_bridge.rs` | 1,142 |
 | `release_gate.rs` | 703 |
 | `field_pack.rs` | 868 |
-| `diagnostics.rs` | 322 |
+| `diagnostics.rs` | 388 |
 | `pet.rs` | 280 |
 | `bundled_harness.rs` | 411 |
 | `download.rs` | 175 |
 | `desktop_pet.rs` | 368 |
 | `core_boundary.rs` | 123 |
+| `user_surface.rs` | 123 |
 | `evolution.rs` | 78 |
 | `profile_registry.rs` | 78 |
 | `pet_events.rs` | 26 |

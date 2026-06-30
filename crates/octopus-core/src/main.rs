@@ -1,6 +1,6 @@
 use octopus_core::{
     default_field_pack_catalog, default_field_pack_ids, field_harder_layer_next_action,
-    field_pack_report, select_field_pack,
+    field_pack_report, select_field_pack, user_surface,
 };
 use octopus_core::{
     default_permissions, default_tentacle_profiles, embedded_profile_registry_json,
@@ -541,6 +541,7 @@ struct ProductReport {
     harness_learning: HarnessLearningSummary,
     capabilities: Vec<ProductCapability>,
     gaps: Vec<ProductGap>,
+    agent_next: Vec<String>,
     next: Vec<String>,
 }
 
@@ -1204,6 +1205,8 @@ struct ProductCapability {
 struct ProductGap {
     id: String,
     impact: String,
+    user_goal_hint: String,
+    agent_next: String,
     next: String,
 }
 
@@ -11980,7 +11983,7 @@ fn print_status_report(report: &StatusReport, language: Language) {
                 harness_learning_line(&report.harness_learning)
             );
             println!("warnings: {}", join_or_none(&report.warnings));
-            println!("next: {}", report.next_action);
+            println!("goal_hint: {}", report.user_goal_hint);
         }
         Language::Zh => {
             println!("章鱼状态");
@@ -12027,7 +12030,7 @@ fn print_status_report(report: &StatusReport, language: Language) {
                 harness_learning_line(&report.harness_learning)
             );
             println!("警告: {}", join_or_none(&report.warnings));
-            println!("下一步: {}", report.next_action);
+            println!("目标提示: {}", report.user_goal_hint);
         }
     }
 }
@@ -15218,9 +15221,20 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
     ));
     gaps.sort_by(|left, right| left.id.cmp(&right.id));
 
-    let mut next = gaps.iter().map(|gap| gap.next.clone()).collect::<Vec<_>>();
-    next.push(status.next_action);
-    next.extend(provider.next);
+    let mut agent_next = gaps
+        .iter()
+        .map(|gap| gap.agent_next.clone())
+        .collect::<Vec<_>>();
+    agent_next.push(status.agent_next_action.clone());
+    agent_next.extend(provider.next);
+    agent_next.sort();
+    agent_next.dedup();
+
+    let mut next = gaps
+        .iter()
+        .map(|gap| gap.user_goal_hint.clone())
+        .collect::<Vec<_>>();
+    next.push(status.user_goal_hint.clone());
     next.sort();
     next.dedup();
 
@@ -15238,6 +15252,7 @@ fn product_report(state: &HarnessState, state_path: &Path) -> Result<ProductRepo
         harness_learning: status.harness_learning,
         capabilities,
         gaps,
+        agent_next,
         next,
     })
 }
@@ -15396,12 +15411,18 @@ fn product_capability(
 fn product_gap(
     id: impl Into<String>,
     impact: impl Into<String>,
-    next: impl Into<String>,
+    agent_next: impl Into<String>,
 ) -> ProductGap {
+    let id = id.into();
+    let impact = impact.into();
+    let agent_next = agent_next.into();
+    let user_goal_hint = user_surface::product_gap_hint(&id, &impact);
     ProductGap {
-        id: id.into(),
-        impact: impact.into(),
-        next: next.into(),
+        id,
+        impact,
+        user_goal_hint: user_goal_hint.clone(),
+        agent_next,
+        next: user_goal_hint,
     }
 }
 
@@ -16277,7 +16298,7 @@ fn print_product_report(report: &ProductReport, language: Language) {
                 let command = capability
                     .command
                     .as_ref()
-                    .map(|command| format!(" next={command}"))
+                    .map(|command| format!(" observer={command}"))
                     .unwrap_or_default();
                 println!(
                     "- {} [{}]: {}{}",
@@ -16286,9 +16307,13 @@ fn print_product_report(report: &ProductReport, language: Language) {
             }
             println!("gaps:");
             for gap in &report.gaps {
-                println!("- {}: {}; next={}", gap.id, gap.impact, gap.next);
+                println!(
+                    "- {}: {}; hint={}; observer={}",
+                    gap.id, gap.impact, gap.user_goal_hint, gap.agent_next
+                );
             }
             println!("next: {}", join_or_none(&report.next));
+            println!("agent_next: {}", join_or_none(&report.agent_next));
         }
         Language::Zh => {
             println!("章鱼报告");
@@ -16344,7 +16369,7 @@ fn print_product_report(report: &ProductReport, language: Language) {
                 let command = capability
                     .command
                     .as_ref()
-                    .map(|command| format!(" 下一步={command}"))
+                    .map(|command| format!(" observer={command}"))
                     .unwrap_or_default();
                 println!(
                     "- {} [{}]: {}{}",
@@ -16353,9 +16378,13 @@ fn print_product_report(report: &ProductReport, language: Language) {
             }
             println!("缺口:");
             for gap in &report.gaps {
-                println!("- {}: {}; 下一步={}", gap.id, gap.impact, gap.next);
+                println!(
+                    "- {}: {}; 提示={}; observer={}",
+                    gap.id, gap.impact, gap.user_goal_hint, gap.agent_next
+                );
             }
             println!("下一步: {}", join_or_none(&report.next));
+            println!("agent_next: {}", join_or_none(&report.agent_next));
         }
     }
 }
@@ -18194,7 +18223,7 @@ fn doctor_report(state: &HarnessState, state_path: PathBuf) -> Result<DoctorRepo
     warnings.sort();
     warnings.dedup();
 
-    let mut next = vec![status.next_action.clone()];
+    let mut next = vec![status.user_goal_hint.clone()];
     next.push("octopus provider status".to_string());
     if !llm.configured {
         next.push("octopus providers".to_string());
@@ -28148,8 +28177,46 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
 
         assert!(gap.impact.contains("bash-only"));
         assert!(gap.impact.contains("tools/write_and_run.sh"));
-        assert!(gap.next.contains("beat 200"));
+        assert!(gap.agent_next.contains("beat 200"));
+        assert!(!gap.next.contains("octopus"));
         assert!(!bash.source.contains(".octopus/bundled-tentacles"));
+
+        std::env::set_current_dir(&_cwd.original).unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn product_report_separates_user_hints_from_agent_commands() {
+        let _env = env_guard();
+        let _cwd = CwdGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-product-user-surface-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let state_path = dir.join(".octopus/state.json");
+        let state = HarnessState::default();
+
+        let product = product_report(&state, &state_path).unwrap();
+
+        assert!(product
+            .next
+            .iter()
+            .all(|item| !item.starts_with("octopus ")));
+        assert!(product
+            .agent_next
+            .iter()
+            .any(|item| item.contains("goal set")));
+        let goal_gap = product
+            .gaps
+            .iter()
+            .find(|gap| gap.id == "goal_loop_empty")
+            .expect("goal gap");
+        assert_eq!(goal_gap.next, goal_gap.user_goal_hint);
+        assert!(!goal_gap.next.contains("octopus"));
+        assert!(goal_gap.agent_next.contains("goal set"));
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);

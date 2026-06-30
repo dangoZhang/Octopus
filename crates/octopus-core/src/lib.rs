@@ -1,5 +1,6 @@
 mod evolution;
 mod field_pack;
+pub mod user_surface;
 
 pub use field_pack::{
     annotate_need_with_field, default_field_pack_aliases, default_field_pack_catalog,
@@ -204,6 +205,8 @@ pub struct NeedQueueReport {
     pub policy: String,
     pub pending: Vec<NeedQueueItem>,
     pub history: Vec<NeedQueueItem>,
+    pub agent_next: Vec<String>,
+    pub user_goal_hints: Vec<String>,
     pub next: Vec<String>,
 }
 
@@ -515,6 +518,8 @@ pub struct FieldPoolStatusReport {
     pub active_slot_reason: String,
     pub worker_slots: String,
     pub slots: Vec<FieldPoolSlotReport>,
+    pub agent_next: Vec<String>,
+    pub user_goal_hints: Vec<String>,
     pub next: Vec<String>,
 }
 
@@ -533,6 +538,8 @@ pub struct FieldPoolSlotReport {
     #[serde(default)]
     pub latest_updated_at_secs: u64,
     pub needs_repair: bool,
+    pub agent_next_action: String,
+    pub user_goal_hint: String,
     pub next_action: String,
 }
 
@@ -602,6 +609,8 @@ pub struct StatusReport {
     pub harness_learning: HarnessLearningSummary,
     pub latest_starter_feedback: Option<StarterFeedbackRecord>,
     pub warnings: Vec<String>,
+    pub agent_next_action: String,
+    pub user_goal_hint: String,
     pub next_action: String,
 }
 
@@ -643,6 +652,8 @@ pub struct ContextReport {
     pub brain: BrainContextReport,
     pub tentacles: Vec<TentacleContextReport>,
     pub hearts: Vec<HeartBeat>,
+    pub agent_next: Vec<String>,
+    pub user_goal_hints: Vec<String>,
     pub next: Vec<String>,
 }
 
@@ -2879,15 +2890,22 @@ impl HarnessState {
             .iter()
             .map(|tentacle| self.tentacle_context_report(tentacle, limit))
             .collect::<Vec<_>>();
-        let mut next = vec!["octopus chat \"refine your goal\"".to_string()];
+        let mut agent_next = vec!["octopus chat \"refine your goal\"".to_string()];
+        let mut user_goal_hints =
+            vec!["Refine the Goal if the latest Feed changes direction.".to_string()];
         if let Some(need) = &next_need {
-            next.push(format!(
+            user_goal_hints.push(format!(
+                "Review the proposed {} Need: {}",
+                kind_key(&need.kind),
+                one_line(&need.query)
+            ));
+            agent_next.push(format!(
                 "octopus need {} {}",
                 kind_key(&need.kind),
                 shell_arg(&need.query)
             ));
             if let Some(tentacle) = tentacles.first() {
-                next.push(format!(
+                agent_next.push(format!(
                     "octopus think {} {} {}",
                     tentacle.id,
                     kind_key(&need.kind),
@@ -2895,9 +2913,10 @@ impl HarnessState {
                 ));
             }
         } else {
-            next.push("octopus context observe .".to_string());
+            user_goal_hints.push("Wait for the next Need or refine the Goal.".to_string());
+            agent_next.push("octopus context observe .".to_string());
         }
-        next.push("octopus traces".to_string());
+        agent_next.push("octopus traces".to_string());
         ContextReport {
             brain: BrainContextReport {
                 policy: CLEAN_BRAIN_CONTEXT_POLICY.to_string(),
@@ -2914,7 +2933,9 @@ impl HarnessState {
             },
             tentacles,
             hearts: self.status_report().hearts,
-            next,
+            agent_next,
+            user_goal_hints: user_goal_hints.clone(),
+            next: user_goal_hints,
         }
     }
 
@@ -4159,7 +4180,7 @@ impl HarnessState {
             .cloned()
             .collect::<Vec<_>>();
         history.reverse();
-        let next = if let Some(item) = pending.first() {
+        let agent_next = if let Some(item) = pending.first() {
             vec![
                 format!("octopus needs run {}", item.index),
                 format!("octopus needs take {}", item.index),
@@ -4172,11 +4193,14 @@ impl HarnessState {
                 "octopus goal set \"describe your goal\"".to_string(),
             ]
         };
+        let user_goal_hints = user_surface::need_queue_hints(&pending);
         NeedQueueReport {
             policy: CLEAN_BRAIN_CONTEXT_POLICY.to_string(),
             pending,
             history,
-            next,
+            agent_next,
+            user_goal_hints: user_goal_hints.clone(),
+            next: user_goal_hints,
         }
     }
 
@@ -4280,24 +4304,25 @@ impl HarnessState {
         let field_pool = self.field_pool_status_report(state_path);
         let completed_field_pool_next_action = field_pool.as_ref().and_then(|pool| {
             if pool.field_slot_count > 0 && pool.completed_fields == pool.field_slot_count {
-                pool.next
+                pool.agent_next
                     .iter()
                     .find(|action| action.contains("evolve recommend field-mini-task"))
                     .cloned()
-                    .or_else(|| pool.next.last().cloned())
+                    .or_else(|| pool.agent_next.last().cloned())
             } else {
                 None
             }
         });
-        let next_action = if self.installed_tentacles.is_empty() {
+        let pending_need = self
+            .need_queue
+            .iter()
+            .find(|item| item.status == NeedQueueStatus::Pending);
+        let has_active_parallel_field_goal = self.has_active_parallel_field_goal();
+        let agent_next_action = if self.installed_tentacles.is_empty() {
             format!("octopus{state_args} adapt")
         } else if self.goal.is_none() {
             format!("octopus{state_args} chat \"describe your goal\"")
-        } else if let Some(item) = self
-            .need_queue
-            .iter()
-            .find(|item| item.status == NeedQueueStatus::Pending)
-        {
+        } else if let Some(item) = pending_need {
             format!("octopus{state_args} needs run {}", item.index)
         } else if let Some(result) = self.latest_unsatisfied_field_verifier_result() {
             let tentacle = self
@@ -4330,6 +4355,13 @@ impl HarnessState {
         } else {
             format!("octopus{state_args} beat 200")
         };
+        let user_goal_hint = user_surface::goal_hint(
+            !self.installed_tentacles.is_empty(),
+            self.goal.is_some(),
+            pending_need,
+            has_active_parallel_field_goal,
+            &harness_learning,
+        );
         StatusReport {
             hearts: vec![
                 HeartBeat {
@@ -4380,7 +4412,9 @@ impl HarnessState {
             harness_learning,
             latest_starter_feedback: self.starter_feedback.last().cloned(),
             warnings,
-            next_action,
+            agent_next_action,
+            user_goal_hint: user_goal_hint.clone(),
+            next_action: user_goal_hint,
         }
     }
 
@@ -4671,11 +4705,18 @@ impl HarnessState {
                     .rev()
                     .flat_map(|run| run.workers.iter())
                     .find(|worker| worker.field == summary.field);
+                let completed = summary.mini_task_count > 0
+                    && summary.satisfied_mini_task_count == summary.mini_task_count
+                    && !summary.needs_repair;
+                let user_goal_hint = user_surface::field_slot_hint(
+                    &summary.field,
+                    completed,
+                    summary.next_mini_task.as_deref(),
+                    summary.needs_repair,
+                );
                 FieldPoolSlotReport {
                     field: summary.field.clone(),
-                    completed: summary.mini_task_count > 0
-                        && summary.satisfied_mini_task_count == summary.mini_task_count
-                        && !summary.needs_repair,
+                    completed,
                     mini_task_count: summary.mini_task_count,
                     satisfied_mini_task_count: summary.satisfied_mini_task_count,
                     next_mini_task: summary.next_mini_task.clone(),
@@ -4694,21 +4735,31 @@ impl HarnessState {
                         .map(|worker| worker.updated_at_secs)
                         .unwrap_or_default(),
                     needs_repair: summary.needs_repair,
-                    next_action: summary.next_action.clone(),
+                    agent_next_action: summary.next_action.clone(),
+                    user_goal_hint: user_goal_hint.clone(),
+                    next_action: user_goal_hint,
                 }
             })
             .collect::<Vec<_>>();
+        let completed_fields = slots.iter().filter(|slot| slot.completed).count();
+        let user_goal_hints = user_surface::field_pool_hints(
+            report.field_count,
+            completed_fields,
+            report.active_slot_field.as_deref(),
+        );
         Some(FieldPoolStatusReport {
             policy: parallel_field_pool_policy().to_string(),
             field_count: report.field_count,
             field_slot_count: report.field_count,
             latest_worker_slot_count: report.latest_worker_slot_count,
-            completed_fields: slots.iter().filter(|slot| slot.completed).count(),
+            completed_fields,
             active_slot_field: report.active_slot_field,
             active_slot_reason: report.active_slot_reason,
             worker_slots: parallel_worker_policy().to_string(),
             slots,
-            next: report.next,
+            agent_next: report.next,
+            user_goal_hints: user_goal_hints.clone(),
+            next: user_goal_hints,
         })
     }
 
@@ -11692,7 +11743,9 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["heartbeat", "memory", "harness"]
         );
-        assert_eq!(empty.next_action, "octopus adapt".to_string());
+        assert_eq!(empty.agent_next_action, "octopus adapt".to_string());
+        assert_eq!(empty.next_action, empty.user_goal_hint);
+        assert!(empty.user_goal_hint.contains("Set a Goal"));
         assert_eq!(empty.harness_learning.source, "none");
         assert!(empty
             .warnings
@@ -11739,7 +11792,9 @@ mod tests {
             report.active_grants,
             vec!["github:dangoZhang/Octopus".to_string()]
         );
-        assert_eq!(report.next_action, "octopus beat 200".to_string());
+        assert_eq!(report.agent_next_action, "octopus beat 200".to_string());
+        assert_eq!(report.next_action, report.user_goal_hint);
+        assert!(!report.next_action.contains("octopus"));
         let trace = harness.state.record_feed_trace_from_feed(&Feed {
             need: Need::new(NeedKind::Verify, "repair swe-agent feed"),
             status: Status::Partial,
@@ -11776,17 +11831,66 @@ mod tests {
             report.harness_learning.next_action,
             "octopus evolve recommend swe-agent"
         );
-        assert_eq!(report.next_action, "octopus evolve recommend swe-agent");
+        assert_eq!(
+            report.agent_next_action,
+            "octopus evolve recommend swe-agent"
+        );
+        assert_eq!(report.next_action, report.user_goal_hint);
+        assert!(!report.next_action.contains("evolve recommend"));
         let state_path = Path::new("/tmp/octopus state.json");
         let with_state = harness.state.status_report_with_state(Some(state_path));
         assert_eq!(
-            with_state.next_action,
+            with_state.agent_next_action,
             "octopus --state '/tmp/octopus state.json' evolve recommend swe-agent".to_string()
         );
         assert_eq!(
             with_state.harness_learning.next_action,
             "octopus --state '/tmp/octopus state.json' evolve recommend swe-agent"
         );
+    }
+
+    #[test]
+    fn context_report_separates_user_hints_from_agent_commands() {
+        let state = HarnessState::default();
+        let report = state.context_report(Some(Need::new(NeedKind::Verify, "check Feed")), 3);
+
+        assert!(report.next.iter().all(|item| !item.starts_with("octopus ")));
+        assert_eq!(report.next, report.user_goal_hints);
+        assert!(report
+            .agent_next
+            .iter()
+            .any(|item| item.starts_with("octopus need verify")));
+        assert!(report
+            .agent_next
+            .iter()
+            .any(|item| item == "octopus traces"));
+    }
+
+    #[test]
+    fn need_queue_report_separates_user_hints_from_agent_commands() {
+        let mut state = HarnessState::default();
+        state.queue_need_suggestion(
+            GoalNeedSuggestion {
+                kind: NeedKind::Verify,
+                query: "check the desktop pet state freshness".to_string(),
+            },
+            "test",
+            "Need queued by clean brain",
+            "Goal asks for desktop state diagnosis",
+        );
+
+        let report = state.need_queue_report(8);
+
+        assert_eq!(report.next, report.user_goal_hints);
+        assert!(report.next.iter().all(|item| !item.starts_with("octopus ")));
+        assert!(report
+            .agent_next
+            .iter()
+            .any(|item| item == "octopus needs run 1"));
+        assert!(report
+            .agent_next
+            .iter()
+            .any(|item| item.starts_with("octopus need verify")));
     }
 
     #[test]
@@ -11829,8 +11933,11 @@ mod tests {
 
         let report = state.status_report();
 
-        assert!(report.next_action.contains("evolve parallel --workers 1"));
-        assert!(!report.next_action.contains("computer-use"));
+        assert!(report
+            .agent_next_action
+            .contains("evolve parallel --workers 1"));
+        assert!(!report.agent_next_action.contains("computer-use"));
+        assert!(!report.next_action.contains("evolve parallel"));
     }
 
     #[test]
@@ -12020,9 +12127,10 @@ mod tests {
         let status =
             state.status_report_with_state(Some(Path::new("/tmp/octopus fields/state.json")));
         assert!(status
-            .next_action
+            .agent_next_action
             .contains("evolve recommend field-mini-task"));
-        assert!(!status.next_action.contains("evolve parallel"));
+        assert!(!status.agent_next_action.contains("evolve parallel"));
+        assert!(!status.next_action.contains("evolve recommend"));
     }
 
     #[test]
@@ -12097,10 +12205,23 @@ mod tests {
             .any(|item| item.contains("improve search harness")));
         let pool = state.field_pool_status_report(None).unwrap();
         assert_eq!(pool.completed_fields, default_field_pack_ids().len() - 1);
+        assert_eq!(pool.next, pool.user_goal_hints);
+        assert!(pool.next.iter().all(|item| !item.starts_with("octopus ")));
         assert!(pool
+            .agent_next
+            .iter()
+            .any(|item| item.contains("improve search harness")));
+        let search_slot = pool
             .slots
             .iter()
-            .any(|slot| slot.field == "search" && !slot.completed && slot.needs_repair));
+            .find(|slot| slot.field == "search")
+            .unwrap();
+        assert!(!search_slot.completed);
+        assert!(search_slot.needs_repair);
+        assert!(search_slot
+            .agent_next_action
+            .contains("improve search harness"));
+        assert!(!search_slot.next_action.contains("octopus"));
     }
 
     #[test]
