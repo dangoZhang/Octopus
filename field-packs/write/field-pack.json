@@ -1,6 +1,6 @@
 {
   "id": "write",
-  "version": "0.1.x",
+  "version": "0.2.x",
   "description": "Draft, revise, and verify concise written outputs from explicit source notes.",
   "aliases": ["write", "writing", "draft", "copy", "prose"],
   "task_schema": {
@@ -30,6 +30,11 @@
       "id": "write-mini-2",
       "goal": "Summarize four source notes into a strict two-sentence writing brief and verify each claim against the notes.",
       "expected_feed": "A strict two-sentence brief, claim-to-source map, explicit gap list, and artifact-backed verifier checks."
+    },
+    {
+      "id": "write-mini-3",
+      "goal": "From six local source notes, produce a strict two-sentence brief with exactly four claims mapped to source IDs, confidence scores, and at least two explicit unsupported gaps.",
+      "expected_feed": "A strict two-sentence brief, 4-item claim-to-source map with confidence levels, explicit unsupported gaps, and artifact-backed verifier checks."
     }
   ]
 }

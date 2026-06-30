@@ -1343,6 +1343,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 .state
                 .save(&state)
                 .map_err(|error| error.to_string())?;
+            pet_events::append_latest(&state, &harness.state)?;
             if json {
                 println!(
                     "{}",
@@ -1381,6 +1382,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 let mut loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
                 let report = repair_patch_verify_report(&state, &mut loaded, query)?;
                 loaded.save(&state).map_err(|error| error.to_string())?;
+                pet_events::append_latest(&state, &loaded)?;
                 if json {
                     println!(
                         "{}",
@@ -4274,6 +4276,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let mut report = check_report(tentacle_id, selected)?;
             record_check_report(&mut loaded, &mut report);
             loaded.save(&state).map_err(|error| error.to_string())?;
+            pet_events::append_latest(&state, &loaded)?;
             if json {
                 println!(
                     "{}",
@@ -28524,8 +28527,14 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             String::from_utf8_lossy(&output.stderr)
         );
         assert_eq!(value["status"], "ok");
-        assert_eq!(value["checked_count"], 30);
-        assert_eq!(value["executed_count"], 30);
+        assert_eq!(value["checked_count"], 32);
+        assert_eq!(value["executed_count"], 32);
+        assert!(root
+            .join("field-mini-task/repair-templates/write/write-mini-3.pyfrag")
+            .exists());
+        assert!(root
+            .join("field-mini-task/repair-templates/translate/translate-mini-3.pyfrag")
+            .exists());
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);

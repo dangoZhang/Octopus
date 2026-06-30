@@ -1,0 +1,129 @@
+if field == "write" and mini_task == "write-mini-3":
+    notes = [
+        {"id": "N1", "text": "The clean brain keeps context to Goal, Mem, Need, and Feed."},
+        {"id": "N2", "text": "Tentacles are responsible for observation, action, validation, and compact Feed."},
+        {"id": "N3", "text": "Writing tasks should avoid unsupported claims."},
+        {"id": "N4", "text": "Outputs should reference local artifacts used by the verifier."},
+        {"id": "N5", "text": "Every claim in the brief must map to at least one note ID."},
+        {"id": "N6", "text": "Ambiguities and gaps should be explicit, with no hidden assumptions."},
+    ]
+    brief_sentences = [
+        "A write tentacle can draft a compact brief while preserving Goal, Mem, Need, and Feed as the clean-brain scope and using only local source notes.",
+        "It should map each claim to note IDs with confidence scores, name unsupported gaps, and return artifact-backed Feed for verifier reuse.",
+    ]
+    paragraph = "\n".join(brief_sentences)
+    claim_map = [
+        {
+            "claim": "The clean-brain scope is limited to Goal, Mem, Need, and Feed.",
+            "sources": ["N1"],
+            "confidence": 0.99,
+        },
+        {
+            "claim": "Tentacles own observation, action, validation, and compact Feed.",
+            "sources": ["N2"],
+            "confidence": 0.98,
+        },
+        {
+            "claim": "Writing tasks should avoid unsupported claims.",
+            "sources": ["N3"],
+            "confidence": 0.96,
+        },
+        {
+            "claim": "Verifier output should reference local artifacts.",
+            "sources": ["N4", "N5"],
+            "confidence": 0.95,
+        },
+    ]
+    unsupported_gaps = [
+        "The notes do not provide benchmark numbers or adoption metrics.",
+        "The notes do not provide external citations for biological or product claims.",
+    ]
+    checks = {
+        "two_sentences": len(brief_sentences) == 2,
+        "four_claims_required": len(claim_map) == 4,
+        "all_claims_mapped": all(item["sources"] for item in claim_map),
+        "confidence_scores_present": all(isinstance(item["confidence"], float) for item in claim_map),
+        "scope_guard": all(token in paragraph for token in ["Goal", "Mem", "Need", "Feed"]),
+        "two_gap_items": len(unsupported_gaps) >= 2,
+    }
+    (session / "SOURCE_NOTES.json").write_text(
+        json.dumps(notes, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    (session / "BRIEF.md").write_text(paragraph + "\n", encoding="utf-8")
+    (session / "CLAIM_MAP.json").write_text(
+        json.dumps(claim_map, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    (session / "GAPS.json").write_text(
+        json.dumps(unsupported_gaps, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    (session / "CHECKS.json").write_text(
+        json.dumps(checks, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    answer = "\n".join(
+        [
+            "# Write Mini Task Answer",
+            "",
+            paragraph,
+            "",
+            "Artifacts: SOURCE_NOTES.json, BRIEF.md, CLAIM_MAP.json, GAPS.json, CHECKS.json.",
+        ]
+    )
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    passed = all(checks.values())
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "source_notes": rel(session / "SOURCE_NOTES.json", root),
+        "brief": rel(session / "BRIEF.md", root),
+        "claim_map": rel(session / "CLAIM_MAP.json", root),
+        "gaps": rel(session / "GAPS.json", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "verifier_status": "satisfied" if passed else "partial",
+        "field_pass_evidence": "two-sentence brief, four source-mapped claims, confidence scores, and explicit unsupported gaps",
+    }
+    if not passed:
+        field_metadata["error_category"] = "writing_constraints_failed"
+        field_metadata["next_mini_task"] = "write-mini-3"
+    field_result = {
+        "status": "satisfied" if passed else "partial",
+        "output": answer,
+        "evidence": [
+            {
+                "source": "field-mini-task/write/answer",
+                "content": rel(session / "ANSWER.md", root),
+                "confidence": 0.9,
+                "metadata": field_metadata,
+            },
+            {
+                "source": "field-mini-task/write/checks",
+                "content": rel(session / "CHECKS.json", root),
+                "confidence": 0.94,
+                "metadata": field_metadata,
+            },
+            {
+                "source": "field-mini-task/write/claim-map",
+                "content": rel(session / "CLAIM_MAP.json", root),
+                "confidence": 0.92,
+                "metadata": field_metadata,
+            },
+        ],
+        "metadata": field_metadata,
+    }
+    (session / "METADATA.json").write_text(
+        json.dumps(field_metadata, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )

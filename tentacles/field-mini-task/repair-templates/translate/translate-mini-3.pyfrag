@@ -1,0 +1,111 @@
+if field == "translate" and mini_task == "translate-mini-3":
+    source_text = (
+        "The clean brain context is limited to Goal, Mem, Need, and Feed. "
+        "Tentacles and harness are responsible for execution, checking, and returning compressed Feed."
+    )
+    required_terms = {
+        "Goal": "Goal",
+        "Need": "Need",
+        "Mem": "Mem",
+        "Feed": "Feed",
+        "tentacle": "tentacle",
+        "harness": "harness",
+    }
+    translation = (
+        "主脑上下文只保留 Goal、Mem、Need 和 Feed；"
+        "tentacle 和 harness 负责执行、核查并返回压缩后的 Feed。"
+    )
+    term_map = [
+        {"source": src, "translation": tgt, "preserved": tgt in translation}
+        for src, tgt in required_terms.items()
+    ]
+    ambiguity_notes = [
+        "Source text does not define whether Feed should be localized, so the required term is preserved.",
+        "Source text uses Tentacles as a plural concept; the required singular term tentacle is preserved in translation.",
+    ]
+    checks = {
+        "has_chinese": any(0x4E00 <= ord(ch) <= 0x9FFF for ch in translation),
+        "required_terms_preserved": all(item["preserved"] for item in term_map),
+        "source_terms_present": all(src.lower() in source_text.lower() for src in required_terms),
+        "ambiguity_named": len(ambiguity_notes) >= 2,
+        "line_limit": len(translation) < 260,
+        "has_scope_terms": all(token in translation for token in ["Goal", "Mem", "Need", "Feed"]),
+    }
+    (session / "SOURCE.txt").write_text(source_text + "\n", encoding="utf-8")
+    (session / "TRANSLATION.md").write_text(translation + "\n", encoding="utf-8")
+    (session / "TERM_MAP.json").write_text(
+        json.dumps(term_map, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    (session / "AMBIGUITY.json").write_text(
+        json.dumps(ambiguity_notes, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    (session / "CHECKS.json").write_text(
+        json.dumps(checks, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    answer = "\n".join(
+        [
+            "# Translate Mini Task Answer",
+            "",
+            translation,
+            "",
+            "Artifacts: SOURCE.txt, TRANSLATION.md, TERM_MAP.json, AMBIGUITY.json, CHECKS.json.",
+        ]
+    )
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    passed = all(checks.values())
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "source_text": rel(session / "SOURCE.txt", root),
+        "translation": rel(session / "TRANSLATION.md", root),
+        "term_map": rel(session / "TERM_MAP.json", root),
+        "ambiguity": rel(session / "AMBIGUITY.json", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "verifier_status": "satisfied" if passed else "partial",
+        "field_pass_evidence": "translation preserves required terms, names ambiguities, and writes verifier artifacts",
+    }
+    if not passed:
+        field_metadata["error_category"] = "translation_constraints_failed"
+        field_metadata["next_mini_task"] = "translate-mini-3"
+    field_result = {
+        "status": "satisfied" if passed else "partial",
+        "output": answer,
+        "evidence": [
+            {
+                "source": "field-mini-task/translate/answer",
+                "content": rel(session / "ANSWER.md", root),
+                "confidence": 0.9,
+                "metadata": field_metadata,
+            },
+            {
+                "source": "field-mini-task/translate/checks",
+                "content": rel(session / "CHECKS.json", root),
+                "confidence": 0.94,
+                "metadata": field_metadata,
+            },
+            {
+                "source": "field-mini-task/translate/term-map",
+                "content": rel(session / "TERM_MAP.json", root),
+                "confidence": 0.92,
+                "metadata": field_metadata,
+            },
+        ],
+        "metadata": field_metadata,
+    }
+    (session / "METADATA.json").write_text(
+        json.dumps(field_metadata, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )

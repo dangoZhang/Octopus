@@ -48,6 +48,7 @@ pub(crate) fn pet_supervision_report(
         state_file_check(state_path),
         event_log_check(&event_log_path, &log),
         last_event_check(last_event.as_ref()),
+        event_log_contains_last_check(last_event.as_ref(), &log),
         event_state_check(last_event.as_ref()),
         event_freshness_check(last_event.as_ref()),
     ];
@@ -138,6 +139,34 @@ fn last_event_check(last: Option<&PetEvent>) -> PetSupervisionCheck {
     }
 }
 
+fn event_log_contains_last_check(
+    last: Option<&PetEvent>,
+    log: &EventLogRead,
+) -> PetSupervisionCheck {
+    let status = if last.is_none() {
+        "fail"
+    } else if log.contains_event(last.unwrap()) {
+        "pass"
+    } else {
+        "warn"
+    };
+    PetSupervisionCheck {
+        id: "event_log_contains_last".to_string(),
+        status: status.to_string(),
+        evidence: last
+            .map(|event| {
+                format!(
+                    "last_timestamp={}; found_in_log={}",
+                    event.timestamp_secs,
+                    log.contains_event(event)
+                )
+            })
+            .unwrap_or_else(|| "last=none; found_in_log=false".to_string()),
+        next: "append the latest pet event to pet-events.jsonl whenever state.json is saved"
+            .to_string(),
+    }
+}
+
 fn event_state_check(last: Option<&PetEvent>) -> PetSupervisionCheck {
     let valid = last
         .map(|event| HEALTHY_EVENT_STATES.contains(&event.state.as_str()))
@@ -187,6 +216,7 @@ struct EventLogRead {
     exists: bool,
     count: usize,
     corrupt_count: usize,
+    events: Vec<PetEvent>,
 }
 
 fn read_event_log(path: &PathBuf) -> EventLogRead {
@@ -199,11 +229,24 @@ fn read_event_log(path: &PathBuf) -> EventLogRead {
     };
     for line in content.lines().filter(|line| !line.trim().is_empty()) {
         read.count += 1;
-        if serde_json::from_str::<PetEvent>(line).is_err() {
-            read.corrupt_count += 1;
+        match serde_json::from_str::<PetEvent>(line) {
+            Ok(event) => read.events.push(event),
+            Err(_) => read.corrupt_count += 1,
         }
     }
     read
+}
+
+impl EventLogRead {
+    fn contains_event(&self, expected: &PetEvent) -> bool {
+        self.events.iter().any(|event| {
+            event.timestamp_secs == expected.timestamp_secs
+                && event.state == expected.state
+                && event.source == expected.source
+                && event.summary == expected.summary
+                && event.status == expected.status
+        })
+    }
 }
 
 fn aggregate_status(checks: &[PetSupervisionCheck]) -> String {
@@ -276,6 +319,30 @@ mod tests {
 
         assert_eq!(report.status, "pass");
         assert!(report.checks.iter().all(|check| check.status == "pass"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pet_supervision_warns_when_audit_log_misses_latest_event() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-pet-supervision-missing-log-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
+        let mut state = HarnessState::default();
+        state.record_pet_event("feed", "field verifier", "latest feed", Status::Satisfied);
+        state.save(&state_path).unwrap();
+
+        let report = pet_supervision_report(&state_path, &state);
+
+        assert_eq!(report.status, "warn");
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| { check.id == "event_log_contains_last" && check.status == "warn" }));
 
         let _ = fs::remove_dir_all(dir);
     }

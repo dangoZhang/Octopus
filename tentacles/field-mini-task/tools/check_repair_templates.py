@@ -128,6 +128,23 @@ def seed_session(session: Path, field: str, task_id: str, expected_feed: str) ->
     (session / "FEED.md").write_text("# Current Feed\n\nStatus: partial\n", encoding="utf-8")
 
 
+def validate_mini_task_schema(field: str, task: object) -> list[str]:
+    if not isinstance(task, dict):
+        return [f"{field}: mini task must be an object"]
+    task_id = task.get("id")
+    errors: list[str] = []
+    for key in ("id", "goal", "expected_feed"):
+        value = task.get(key)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"{field}/{task_id or 'unknown'}: missing non-empty {key}")
+    for draft_key in ("query", "field_expected_feed"):
+        if draft_key in task:
+            errors.append(
+                f"{field}/{task_id or 'unknown'}: draft key {draft_key} must not appear in field-pack mini_tasks"
+            )
+    return errors
+
+
 def exercise_template(root: Path, template: Path, field: str, task_id: str, expected_feed: str) -> tuple[str | None, str | None]:
     with tempfile.TemporaryDirectory(prefix="octopus-template-check-") as tmp:
         session = Path(tmp) / "session"
@@ -217,6 +234,7 @@ def main() -> int:
                 continue
             pack = json.loads(pack_path.read_text(encoding="utf-8"))
             for task in pack.get("mini_tasks", []):
+                invalid.extend(validate_mini_task_schema(field, task))
                 task_id = task.get("id", "")
                 field_tasks.append(
                     (

@@ -30,6 +30,11 @@
       "id": "translate-mini-2",
       "goal": "Translate two short policy sentences into Chinese, preserving Goal, Need, Mem, Feed, tentacle, and harness terms while naming ambiguities.",
       "expected_feed": "A Chinese translation, term map, ambiguity notes, quality checks, and artifact-backed verifier evidence."
+    },
+    {
+      "id": "translate-mini-3",
+      "goal": "Translate two short policy sentences into Chinese, preserve required domain terms, keep ambiguity notes explicit, and return verifiable check artifacts.",
+      "expected_feed": "A Chinese translation, complete term map, ambiguity notes, quality checks, and artifact-backed verifier evidence."
     }
   ]
 }
