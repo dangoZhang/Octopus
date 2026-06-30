@@ -1100,6 +1100,7 @@ fn pet_observe_allowed(args: &[String]) -> bool {
                     .get(1)
                     .is_none_or(|value| value.parse::<usize>().is_ok())
         }
+        Some("supervise" | "supervision") => rest.len() == 1,
         Some(_) => rest.len() == 1,
     }
 }

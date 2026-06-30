@@ -2,9 +2,7 @@ use octopus_core::{
     HarnessState, TentacleManifestReport, CLEAN_BRAIN_CONTEXT_POLICY, TENTACLE_CONTEXT_POLICY,
 };
 use serde::Serialize;
-use std::fs;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct StrategyDiagnosticReport {
@@ -214,81 +212,17 @@ fn field_evolution_surface_check(manifests: &[TentacleManifestReport]) -> Strate
 }
 
 fn desktop_pet_observer_check(state_path: &Path, state: &HarnessState) -> StrategyDiagnosticCheck {
-    let last = state.last_pet_event.as_ref();
-    let fresh = last.map(pet_event_fresh).unwrap_or(false);
-    let log_evidence = pet_event_log_evidence(state_path);
-    let healthy_state = last
-        .map(|event| {
-            matches!(
-                event.state.as_str(),
-                "idle"
-                    | "need"
-                    | "action"
-                    | "feed"
-                    | "memory"
-                    | "harness"
-                    | "evolution"
-                    | "blocked"
-                    | "success"
-            )
-        })
-        .unwrap_or(false);
-    let check_status = if state_path.exists() && healthy_state && fresh {
-        "pass"
-    } else if state_path.exists() && last.is_some() {
-        "warn"
-    } else {
-        "fail"
-    };
+    let report = crate::pet_supervision::pet_supervision_report(state_path, state);
     StrategyDiagnosticCheck {
         id: "desktop_pet_observer".to_string(),
-        status: check_status.to_string(),
-        evidence: last
-            .map(|event| {
-                format!(
-                    "state_path={}; fresh={}; {}; last={} {}/{}",
-                    state_path.display(),
-                    fresh,
-                    log_evidence,
-                    event.state,
-                    event.source,
-                    event.summary
-                )
-            })
-            .unwrap_or_else(|| {
-                format!(
-                    "state_path={}; {}; last=none",
-                    state_path.display(),
-                    log_evidence
-                )
-            }),
-        next:
-            "run a real goal/evolution step and confirm it records a live pet event in state.json"
-                .to_string(),
+        status: report.status.clone(),
+        evidence: crate::pet_supervision::strategy_evidence(&report),
+        next: if report.next.is_empty() {
+            "keep the desktop pet as a read-only observer of live Octopus state".to_string()
+        } else {
+            report.next.join("; ")
+        },
     }
-}
-
-fn pet_event_log_evidence(state_path: &Path) -> String {
-    let path = crate::pet_events::event_log_path(state_path);
-    let Ok(content) = fs::read_to_string(&path) else {
-        return format!("event_log={} missing", path.display());
-    };
-    let count = content
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .count();
-    format!("event_log={} count={count}", path.display())
-}
-
-fn pet_event_fresh(event: &octopus_core::PetEvent) -> bool {
-    const FRESH_SECONDS: u64 = 300;
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0);
-    event.timestamp_secs > 0
-        && event.timestamp_secs <= now
-        && now.saturating_sub(event.timestamp_secs) <= FRESH_SECONDS
 }
 
 fn evolution_feedback_chain_check(state: &HarnessState) -> StrategyDiagnosticCheck {
@@ -361,9 +295,18 @@ mod tests {
 
     #[test]
     fn strategy_diagnostics_passes_core_boundaries_with_live_evidence() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-strategy-diagnostics-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
         let mut state = HarnessState::default();
         state.goal = Some(octopus_core::Goal::new("evolve math field harness"));
-        state.record_pet_event("evolution", "test", "planning", Status::Partial);
+        let event = state.record_pet_event("evolution", "test", "planning", Status::Partial);
+        state.save(&state_path).unwrap();
+        crate::pet_events::append_event(&state_path, &event).unwrap();
         state.feed_traces.push(octopus_core::FeedTraceRecord {
             index: 1,
             need_kind: octopus_core::NeedKind::Execute,
@@ -403,7 +346,9 @@ mod tests {
             evolution_surfaces: vec!["field_pack_tasks".to_string(), "runtime_code".to_string()],
             missing_entrypoints: Vec::new(),
         }];
-        let report = strategy_diagnostics(Path::new("Cargo.toml"), &manifests, &state);
+        let report = strategy_diagnostics(&state_path, &manifests, &state);
         assert_eq!(report.status, "pass");
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

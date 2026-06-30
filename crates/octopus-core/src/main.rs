@@ -47,6 +47,7 @@ mod diagnostics;
 mod download;
 mod pet;
 mod pet_events;
+mod pet_supervision;
 mod profile_registry;
 mod release_gate;
 mod shell_words;
@@ -3415,6 +3416,21 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 return Ok(());
             }
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
+            if matches!(
+                rest.get(1).map(String::as_str),
+                Some("supervise" | "supervision")
+            ) {
+                let report = pet_supervision::pet_supervision_report(&state, &loaded);
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+                    );
+                } else {
+                    print_pet_supervision_report(&report, language);
+                }
+                return Ok(());
+            }
             if matches!(rest.get(1).map(String::as_str), Some("events" | "log")) {
                 let limit = rest
                     .get(2)
@@ -8582,6 +8598,44 @@ fn print_pet_image_report(report: &PetImageReport, language: Language) {
     }
 }
 
+fn print_pet_supervision_report(
+    report: &pet_supervision::PetSupervisionReport,
+    language: Language,
+) {
+    match language {
+        Language::En => {
+            println!("Octopus pet supervision");
+            println!("status: {}", report.status);
+            println!("state: {}", report.state_path);
+            println!(
+                "events: {} ({})",
+                report.event_log_path, report.event_log_count
+            );
+            for check in &report.checks {
+                println!("{}: {} - {}", check.id, check.status, check.evidence);
+                if check.status != "pass" {
+                    println!("next: {}", check.next);
+                }
+            }
+        }
+        Language::Zh => {
+            println!("章鱼桌宠监督");
+            println!("状态: {}", report.status);
+            println!("状态文件: {}", report.state_path);
+            println!(
+                "事件日志: {} ({})",
+                report.event_log_path, report.event_log_count
+            );
+            for check in &report.checks {
+                println!("{}: {} - {}", check.id, check.status, check.evidence);
+                if check.status != "pass" {
+                    println!("下一步: {}", check.next);
+                }
+            }
+        }
+    }
+}
+
 fn print_desktop_pet_report(report: &DesktopPetReport, language: Language) {
     match language {
         Language::En => {
@@ -11015,7 +11069,7 @@ fn pet_report_for_state(
     let mut report = pet_report(&pet_state)?;
     if let Some(status) = &status {
         if let Some(event) = &status.last_pet_event {
-            if event.state == report.state && pet_event_fresh(event) {
+            if event.state == report.state && pet_supervision::pet_event_fresh(event) {
                 report.event_source = Some(event.source.clone());
                 report.event_summary = Some(event.summary.clone());
             }
@@ -11146,7 +11200,7 @@ fn auto_pet_state(report: &StatusReport) -> String {
         return "need".to_string();
     }
     if let Some(event) = &report.last_pet_event {
-        if pet_event_fresh(event) && pet::state_known(&event.state) {
+        if pet_supervision::pet_event_fresh(event) && pet::state_known(&event.state) {
             return event.state.clone();
         }
     }
@@ -11163,17 +11217,6 @@ fn auto_pet_state(report: &StatusReport) -> String {
         return "memory".to_string();
     }
     "heartbeat".to_string()
-}
-
-fn pet_event_fresh(event: &PetEvent) -> bool {
-    const FRESH_SECONDS: u64 = 300;
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0);
-    event.timestamp_secs > 0
-        && event.timestamp_secs <= now
-        && now.saturating_sub(event.timestamp_secs) <= FRESH_SECONDS
 }
 
 fn pet_report(state: &str) -> Result<PetReport, String> {
@@ -22854,7 +22897,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair apply [query] | repair verify [query] | repair continue [query] [--score status [summary]] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers 1..8]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | diagnose strategy | pet [state]|pet events [limit]|pet desktop [--workers 1..8]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers 1..8] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair apply [query] | repair verify [query] | repair continue [query] [--score status [summary]] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers 1..8]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | diagnose strategy | pet [state]|pet supervise|pet events [limit]|pet desktop [--workers 1..8]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers 1..8] [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -23443,8 +23486,8 @@ mod tests {
         ensure_field_mini_task_tentacle_from_root, field_hint_from_queue_item, field_hint_ids,
         field_mini_task_context, field_pool_parallel_run_record_ready, field_pool_status_line,
         field_trajectory_policy_line, field_trajectory_worker_slot_line, first_run_report,
-        git_short_head, http_content_length, inspect_tentacle_manifests_with_bundled_seed_overlay,
-        install_report, is_broken_pipe_panic, localize_summary, materialize_bundled_tentacles_root,
+        http_content_length, inspect_tentacle_manifests_with_bundled_seed_overlay, install_report,
+        is_broken_pipe_panic, localize_summary, materialize_bundled_tentacles_root,
         need_queue_line, parallel_run_status_line, parallel_worker_slot_line,
         parse_bridge_env_overlay, parse_first_run_args, parse_start_check_addr,
         parse_start_options, percent_encode_path, pet_report, pet_report_for_state,
@@ -31765,36 +31808,52 @@ JSON
     #[test]
     fn benchmark_record_requires_five_minimal_cases() {
         let _env = env_guard();
-        let _cwd = CwdGuard::new();
         let dir =
             std::env::temp_dir().join(format!("octopus-benchmark-record-{}", std::process::id()));
         let path = dir.join("benchmark-evidence.md");
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
-        std::env::set_current_dir(&dir).unwrap();
         std::process::Command::new("git")
+            .arg("-C")
+            .arg(&dir)
             .args(["init", "-q"])
             .status()
             .unwrap();
         std::process::Command::new("git")
+            .arg("-C")
+            .arg(&dir)
             .args(["config", "user.email", "octopus@example.invalid"])
             .status()
             .unwrap();
         std::process::Command::new("git")
+            .arg("-C")
+            .arg(&dir)
             .args(["config", "user.name", "Octopus Test"])
             .status()
             .unwrap();
-        fs::write("README.md", "octopus\n").unwrap();
+        fs::write(dir.join("README.md"), "octopus\n").unwrap();
         std::process::Command::new("git")
+            .arg("-C")
+            .arg(&dir)
             .args(["add", "README.md"])
             .status()
             .unwrap();
         std::process::Command::new("git")
+            .arg("-C")
+            .arg(&dir)
             .args(["commit", "-q", "-m", "init"])
             .status()
             .unwrap();
 
-        let head = git_short_head();
+        let head = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&dir)
+            .args(["rev-parse", "--short", "HEAD"])
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+            .filter(|value| !value.is_empty());
         let report =
             write_benchmark_record(&path, env!("CARGO_PKG_VERSION"), head.clone(), shell_arg)
                 .unwrap();
@@ -31839,7 +31898,6 @@ JSON
         let audit = check_benchmark_record(&path, head).unwrap();
         assert!(audit.passed);
 
-        std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -31925,6 +31983,13 @@ JSON
             "pet".to_string(),
             "events".to_string(),
             "5".to_string()
+        ]));
+        assert!(bridge_command_allowed(&[
+            "--state".to_string(),
+            "state.json".to_string(),
+            "--json".to_string(),
+            "pet".to_string(),
+            "supervise".to_string()
         ]));
         assert!(bridge_command_allowed(&[
             "--state".to_string(),
