@@ -25,6 +25,11 @@
       "id": "translate-mini-1",
       "goal": "Translate a short Octopus product paragraph into Chinese while preserving Goal, Need, Feed, tentacle, and harness terminology.",
       "expected_feed": "A Chinese translation, term map, ambiguity notes, quality checks, and artifact-backed verifier evidence."
+    },
+    {
+      "id": "translate-mini-2",
+      "goal": "Translate two short policy sentences into Chinese, preserving Goal, Need, Mem, Feed, tentacle, and harness terms while naming ambiguities.",
+      "expected_feed": "A Chinese translation, term map, ambiguity notes, quality checks, and artifact-backed verifier evidence."
     }
   ]
 }

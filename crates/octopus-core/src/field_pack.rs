@@ -303,6 +303,14 @@ pub fn select_field_pack(
             ));
         }
     }
+    if let Some((pack, mini_task)) = explicit_mini_task_signal(packs, need) {
+        return Some(selection_from_pack(
+            pack,
+            100.0,
+            "explicit mini-task signal".to_string(),
+            vec![mini_task],
+        ));
+    }
     if is_harness_meta_need(need) {
         return None;
     }
@@ -351,6 +359,29 @@ pub fn select_field_pack(
 }
 
 const MIN_FIELD_SELECTION_SCORE: f32 = 2.0;
+
+fn explicit_mini_task_signal<'a>(
+    packs: &'a [FieldPack],
+    need: &Need,
+) -> Option<(&'a FieldPack, String)> {
+    let explicit_task = need
+        .context
+        .get("field_mini_task")
+        .map(|task| task.trim().to_ascii_lowercase())
+        .filter(|task| !task.is_empty());
+    let query = need.query.to_ascii_lowercase();
+    for pack in packs {
+        for task in &pack.mini_tasks {
+            let task_id = task.id.to_ascii_lowercase();
+            if explicit_task.as_ref().is_some_and(|task| task == &task_id)
+                || query.contains(&task_id)
+            {
+                return Some((pack, task.id.clone()));
+            }
+        }
+    }
+    None
+}
 
 fn field_pack_selectable_need(need: &Need) -> bool {
     matches!(
@@ -689,6 +720,34 @@ mod tests {
 
         assert_eq!(selection.field, "math");
         assert_eq!(selection.score, 100.0);
+    }
+
+    #[test]
+    fn selection_uses_explicit_mini_task_id_before_metadata_overlap() {
+        let catalog = embedded_field_pack_catalog().unwrap();
+        let need = Need::new(NeedKind::Verify, "Run write mini task write-mini-2");
+
+        let selection = select_field_pack(&catalog.packs, None, &need).unwrap();
+
+        assert_eq!(selection.field, "write");
+        assert_eq!(selection.score, 100.0);
+        assert_eq!(selection.signals, vec!["write-mini-2".to_string()]);
+    }
+
+    #[test]
+    fn selection_uses_context_mini_task_id() {
+        let catalog = embedded_field_pack_catalog().unwrap();
+        let mut need = Need::new(NeedKind::Verify, "Run the selected mini task");
+        need.context.insert(
+            "field_mini_task".to_string(),
+            "translate-mini-2".to_string(),
+        );
+
+        let selection = select_field_pack(&catalog.packs, None, &need).unwrap();
+
+        assert_eq!(selection.field, "translate");
+        assert_eq!(selection.score, 100.0);
+        assert_eq!(selection.signals, vec!["translate-mini-2".to_string()]);
     }
 
     #[test]

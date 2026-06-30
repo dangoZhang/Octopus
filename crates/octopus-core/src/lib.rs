@@ -2693,7 +2693,34 @@ impl HarnessState {
             fs::create_dir_all(parent)?;
         }
         let content = serde_json::to_string_pretty(self).expect("harness state must serialize");
-        fs::write(path, content)
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("state.json");
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        let tmp_path =
+            path.with_file_name(format!(".{file_name}.{}.{}.tmp", std::process::id(), nonce));
+        let write_result = (|| -> Result<(), std::io::Error> {
+            let mut file = fs::File::create(&tmp_path)?;
+            file.write_all(content.as_bytes())?;
+            file.write_all(b"\n")?;
+            file.sync_all()?;
+            drop(file);
+            fs::rename(&tmp_path, path)?;
+            if let Some(parent) = path.parent() {
+                if let Ok(parent_dir) = fs::File::open(parent) {
+                    let _ = parent_dir.sync_all();
+                }
+            }
+            Ok(())
+        })();
+        if write_result.is_err() {
+            let _ = fs::remove_file(&tmp_path);
+        }
+        write_result
     }
 
     pub fn install_profile(&mut self, profile_id: &str) -> Result<(), String> {
@@ -5031,6 +5058,31 @@ impl HarnessState {
             .find(|task| self.field_mini_task_status(&pack.id, &task.id) != Some(Status::Satisfied))
     }
 
+    fn annotate_field_mini_task_context(&self, packs: &[FieldPack], need: &mut Need) {
+        if need.context.contains_key("field_mini_task") {
+            return;
+        }
+        let Some(field) = need.context.get("field_pack").cloned() else {
+            return;
+        };
+        let Some(pack) = packs.iter().find(|pack| pack.id == field) else {
+            return;
+        };
+        let selected = pack
+            .mini_tasks
+            .iter()
+            .find(|task| need.query.contains(&task.id))
+            .or_else(|| self.next_field_mini_task(pack));
+        if let Some(task) = selected {
+            need.context
+                .insert("field_mini_task".to_string(), task.id.clone());
+            need.context.insert(
+                "field_expected_feed".to_string(),
+                task.expected_feed.clone(),
+            );
+        }
+    }
+
     fn field_parallel_worker_ready(&self, catalog: &FieldPackCatalog, field: &str) -> bool {
         let has_pending_mini_task = catalog
             .packs
@@ -5917,25 +5969,24 @@ impl Harness {
     }
 
     pub fn route_report(&self, need: &Need) -> RouteReport {
+        let need = self.need_with_field_context(need);
         let mut options = Vec::new();
         if matches!(
             need.kind,
             NeedKind::Remember | NeedKind::Recall | NeedKind::Forget
         ) {
-            options.push(self.route_option_for("memory", need, true));
+            options.push(self.route_option_for("memory", &need, true));
         }
-        options.extend(
-            self.tentacles.iter().map(|tentacle| {
-                self.route_option_for(tentacle.name(), need, tentacle.supports(need))
-            }),
-        );
+        options.extend(self.tentacles.iter().map(|tentacle| {
+            self.route_option_for(tentacle.name(), &need, tentacle.supports(&need))
+        }));
 
         let supported_names = options
             .iter()
             .filter(|option| option.supported)
             .map(|option| option.tentacle.clone())
             .collect::<Vec<_>>();
-        let selected = self.state.routes.choose(need, &supported_names);
+        let selected = self.state.routes.choose(&need, &supported_names);
         if let Some(decision) = &selected {
             for option in &mut options {
                 option.selected = option.tentacle == decision.tentacle;
@@ -5985,7 +6036,7 @@ impl Harness {
         }
 
         RouteReport {
-            need: need.clone(),
+            need,
             selected,
             candidates: options,
             learned_scores,
@@ -6033,15 +6084,22 @@ impl Harness {
         }
     }
 
-    pub fn feed_one(&mut self, need: &Need) -> Feed {
+    fn need_with_field_context(&self, need: &Need) -> Need {
         let mut need = need.clone();
         if let Ok(catalog) = default_field_pack_catalog() {
             if let Some(selection) =
                 select_field_pack(&catalog.packs, self.state.goal.as_ref(), &need)
             {
                 annotate_need_with_field(&mut need, &selection);
+                self.state
+                    .annotate_field_mini_task_context(&catalog.packs, &mut need);
             }
         }
+        need
+    }
+
+    pub fn feed_one(&mut self, need: &Need) -> Feed {
+        let need = self.need_with_field_context(need);
         if let Some(feed) = self.memory_feed(&need) {
             let mut feed = feed;
             attach_need_context_metadata(&mut feed, &need);
@@ -7738,24 +7796,30 @@ fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Result<String, 
         "tentacle_name": proposal.tentacle_name,
         "objective": proposal.objective,
         "brain_kind": proposal.brain_kind,
-        "current_brain_prompt": proposal.current_brain_prompt,
+        "current_brain_prompt": short_text(&proposal.current_brain_prompt, 1200),
         "editable": proposal.editable,
         "surfaces": proposal.surfaces,
         "checks": proposal.checks,
         "constraints": proposal.constraints,
-        "previous_outcomes": proposal.previous_outcomes,
-        "recent_feed_traces": proposal.recent_feed_traces,
-        "recent_check_history": proposal.recent_check_history,
-        "files": proposal.files,
+        "previous_outcomes": compact_evolution_outcomes(&proposal.previous_outcomes),
+        "recent_feed_traces": compact_feed_trace_records(&proposal.recent_feed_traces),
+        "recent_check_history": compact_check_history_records(&proposal.recent_check_history),
+        "files": compact_evolution_file_targets(&proposal.files),
         "target_file_contents": evolution_target_file_contexts(proposal),
         "context_policy": {
             "clean_brain": ["Goal", "Mem", "Need", "Feed"],
             "tentacle_brain": ["Need", "Tool", "Action", "Tool", "Action", "Feed"],
             "harness_evolution": "modify prompt, metadata, runtime code, or policy without moving tool burden into the clean brain"
         },
+        "prompt_budget": {
+            "policy": "compact summaries are intentional so local OpenAI-compatible models can evolve harnesses without context overflow",
+            "target_file_limit": llm_evolution_file_limit(),
+            "target_file_bytes_default": llm_evolution_file_bytes(),
+            "target_file_bytes_for_small_scope": llm_evolution_file_bytes_for_path_count(8)
+        },
         "patch_requirements": {
-            "format": "suggested_patch must be a complete git unified diff that starts with diff --git, includes --- and +++ file headers, includes @@ -line,count +line,count @@ hunk headers, and can be applied by git apply. Do not return apply_patch, *** Begin Patch, or prose-only patches.",
-            "field_pack_tasks": "suggested_patch is required for this surface. Patch only the named field-pack JSON files that the objective actually needs. Do not patch kernel Rust or runtime code from this surface.",
+            "format": "suggested_patch must be a complete git unified diff that starts with diff --git, includes --- and +++ file headers, includes @@ -line,count +line,count @@ hunk headers, and can be applied by git apply. Use exact nearby lines from target_file_contents; do not invent line numbers. Do not return apply_patch, *** Begin Patch, or prose-only patches.",
+            "field_pack_tasks": "suggested_patch is required for this surface. Patch only the named field-pack JSON files and matching tentacles/<tentacle>/repair-templates/<field>/<mini-task>.pyfrag files needed by the objective. New mini tasks must add both the field-pack entry and matching repair template. Do not patch kernel Rust or unrelated runtime code from this surface.",
             "runtime_code": "suggested_patch is preferred when the objective names an executable harness gap. Patch declared harness targets only."
         },
         "return_schema": {
@@ -7779,46 +7843,192 @@ fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Result<String, 
     ))
 }
 
+fn compact_evolution_outcomes(outcomes: &[EvolutionOutcome]) -> Vec<serde_json::Value> {
+    outcomes
+        .iter()
+        .rev()
+        .take(5)
+        .rev()
+        .map(|outcome| {
+            serde_json::json!({
+                "index": outcome.index,
+                "tentacle_id": outcome.tentacle_id,
+                "candidate_id": outcome.candidate_id,
+                "status": outcome.status,
+                "score": outcome.score,
+                "summary": short_text(&one_line(&outcome.summary), 240)
+            })
+        })
+        .collect()
+}
+
+fn compact_feed_trace_records(traces: &[FeedTraceRecord]) -> Vec<serde_json::Value> {
+    traces
+        .iter()
+        .rev()
+        .take(6)
+        .rev()
+        .map(|trace| {
+            serde_json::json!({
+                "index": trace.index,
+                "need_kind": trace.need_kind,
+                "need_query": short_text(&one_line(&trace.need_query), 180),
+                "status": trace.status,
+                "field": trace.field,
+                "tentacle": trace.tentacle,
+                "tool": trace.tool,
+                "plan_source": trace.plan_source,
+                "route": trace.route,
+                "evidence_count": trace.evidence_count,
+                "summary": short_text(&one_line(&trace.summary), 320),
+                "metadata": compact_feed_trace_metadata(&trace.metadata)
+            })
+        })
+        .collect()
+}
+
+fn compact_feed_trace_metadata(metadata: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    let mut compact = BTreeMap::new();
+    for key in [
+        "field_pack",
+        "field_mini_task",
+        "field_expected_feed",
+        "verifier_status",
+        "error_category",
+        "field_pass_evidence",
+        "repair_template",
+        "runtime_template",
+        "tool",
+    ] {
+        if let Some(value) = metadata.get(key) {
+            compact.insert(key.to_string(), short_text(&one_line(value), 240));
+        }
+    }
+    compact
+}
+
+fn compact_check_history_records(records: &[CheckHistoryRecord]) -> Vec<serde_json::Value> {
+    records
+        .iter()
+        .rev()
+        .take(6)
+        .rev()
+        .map(|record| {
+            serde_json::json!({
+                "index": record.index,
+                "tentacle_id": record.tentacle_id,
+                "source_kind": record.source_kind,
+                "command_index": record.command_index,
+                "command": short_text(&one_line(&record.command), 220),
+                "cwd": record.cwd,
+                "status": record.status,
+                "code": record.code,
+                "stdout": short_text(&one_line(&record.stdout), 320),
+                "stderr": short_text(&one_line(&record.stderr), 320)
+            })
+        })
+        .collect()
+}
+
+fn compact_evolution_file_targets(files: &[EvolutionFileTarget]) -> Vec<serde_json::Value> {
+    files
+        .iter()
+        .take(24)
+        .map(|file| {
+            serde_json::json!({
+                "path": file.path,
+                "target_files": file.target_files.iter().take(12).collect::<Vec<_>>(),
+                "target_file_count": file.target_files.len(),
+                "action": file.action,
+                "rationale": short_text(&one_line(&file.rationale), 180)
+            })
+        })
+        .collect()
+}
+
 fn evolution_target_file_contexts(proposal: &TentacleEvolutionProposal) -> Vec<serde_json::Value> {
     let mut paths = Vec::new();
+    let file_limit = llm_evolution_file_limit();
     let manifest_dir = Path::new(&proposal.manifest_path)
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("tentacles").join(&proposal.tentacle_id));
-    for file in &proposal.files {
-        push_unique_limited(&mut paths, file.path.clone(), 64);
-        for path in evolution_target_files(&file.path) {
-            push_unique_limited(&mut paths, path, 64);
-        }
-        for path in &file.target_files {
-            push_unique_limited(&mut paths, path.clone(), 64);
-        }
-    }
-    for surface in &proposal.surfaces {
+    for surface in prioritized_evolution_surfaces(&proposal.surfaces) {
         for target in &surface.targets {
             let file = evolution_file_target(&manifest_dir, target, &proposal.objective);
-            push_unique_limited(&mut paths, file.path, 64);
+            push_unique_limited(&mut paths, file.path, file_limit);
             for path in file.target_files {
-                push_unique_limited(&mut paths, path, 64);
+                push_unique_limited(&mut paths, path, file_limit);
             }
         }
     }
     for candidate in &proposal.patch_candidates {
         for path in &candidate.target_files {
-            push_unique_limited(&mut paths, path.clone(), 64);
+            push_unique_limited(&mut paths, path.clone(), file_limit);
         }
     }
+    for file in &proposal.files {
+        push_unique_limited(&mut paths, file.path.clone(), file_limit);
+        for path in evolution_target_files(&file.path) {
+            push_unique_limited(&mut paths, path, file_limit);
+        }
+        for path in &file.target_files {
+            push_unique_limited(&mut paths, path.clone(), file_limit);
+        }
+    }
+    let file_bytes = llm_evolution_file_bytes_for_path_count(paths.len());
     paths
         .into_iter()
         .filter_map(|path| {
             let content = fs::read_to_string(&path).ok()?;
             Some(serde_json::json!({
                 "path": path,
-                "content": short_text(&content, 6000),
-                "truncated": content.len() > 6000
+                "content": short_text(&content, file_bytes),
+                "truncated": content.len() > file_bytes
             }))
         })
         .collect()
+}
+
+fn prioritized_evolution_surfaces(surfaces: &[EvolutionSurface]) -> Vec<&EvolutionSurface> {
+    let mut ordered = Vec::new();
+    for preferred in ["field_pack_tasks", "runtime_code"] {
+        ordered.extend(surfaces.iter().filter(|surface| surface.id == preferred));
+    }
+    ordered.extend(
+        surfaces
+            .iter()
+            .filter(|surface| surface.id != "field_pack_tasks" && surface.id != "runtime_code"),
+    );
+    ordered
+}
+
+fn llm_evolution_file_limit() -> usize {
+    env_usize("OCTOPUS_LLM_EVOLVE_FILE_LIMIT", 12).clamp(1, 64)
+}
+
+fn llm_evolution_file_bytes() -> usize {
+    env_usize("OCTOPUS_LLM_EVOLVE_FILE_BYTES", 1200).clamp(400, 6000)
+}
+
+fn llm_evolution_file_bytes_for_path_count(path_count: usize) -> usize {
+    if let Some(value) = env_usize_optional("OCTOPUS_LLM_EVOLVE_FILE_BYTES") {
+        return value.clamp(400, 6000);
+    }
+    if path_count <= 8 {
+        return 4000;
+    }
+    1200
+}
+
+fn env_usize(key: &str, default: usize) -> usize {
+    env_usize_optional(key).unwrap_or(default)
+}
+
+fn env_usize_optional(key: &str) -> Option<usize> {
+    env::var(key)
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
 }
 
 fn llm_candidate_to_evolution(
@@ -7856,7 +8066,14 @@ fn llm_candidate_to_evolution(
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("tentacles").join(&proposal.tentacle_id));
-    let target_files = evolution_candidate_target_files(&manifest_dir, surface, &target);
+    let suggested_patch = clean_suggested_patch(candidate.suggested_patch);
+    let mut target_files =
+        evolution_candidate_target_files(&manifest_dir, surface, &target, &proposal.objective);
+    if target_files.is_empty() {
+        if let Some(patch) = &suggested_patch {
+            target_files = diff_target_files_for_surface(&manifest_dir, surface, patch);
+        }
+    }
     let mut patch_candidate = EvolutionPatchCandidate {
         id: evolution_candidate_id(surface_index, &surface.id),
         surface_id: surface.id.clone(),
@@ -7865,7 +8082,7 @@ fn llm_candidate_to_evolution(
         target_files,
         rationale: candidate.rationale,
         feedback: Vec::new(),
-        suggested_patch: clean_suggested_patch(candidate.suggested_patch),
+        suggested_patch,
         change_plan: candidate.change_plan,
         checks: candidate.checks,
         draft: evolution_patch_draft(surface_index, surface),
@@ -7873,6 +8090,33 @@ fn llm_candidate_to_evolution(
     patch_candidate.feedback =
         evolution_candidate_feedback_from_proposal(&patch_candidate, proposal);
     Ok(patch_candidate)
+}
+
+fn diff_target_files_for_surface(
+    manifest_dir: &Path,
+    surface: &EvolutionSurface,
+    patch: &str,
+) -> Vec<String> {
+    let manifest_prefix = patch_display_path(manifest_dir);
+    let repair_prefix = format!("{manifest_prefix}/repair-templates/");
+    let manifest_prefix = format!("{manifest_prefix}/");
+    let mut files = Vec::new();
+    for path in diff_paths(patch) {
+        if path.contains("..") {
+            continue;
+        }
+        let allowed = match surface.id.as_str() {
+            "field_pack_tasks" => {
+                path.starts_with("field-packs/") || path.starts_with(&repair_prefix)
+            }
+            "runtime_code" => path.starts_with(&manifest_prefix),
+            _ => path.starts_with(&manifest_prefix),
+        };
+        if allowed {
+            push_unique_limited(&mut files, path, usize::MAX);
+        }
+    }
+    files
 }
 
 fn llm_candidate_target(
@@ -8669,7 +8913,56 @@ fn evolution_candidate_feedback_from_proposal(
 fn clean_suggested_patch(patch: Option<String>) -> Option<String> {
     let patch = patch?;
     let patch = patch.trim();
-    (!patch.is_empty()).then(|| format!("{patch}\n"))
+    (!patch.is_empty()).then(|| format!("{}\n", normalize_new_file_hunks(patch).trim()))
+}
+
+fn normalize_new_file_hunks(patch: &str) -> String {
+    let mut normalized = Vec::new();
+    let mut pending_new_file = false;
+    let mut current_file_is_new = false;
+    let mut in_new_file_hunk = false;
+    for line in patch.lines() {
+        let line = if in_new_file_hunk && line.starts_with("+diff --git ") {
+            &line[1..]
+        } else {
+            line
+        };
+        if line.starts_with("diff --git ") {
+            pending_new_file = false;
+            current_file_is_new = false;
+            in_new_file_hunk = false;
+            normalized.push(line.to_string());
+            continue;
+        }
+        if line == "--- /dev/null" {
+            pending_new_file = true;
+            current_file_is_new = false;
+            in_new_file_hunk = false;
+            normalized.push(line.to_string());
+            continue;
+        }
+        if line.starts_with("+++ ") {
+            current_file_is_new = pending_new_file;
+            in_new_file_hunk = false;
+            normalized.push(line.to_string());
+            continue;
+        }
+        if line.starts_with("@@ ") {
+            in_new_file_hunk = current_file_is_new;
+            normalized.push(line.to_string());
+            continue;
+        }
+        if in_new_file_hunk {
+            if line.starts_with("\\ No newline") || line.starts_with('+') {
+                normalized.push(line.to_string());
+            } else {
+                normalized.push(format!("+{line}"));
+            }
+            continue;
+        }
+        normalized.push(line.to_string());
+    }
+    normalized.join("\n")
 }
 
 fn candidate_matches_check_history(
@@ -8842,15 +9135,38 @@ fn provider_patch_for_plan(plan: &EvolutionApplyPlan, patch: &str) -> Option<Str
             );
         }
     }
+    let allowed_template_fields = fields_mentioned_in_field_paths(&plan.target_files.join(" "));
     if allowed_paths.is_empty()
-        || paths
-            .iter()
-            .any(|path| !allowed_paths.iter().any(|allowed| allowed == path))
+        || paths.iter().any(|path| {
+            !allowed_paths.iter().any(|allowed| allowed == path)
+                && !allowed_field_repair_template_path(
+                    path,
+                    &plan.tentacle_id,
+                    &allowed_template_fields,
+                )
+        })
     {
         return None;
     }
     let patch = patch.trim();
     (!patch.is_empty()).then(|| format!("{patch}\n"))
+}
+
+fn allowed_field_repair_template_path(path: &str, tentacle_id: &str, fields: &[String]) -> bool {
+    if fields.is_empty() || !path.ends_with(".pyfrag") || path.contains("..") {
+        return false;
+    }
+    fields.iter().any(|field| {
+        [
+            format!("tentacles/{tentacle_id}/repair-templates/{field}/"),
+            format!("repair-templates/{field}/"),
+        ]
+        .iter()
+        .any(|prefix| {
+            path.strip_prefix(prefix)
+                .is_some_and(|rest| !rest.is_empty() && !rest.contains('/'))
+        })
+    })
 }
 
 fn diff_paths(patch: &str) -> Vec<String> {
@@ -9581,7 +9897,7 @@ fn evolution_file_target(
 ) -> EvolutionFileTarget {
     if let Some(path) = field_pack_evolution_target(target) {
         return EvolutionFileTarget {
-            target_files: field_pack_evolution_targets(target),
+            target_files: field_pack_evolution_targets_for_objective(target, objective),
             path,
             action: "extend editable peer-field task definitions".to_string(),
             rationale: format!("support {objective}"),
@@ -9612,8 +9928,14 @@ fn evolution_file_target(
         },
         value if value.contains('*') => {
             let path = manifest_dir.join(value).to_string_lossy().to_string();
+            let scoped_repair_templates =
+                repair_template_evolution_targets_for_objective(manifest_dir, value, objective);
             EvolutionFileTarget {
-                target_files: evolution_target_files(&path),
+                target_files: if scoped_repair_templates.is_empty() {
+                    evolution_target_files(&path)
+                } else {
+                    scoped_repair_templates
+                },
                 path,
                 action: "inspect matching harness code before editing".to_string(),
                 rationale: "wildcards require a narrow patch target".to_string(),
@@ -9671,13 +9993,29 @@ fn evolution_candidate_target_files(
     manifest_dir: &Path,
     surface: &EvolutionSurface,
     target: &str,
+    objective: &str,
 ) -> Vec<String> {
-    let mut files = evolution_target_files(target);
+    let mut files = if surface.id == "field_pack_tasks" {
+        let scoped = field_pack_evolution_targets_for_objective(target, objective);
+        if scoped.is_empty() {
+            evolution_target_files(target)
+        } else {
+            scoped
+        }
+    } else {
+        evolution_target_files(target)
+    };
     if surface.id != "field_pack_tasks" {
         return files;
     }
     for declared_target in &surface.targets {
-        let resolved = evolution_file_target(manifest_dir, declared_target, "");
+        let resolved = evolution_file_target(manifest_dir, declared_target, objective);
+        for file in resolved.target_files {
+            push_unique_limited(&mut files, file, usize::MAX);
+        }
+        if !field_pack_evolution_targets(&resolved.path).is_empty() {
+            continue;
+        }
         for file in evolution_target_files(&resolved.path) {
             push_unique_limited(&mut files, file, usize::MAX);
         }
@@ -9696,12 +10034,27 @@ fn field_pack_evolution_target(target: &str) -> Option<String> {
 }
 
 fn field_pack_evolution_targets(target: &str) -> Vec<String> {
+    field_pack_evolution_targets_with_fields(target, None)
+}
+
+fn field_pack_evolution_targets_for_objective(target: &str, objective: &str) -> Vec<String> {
+    let fields = fields_mentioned_for_evolution_scope(objective);
+    let selected = (!fields.is_empty()).then_some(fields.as_slice());
+    field_pack_evolution_targets_with_fields(target, selected)
+}
+
+fn field_pack_evolution_targets_with_fields(
+    target: &str,
+    selected_fields: Option<&[String]>,
+) -> Vec<String> {
     let Some(suffix) = field_pack_evolution_suffix(target) else {
         return Vec::new();
     };
     let root = field_pack_evolution_root();
     if suffix == "*/field-pack.json" {
-        return default_field_pack_ids()
+        return selected_fields
+            .map(|fields| fields.to_vec())
+            .unwrap_or_else(default_field_pack_ids)
             .into_iter()
             .map(|field| root.join(field).join("field-pack.json"))
             .filter(|path| path.exists())
@@ -9736,6 +10089,39 @@ fn field_pack_evolution_suffix(target: &str) -> Option<String> {
         return None;
     }
     Some(suffix)
+}
+
+fn repair_template_evolution_targets_for_objective(
+    manifest_dir: &Path,
+    target: &str,
+    objective: &str,
+) -> Vec<String> {
+    let normalized = target.trim().replace('\\', "/");
+    if normalized != "repair-templates/*/*.pyfrag" {
+        return Vec::new();
+    }
+    let fields = fields_mentioned_for_evolution_scope(objective);
+    if fields.is_empty() {
+        return Vec::new();
+    }
+    let mut targets = Vec::new();
+    for field in fields {
+        let dir = manifest_dir.join("repair-templates").join(field);
+        let Ok(entries) = fs::read_dir(dir) else {
+            continue;
+        };
+        let mut files = entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "pyfrag"))
+            .map(|path| path.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        files.sort();
+        for file in files {
+            push_unique_limited(&mut targets, file, usize::MAX);
+        }
+    }
+    targets
 }
 
 fn field_pack_evolution_root() -> PathBuf {
@@ -10511,19 +10897,93 @@ fn parallel_field_goal_pool(run_index: u64) -> Vec<String> {
 }
 
 fn fields_mentioned_in_text(value: &str) -> Vec<String> {
-    let text = value.to_ascii_lowercase();
+    let text = unicode_lowercase(value);
     let mut fields = Vec::new();
     let limit = default_field_pack_ids().len().max(1);
     for (field, aliases) in default_field_pack_aliases() {
         if aliases
             .iter()
             .chain(std::iter::once(&field))
-            .any(|alias| text.contains(&alias.to_ascii_lowercase()))
+            .map(|alias| unicode_lowercase(alias))
+            .any(|alias| alias.chars().count() >= 2 && text.contains(&alias))
         {
             push_unique_limited(&mut fields, field, limit);
         }
     }
     fields
+}
+
+fn fields_mentioned_for_evolution_scope(value: &str) -> Vec<String> {
+    let explicit = fields_mentioned_in_field_paths(value);
+    if !explicit.is_empty() {
+        return explicit;
+    }
+    let text = unicode_lowercase(value);
+    let mut fields = Vec::new();
+    let limit = default_field_pack_ids().len().max(1);
+    for (field, aliases) in default_field_pack_aliases() {
+        if aliases
+            .iter()
+            .chain(std::iter::once(&field))
+            .filter(|alias| evolution_scope_alias_is_specific(&field, alias))
+            .map(|alias| unicode_lowercase(alias))
+            .any(|alias| text_contains_field_term(&text, &alias))
+        {
+            push_unique_limited(&mut fields, field, limit);
+        }
+    }
+    fields
+}
+
+fn fields_mentioned_in_field_paths(value: &str) -> Vec<String> {
+    let text = unicode_lowercase(&value.replace('\\', "/"));
+    let mut fields = Vec::new();
+    let limit = default_field_pack_ids().len().max(1);
+    for field in default_field_pack_ids() {
+        let field = unicode_lowercase(&field);
+        for marker in [
+            format!("field-packs/{field}/"),
+            format!("field-packs/{field}/field-pack.json"),
+            format!("repair-templates/{field}/"),
+        ] {
+            if text.contains(&marker) {
+                push_unique_limited(&mut fields, field.clone(), limit);
+                break;
+            }
+        }
+    }
+    fields
+}
+
+fn evolution_scope_alias_is_specific(field: &str, alias: &str) -> bool {
+    let alias = alias.trim();
+    if alias.is_empty() {
+        return false;
+    }
+    let alias_lower = unicode_lowercase(alias);
+    alias_lower == unicode_lowercase(field)
+        || alias.chars().any(|ch| !ch.is_ascii())
+        || alias.contains('-')
+        || alias.split_whitespace().count() > 1 && !generic_evolution_scope_alias(&alias_lower)
+}
+
+fn generic_evolution_scope_alias(alias: &str) -> bool {
+    matches!(
+        alias,
+        "patch" | "edit" | "repo edit" | "local code" | "task" | "mini task"
+    )
+}
+
+fn text_contains_field_term(text: &str, term: &str) -> bool {
+    if term.chars().any(|ch| !ch.is_ascii()) {
+        return text.contains(term);
+    }
+    text.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '-'))
+        .any(|part| part == term)
+}
+
+fn unicode_lowercase(value: &str) -> String {
+    value.chars().flat_map(char::to_lowercase).collect()
 }
 
 fn trace_field(trace: &FeedTraceRecord) -> Option<String> {
@@ -13553,6 +14013,80 @@ mod tests {
     }
 
     #[test]
+    fn llm_field_pack_prompt_scopes_named_fields_only() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let state = HarnessState::default();
+        let mut fake = EvolutionFakeChat {
+            response: r#"{
+              "summary": "extend named peer field pack tasks",
+              "candidates": [
+                {
+                  "surface_id": "field_pack_tasks",
+                  "title": "Add write and translate tasks",
+                  "target": "field-packs/*/field-pack.json",
+                  "rationale": "the objective names write and translate only",
+                  "change_plan": ["edit only the named field packs"],
+                  "checks": ["octopus fields summary"],
+                  "suggested_patch": "diff --git a/field-packs/write/field-pack.json b/field-packs/write/field-pack.json\n--- a/field-packs/write/field-pack.json\n+++ b/field-packs/write/field-pack.json\n@@ -1,2 +1,3 @@\n {\n+  \"llm_patch_probe\": true,\ndiff --git a/field-packs/translate/field-pack.json b/field-packs/translate/field-pack.json\n--- a/field-packs/translate/field-pack.json\n+++ b/field-packs/translate/field-pack.json\n@@ -1,2 +1,3 @@\n {\n+  \"llm_patch_probe\": true,\n"
+                }
+              ]
+            }"#
+            .to_string(),
+            prompt: String::new(),
+        };
+
+        let proposal = propose_tentacle_evolution_with_client(
+            &root,
+            "field-mini-task",
+            "add the next harder mini task layer for write and 翻译",
+            &state,
+            &mut fake,
+        )
+        .unwrap();
+        let candidate = proposal
+            .patch_candidates
+            .iter()
+            .find(|candidate| candidate.surface_id == "field_pack_tasks")
+            .unwrap();
+
+        assert!(fake.prompt.contains("field-packs/write/field-pack.json"));
+        assert!(fake
+            .prompt
+            .contains("field-packs/translate/field-pack.json"));
+        assert!(!fake.prompt.contains("field-packs/math/field-pack.json"));
+        assert!(candidate
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("field-packs/write/field-pack.json")));
+        assert!(candidate
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("field-packs/translate/field-pack.json")));
+        assert!(candidate
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("repair-templates/write/write-mini-1.pyfrag")));
+        assert!(candidate
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("repair-templates/translate/translate-mini-1.pyfrag")));
+        assert!(!candidate
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("field-packs/math/field-pack.json")));
+        assert!(!candidate
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("field-packs/code/field-pack.json")));
+        assert!(!candidate
+            .target_files
+            .iter()
+            .any(|path| path.ends_with("repair-templates/math/math-mini-1.pyfrag")));
+    }
+
+    #[test]
     fn apply_artifact_accepts_collapsed_duplicate_tentacle_target_path() {
         let workspace =
             std::env::temp_dir().join(format!("octopus-duplicate-target-{}", std::process::id()));
@@ -13584,6 +14118,71 @@ mod tests {
 
         assert!(patch.contains("b/tentacles/field-mini-task/manifest.json"));
         let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn apply_artifact_allows_new_matching_field_repair_template() {
+        let mut plan = EvolutionApplyPlan {
+            tentacle_id: "field-mini-task".to_string(),
+            candidate_id: "04-field-pack-tasks".to_string(),
+            objective: "add write mini task".to_string(),
+            authorized: true,
+            status: "ready_for_authorized_patch".to_string(),
+            required_grant: "octopus:evolve:field-mini-task".to_string(),
+            active_grant: Some("octopus:evolve:field-mini-task".to_string()),
+            target: "field-packs/write/field-pack.json".to_string(),
+            target_files: vec!["field-packs/write/field-pack.json".to_string()],
+            draft_path: "patches/04-field-pack-tasks.patch.md".to_string(),
+            checks: vec![],
+            feedback: vec![],
+            suggested_patch: Some(
+                "diff --git a/field-packs/write/field-pack.json b/field-packs/write/field-pack.json\n--- a/field-packs/write/field-pack.json\n+++ b/field-packs/write/field-pack.json\n@@ -1,2 +1,3 @@\n {\n+  \"llm_patch_probe\": true,\ndiff --git a/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag b/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag\n--- /dev/null\n+++ b/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag\n@@ -0,0 +1,2 @@\n+if field == \"write\":\n+    pass\n"
+                    .to_string(),
+            ),
+            guardrails: vec![],
+            next_steps: vec![],
+        };
+
+        assert!(authorized_apply_patch(&plan).is_some());
+        plan.suggested_patch = Some(
+            "diff --git a/field-packs/write/field-pack.json b/field-packs/write/field-pack.json\n--- a/field-packs/write/field-pack.json\n+++ b/field-packs/write/field-pack.json\n@@ -1,2 +1,3 @@\n {\n+  \"llm_patch_probe\": true,\ndiff --git a/tentacles/field-mini-task/repair-templates/math/math-mini-9.pyfrag b/tentacles/field-mini-task/repair-templates/math/math-mini-9.pyfrag\n--- /dev/null\n+++ b/tentacles/field-mini-task/repair-templates/math/math-mini-9.pyfrag\n@@ -0,0 +1,2 @@\n+if field == \"math\":\n+    pass\n"
+                .to_string(),
+        );
+        assert!(authorized_apply_patch(&plan).is_none());
+    }
+
+    #[test]
+    fn clean_suggested_patch_normalizes_bare_new_file_hunk_lines() {
+        let patch = clean_suggested_patch(Some(
+            "diff --git a/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag b/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag\nnew file mode 100644\n--- /dev/null\n+++ b/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag\n@@ -0,0 +1,2 @@\nif field == \"write\":\n    pass\n+diff --git a/tentacles/field-mini-task/repair-templates/translate/translate-mini-2.pyfrag b/tentacles/field-mini-task/repair-templates/translate/translate-mini-2.pyfrag\nnew file mode 100644\n--- /dev/null\n+++ b/tentacles/field-mini-task/repair-templates/translate/translate-mini-2.pyfrag\n@@ -0,0 +1 @@\nif field == \"translate\":\n"
+                .to_string(),
+        ))
+        .unwrap();
+
+        assert!(patch.contains("+if field == \"write\":"));
+        assert!(patch.contains("+    pass"));
+        assert!(patch.contains("\ndiff --git a/tentacles/field-mini-task/repair-templates/translate/translate-mini-2.pyfrag"));
+        assert!(!patch.contains("\n+diff --git"));
+    }
+
+    #[test]
+    fn runtime_candidate_recovers_target_files_from_provider_diff() {
+        let surface = EvolutionSurface {
+            id: "runtime_code".to_string(),
+            description: "runtime".to_string(),
+            targets: vec!["repair-templates/*/*.pyfrag".to_string()],
+        };
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles/field-mini-task");
+        let patch = "diff --git a/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag b/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag\n--- a/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag\n+++ b/tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag\n@@ -1 +1 @@\n-old\n+new\ndiff --git a/crates/octopus-core/src/lib.rs b/crates/octopus-core/src/lib.rs\n--- a/crates/octopus-core/src/lib.rs\n+++ b/crates/octopus-core/src/lib.rs\n@@ -1 +1 @@\n-old\n+new\n";
+
+        let files = diff_target_files_for_surface(&manifest_dir, &surface, patch);
+
+        assert_eq!(
+            files,
+            vec!["tentacles/field-mini-task/repair-templates/write/write-mini-2.pyfrag"]
+        );
     }
 
     #[test]

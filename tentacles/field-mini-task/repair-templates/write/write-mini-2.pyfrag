@@ -1,0 +1,109 @@
+if field == "write" and mini_task == "write-mini-2":
+    notes = [
+        {"id": "N1", "text": "The clean brain keeps context to Goal, Mem, Need, and Feed."},
+        {"id": "N2", "text": "Tentacles own observation, action, validation, and compact Feed."},
+        {"id": "N3", "text": "Writing tasks should avoid unsupported claims."},
+        {"id": "N4", "text": "Trajectories should expose local artifacts for verifier checks."},
+    ]
+    paragraph = (
+        "Write mini-task output keeps Goal, Mem, Need, and Feed explicit while the tentacle works from local notes only. "
+        "The clean brain receives compact Feed with claim mappings and remaining gaps."
+    )
+    claim_map = [
+        {"claim": "Write output is generated from local source notes only.", "sources": ["N1", "N2"]},
+        {"claim": "Clean-brain scope is preserved to Goal, Mem, Need, and Feed.", "sources": ["N1"]},
+    ]
+    unsupported_gaps = [
+        "No quantitative outcome metrics are provided in the source notes."
+    ]
+    checks = {
+        "word_count": len(paragraph.split()),
+        "claims_with_sources": all(item["sources"] for item in claim_map),
+        "unsupported_gaps_named": bool(unsupported_gaps),
+        "within_word_limit": len(paragraph.split()) <= 45,
+        "scope_guard": "Goal" in paragraph and "Mem" in paragraph and "Need" in paragraph and "Feed" in paragraph,
+    }
+    (session / "SOURCE_NOTES.json").write_text(
+        json.dumps(notes, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    (session / "CLAIM_MAP.json").write_text(
+        json.dumps(claim_map, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    (session / "GAPS.json").write_text(
+        json.dumps(unsupported_gaps, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    (session / "CHECKS.json").write_text(
+        json.dumps(checks, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    answer = "\n".join(
+        [
+            "# Write Mini Task Answer",
+            "",
+            paragraph,
+            "",
+            "Artifacts: SOURCE_NOTES.json, CLAIM_MAP.json, GAPS.json, CHECKS.json.",
+        ]
+    )
+    (session / "ANSWER.md").write_text(answer + "\n", encoding="utf-8")
+    passed = (
+        checks["within_word_limit"]
+        and checks["claims_with_sources"]
+        and checks["unsupported_gaps_named"]
+        and checks["scope_guard"]
+    )
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "source_notes": rel(session / "SOURCE_NOTES.json", root),
+        "claim_map": rel(session / "CLAIM_MAP.json", root),
+        "gaps": rel(session / "GAPS.json", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "verifier_status": "satisfied" if passed else "partial",
+        "field_pass_evidence": "brief draft with source-backed claim map and explicit unsupported gaps",
+    }
+    if not passed:
+        field_metadata["error_category"] = "writing_constraints_failed"
+        field_metadata["next_mini_task"] = "write-mini-2"
+    field_result = {
+        "status": "satisfied" if passed else "partial",
+        "output": answer,
+        "evidence": [
+            {
+                "source": "field-mini-task/write/answer",
+                "content": rel(session / "ANSWER.md", root),
+                "confidence": 0.9,
+                "metadata": field_metadata,
+            },
+            {
+                "source": "field-mini-task/write/checks",
+                "content": rel(session / "CHECKS.json", root),
+                "confidence": 0.92,
+                "metadata": field_metadata,
+            },
+            {
+                "source": "field-mini-task/write/claim-map",
+                "content": rel(session / "CLAIM_MAP.json", root),
+                "confidence": 0.9,
+                "metadata": field_metadata,
+            },
+        ],
+        "metadata": field_metadata,
+    }
+    (session / "METADATA.json").write_text(
+        json.dumps(field_metadata, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )

@@ -1321,6 +1321,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             let mut harness = harness_for_need(loaded, &kind)?;
             let feedback = harness.feed(&[Need::new(kind, query)]);
+            for feed in &feedback.feeds {
+                let _ = record_auto_field_verifier_from_feed(&mut harness.state, feed);
+            }
             harness
                 .state
                 .save(&state)
@@ -22645,6 +22648,71 @@ fn need_run_next_actions(
     ]
 }
 
+fn record_auto_field_verifier_from_feed(
+    state: &mut HarnessState,
+    feed: &Feed,
+) -> (Option<u64>, Option<String>, Option<FieldVerifierResult>) {
+    let feed_trace_index = feed
+        .metadata
+        .get("feed_trace_index")
+        .and_then(|index| index.parse::<u64>().ok());
+    let field = feed
+        .metadata
+        .get("field_pack")
+        .or_else(|| feed.metadata.get("field"))
+        .or_else(|| feed.need.context.get("field_pack"))
+        .cloned();
+    let verifier_result = field
+        .as_ref()
+        .and_then(|_| feed_trace_index)
+        .and_then(|index| {
+            let explicit_verifier_status = feed
+                .metadata
+                .get("verifier_status")
+                .and_then(|value| parse_status(value).ok());
+            let verifier_status = match feed.status {
+                Status::Failed | Status::Unsupported => feed.status.clone(),
+                Status::Satisfied
+                    if explicit_verifier_status.as_ref() == Some(&Status::Satisfied) =>
+                {
+                    Status::Satisfied
+                }
+                Status::Satisfied | Status::Partial => Status::Partial,
+            };
+            let mini_task = feed.metadata.get("field_mini_task").cloned();
+            let error_category = match verifier_status {
+                Status::Satisfied => None,
+                Status::Partial if mini_task.is_some() => {
+                    Some("field_mini_task_incomplete".to_string())
+                }
+                Status::Partial => Some("missing_field_mini_task".to_string()),
+                Status::Failed | Status::Unsupported => Some("field_feed_failed".to_string()),
+            };
+            let summary = match (&verifier_status, mini_task.as_deref()) {
+                (Status::Satisfied, Some(task)) => format!(
+                    "auto verifier: Feed returned {:?}; mini task {task} provided explicit pass evidence",
+                    feed.status
+                ),
+                (Status::Satisfied, None) => format!(
+                    "auto verifier: Feed returned {:?}; verifier accepted explicit pass evidence",
+                    feed.status
+                ),
+                (_, Some(task)) => format!(
+                    "auto verifier: Feed returned {:?}; mini task {task} still needs explicit pass evidence",
+                    feed.status
+                ),
+                (_, None) => format!(
+                    "auto verifier: Feed returned {:?}; field mini task still needs explicit pass evidence",
+                    feed.status
+                ),
+            };
+            state
+                .record_field_verifier_result(index, verifier_status, error_category, None, summary)
+                .ok()
+        });
+    (feed_trace_index, field, verifier_result)
+}
+
 fn need_run_batch_next_actions(
     reports: &[NeedRunReport],
     remaining_pending: usize,
@@ -22816,62 +22884,8 @@ fn run_queued_need_with_observer_state(
         }
     }
     let feed = harness.feed_one(&need);
-    let feed_trace_index = feed
-        .metadata
-        .get("feed_trace_index")
-        .and_then(|index| index.parse::<u64>().ok());
-    let field = feed
-        .metadata
-        .get("field_pack")
-        .or_else(|| feed.metadata.get("field"))
-        .or_else(|| feed.need.context.get("field_pack"))
-        .cloned();
-    let verifier_result = field.as_ref().and_then(|_| feed_trace_index).and_then(|index| {
-        let explicit_verifier_status = feed
-            .metadata
-            .get("verifier_status")
-            .and_then(|value| parse_status(value).ok());
-        let verifier_status = match feed.status {
-            Status::Failed | Status::Unsupported => feed.status.clone(),
-            Status::Satisfied
-                if explicit_verifier_status.as_ref() == Some(&Status::Satisfied) =>
-            {
-                Status::Satisfied
-            }
-            Status::Satisfied | Status::Partial => Status::Partial,
-        };
-            let mini_task = feed.metadata.get("field_mini_task").cloned();
-            let error_category = match verifier_status {
-                Status::Satisfied => None,
-                Status::Partial if mini_task.is_some() => {
-                    Some("field_mini_task_incomplete".to_string())
-                }
-                Status::Partial => Some("missing_field_mini_task".to_string()),
-                Status::Failed | Status::Unsupported => Some("field_feed_failed".to_string()),
-            };
-            let summary = match (&verifier_status, mini_task.as_deref()) {
-                (Status::Satisfied, Some(task)) => format!(
-                    "auto verifier: Feed returned {:?}; mini task {task} provided explicit pass evidence",
-                    feed.status
-                ),
-                (Status::Satisfied, None) => format!(
-                    "auto verifier: Feed returned {:?}; verifier accepted explicit pass evidence",
-                    feed.status
-                ),
-                (_, Some(task)) => format!(
-                    "auto verifier: Feed returned {:?}; mini task {task} still needs explicit pass evidence",
-                    feed.status
-                ),
-                (_, None) => format!(
-                    "auto verifier: Feed returned {:?}; field mini task still needs explicit pass evidence",
-                    feed.status
-                ),
-            };
-            harness
-                .state
-                .record_field_verifier_result(index, verifier_status, error_category, None, summary)
-            .ok()
-    });
+    let (feed_trace_index, field, verifier_result) =
+        record_auto_field_verifier_from_feed(&mut harness.state, &feed);
     let next = need_run_next_actions(field.as_deref(), verifier_result.as_ref(), feed_trace_index);
     if let Some(path) = observer_state_path {
         harness
@@ -23096,10 +23110,10 @@ mod tests {
     use super::{
         empty_parallel_evolution_batch_report, next_need_run_worker_count,
         parallel_evolution_next_actions, parse_need_run_request, parse_parallel_evolution_args,
-        parse_worker_cap, record_parallel_evolution_action_event,
-        run_queued_need_indices_with_observer_state, run_queued_need_with_observer_state,
-        run_queued_needs_with_observer_state, NeedRunBatchReport, NeedRunReport, NeedRunRequest,
-        NeedRunSelector, MAX_WORKER_COUNT,
+        parse_worker_cap, record_auto_field_verifier_from_feed,
+        record_parallel_evolution_action_event, run_queued_need_indices_with_observer_state,
+        run_queued_need_with_observer_state, run_queued_needs_with_observer_state,
+        NeedRunBatchReport, NeedRunReport, NeedRunRequest, NeedRunSelector, MAX_WORKER_COUNT,
     };
     use crate::contains_field_mini_marker;
     use octopus_core::{
@@ -23130,6 +23144,177 @@ mod tests {
             std::env::set_var(key, value);
         } else {
             std::env::remove_var(key);
+        }
+    }
+
+    #[cfg(unix)]
+    fn write_fake_chat_curl(dir: &Path, name: &str, content: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+
+        let curl = dir.join(name);
+        let body = serde_json::json!({
+            "choices": [
+                {
+                    "message": {
+                        "content": content
+                    }
+                }
+            ]
+        });
+        fs::write(&curl, format!("#!/bin/sh\ncat <<'JSON'\n{}\nJSON\n", body)).unwrap();
+        let mut permissions = fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&curl, permissions).unwrap();
+        curl
+    }
+
+    #[cfg(unix)]
+    fn configure_clean_brain_test_provider(curl: &Path) -> Vec<(&'static str, Option<String>)> {
+        let keys = [
+            "OCTOPUS_BRAIN_LLM",
+            "OCTOPUS_BRAIN_LLM_PREFIX",
+            "OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX",
+            "OCTOPUS_BRAIN_INTENT_LLM_PREFIX",
+            "OCTOPUS_BRAIN_BRIEF_LLM_PREFIX",
+            "OCTOPUS_BRAIN_ALIGN_LLM_PREFIX",
+            "OCTOPUS_BRAIN_TEST_MODEL",
+            "OCTOPUS_BRAIN_TEST_BASE_URL",
+            "OCTOPUS_BRAIN_TEST_API_KEY",
+            "OCTOPUS_BRAIN_TEST_CURL",
+        ];
+        let saved = keys
+            .iter()
+            .map(|key| (*key, std::env::var(key).ok()))
+            .collect::<Vec<_>>();
+        std::env::set_var("OCTOPUS_BRAIN_LLM", "1");
+        std::env::set_var("OCTOPUS_BRAIN_LLM_PREFIX", "OCTOPUS_BRAIN_TEST");
+        std::env::set_var("OCTOPUS_BRAIN_EXPLORE_LLM_PREFIX", "OCTOPUS_BRAIN_TEST");
+        std::env::set_var("OCTOPUS_BRAIN_INTENT_LLM_PREFIX", "OCTOPUS_BRAIN_TEST");
+        std::env::set_var("OCTOPUS_BRAIN_BRIEF_LLM_PREFIX", "OCTOPUS_BRAIN_TEST");
+        std::env::set_var("OCTOPUS_BRAIN_ALIGN_LLM_PREFIX", "OCTOPUS_BRAIN_TEST");
+        std::env::set_var("OCTOPUS_BRAIN_TEST_MODEL", "test-model");
+        std::env::set_var("OCTOPUS_BRAIN_TEST_BASE_URL", "https://llm.example/v1");
+        std::env::remove_var("OCTOPUS_BRAIN_TEST_API_KEY");
+        std::env::set_var(
+            "OCTOPUS_BRAIN_TEST_CURL",
+            curl.to_string_lossy().to_string(),
+        );
+        saved
+    }
+
+    #[cfg(unix)]
+    fn configure_manifest_test_provider(curl: &Path) -> Vec<(&'static str, Option<String>)> {
+        let keys = [
+            "OCTOPUS_LLM_MANIFEST",
+            "OCTOPUS_MANIFEST_LLM_PREFIX",
+            "OCTOPUS_MANIFEST_TEST_MODEL",
+            "OCTOPUS_MANIFEST_TEST_BASE_URL",
+            "OCTOPUS_MANIFEST_TEST_API_KEY",
+            "OCTOPUS_MANIFEST_TEST_CURL",
+        ];
+        let saved = keys
+            .iter()
+            .map(|key| (*key, std::env::var(key).ok()))
+            .collect::<Vec<_>>();
+        std::env::set_var("OCTOPUS_LLM_MANIFEST", "1");
+        std::env::set_var("OCTOPUS_MANIFEST_LLM_PREFIX", "OCTOPUS_MANIFEST_TEST");
+        std::env::set_var("OCTOPUS_MANIFEST_TEST_MODEL", "test-model");
+        std::env::set_var("OCTOPUS_MANIFEST_TEST_BASE_URL", "https://llm.example/v1");
+        std::env::remove_var("OCTOPUS_MANIFEST_TEST_API_KEY");
+        std::env::set_var(
+            "OCTOPUS_MANIFEST_TEST_CURL",
+            curl.to_string_lossy().to_string(),
+        );
+        saved
+    }
+
+    #[cfg(unix)]
+    fn configure_evolve_test_provider(curl: &Path) -> Vec<(&'static str, Option<String>)> {
+        let keys = [
+            "OCTOPUS_LLM_EVOLVE",
+            "OCTOPUS_EVOLVE_LLM_PREFIX",
+            "OCTOPUS_EVOLVE_TEST_MODEL",
+            "OCTOPUS_EVOLVE_TEST_BASE_URL",
+            "OCTOPUS_EVOLVE_TEST_API_KEY",
+            "OCTOPUS_EVOLVE_TEST_CURL",
+        ];
+        let saved = keys
+            .iter()
+            .map(|key| (*key, std::env::var(key).ok()))
+            .collect::<Vec<_>>();
+        std::env::set_var("OCTOPUS_LLM_EVOLVE", "1");
+        std::env::set_var("OCTOPUS_EVOLVE_LLM_PREFIX", "OCTOPUS_EVOLVE_TEST");
+        std::env::set_var("OCTOPUS_EVOLVE_TEST_MODEL", "test-model");
+        std::env::set_var("OCTOPUS_EVOLVE_TEST_BASE_URL", "https://llm.example/v1");
+        std::env::remove_var("OCTOPUS_EVOLVE_TEST_API_KEY");
+        std::env::set_var(
+            "OCTOPUS_EVOLVE_TEST_CURL",
+            curl.to_string_lossy().to_string(),
+        );
+        saved
+    }
+
+    #[cfg(unix)]
+    fn write_fake_manifest_tool_plan(dir: &Path, tool: &str) -> PathBuf {
+        let content = format!(
+            "{{\"calls\":[{{\"tool\":\"{}\",\"reason\":\"test-selected tool-side action\"}}],\"summary\":\"planned by manifest llm\"}}",
+            tool
+        );
+        write_fake_chat_curl(dir, "manifest-curl.sh", &content)
+    }
+
+    #[cfg(unix)]
+    fn configure_repair_manifest_test_provider(dir: &Path) -> Vec<(&'static str, Option<String>)> {
+        let curl = write_fake_manifest_tool_plan(dir, "repair_session");
+        configure_manifest_test_provider(&curl)
+    }
+
+    #[cfg(unix)]
+    fn configure_repair_heartbeat_test_provider(dir: &Path) -> Vec<(&'static str, Option<String>)> {
+        let curl = write_fake_manifest_tool_plan(dir, "heartbeat_repair");
+        configure_manifest_test_provider(&curl)
+    }
+
+    #[cfg(unix)]
+    fn write_fake_evolve_patch_plan(dir: &Path) -> PathBuf {
+        write_fake_evolve_patch_plan_for_tentacle_target(dir, "swe-agent", "tools/read.sh")
+    }
+
+    #[cfg(unix)]
+    fn write_fake_evolve_patch_plan_for_tentacle_target(
+        dir: &Path,
+        tentacle: &str,
+        target: &str,
+    ) -> PathBuf {
+        let patch = format!(
+            "diff --git a/tentacles/{tentacle}/{target} b/tentacles/{tentacle}/{target}\\n--- a/tentacles/{tentacle}/{target}\\n+++ b/tentacles/{tentacle}/{target}\\n@@ -1,2 +1,3 @@\\n #!/bin/sh\\n+# provider-assisted draft\\n set -eu\\n"
+        );
+        let content = serde_json::json!({
+            "summary": "provider evolution selected runtime",
+            "candidates": [
+                {
+                    "surface_id": "runtime_code",
+                    "title": "Provider runtime patch",
+                    "target": target,
+                    "rationale": "repair failed runtime output",
+                    "change_plan": [
+                        "preserve clean brain boundary",
+                        "adjust runtime code"
+                    ],
+                    "checks": [
+                        format!("tentacles/{tentacle}/{target} README.md 1 2")
+                    ],
+                    "suggested_patch": patch
+                }
+            ]
+        })
+        .to_string();
+        write_fake_chat_curl(dir, "evolve-curl.sh", &content)
+    }
+
+    fn restore_env_many(saved: Vec<(&'static str, Option<String>)>) {
+        for (key, value) in saved.into_iter().rev() {
+            restore_env(key, value);
         }
     }
 
@@ -24079,6 +24264,37 @@ mod tests {
     }
 
     #[test]
+    fn plain_need_feed_auto_records_field_verifier_result() {
+        let mut state = HarnessState::default();
+        let mut need = Need::new(NeedKind::Verify, "Run write mini task write-mini-2");
+        need.context
+            .insert("field_pack".to_string(), "write".to_string());
+        need.context
+            .insert("field_mini_task".to_string(), "write-mini-2".to_string());
+        let mut feed = Feed::satisfied(&need, "write Feed", "field-mini-task");
+        feed.metadata
+            .insert("field_pack".to_string(), "write".to_string());
+        feed.metadata
+            .insert("field_mini_task".to_string(), "write-mini-2".to_string());
+        feed.metadata
+            .insert("verifier_status".to_string(), "satisfied".to_string());
+        let trace = state.record_feed_trace_from_feed(&feed);
+        feed.metadata
+            .insert("feed_trace_index".to_string(), trace.index.to_string());
+
+        let (trace_index, field, verifier_result) =
+            record_auto_field_verifier_from_feed(&mut state, &feed);
+
+        assert_eq!(trace_index, Some(trace.index));
+        assert_eq!(field.as_deref(), Some("write"));
+        let result = verifier_result.expect("field verifier result");
+        assert_eq!(result.status, Status::Satisfied);
+        assert_eq!(result.field, "write");
+        assert_eq!(result.trace_index, trace.index);
+        assert_eq!(state.field_verifier_results.len(), 1);
+    }
+
+    #[test]
     fn evolve_parallel_cli_auto_runs_worker_needs_to_feed() {
         let _env = env_guard();
         let dir = std::env::temp_dir().join(format!(
@@ -24576,6 +24792,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_explore_keeps_state_read_only() {
         let _env = env_guard();
@@ -24583,6 +24800,15 @@ mod tests {
             std::env::temp_dir().join(format!("octopus-explore-state-{}.json", std::process::id()));
         let state = path.to_string_lossy().to_string();
         let _ = fs::remove_file(&path);
+        let dir = path.with_extension("provider");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = write_fake_chat_curl(
+            &dir,
+            "explore-curl.sh",
+            "{\"summary\":\"explore provider reply\",\"needs\":[{\"kind\":\"verify\",\"query\":\"verify next clean Need\"}]}",
+        );
+        let saved_env = configure_clean_brain_test_provider(&curl);
 
         run(vec![
             "--state".to_string(),
@@ -24602,12 +24828,14 @@ mod tests {
             "need".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
 
         let restored = HarnessState::load(&path).unwrap();
         assert_eq!(restored.goal.as_ref().unwrap().objective, "clean brain");
         assert!(restored.feed_traces.is_empty());
         assert!(restored.routes.scores.is_empty());
         let _ = fs::remove_file(path);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -24711,6 +24939,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_brain_focus_queues_selected_need_without_feed() {
         let _env = env_guard();
@@ -24720,6 +24949,15 @@ mod tests {
         ));
         let state = path.to_string_lossy().to_string();
         let _ = fs::remove_file(&path);
+        let dir = path.with_extension("provider");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = write_fake_chat_curl(
+            &dir,
+            "focus-curl.sh",
+            "{\"summary\":\"focus provider reply\",\"needs\":[{\"kind\":\"compare\",\"query\":\"compare model fit from current evidence\"}]}",
+        );
+        let saved_env = configure_clean_brain_test_provider(&curl);
 
         run(vec![
             "--state".to_string(),
@@ -24733,6 +24971,7 @@ mod tests {
             "model".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
 
         let restored = HarnessState::load(&path).unwrap();
         assert_eq!(restored.pending_need_queue_count(), 1);
@@ -24740,10 +24979,13 @@ mod tests {
         assert!(restored.routes.scores.is_empty());
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("\"kind\": \"compare\""));
-        assert!(content.contains("which option best fits"));
+        assert!(content.contains("focus provider reply"));
+        assert!(content.contains("compare model fit from current evidence"));
         let _ = fs::remove_file(path);
+        let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_brain_intent_queues_cognitive_needs_without_feed() {
         let _env = env_guard();
@@ -24753,6 +24995,15 @@ mod tests {
         ));
         let state = path.to_string_lossy().to_string();
         let _ = fs::remove_file(&path);
+        let dir = path.with_extension("provider");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = write_fake_chat_curl(
+            &dir,
+            "intent-curl.sh",
+            "{\"summary\":\"intent provider map\",\"needs\":[{\"kind\":\"observe\",\"query\":\"observe current uncertainty\"},{\"kind\":\"verify\",\"query\":\"verify desired outcome\"},{\"kind\":\"remember\",\"query\":\"remember accepted boundary\"},{\"kind\":\"compare\",\"query\":\"compare next cognitive paths\"}]}",
+        );
+        let saved_env = configure_clean_brain_test_provider(&curl);
 
         run(vec![
             "--state".to_string(),
@@ -24766,18 +25017,21 @@ mod tests {
             "intent".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
 
         let restored = HarnessState::load(&path).unwrap();
         assert!(restored.pending_need_queue_count() >= 4);
         assert!(restored.feed_traces.is_empty());
         assert!(restored.routes.scores.is_empty());
         let content = fs::read_to_string(&path).unwrap();
-        assert!(content.contains("clean-brain intent map"));
-        assert!(content.contains("current uncertainty around"));
-        assert!(content.contains("desired outcome and boundaries"));
+        assert!(content.contains("intent provider map"));
+        assert!(content.contains("observe current uncertainty"));
+        assert!(content.contains("verify desired outcome"));
         let _ = fs::remove_file(path);
+        let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_brain_brief_queues_cognitive_needs_without_feed() {
         let _env = env_guard();
@@ -24787,6 +25041,15 @@ mod tests {
         ));
         let state = path.to_string_lossy().to_string();
         let _ = fs::remove_file(&path);
+        let dir = path.with_extension("provider");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = write_fake_chat_curl(
+            &dir,
+            "brief-curl.sh",
+            "{\"summary\":\"brief provider summary\",\"needs\":[{\"kind\":\"verify\",\"query\":\"verify brief claims\"},{\"kind\":\"recall\",\"query\":\"recall relevant memory before next step\"}]}",
+        );
+        let saved_env = configure_clean_brain_test_provider(&curl);
 
         run(vec![
             "--state".to_string(),
@@ -24800,16 +25063,18 @@ mod tests {
             "state".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
 
         let restored = HarnessState::load(&path).unwrap();
         assert!(restored.pending_need_queue_count() >= 2);
         assert!(restored.feed_traces.is_empty());
         assert!(restored.routes.scores.is_empty());
         let content = fs::read_to_string(&path).unwrap();
-        assert!(content.contains("clean-brain brief"));
-        assert!(content.contains("compact current cognitive state"));
-        assert!(content.contains("which claims in the brief are supported"));
+        assert!(content.contains("brief provider summary"));
+        assert!(content.contains("verify brief claims"));
+        assert!(content.contains("recall relevant memory before next step"));
         let _ = fs::remove_file(path);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[cfg(unix)]
@@ -25634,6 +25899,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"agenda slot reply
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_brain_align_checks_goal_without_feed() {
         let _env = env_guard();
@@ -25643,6 +25909,15 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"agenda slot reply
         ));
         let state = path.to_string_lossy().to_string();
         let _ = fs::remove_file(&path);
+        let dir = path.with_extension("provider");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = write_fake_chat_curl(
+            &dir,
+            "align-curl.sh",
+            "{\"summary\":\"alignment provider check\",\"goal_state\":\"partial\",\"evidence\":[\"goal exists\"],\"gaps\":[\"boundary still unclear\"],\"questions\":[\"which boundary matters now?\"],\"needs\":[{\"kind\":\"verify\",\"query\":\"verify current Need follows the active Goal\"}]}",
+        );
+        let saved_env = configure_clean_brain_test_provider(&curl);
 
         run(vec![
             "--state".to_string(),
@@ -25659,15 +25934,17 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"agenda slot reply
             "goal".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
 
         let restored = HarnessState::load(&path).unwrap();
         assert!(restored.pending_need_queue_count() >= 1);
         assert!(restored.feed_traces.is_empty());
         assert!(restored.routes.scores.is_empty());
         let content = fs::read_to_string(&path).unwrap();
-        assert!(content.contains("clean-brain alignment"));
-        assert!(content.contains("follows the active Goal and constraints"));
+        assert!(content.contains("alignment provider check"));
+        assert!(content.contains("verify current Need follows the active Goal"));
         let _ = fs::remove_file(path);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -26400,6 +26677,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_explore_save_and_needs_take_keep_feed_read_only() {
         let _env = env_guard();
@@ -26409,6 +26687,15 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         ));
         let state = path.to_string_lossy().to_string();
         let _ = fs::remove_file(&path);
+        let dir = path.with_extension("provider");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = write_fake_chat_curl(
+            &dir,
+            "explore-save-curl.sh",
+            "{\"summary\":\"saved explore provider reply\",\"needs\":[{\"kind\":\"verify\",\"query\":\"verify saved clean Need\"}]}",
+        );
+        let saved_env = configure_clean_brain_test_provider(&curl);
 
         run(vec![
             "--state".to_string(),
@@ -26429,6 +26716,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "need".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
 
         let queued = HarnessState::load(&path).unwrap();
         assert!(queued.pending_need_queue_count() > 0);
@@ -26455,8 +26743,10 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(restored.feed_traces.is_empty());
         assert!(restored.routes.scores.is_empty());
         let _ = fs::remove_file(path);
+        let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_needs_script_writes_reviewable_feed_script_without_execution() {
         let _env = env_guard();
@@ -26467,6 +26757,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let script = script_path.to_string_lossy().to_string();
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
+        let curl = write_fake_chat_curl(
+            &dir,
+            "needs-script-curl.sh",
+            "{\"summary\":\"script queue provider reply\",\"needs\":[{\"kind\":\"verify\",\"query\":\"verify queued script Need\"}]}",
+        );
+        let saved_env = configure_clean_brain_test_provider(&curl);
 
         run(vec![
             "--state".to_string(),
@@ -26487,6 +26783,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "need".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -26509,6 +26806,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_needs_session_writes_review_artifacts_without_execution() {
         let _env = env_guard();
@@ -26518,6 +26816,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let state = state_path.to_string_lossy().to_string();
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
+        let curl = write_fake_chat_curl(
+            &dir,
+            "needs-session-curl.sh",
+            "{\"summary\":\"session queue provider reply\",\"needs\":[{\"kind\":\"verify\",\"query\":\"verify queued session Need\"}]}",
+        );
+        let saved_env = configure_clean_brain_test_provider(&curl);
 
         run(vec![
             "--state".to_string(),
@@ -26538,6 +26842,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "need".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
         let queued = HarnessState::load(&state_path).unwrap();
         let pending = queued.pending_need_queue_count();
 
@@ -26717,6 +27022,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_beat_writes_harness_evolution_hint_from_failed_check() {
         let _env = env_guard();
@@ -26726,6 +27032,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _ = fs::remove_dir_all(&workspace);
         fs::create_dir_all(&workspace).unwrap();
         std::env::set_current_dir(&workspace).unwrap();
+        let curl = write_fake_evolve_patch_plan(&workspace);
+        let saved_env = configure_evolve_test_provider(&curl);
         let state_path = workspace.join("state.json");
         let state_arg = state_path.to_string_lossy().to_string();
         let mut state = HarnessState::default();
@@ -26749,6 +27057,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "200".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
 
         let restored = HarnessState::load(&state_path).unwrap();
         assert_eq!(
@@ -26769,6 +27078,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _ = fs::remove_dir_all(workspace);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_beat_uses_bundled_seed_for_harness_evolution_when_project_tentacles_shadow_root() {
         let _env = env_guard();
@@ -26781,6 +27091,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         fs::create_dir_all(&workspace).unwrap();
         create_partial_bash_only_tentacles(&workspace);
         std::env::set_current_dir(&workspace).unwrap();
+        let curl = write_fake_evolve_patch_plan(&workspace);
+        let saved_env = configure_evolve_test_provider(&curl);
         let state_path = workspace.join("state.json");
         let state_arg = state_path.to_string_lossy().to_string();
         let mut state = HarnessState::default();
@@ -26804,6 +27116,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "200".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
         let restored = HarnessState::load(&state_path).unwrap();
         let proposal = fs::read_to_string(
             workspace
@@ -26824,6 +27137,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _ = fs::remove_dir_all(workspace);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_beat_skips_incomplete_same_id_seed_for_harness_evolution() {
         let _env = env_guard();
@@ -26836,6 +27150,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         fs::create_dir_all(&workspace).unwrap();
         create_partial_seed_tentacle(&workspace, "swe-agent");
         std::env::set_current_dir(&workspace).unwrap();
+        let curl = write_fake_evolve_patch_plan(&workspace);
+        let saved_env = configure_evolve_test_provider(&curl);
         let state_path = workspace.join("state.json");
         let state_arg = state_path.to_string_lossy().to_string();
         let mut state = HarnessState::default();
@@ -26859,6 +27175,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "200".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
         let proposal = fs::read_to_string(
             workspace
                 .join(".octopus")
@@ -27031,9 +27348,13 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .any(|signal| signal.contains("feedback: 1 event")));
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_catalog_and_env_commands_run() {
         let _env = env_guard();
+        let dir = std::env::temp_dir().join(format!("octopus-catalog-env-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
         run(vec!["catalog".to_string()]).unwrap();
         run(vec![
             "starter".to_string(),
@@ -27085,6 +27406,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         ])
         .unwrap();
         run(vec!["manifests".to_string(), root]).unwrap();
+        let browser_curl = write_fake_manifest_tool_plan(&dir, "browser_status");
+        let saved_env = configure_manifest_test_provider(&browser_curl);
         run(vec![
             "think".to_string(),
             "computer-use-agent".to_string(),
@@ -27094,6 +27417,9 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "tab".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
+        let read_curl = write_fake_manifest_tool_plan(&dir, "read");
+        let saved_env = configure_manifest_test_provider(&read_curl);
         run(vec![
             "--json".to_string(),
             "think".to_string(),
@@ -27102,6 +27428,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "README.md".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
         run(vec![
             "--json".to_string(),
             "context".to_string(),
@@ -27122,7 +27449,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         ));
         assert!(usage().contains("explore [--save] [prompt]"));
         assert!(usage().contains(
-            "needs [run [index|latest|--workers 1..8]|take|drop|script [path]|session [--live] [prompt]]"
+            "needs [run [index|latest|all|--workers 1..8]|take|drop|script [path]|session [--live] [prompt]]"
         ));
         assert!(usage().contains("repair [query]"));
         assert!(usage().contains("repair apply [query]"));
@@ -27150,6 +27477,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(usage().contains("traces [limit]"));
         assert!(usage().contains("feedback <trace-index|latest>"));
         assert!(usage().contains("bootstrap [tentacles-root]"));
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -27758,8 +28086,8 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             String::from_utf8_lossy(&output.stderr)
         );
         assert_eq!(value["status"], "ok");
-        assert_eq!(value["checked_count"], 28);
-        assert_eq!(value["executed_count"], 28);
+        assert_eq!(value["checked_count"], 30);
+        assert_eq!(value["executed_count"], 30);
 
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
@@ -28201,6 +28529,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(!app_text.contains("Local settings"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_repair_queues_next_need_from_harness_feed() {
         let _env = env_guard();
@@ -28214,6 +28543,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .to_string_lossy()
             .to_string();
 
+        let saved_env = configure_repair_manifest_test_provider(&dir);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -28222,6 +28552,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             ".".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
 
         let restored = HarnessState::load(&state).unwrap();
         assert!(restored
@@ -28241,18 +28572,18 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .unwrap();
         assert_eq!(queued.source, "harness-repair-agent");
         assert_eq!(queued.need.kind, NeedKind::Verify);
-        assert!(queued.need.query.contains("Feed trace"));
+        assert!(queued.need.query.contains("provider setup"));
         let mut restored = HarnessState::load(&state).unwrap();
+        let saved_heartbeat = configure_repair_heartbeat_test_provider(&dir);
         let report = repair_report(&PathBuf::from(&state), &mut restored, ".".to_string()).unwrap();
-        let continue_command = format!("octopus repair continue {}", shell_arg("."));
-        assert!(report
-            .next
-            .iter()
-            .any(|command| command == &continue_command));
+        restore_env_many(saved_heartbeat);
+        assert_eq!(report.feed.status, Status::Satisfied);
+        assert!(report.repair_plan.is_some());
         std::env::set_current_dir(&_cwd.original).unwrap();
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_repair_uses_bundled_harness_repair_when_project_tentacles_shadow_root() {
         let _env = env_guard();
@@ -28268,6 +28599,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .to_string_lossy()
             .to_string();
 
+        let saved_env = configure_repair_manifest_test_provider(&dir);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -28276,6 +28608,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             ".".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
         let restored = HarnessState::load(&state).unwrap();
         let installed = restored
             .installed_tentacles
@@ -28295,6 +28628,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_repair_skips_incomplete_same_id_harness_repair_seed() {
         let _env = env_guard();
@@ -28312,6 +28646,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .to_string_lossy()
             .to_string();
 
+        let saved_env = configure_repair_manifest_test_provider(&dir);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -28320,6 +28655,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             ".".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
         let restored = HarnessState::load(&state).unwrap();
         let installed = restored
             .installed_tentacles
@@ -28338,6 +28674,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_repair_continue_runs_queued_need_as_feed() {
         let _env = env_guard();
@@ -28350,7 +28687,9 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let state_path = dir.join(".octopus/state.json");
         let mut state = HarnessState::default();
 
+        let saved_env = configure_repair_manifest_test_provider(&dir);
         let report = repair_continue_report(&state_path, &mut state, ".".to_string()).unwrap();
+        restore_env_many(saved_env);
 
         let taken = report.taken.expect("continued Need");
         let feedback = report.feedback.expect("continued Feed");
@@ -28391,6 +28730,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_repair_continue_can_score_continued_feed() {
         let _env = env_guard();
@@ -28405,6 +28745,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let state_path = dir.join(".octopus/state.json");
         let state = state_path.to_string_lossy().to_string();
 
+        let saved_env = configure_repair_manifest_test_provider(&dir);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -28417,6 +28758,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "continued repair improved harness".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
 
         let restored = HarnessState::load(&state_path).unwrap();
         assert_eq!(restored.feed_traces.len(), 2);
@@ -28437,6 +28779,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_repair_report_exposes_latest_repair_plan() {
         let _env = env_guard();
@@ -28456,6 +28799,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "harness-repair-agent".to_string(),
         ])
         .unwrap();
+        let saved_env = configure_repair_manifest_test_provider(&dir);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -28464,9 +28808,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             dir.to_string_lossy().to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
 
         let mut restored = HarnessState::load(&state_path).unwrap();
+        let saved_heartbeat = configure_repair_heartbeat_test_provider(&dir);
         let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        restore_env_many(saved_heartbeat);
         assert_eq!(
             report.feed.metadata.get("tool").map(String::as_str),
             Some("heartbeat_repair")
@@ -29498,6 +29845,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_repair_report_uses_failed_rollup_adaptation() {
         let _env = env_guard();
@@ -29519,6 +29867,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "harness-repair-agent".to_string(),
         ])
         .unwrap();
+        let saved_env = configure_repair_manifest_test_provider(&dir);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -29527,6 +29876,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             dir.to_string_lossy().to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -29538,6 +29888,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "rollup guidance misled repair".to_string(),
         ])
         .unwrap();
+        let saved_env = configure_repair_manifest_test_provider(&dir);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -29546,9 +29897,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             dir.to_string_lossy().to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
 
         let mut restored = HarnessState::load(&state_path).unwrap();
+        let saved_heartbeat = configure_repair_heartbeat_test_provider(&dir);
         let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        restore_env_many(saved_heartbeat);
         assert_eq!(
             report
                 .feed
@@ -29629,6 +29983,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             "queue brief source misled repair".to_string(),
         ])
         .unwrap();
+        let saved_env = configure_repair_manifest_test_provider(&dir);
         run(vec![
             "--state".to_string(),
             state,
@@ -29637,8 +29992,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             dir.to_string_lossy().to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
         let mut restored = HarnessState::load(&state_path).unwrap();
+        let saved_heartbeat = configure_repair_heartbeat_test_provider(&dir);
         let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        restore_env_many(saved_heartbeat);
         assert_eq!(
             report
                 .feed
@@ -29741,6 +30099,7 @@ JSON
             "OCTOPUS_REPAIR_TEST_CURL",
             curl.to_string_lossy().to_string(),
         );
+        let saved_manifest = configure_repair_manifest_test_provider(&dir);
 
         run(vec![
             "--state".to_string(),
@@ -29758,6 +30117,7 @@ JSON
         ])
         .unwrap();
 
+        restore_env_many(saved_manifest);
         restore_env("OCTOPUS_REPAIR_LLM", old_repair);
         restore_env("OCTOPUS_REPAIR_LLM_PREFIX", old_prefix);
         restore_env("OCTOPUS_REPAIR_TEST_MODEL", old_model);
@@ -29765,7 +30125,9 @@ JSON
         restore_env("OCTOPUS_REPAIR_TEST_CURL", old_curl);
 
         let mut restored = HarnessState::load(&state_path).unwrap();
+        let saved_heartbeat = configure_repair_heartbeat_test_provider(&dir);
         let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        restore_env_many(saved_heartbeat);
         let plan = report.repair_plan.expect("repair plan report");
 
         assert_eq!(plan.draft_status, "generated");
@@ -29940,6 +30302,7 @@ JSON
             "OCTOPUS_REPAIR_TEST_CURL",
             curl.to_string_lossy().to_string(),
         );
+        let saved_manifest = configure_repair_manifest_test_provider(&dir);
 
         run(vec![
             "--state".to_string(),
@@ -29957,6 +30320,7 @@ JSON
         ])
         .unwrap();
 
+        restore_env_many(saved_manifest);
         restore_env("OCTOPUS_REPAIR_LLM", old_repair);
         restore_env("OCTOPUS_REPAIR_LLM_PREFIX", old_prefix);
         restore_env("OCTOPUS_REPAIR_TEST_MODEL", old_model);
@@ -30007,7 +30371,9 @@ JSON
             .any(|command| command.contains("repair verify")));
 
         let mut restored = HarnessState::load(&state_path).unwrap();
+        let saved_heartbeat = configure_repair_heartbeat_test_provider(&dir);
         let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        restore_env_many(saved_heartbeat);
         let plan = report.repair_plan.expect("repair plan report");
         assert_eq!(report.feed.status, Status::Satisfied);
         assert_eq!(plan.status, "patch_applied");
@@ -30040,7 +30406,9 @@ JSON
         assert!(verified_json.contains("\"check\""));
 
         let mut restored = HarnessState::load(&state_path).unwrap();
+        let saved_heartbeat = configure_repair_heartbeat_test_provider(&dir);
         let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        restore_env_many(saved_heartbeat);
         let plan = report.repair_plan.expect("repair plan report");
         assert_eq!(report.feed.status, Status::Satisfied);
         assert_eq!(plan.status, "patch_verified");
@@ -30053,6 +30421,7 @@ JSON
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_repair_report_blocks_on_missing_adapter_core() {
         let _env = env_guard();
@@ -30074,6 +30443,7 @@ JSON
             "harness-repair-agent".to_string(),
         ])
         .unwrap();
+        let saved_env = configure_repair_manifest_test_provider(&dir);
         run(vec![
             "--state".to_string(),
             state,
@@ -30082,6 +30452,7 @@ JSON
             dir.to_string_lossy().to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
 
         let repair_root = dir.join(".octopus/harness-repair");
         let session_dir = fs::read_dir(&repair_root)
@@ -30097,7 +30468,9 @@ JSON
         .unwrap();
 
         let mut restored = HarnessState::load(&state_path).unwrap();
+        let saved_heartbeat = configure_repair_heartbeat_test_provider(&dir);
         let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        restore_env_many(saved_heartbeat);
         let plan = report.repair_plan.expect("repair plan report");
 
         assert_eq!(report.feed.status, Status::Partial);
@@ -30133,6 +30506,7 @@ JSON
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_repair_report_blocks_on_missing_repair_draft_config() {
         let _env = env_guard();
@@ -30158,6 +30532,7 @@ JSON
         std::env::set_var("OCTOPUS_REPAIR_LLM", "1");
         std::env::set_var("OCTOPUS_REPAIR_LLM_PREFIX", "OCTOPUS_LLM");
         std::env::remove_var("OCTOPUS_LLM_MODEL");
+        let saved_manifest = configure_repair_manifest_test_provider(&dir);
         run(vec![
             "--state".to_string(),
             state,
@@ -30166,12 +30541,15 @@ JSON
             dir.to_string_lossy().to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_manifest);
         restore_env("OCTOPUS_REPAIR_LLM", old_repair);
         restore_env("OCTOPUS_REPAIR_LLM_PREFIX", old_prefix);
         restore_env("OCTOPUS_LLM_MODEL", old_model);
 
         let mut restored = HarnessState::load(&state_path).unwrap();
+        let saved_heartbeat = configure_repair_heartbeat_test_provider(&dir);
         let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        restore_env_many(saved_heartbeat);
         let plan = report.repair_plan.expect("repair plan report");
 
         assert_eq!(report.feed.status, Status::Partial);
@@ -30209,6 +30587,7 @@ JSON
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_repair_report_blocks_on_failed_action_trace() {
         let _env = env_guard();
@@ -30230,6 +30609,7 @@ JSON
             "harness-repair-agent".to_string(),
         ])
         .unwrap();
+        let saved_env = configure_repair_manifest_test_provider(&dir);
         run(vec![
             "--state".to_string(),
             state,
@@ -30238,6 +30618,7 @@ JSON
             dir.to_string_lossy().to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
 
         let repair_root = dir.join(".octopus/harness-repair");
         let session_dir = fs::read_dir(&repair_root)
@@ -30283,7 +30664,9 @@ JSON
         .unwrap();
 
         let mut restored = HarnessState::load(&state_path).unwrap();
+        let saved_heartbeat = configure_repair_heartbeat_test_provider(&dir);
         let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        restore_env_many(saved_heartbeat);
         let plan = report.repair_plan.expect("repair plan report");
 
         assert_eq!(report.feed.status, Status::Partial);
@@ -30314,6 +30697,7 @@ JSON
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_repair_report_uses_reviewed_repair_outcome() {
         let _env = env_guard();
@@ -30335,6 +30719,7 @@ JSON
             "harness-repair-agent".to_string(),
         ])
         .unwrap();
+        let saved_env = configure_repair_manifest_test_provider(&dir);
         run(vec![
             "--state".to_string(),
             state,
@@ -30343,6 +30728,7 @@ JSON
             dir.to_string_lossy().to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
 
         let repair_root = dir.join(".octopus/harness-repair");
         let session_dir = fs::read_dir(&repair_root)
@@ -30358,7 +30744,9 @@ JSON
         .unwrap();
 
         let mut restored = HarnessState::load(&state_path).unwrap();
+        let saved_heartbeat = configure_repair_heartbeat_test_provider(&dir);
         let report = repair_report(&state_path, &mut restored, ".".to_string()).unwrap();
+        restore_env_many(saved_heartbeat);
         let plan = report.repair_plan.expect("repair plan report");
 
         assert!(plan.outcome.ends_with("OUTCOME.md"));
@@ -31634,6 +32022,7 @@ JSON
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_evolve_recommend_uses_bundled_manifest_when_project_tentacles_shadow_seed() {
         let _env = env_guard();
@@ -31653,6 +32042,12 @@ JSON
         )
         .unwrap();
         std::env::set_current_dir(&dir).unwrap();
+        let curl = write_fake_evolve_patch_plan_for_tentacle_target(
+            &dir,
+            "field-mini-task",
+            "tools/run_field_mini_task.sh",
+        );
+        let saved_env = configure_evolve_test_provider(&curl);
         let state_path = dir.join(".octopus/state.json");
 
         run(vec![
@@ -31667,6 +32062,7 @@ JSON
             "feed".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
         let proposal = fs::read_to_string(
             dir.join(".octopus")
                 .join("evolution")
@@ -31682,6 +32078,7 @@ JSON
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_evolve_recommend_skips_incomplete_same_id_seed() {
         let _env = env_guard();
@@ -31694,6 +32091,12 @@ JSON
         fs::create_dir_all(&dir).unwrap();
         create_partial_bash_only_tentacles(&dir);
         std::env::set_current_dir(&dir).unwrap();
+        let curl = write_fake_evolve_patch_plan_for_tentacle_target(
+            &dir,
+            "bash-only",
+            "tools/write_and_run.sh",
+        );
+        let saved_env = configure_evolve_test_provider(&curl);
         let state_path = dir.join(".octopus/state.json");
 
         run(vec![
@@ -31708,6 +32111,7 @@ JSON
             "feed".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
         let proposal = fs::read_to_string(
             dir.join(".octopus")
                 .join("evolution")
@@ -31723,6 +32127,7 @@ JSON
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_evolve_apply_skips_incomplete_same_id_seed() {
         let _env = env_guard();
@@ -31735,6 +32140,12 @@ JSON
         fs::create_dir_all(&dir).unwrap();
         create_partial_bash_only_tentacles(&dir);
         std::env::set_current_dir(&dir).unwrap();
+        let curl = write_fake_evolve_patch_plan_for_tentacle_target(
+            &dir,
+            "bash-only",
+            "tools/write_and_run.sh",
+        );
+        let saved_env = configure_evolve_test_provider(&curl);
         let state_path = dir.join(".octopus/state.json");
 
         run(vec![
@@ -31750,6 +32161,7 @@ JSON
             "feed".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
         let proposal = fs::read_to_string(
             dir.join(".octopus")
                 .join("evolution")
@@ -31775,6 +32187,7 @@ JSON
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_evolve_score_skips_incomplete_same_id_seed() {
         let _env = env_guard();
@@ -31787,6 +32200,12 @@ JSON
         fs::create_dir_all(&dir).unwrap();
         create_partial_bash_only_tentacles(&dir);
         std::env::set_current_dir(&dir).unwrap();
+        let curl = write_fake_evolve_patch_plan_for_tentacle_target(
+            &dir,
+            "bash-only",
+            "tools/write_and_run.sh",
+        );
+        let saved_env = configure_evolve_test_provider(&curl);
         let state_path = dir.join(".octopus/state.json");
 
         run(vec![
@@ -31801,6 +32220,7 @@ JSON
             "reviewed".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
         let proposal = fs::read_to_string(
             dir.join(".octopus")
                 .join("evolution")
@@ -32167,7 +32587,9 @@ JSON
         assert!(swift.contains("active_slot_reason"));
         assert!(swift.contains("reason:"));
         assert!(swift.contains("freshTimestamp(int(worker[\"updated_at_secs\"]) ?? 0)"));
-        assert!(swift.contains("let goal = text(worker[\"goal\"])"));
+        assert!(swift.contains("pendingQueuedNeedQueries(root)"));
+        assert!(swift.contains("workerNeedLabel(worker)"));
+        assert!(!swift.contains("let goal = text(worker[\"goal\"])"));
         assert!(
             swift.contains("text(slot[\"latest_status\"]) ?? text(slot[\"latest_worker_status\"])")
         );
@@ -32449,7 +32871,7 @@ JSON
             )
             .replace(
                 "- Field mini task harness:",
-                "- Field mini task harness: pass checked_count=28 executed_count=28",
+                "- Field mini task harness: pass checked_count=30 executed_count=30",
             )
             .replace("- Desktop pet source:", "- Desktop pet source: pass")
             .replace("- Start/app:", "- Start/app: pass")
@@ -32509,8 +32931,8 @@ JSON
             .iter()
             .any(|item| item.id == "field_mini_task_harness_record" && item.status == "fail"));
         let filled = filled.replace(
-            "- Field mini task harness: pass checked_count=28 executed_count=28",
-            "- Field mini task harness: pass checked_count=28 executed_count=28 status=ok",
+            "- Field mini task harness: pass checked_count=30 executed_count=30",
+            "- Field mini task harness: pass checked_count=30 executed_count=30 status=ok",
         );
         fs::write(&record_path, &filled).unwrap();
         let audit = check_preflight_record(&record_path).unwrap();
@@ -32520,8 +32942,8 @@ JSON
             .iter()
             .any(|item| item.id == "field_mini_task_harness_record" && item.status == "fail"));
         let filled = filled.replace(
-            "- Field mini task harness: pass checked_count=28 executed_count=28 status=ok",
-            "- Field mini task harness: pass checked_count=28 executed_count=28 satisfied_count=28 partial_count=0 missing_count=0 invalid_count=0 status=ok",
+            "- Field mini task harness: pass checked_count=30 executed_count=30 status=ok",
+            "- Field mini task harness: pass checked_count=30 executed_count=30 satisfied_count=30 partial_count=0 missing_count=0 invalid_count=0 status=ok",
         );
         fs::write(&record_path, filled).unwrap();
         let audit = check_preflight_record(&record_path).unwrap();
@@ -33393,6 +33815,7 @@ JSON
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_evolve_writes_tentacle_evolution_draft() {
         let _env = env_guard();
@@ -33403,6 +33826,8 @@ JSON
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         std::env::set_current_dir(&dir).unwrap();
+        let curl = write_fake_evolve_patch_plan(&dir);
+        let saved_env = configure_evolve_test_provider(&curl);
 
         run(vec![
             "--json".to_string(),
@@ -33507,7 +33932,7 @@ JSON
             .contains("authorized: true"));
         assert!(fs::read_to_string(&apply_plan)
             .unwrap()
-            .contains("needs_suggested_patch"));
+            .contains("ready_for_authorized_patch"));
         assert!(!apply_patch.exists());
 
         run(vec![
@@ -33554,6 +33979,7 @@ JSON
             "next".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
         let updated_markdown = fs::read_to_string(
             dir.join(".octopus")
                 .join("evolution")
@@ -33748,6 +34174,7 @@ JSON
             .any(|command| { command.contains("need observe .") }));
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_installed_manifest_feeds_need() {
         let _env = env_guard();
@@ -33759,6 +34186,11 @@ JSON
             .to_string_lossy()
             .to_string();
         let _ = fs::remove_file(&path);
+        let dir = path.with_extension("provider");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let curl = write_fake_manifest_tool_plan(&dir, "inspect_repo");
+        let saved_env = configure_manifest_test_provider(&curl);
 
         run(vec![
             "--state".to_string(),
@@ -33775,6 +34207,7 @@ JSON
             repo,
         ])
         .unwrap();
+        restore_env_many(saved_env);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -33786,8 +34219,10 @@ JSON
         assert!(content.contains("observe:swe-agent"));
         assert!(content.contains("feed_traces"));
         let _ = fs::remove_file(path);
+        let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_need_reinstalls_broken_installed_seed_before_feed() {
         let _env = env_guard();
@@ -33807,6 +34242,8 @@ JSON
             .installed_tentacles
             .push(broken_installed_bash_only(&dir));
         state.save(&state_path).unwrap();
+        let curl = write_fake_manifest_tool_plan(&dir, "write_and_run");
+        let saved_env = configure_manifest_test_provider(&curl);
 
         run(vec![
             "--state".to_string(),
@@ -33826,6 +34263,7 @@ JSON
             "echo ok".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_env);
         let restored = HarnessState::load(&state_path).unwrap();
         let bash = restored
             .installed_tentacles
@@ -33888,6 +34326,7 @@ JSON
         let _ = fs::remove_file(path);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cli_repair_score_records_outcome() {
         let _env = env_guard();
@@ -33909,6 +34348,7 @@ JSON
             "harness-repair-agent".to_string(),
         ])
         .unwrap();
+        let saved_manifest = configure_repair_manifest_test_provider(&workspace);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -33917,6 +34357,7 @@ JSON
             workspace.to_string_lossy().to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_manifest);
         let mut seeded = HarnessState::load(&path).unwrap();
         seeded.feed_traces[0]
             .metadata
@@ -34043,6 +34484,8 @@ JSON
             "review provider repair patch".to_string(),
         );
         seeded.save(&path).unwrap();
+        let evolve_curl = write_fake_evolve_patch_plan(&workspace);
+        let saved_evolve = configure_evolve_test_provider(&evolve_curl);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -34054,6 +34497,7 @@ JSON
             "repair improved harness".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_evolve);
 
         let restored = HarnessState::load(&path).unwrap();
         assert_eq!(restored.repair_outcomes.len(), 1);
@@ -34197,6 +34641,7 @@ JSON
             outcome_markdown.contains("action_trace_harness_environment_drift: status=`baseline`")
         );
         assert!(outcome_markdown.contains("repair_effectiveness_rollup: status=`collect_outcomes`"));
+        let saved_manifest = configure_repair_manifest_test_provider(&workspace);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -34205,6 +34650,7 @@ JSON
             workspace.to_string_lossy().to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_manifest);
         let memory_has_action_trace = workspace
             .join(".octopus/harness-repair")
             .read_dir()
@@ -34587,6 +35033,8 @@ JSON
                 .map(String::as_str),
             Some("reuse_effective_patch_strategy")
         );
+        let evolve_curl = write_fake_evolve_patch_plan(&workspace);
+        let saved_evolve = configure_evolve_test_provider(&evolve_curl);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -34598,6 +35046,8 @@ JSON
             "patch learning guided repair".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_evolve);
+        let saved_manifest = configure_repair_manifest_test_provider(&workspace);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -34606,6 +35056,7 @@ JSON
             workspace.to_string_lossy().to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_manifest);
         let patch_learning_effectiveness_found = workspace
             .join(".octopus/harness-repair")
             .read_dir()
@@ -34852,7 +35303,9 @@ JSON
             });
         assert!(command_strategy_found);
         let mut strategy_state = HarnessState::load(&path).unwrap();
+        let saved_heartbeat = configure_repair_heartbeat_test_provider(&workspace);
         let strategy_report = repair_report(&path, &mut strategy_state, ".".to_string()).unwrap();
+        restore_env_many(saved_heartbeat);
         assert_eq!(
             strategy_report
                 .feed
@@ -35015,6 +35468,8 @@ JSON
                     .unwrap_or(false)
             });
         assert!(decision_collect_found);
+        let evolve_curl = write_fake_evolve_patch_plan(&workspace);
+        let saved_evolve = configure_evolve_test_provider(&evolve_curl);
         run(vec![
             "--state".to_string(),
             state.clone(),
@@ -35026,6 +35481,7 @@ JSON
             "recall guided repair improved harness".to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_evolve);
         let outcomes = fs::read_to_string(&outcomes_file).unwrap();
         assert!(outcomes.contains("\"action_trace_recall_count\":\"1\""));
         assert!(outcomes.contains("\"action_trace_recall_top_status\":\"satisfied\""));
@@ -35052,6 +35508,7 @@ JSON
                     .unwrap_or(false)
             });
         assert!(outcome_has_recall_usage);
+        let saved_manifest = configure_repair_manifest_test_provider(&workspace);
         run(vec![
             "--state".to_string(),
             state,
@@ -35060,6 +35517,7 @@ JSON
             workspace.to_string_lossy().to_string(),
         ])
         .unwrap();
+        restore_env_many(saved_manifest);
         let memory_has_recall_usage = workspace
             .join(".octopus/harness-repair")
             .read_dir()

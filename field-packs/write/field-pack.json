@@ -25,6 +25,11 @@
       "id": "write-mini-1",
       "goal": "Turn three source notes about Octopus into a short product paragraph and verify every claim against the notes.",
       "expected_feed": "A concise paragraph, claim-source map, unsupported-gap list, style checks, and artifact-backed verifier evidence."
+    },
+    {
+      "id": "write-mini-2",
+      "goal": "Summarize four source notes into a strict two-sentence writing brief and verify each claim against the notes.",
+      "expected_feed": "A strict two-sentence brief, claim-to-source map, explicit gap list, and artifact-backed verifier checks."
     }
   ]
 }
