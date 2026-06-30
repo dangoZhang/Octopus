@@ -69,6 +69,10 @@ pub(crate) fn report(state_path: &Path) -> CoreBoundaryReport {
             "field-adaptation-surface",
         ),
         path_report(
+            root.join("crates/octopus-core/src/heartbeat_surface.rs"),
+            "heartbeat-command-surface",
+        ),
+        path_report(
             root.join("crates/octopus-core/src/need_queue.rs"),
             "need-queue",
         ),
