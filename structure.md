@@ -29,6 +29,7 @@ Octopus/
 │       ├── evolution_cycle.rs Stage/error contract for autonomous evolution and pet-visible diagnostics.
 │       ├── evolution_driver.rs One-cycle autonomous harness evolution driver: LLM recommendation, patch apply, check, Need/Feed, optional desktop pet.
 │       ├── evolution_feed.rs  Feed-stage runner for field mini-task evolution, worker state, and desktop observer launch.
+│       ├── evolution_plan.rs  LLM patch recommendation artifacts and apply-failure retry objective shaping.
 │       ├── field_pack.rs      Field-pack loader, matcher, and Need/trace metadata.
 │       ├── pet.rs             Pixel Octopus state, SVG export, file URL helpers.
 │       ├── pet_events.rs      Unified state event write path and JSONL audit log for desktop/pet observers.
@@ -97,9 +98,10 @@ Octopus/
 | Stable kernel | Goal/Need/Feed contracts, state, route scores, memory, provider client, Feed traces, evolution data, field-pool status snapshots, resolved field-pack evolution targets, provider patch target checks, LLM patch normalization, missing `new file mode` normalization for provider-created files, Codex CLI prompt-file stdin with timeout enforcement, and LLM-native repair/evolve contracts | `crates/octopus-core/src/lib.rs` | 15,758 |
 | User surface boundary | Converts internal state into human Goal hints; keeps agent commands in observer fields so app/CLI users edit Goal only | `user_surface.rs`, `StatusReport`, `ContextReport`, `NeedQueueReport`, `FieldPoolStatusReport`, `ProductReport` | 123 |
 | Evolution contract | Manifest-owned surface requirements, required-surface validation, candidate ID normalization, LLM retry guardrails without field-specific Rust branches | `evolution.rs`, `tentacles/*/manifest.json`, `tentacles/tentacle.schema.json` | 471 |
-| Evolution apply boundary | Authorized provider patch application, `git apply --check`, reverse already-applied detection, safety tests, and live apply reports shared by CLI apply and autonomous drive | `evolution_apply.rs` | 221 |
+| Evolution apply boundary | Authorized provider patch application, `git apply --check`, reverse already-applied detection, summary helpers, safety tests, and live apply reports shared by CLI apply and autonomous drive | `evolution_apply.rs` | 282 |
 | Evolution cycle contract | Stage and error-class event contract for autonomous harness evolution. Pet observers now see whether a block happened in planning, applying, checking, or feeding, and whether it was provider timeout, provider error, patch apply, or check failure. | `evolution_cycle.rs`, `PetEvent.stage`, `PetEvent.error_class` | 153 |
-| Evolution driver | Autonomous harness loop for one cycle: mark pet state, ask LLM for candidate, write artifacts, apply authorized patch, retry once with `git apply` failure feedback, and run manifest-declared checks. It delegates Feed-stage work to `evolution_feed.rs`. | `evolution_driver.rs` | 489 |
+| Evolution planning boundary | LLM patch recommendation artifact writing and apply-failure retry objective shaping | `evolution_plan.rs` | 84 |
+| Evolution driver | Autonomous harness loop for one cycle: stage events, planning, apply, manifest checks, and Feed delegation. It no longer owns patch execution, Feed execution, or retry objective shaping. | `evolution_driver.rs` | 432 |
 | Evolution Feed boundary | Field mini-task Feed execution, queued Need worker state, desktop pet launch, Feed event writes, and blocked reporting when no queued Need actually reaches Feed | `evolution_feed.rs` | 130 |
 | Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, field trajectory summaries, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, and compile/execute template checks | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 5,821 |
 | CLI and product backend | Command dispatch, Goal/chat/brain, provider setup, doctor/report/preflight aggregation, starter/install/check flows, field summary, repair/evolve commands, strategy diagnostics entry, pet event log and supervision viewer | `crates/octopus-core/src/main.rs` | 36,327 |
@@ -136,6 +138,7 @@ These should remain stable and hard to accidentally mutate:
 - Desktop observer rule: stale Feed traces cannot drive the native pet's current color or Need bubble. A Feed/action color must come from a fresh `last_pet_event` or an active worker update.
 - Provider env rule: CLI reads `.octopus/llm.env` through `provider_env.rs`; explicit shell variables are never overwritten.
 - Evolution apply rule: provider patches are checked and applied only through `evolution_apply.rs`; CLI apply and autonomous drive share the same authorized patch execution path.
+- Evolution planning rule: recommendation artifacts and apply-failure retry objectives live in `evolution_plan.rs`; driver only asks for the next plan.
 - Evolution driver rule: `evolve drive` uses `evolution_cycle.rs` for stage/error events; `main.rs` only parses CLI and prints the report. Apply-check failures are fed back to the LLM once for a regenerated current-file patch.
 - Patch apply rule: provider-created new-file patches are normalized before `git apply`; missing `new file mode 100644` is inserted when a diff uses `--- /dev/null`.
 - Provider timeout rule: Codex CLI prompts are passed through a temp prompt file, not blocking `stdin.write_all`; `OCTOPUS_LLM_TIMEOUT` and `OCTOPUS_LLM_RETRIES` can bound harness evolution calls.
@@ -166,6 +169,7 @@ Where they live:
 - `crates/octopus-core/src/evolution_apply.rs`
 - `crates/octopus-core/src/evolution_cycle.rs`
 - `crates/octopus-core/src/evolution_feed.rs`
+- `crates/octopus-core/src/evolution_plan.rs`
 - `crates/octopus-core/src/user_surface.rs`
 - `crates/octopus-core/src/diagnostics.rs`
 - `crates/octopus-core/src/pet_events.rs`
@@ -175,7 +179,7 @@ Where they live:
 
 These remain intentionally visible:
 
-- `evolution_driver.rs` still owns CLI-ish report formatting and retry policy. Next split should move retry planning into a small module.
+- `evolution_driver.rs` still owns CLI-ish report formatting. Next split should move report printing/shape out of the stage driver.
 - `evolution_feed.rs` is still field-mini-task specific. The next version should make Feed-stage runners manifest/routing owned so future field packs can choose their own Feed executor.
 - `lib.rs` still owns LLM evolution prompt construction, target-file context budget, candidate target parsing, artifact writing, patch authorization, and diff normalization. These belong outside the stable kernel once public API boundaries are safe.
 - Automatic `cargo test` next step is still suspicious for LLM-native self-evolution and should be removed or pushed into editable manifest/harness policy.
@@ -243,7 +247,7 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 22 | 58,545 |
+| `crates/octopus-core/src` | 23 | 58,622 |
 | `crates/octopus-core/examples` | 1 | 27 |
 | `tentacles` | 83 | 18,974 |
 | `field-packs` | 14 | 598 |
@@ -256,24 +260,25 @@ field-packs/
 
 | File | Lines |
 | --- | ---: |
-| `main.rs` | 36,328 |
+| `main.rs` | 36,317 |
 | `lib.rs` | 15,758 |
 | `app_bridge.rs` | 1,167 |
 | `field_pack.rs` | 868 |
 | `release_gate.rs` | 703 |
-| `evolution_driver.rs` | 489 |
+| `evolution_driver.rs` | 432 |
 | `pet_supervision.rs` | 518 |
 | `bundled_harness.rs` | 423 |
 | `desktop_pet.rs` | 377 |
 | `diagnostics.rs` | 354 |
 | `pet.rs` | 280 |
 | `download.rs` | 175 |
-| `evolution_apply.rs` | 221 |
+| `evolution_apply.rs` | 282 |
 | `evolution_cycle.rs` | 153 |
 | `evolution_feed.rs` | 130 |
 | `core_boundary.rs` | 123 |
 | `user_surface.rs` | 123 |
 | `provider_env.rs` | 107 |
+| `evolution_plan.rs` | 84 |
 | `evolution.rs` | 78 |
 | `profile_registry.rs` | 78 |
 | `pet_events.rs` | 74 |

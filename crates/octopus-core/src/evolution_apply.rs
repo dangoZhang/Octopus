@@ -1,5 +1,5 @@
 use crate::shell_words::shell_arg;
-use octopus_core::{EvolutionApplyArtifact, EvolutionApplyPlan};
+use octopus_core::{EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionRecommendation};
 use std::path::Path;
 use std::process::Command;
 
@@ -157,6 +157,33 @@ pub(crate) fn apply_authorized_suggested_patch(
     }
 }
 
+pub(crate) fn live_apply_summary(
+    recommendation: &EvolutionRecommendation,
+    live_apply: &EvolutionLiveApplyReport,
+) -> String {
+    live_apply_candidate_summary(&recommendation.candidate_id, live_apply)
+}
+
+pub(crate) fn live_apply_candidate_summary(
+    candidate_id: &str,
+    live_apply: &EvolutionLiveApplyReport,
+) -> String {
+    if live_apply.applied || live_apply.stderr.trim().is_empty() {
+        return format!("{} {}", candidate_id, live_apply.status);
+    }
+    let detail = live_apply
+        .stderr
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let detail = if detail.chars().count() > 160 {
+        format!("{}...", detail.chars().take(160).collect::<String>())
+    } else {
+        detail
+    };
+    format!("{} {}: {}", candidate_id, live_apply.status, detail)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,6 +215,24 @@ mod tests {
         assert!(report.command.is_none());
     }
 
+    #[test]
+    fn live_apply_summary_compacts_stderr() {
+        let recommendation = test_recommendation();
+        let report = EvolutionLiveApplyReport {
+            applied: false,
+            status: "check_failed".to_string(),
+            command: None,
+            patch_path: Some("candidate.patch".to_string()),
+            stdout: String::new(),
+            stderr: "error: patch failed at current file context".to_string(),
+        };
+
+        let summary = live_apply_summary(&recommendation, &report);
+
+        assert!(summary.contains("01-runtime-code check_failed"));
+        assert!(summary.contains("patch failed"));
+    }
+
     fn test_plan() -> EvolutionApplyPlan {
         EvolutionApplyPlan {
             tentacle_id: "field-mini-task".to_string(),
@@ -216,6 +261,22 @@ mod tests {
             plan_path: ".octopus/evolution/field-mini-task/APPLY_PLAN.md".to_string(),
             patch_path: patch_path.map(str::to_string),
             json_path: ".octopus/evolution/field-mini-task/apply.json".to_string(),
+        }
+    }
+
+    fn test_recommendation() -> EvolutionRecommendation {
+        EvolutionRecommendation {
+            tentacle_id: "field-mini-task".to_string(),
+            objective: "repair harness".to_string(),
+            candidate_id: "01-runtime-code".to_string(),
+            candidate_title: "Runtime patch".to_string(),
+            surface_id: "runtime_code".to_string(),
+            outcome_count: 0,
+            feed_trace_count: 0,
+            check_history_count: 0,
+            recommendation_score: 1.0,
+            reason: "test".to_string(),
+            apply: test_plan(),
         }
     }
 }

@@ -49,6 +49,7 @@ mod evolution_apply;
 mod evolution_cycle;
 mod evolution_driver;
 mod evolution_feed;
+mod evolution_plan;
 mod pet;
 mod pet_events;
 mod pet_supervision;
@@ -69,7 +70,9 @@ use desktop_pet::{
     desktop_pet_source_check, launch_desktop_pet, DesktopPetConfig, DesktopPetReport,
 };
 use download::{download_artifacts_preflight_check, download_report, DownloadReport};
-use evolution_apply::{apply_authorized_suggested_patch, EvolutionLiveApplyReport};
+use evolution_apply::{
+    apply_authorized_suggested_patch, live_apply_candidate_summary, EvolutionLiveApplyReport,
+};
 use evolution_driver::{
     drive_evolution_cycle, parse_evolution_drive_args, print_evolution_drive_report,
 };
@@ -3871,21 +3874,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 } else {
                     ("blocked", Status::Failed)
                 };
-                let apply_summary = if live_apply.applied || live_apply.stderr.trim().is_empty() {
-                    format!("{} {}", candidate_id, live_apply.status)
-                } else {
-                    let detail = live_apply
-                        .stderr
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let detail = if detail.chars().count() > 160 {
-                        format!("{}...", detail.chars().take(160).collect::<String>())
-                    } else {
-                        detail
-                    };
-                    format!("{} {}: {}", candidate_id, live_apply.status, detail)
-                };
+                let apply_summary = live_apply_candidate_summary(candidate_id, &live_apply);
                 pet_events::record_and_save(
                     &state,
                     &mut loaded,

@@ -1,19 +1,21 @@
 use crate::desktop_pet::DesktopPetReport;
-use crate::evolution_apply::{apply_authorized_suggested_patch, EvolutionLiveApplyReport};
+use crate::evolution_apply::{
+    apply_authorized_suggested_patch, live_apply_summary, EvolutionLiveApplyReport,
+};
 use crate::evolution_cycle::{
     classify_apply_status, classify_planner_error, record_stage_event,
     record_stage_event_with_error, EvolutionDriveStage,
 };
 use crate::evolution_feed::{run_field_mini_task_feed_cycle, EvolutionFeedCycleArgs};
+use crate::evolution_plan::{recommend_current_patch, retry_apply_objective};
 use crate::shell_words::shell_arg;
 use crate::{
-    check_report, parse_worker_count_1_to_8, pet_events, propose_evolution_for_cli,
-    record_check_report, CheckReport, Language, NeedRunBatchReport,
+    check_report, parse_worker_count_1_to_8, pet_events, record_check_report, CheckReport,
+    Language, NeedRunBatchReport,
 };
 use octopus_core::{
-    recommend_tentacle_evolution_apply, write_tentacle_apply_artifacts,
-    write_tentacle_evolution_artifacts, EvolutionApplyArtifact, EvolutionArtifact,
-    EvolutionRecommendation, FieldTrajectoryReport, HarnessState, ParallelEvolutionRun, Status,
+    EvolutionApplyArtifact, EvolutionArtifact, EvolutionRecommendation, FieldTrajectoryReport,
+    HarnessState, ParallelEvolutionRun, Status,
 };
 use std::env;
 use std::path::Path;
@@ -116,7 +118,11 @@ pub(crate) fn drive_evolution_cycle(
 
     let (evolution_artifact, recommendation, apply_artifact) =
         match recommend_current_patch(&cwd, &args.tentacle_id, &args.objective, &loaded) {
-            Ok(result) => result,
+            Ok(result) => (
+                result.evolution_artifact,
+                result.recommendation,
+                result.apply_artifact,
+            ),
             Err(error) => {
                 record_drive_error_event(
                     state_path,
@@ -166,7 +172,7 @@ pub(crate) fn drive_evolution_cycle(
         &mut loaded,
         &args.tentacle_id,
         apply_state,
-        apply_summary(&recommendation, &live_apply),
+        live_apply_summary(&recommendation, &live_apply),
         if live_apply.applied {
             Status::Satisfied
         } else {
@@ -190,22 +196,22 @@ pub(crate) fn drive_evolution_cycle(
             ),
             Status::Partial,
         )?;
-        if let Ok((retry_evolution, retry_recommendation, retry_apply_artifact)) =
+        if let Ok(result) =
             recommend_current_patch(&cwd, &args.tentacle_id, &retry_objective, &loaded)
         {
             report.stage = EvolutionDriveStage::ApplyRetryPlanning.as_str().to_string();
             report.objective = retry_objective;
-            report.evolution_artifact = Some(retry_evolution);
-            report.apply_artifact = Some(retry_apply_artifact.clone());
+            report.evolution_artifact = Some(result.evolution_artifact);
+            report.apply_artifact = Some(result.apply_artifact.clone());
             report.next = vec![format!(
                 "octopus evolve apply {} {}",
                 shell_arg(&args.tentacle_id),
-                shell_arg(&retry_recommendation.candidate_id)
+                shell_arg(&result.recommendation.candidate_id)
             )];
             live_apply = apply_authorized_suggested_patch(
                 &cwd,
-                &retry_recommendation.apply,
-                &retry_apply_artifact,
+                &result.recommendation.apply,
+                &result.apply_artifact,
             );
             let retry_state = if live_apply.applied {
                 "success"
@@ -217,7 +223,7 @@ pub(crate) fn drive_evolution_cycle(
                 &mut loaded,
                 &args.tentacle_id,
                 retry_state,
-                apply_summary(&retry_recommendation, &live_apply),
+                live_apply_summary(&result.recommendation, &live_apply),
                 if live_apply.applied {
                     Status::Satisfied
                 } else {
@@ -226,7 +232,7 @@ pub(crate) fn drive_evolution_cycle(
                 &live_apply,
             )?;
             report.live_apply = Some(live_apply.clone());
-            report.recommendation = Some(retry_recommendation);
+            report.recommendation = Some(result.recommendation);
         }
     }
 
@@ -308,26 +314,6 @@ pub(crate) fn drive_evolution_cycle(
     }
 
     Ok(report)
-}
-
-fn recommend_current_patch(
-    cwd: &Path,
-    tentacle_id: &str,
-    objective: &str,
-    state: &HarnessState,
-) -> Result<
-    (
-        EvolutionArtifact,
-        EvolutionRecommendation,
-        EvolutionApplyArtifact,
-    ),
-    String,
-> {
-    let proposal = propose_evolution_for_cli(tentacle_id, objective, state)?;
-    let evolution_artifact = write_tentacle_evolution_artifacts(cwd, &proposal)?;
-    let recommendation = recommend_tentacle_evolution_apply(&proposal, state)?;
-    let apply_artifact = write_tentacle_apply_artifacts(cwd, &recommendation.apply)?;
-    Ok((evolution_artifact, recommendation, apply_artifact))
 }
 
 pub(crate) fn print_evolution_drive_report(report: &EvolutionDriveReport, language: Language) {
@@ -435,49 +421,6 @@ fn record_apply_event(
         error_class,
     )
     .map(|_| ())
-}
-
-fn apply_summary(
-    recommendation: &EvolutionRecommendation,
-    live_apply: &EvolutionLiveApplyReport,
-) -> String {
-    if live_apply.applied || live_apply.stderr.trim().is_empty() {
-        return format!("{} {}", recommendation.candidate_id, live_apply.status);
-    }
-    let detail = live_apply
-        .stderr
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    let detail = if detail.chars().count() > 160 {
-        format!("{}...", detail.chars().take(160).collect::<String>())
-    } else {
-        detail
-    };
-    format!(
-        "{} {}: {}",
-        recommendation.candidate_id, live_apply.status, detail
-    )
-}
-
-fn retry_apply_objective(objective: &str, live_apply: &EvolutionLiveApplyReport) -> String {
-    let stderr = compact_words(&live_apply.stderr, 220);
-    if stderr.is_empty() {
-        format!("{objective}; regenerate an authorized patch against the current files")
-    } else {
-        format!(
-            "{objective}; regenerate an authorized patch against the current files after git apply failed: {stderr}"
-        )
-    }
-}
-
-fn compact_words(value: &str, limit: usize) -> String {
-    let text = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    if text.chars().count() > limit {
-        format!("{}...", text.chars().take(limit).collect::<String>())
-    } else {
-        text
-    }
 }
 
 fn join_or_none(values: &[String]) -> String {
