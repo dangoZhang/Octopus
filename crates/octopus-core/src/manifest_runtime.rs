@@ -117,11 +117,28 @@ struct ToolInvocationTentacle<'a> {
 #[derive(Deserialize)]
 struct ToolOutputEnvelope {
     status: Option<Status>,
-    output: String,
     #[serde(default)]
-    evidence: Vec<Evidence>,
+    output: Option<String>,
     #[serde(default)]
-    metadata: BTreeMap<String, String>,
+    summary: Option<String>,
+    #[serde(default)]
+    evidence: Vec<ToolOutputEvidence>,
+    #[serde(default)]
+    metadata: BTreeMap<String, serde_json::Value>,
+    #[serde(flatten)]
+    extra: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct ToolOutputEvidence {
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    confidence: Option<f32>,
+    #[serde(default)]
+    metadata: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1004,18 +1021,61 @@ pub(crate) fn tool_result_from_json(tool_id: &str, text: &str) -> Option<ToolRes
     if let Ok(result) = serde_json::from_str::<ToolResult>(text) {
         return Some(result);
     }
-    let envelope = serde_json::from_str::<ToolOutputEnvelope>(text).ok()?;
+    let mut envelope = serde_json::from_str::<ToolOutputEnvelope>(text).ok()?;
+    for key in [
+        "artifact_path",
+        "field_pass_evidence",
+        "gap_metadata",
+        "verifier_status",
+    ] {
+        if let Some(value) = envelope.extra.remove(key) {
+            envelope.metadata.entry(key.to_string()).or_insert(value);
+        }
+    }
+    let output = envelope
+        .output
+        .or(envelope.summary)
+        .unwrap_or_else(|| text.to_string());
+    let metadata = metadata_values_to_strings(envelope.metadata);
     let evidence = if envelope.evidence.is_empty() {
-        vec![Evidence::new(tool_id, envelope.output.clone())]
+        vec![Evidence::new(tool_id, output.clone())]
     } else {
-        envelope.evidence
+        envelope
+            .evidence
+            .into_iter()
+            .map(|evidence| Evidence {
+                source: evidence.source.unwrap_or_else(|| tool_id.to_string()),
+                content: evidence.content.unwrap_or_default(),
+                confidence: evidence.confidence.unwrap_or(1.0),
+                metadata: metadata_values_to_strings(evidence.metadata),
+            })
+            .collect()
     };
     Some(ToolResult {
         status: envelope.status.unwrap_or(Status::Satisfied),
-        output: envelope.output,
+        output,
         evidence,
-        metadata: envelope.metadata,
+        metadata,
     })
+}
+
+fn metadata_values_to_strings(
+    metadata: BTreeMap<String, serde_json::Value>,
+) -> BTreeMap<String, String> {
+    metadata
+        .into_iter()
+        .filter_map(|(key, value)| metadata_value_to_string(value).map(|value| (key, value)))
+        .collect()
+}
+
+fn metadata_value_to_string(value: serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::Null => None,
+        serde_json::Value::String(value) => Some(value),
+        serde_json::Value::Bool(value) => Some(value.to_string()),
+        serde_json::Value::Number(value) => Some(value.to_string()),
+        value => serde_json::to_string(&value).ok(),
+    }
 }
 
 fn tool_authorization_result(tool: &InstalledToolRef, permission: &ToolPermission) -> ToolResult {

@@ -484,18 +484,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
 
     match rest.first().map(String::as_str) {
         Some("need") => {
-            let kind = rest
-                .get(1)
-                .ok_or_else(|| "need requires a kind".to_string())
-                .and_then(|value| parse_kind(value))?;
-            let query = rest
-                .get(2..)
-                .filter(|values| !values.is_empty())
-                .map(|values| values.join(" "))
-                .ok_or_else(|| "need requires a query".to_string())?;
+            let need = parse_need_command_args(&rest)?;
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
-            let mut harness = harness_for_need(loaded, &kind)?;
-            let feedback = harness.feed(&[Need::new(kind, query)]);
+            let mut harness = harness_for_need(loaded, &need.kind)?;
+            let feedback = harness.feed(&[need]);
             for feed in &feedback.feeds {
                 let _ = record_auto_field_verifier_from_feed(&mut harness.state, feed);
             }
@@ -1575,6 +1567,52 @@ fn parse_context_need(rest: &[String]) -> Result<Option<Need>, String> {
             Ok(Some(Need::new(kind, query)))
         }
     }
+}
+
+fn parse_need_command_args(rest: &[String]) -> Result<Need, String> {
+    let kind = rest
+        .get(1)
+        .ok_or_else(|| "need requires a kind".to_string())
+        .and_then(|value| parse_kind(value))?;
+    let mut query = Vec::new();
+    let mut context = BTreeMap::new();
+    let mut index = 2;
+    while index < rest.len() {
+        let value = &rest[index];
+        if value == "--context" {
+            index += 1;
+            let pair = rest
+                .get(index)
+                .ok_or_else(|| "need --context requires key=value".to_string())?;
+            insert_need_context_pair(&mut context, pair)?;
+        } else if let Some(pair) = value.strip_prefix("--context=") {
+            insert_need_context_pair(&mut context, pair)?;
+        } else {
+            query.push(value.clone());
+        }
+        index += 1;
+    }
+    if query.is_empty() {
+        return Err("need requires a query".to_string());
+    }
+    let mut need = Need::new(kind, query.join(" "));
+    need.context = context;
+    Ok(need)
+}
+
+fn insert_need_context_pair(
+    context: &mut BTreeMap<String, String>,
+    pair: &str,
+) -> Result<(), String> {
+    let (key, value) = pair
+        .split_once('=')
+        .ok_or_else(|| "need --context requires key=value".to_string())?;
+    let key = key.trim();
+    if key.is_empty() {
+        return Err("need --context key cannot be empty".to_string());
+    }
+    context.insert(key.to_string(), value.trim().to_string());
+    Ok(())
 }
 
 fn localize_summary(summary: &str, language: Language) -> String {
@@ -7073,7 +7111,7 @@ fn extract_json_object(payload: &str) -> Option<&str> {
 }
 
 fn usage() -> String {
-    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair apply [query] | repair verify [query] | repair continue [query] [--score status [summary]] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers 1..8]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | diagnose strategy | pet [state]|pet supervise|pet events [limit]|pet desktop [--workers 1..8]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers 1..8] [objective] | evolve drive [--open] [--workers 1..8] <tentacle> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
+    "usage: octopus [--version] [--state path] [--lang en|zh] [--json] init [tentacles-root] | bootstrap [tentacles-root] | first-run [--live] [objective] | need <kind> [--context key=value] <query> | feedback <trace-index|latest> <status> [summary] | repair [query] | repair apply [query] | repair verify [query] | repair continue [query] [--score status [summary]] | repair score <trace-index|latest> <status> [summary] | think <tentacle> <kind> <query> | context [kind query] | chat <message> | brain [--goal] [--live] [--save] [--session] [--rewrite] [--intent] [--brief] [--clarify] [--agenda] [--scout] [--deliberate] [--synthesize] [--council] [--reflect] [--align] [--memory] [--focus kind] [--llm-prefix prefix] [--models prefixes] [--apply path|-] [--apply-json json] [prompt] | explore [--save] [prompt] | needs [run [index|latest|all|--workers 1..8]|take|drop|script [path]|session [--live] [prompt]] | llm <message> | providers | provider <profile> [prefix] | provider save <profile> [prefix] [path] | provider save-key <profile> [prefix] [path] | provider status | provider matrix [path] | provider matrix run [path] | provider matrix check [path] | provider check [prefix] [message] | benchmark [record [path]|check [path]] | update [--run] | start [--open|--check] [addr] | goal [set [--constraint text] objective|refine text] | status | report | preflight [--live] | preflight script [path] | preflight record [path] | preflight record check [path] | preflight record append [path] [log] | doctor | diagnose strategy | pet [state]|pet supervise|pet events [limit]|pet desktop [--workers 1..8]|pet image [state] [path] | beat [memory_keep] | oauth <provider> <scope> [permissions...] | oauth revoke <grant> | self-iterate <repo> | self-iterate pr <repo> [objective] | evolve parallel [--open] [--workers 1..8] [objective] | evolve drive [--open] [--workers 1..8] <tentacle> [objective] | evolve <tentacle> <objective> | evolve recommend <tentacle> [objective] | evolve apply <tentacle> <candidate> [objective] | evolve score <tentacle> <candidate> <status> [summary] | scaffold <tentacle> [runtime] | probe <tentacle> <kind> <query> | traces [limit] | routes [kind query] | fields [root]|fields summary|fields match <kind> <query>|fields score <trace-index|latest> <status> [error-category] [summary] | catalog | starter [objective] | starter feedback <tentacle> <accepted|ignored|failed> [objective] | skills [root] | manifests [root] | env | adapt [root] | install <profile> | check <tentacle> [index] | installed".to_string()
 }
 
 fn parse_trace_index(value: &str) -> Result<u64, String> {
@@ -7171,9 +7209,9 @@ mod tests {
         inspect_tentacle_manifests_with_bundled_seed_overlay, install_report, is_broken_pipe_panic,
         localize_summary, materialize_bundled_tentacles_root, need_queue_line,
         parallel_run_status_line, parallel_worker_slot_line, parse_bridge_env_overlay,
-        parse_first_run_args, parse_start_check_addr, parse_start_options, percent_encode_path,
-        pet_report, pet_report_for_state, preflight_report, prepare_bridge_state,
-        product_field_pool_line, product_field_pool_missing_required_fields,
+        parse_first_run_args, parse_need_command_args, parse_start_check_addr, parse_start_options,
+        percent_encode_path, pet_report, pet_report_for_state, preflight_report,
+        prepare_bridge_state, product_field_pool_line, product_field_pool_missing_required_fields,
         product_field_pool_ready, product_report, provider_coverage_ready, provider_env_report,
         provider_matrix_targets, provider_status_report, real_machine_record_status_from_parts,
         render_field_trajectory_summary_line, repair_continue_report, repair_patch_apply_report,
@@ -7223,6 +7261,53 @@ mod tests {
         } else {
             std::env::remove_var(key);
         }
+    }
+
+    #[test]
+    fn need_command_parses_context_without_polluting_query() {
+        let need = parse_need_command_args(&[
+            "need".to_string(),
+            "verify".to_string(),
+            "--context".to_string(),
+            "field_pack=research".to_string(),
+            "--context".to_string(),
+            "field_mini_task=research-mini-4".to_string(),
+            "Run".to_string(),
+            "research".to_string(),
+            "mini".to_string(),
+            "task".to_string(),
+        ])
+        .unwrap();
+
+        assert_eq!(need.kind, NeedKind::Verify);
+        assert_eq!(need.query, "Run research mini task");
+        assert_eq!(
+            need.context.get("field_pack").map(String::as_str),
+            Some("research")
+        );
+        assert_eq!(
+            need.context.get("field_mini_task").map(String::as_str),
+            Some("research-mini-4")
+        );
+    }
+
+    #[test]
+    fn need_command_parses_inline_context_form() {
+        let need = parse_need_command_args(&[
+            "need".to_string(),
+            "execute".to_string(),
+            "--context=field_pack=code".to_string(),
+            "Format".to_string(),
+            "fixture".to_string(),
+        ])
+        .unwrap();
+
+        assert_eq!(need.kind, NeedKind::Execute);
+        assert_eq!(need.query, "Format fixture");
+        assert_eq!(
+            need.context.get("field_pack").map(String::as_str),
+            Some("code")
+        );
     }
 
     #[cfg(unix)]

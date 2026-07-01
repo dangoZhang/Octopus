@@ -4484,6 +4484,53 @@ mod tests {
     }
 
     #[test]
+    fn tool_result_json_flattens_evolving_metadata_shapes() {
+        let result = tool_result_from_json(
+            "run_field_mini_task",
+            r#"{
+              "status": "satisfied",
+              "summary": "ok",
+              "field_pass_evidence": ".octopus/field-mini-task/research/evidence.json",
+              "metadata": {
+                "verifier_status": "satisfied",
+                "evidence_requirements": ["README.md", "manifest.json"]
+              },
+              "evidence": [
+                {
+                  "source": "field-mini-task/research/checks",
+                  "metadata": {
+                    "field_pass_evidence": ".octopus/field-mini-task/research/evidence.json",
+                    "evidence_requirements": ["README.md", "manifest.json"]
+                  }
+                }
+              ]
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(result.status, Status::Satisfied);
+        assert_eq!(
+            result.metadata.get("verifier_status").map(String::as_str),
+            Some("satisfied")
+        );
+        assert_eq!(
+            result
+                .metadata
+                .get("field_pass_evidence")
+                .map(String::as_str),
+            Some(".octopus/field-mini-task/research/evidence.json")
+        );
+        assert_eq!(
+            result
+                .metadata
+                .get("evidence_requirements")
+                .map(String::as_str),
+            Some("[\"README.md\",\"manifest.json\"]")
+        );
+        assert_eq!(result.evidence[0].content, "");
+    }
+
+    #[test]
     fn manifest_tentacle_retries_invalid_llm_plan_once() {
         struct RetryChat {
             calls: usize,

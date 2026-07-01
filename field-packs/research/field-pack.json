@@ -35,6 +35,11 @@
       "id": "research-mini-3",
       "goal": "Build a three-claim evidence map for one Octopus architecture paragraph and label source-backed, inferred, and unverified parts.",
       "expected_feed": "Three claim rows with source coverage, inference labels, uncertainty notes, and no fabricated citation."
+    },
+    {
+      "id": "research-mini-4",
+      "goal": "Verify clean-brain context-policy evidence for the research domain by checking explicit Goal/Mem/Need/Feed separation and tentacle-side tool-and-verifier responsibility using local repository sources.",
+      "expected_feed": "Return a compact, artifact-backed summary that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata and writes verifier evidence to .octopus/field-mini-task/."
     }
   ]
 }

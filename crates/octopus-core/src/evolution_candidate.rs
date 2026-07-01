@@ -2,7 +2,10 @@ use crate::{
     evolution,
     evolution_patch::{clean_suggested_patch, diff_paths, patch_display_path},
     evolution_recommend::evolution_candidate_feedback_from_proposal,
-    evolution_target::{evolution_candidate_target_files, field_pack_evolution_target},
+    evolution_target::{
+        evolution_candidate_target_files, field_pack_evolution_target,
+        fields_mentioned_in_field_paths,
+    },
     push_unique_limited, EvolutionPatchCandidate, EvolutionPatchDraft, EvolutionSurface,
     TentacleEvolutionProposal,
 };
@@ -105,7 +108,7 @@ fn llm_candidate_to_evolution(
         .unwrap_or_else(|| PathBuf::from("tentacles").join(&proposal.tentacle_id));
     let suggested_patch = clean_suggested_patch(candidate.suggested_patch);
     if let Some(patch) = &suggested_patch {
-        validate_candidate_patch_contract(surface, patch)?;
+        validate_candidate_patch_contract(proposal, surface, patch)?;
     }
     let mut target_files =
         evolution_candidate_target_files(&manifest_dir, surface, &target, &proposal.objective);
@@ -138,6 +141,7 @@ fn llm_candidate_to_evolution(
 }
 
 fn validate_candidate_patch_contract(
+    proposal: &TentacleEvolutionProposal,
     surface: &EvolutionSurface,
     patch: &str,
 ) -> Result<(), String> {
@@ -155,6 +159,41 @@ fn validate_candidate_patch_contract(
             "field_pack_tasks patch violates field-pack schema: mini_tasks must remain an array of {id, goal, expected_feed} objects"
                 .to_string(),
         );
+    }
+    validate_field_pack_layer_patch(proposal, patch)?;
+    Ok(())
+}
+
+fn validate_field_pack_layer_patch(
+    proposal: &TentacleEvolutionProposal,
+    patch: &str,
+) -> Result<(), String> {
+    let objective = proposal.objective.to_ascii_lowercase();
+    if !(objective.contains("harder") && objective.contains("mini task layer")) {
+        return Ok(());
+    }
+    let fields = fields_mentioned_in_field_paths(&format!("{}\n{}", proposal.objective, patch));
+    if fields.is_empty() {
+        return Ok(());
+    }
+    let paths = diff_paths(patch);
+    for field in fields {
+        let field_pack = format!("field-packs/{field}/field-pack.json");
+        let template_prefix = format!(
+            "tentacles/{}/repair-templates/{field}/",
+            proposal.tentacle_id
+        );
+        let local_template_prefix = format!("repair-templates/{field}/");
+        let touches_pack = paths.iter().any(|path| path == &field_pack);
+        let touches_template = paths.iter().any(|path| {
+            path.ends_with(".pyfrag")
+                && (path.starts_with(&template_prefix) || path.starts_with(&local_template_prefix))
+        });
+        if !touches_pack || !touches_template {
+            return Err(format!(
+                "field_pack_tasks patch violates harder-layer contract for {field}: must patch {field_pack} and a matching repair template"
+            ));
+        }
     }
     Ok(())
 }
@@ -269,9 +308,34 @@ mod tests {
         }
     }
 
+    fn field_pack_proposal(objective: &str) -> TentacleEvolutionProposal {
+        TentacleEvolutionProposal {
+            tentacle_id: "field-mini-task".to_string(),
+            tentacle_name: "Field Mini Task".to_string(),
+            objective: objective.to_string(),
+            generator: "test".to_string(),
+            planner_summary: String::new(),
+            manifest_path: "tentacles/field-mini-task/manifest.json".to_string(),
+            brain_kind: "llm".to_string(),
+            current_brain_prompt: String::new(),
+            editable: Vec::new(),
+            surfaces: vec![field_pack_surface()],
+            requirements: Vec::new(),
+            checks: Vec::new(),
+            constraints: Vec::new(),
+            previous_outcomes: Vec::new(),
+            recent_feed_traces: Vec::new(),
+            recent_check_history: Vec::new(),
+            files: Vec::new(),
+            patch_candidates: Vec::new(),
+            next_steps: Vec::new(),
+        }
+    }
+
     #[test]
     fn field_pack_candidate_rejects_task_layers_shape() {
         let error = validate_candidate_patch_contract(
+            &field_pack_proposal("add a harder write mini task layer"),
             &field_pack_surface(),
             r#"diff --git a/field-packs/write/field-pack.json b/field-packs/write/field-pack.json
 @@ -1 +1 @@
@@ -286,6 +350,7 @@ mod tests {
     #[test]
     fn field_pack_candidate_rejects_mini_tasks_object_shape() {
         let error = validate_candidate_patch_contract(
+            &field_pack_proposal("add a harder write mini task layer"),
             &field_pack_surface(),
             r#"diff --git a/field-packs/write/field-pack.json b/field-packs/write/field-pack.json
 @@ -1 +1 @@
@@ -295,5 +360,52 @@ mod tests {
         .unwrap_err();
 
         assert!(error.contains("mini_tasks must remain an array"));
+    }
+
+    #[test]
+    fn field_pack_candidate_rejects_orphan_harder_layer_template() {
+        let error = validate_candidate_patch_contract(
+            &field_pack_proposal(
+                "add a harder research mini task layer; update field-packs/research",
+            ),
+            &field_pack_surface(),
+            r#"diff --git a/tentacles/field-mini-task/repair-templates/research/research-mini-4.pyfrag b/tentacles/field-mini-task/repair-templates/research/research-mini-4.pyfrag
+new file mode 100644
+--- /dev/null
++++ b/tentacles/field-mini-task/repair-templates/research/research-mini-4.pyfrag
+@@ -0,0 +1,2 @@
++if field == "research" and mini_task == "research-mini-4":
++    pass
+"#,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("harder-layer contract"));
+        assert!(error.contains("field-packs/research/field-pack.json"));
+    }
+
+    #[test]
+    fn field_pack_candidate_accepts_complete_harder_layer_pair() {
+        validate_candidate_patch_contract(
+            &field_pack_proposal(
+                "add a harder research mini task layer; update field-packs/research",
+            ),
+            &field_pack_surface(),
+            r#"diff --git a/field-packs/research/field-pack.json b/field-packs/research/field-pack.json
+--- a/field-packs/research/field-pack.json
++++ b/field-packs/research/field-pack.json
+@@ -1,2 +1,3 @@
+ {
++  "mini_tasks": [{"id":"research-mini-4","goal":"g","expected_feed":"f"}]
+diff --git a/tentacles/field-mini-task/repair-templates/research/research-mini-4.pyfrag b/tentacles/field-mini-task/repair-templates/research/research-mini-4.pyfrag
+new file mode 100644
+--- /dev/null
++++ b/tentacles/field-mini-task/repair-templates/research/research-mini-4.pyfrag
+@@ -0,0 +1,2 @@
++if field == "research" and mini_task == "research-mini-4":
++    pass
+"#,
+        )
+        .unwrap();
     }
 }

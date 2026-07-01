@@ -103,14 +103,15 @@ pub(crate) fn run_field_mini_task_feed_cycle(
             },
         )
     } else {
+        let (pet_state, status, summary) = fed_event_status(&auto_feed);
         record_stage_event(
             state_path,
             &mut next_state,
             EvolutionDriveStage::Fed,
-            "feed",
+            pet_state,
             &args.tentacle_id,
-            format!("fed {} queued Need(s)", auto_feed.ran),
-            Status::Satisfied,
+            summary,
+            status,
         )?;
         (
             EvolutionDriveStage::Fed,
@@ -128,4 +129,78 @@ pub(crate) fn run_field_mini_task_feed_cycle(
         field_summary,
         next,
     })
+}
+
+fn fed_event_status(auto_feed: &NeedRunBatchReport) -> (&'static str, Status, String) {
+    let statuses = auto_feed
+        .reports
+        .iter()
+        .map(|report| {
+            report
+                .verifier_result
+                .as_ref()
+                .map(|result| result.status.clone())
+                .unwrap_or_else(|| report.feed.status.clone())
+        })
+        .collect::<Vec<_>>();
+    fed_status_from_statuses(auto_feed.ran, &statuses)
+}
+
+fn fed_status_from_statuses(ran: usize, statuses: &[Status]) -> (&'static str, Status, String) {
+    if statuses
+        .iter()
+        .any(|status| matches!(status, Status::Failed | Status::Unsupported))
+    {
+        (
+            "blocked",
+            Status::Failed,
+            format!("fed {ran} queued Need(s); some failed"),
+        )
+    } else if statuses.iter().all(|status| *status == Status::Satisfied) {
+        (
+            "feed",
+            Status::Satisfied,
+            format!("fed {ran} queued Need(s)"),
+        )
+    } else {
+        (
+            "harness",
+            Status::Partial,
+            format!("fed {ran} queued Need(s); some partial"),
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fed_event_status_keeps_partial_visible() {
+        let (pet_state, status, summary) =
+            fed_status_from_statuses(2, &[Status::Satisfied, Status::Partial]);
+
+        assert_eq!(pet_state, "harness");
+        assert_eq!(status, Status::Partial);
+        assert!(summary.contains("some partial"));
+    }
+
+    #[test]
+    fn fed_event_status_blocks_failed_batches() {
+        let (pet_state, status, summary) = fed_status_from_statuses(1, &[Status::Failed]);
+
+        assert_eq!(pet_state, "blocked");
+        assert_eq!(status, Status::Failed);
+        assert!(summary.contains("some failed"));
+    }
+
+    #[test]
+    fn fed_event_status_marks_all_satisfied_as_feed() {
+        let (pet_state, status, summary) =
+            fed_status_from_statuses(2, &[Status::Satisfied, Status::Satisfied]);
+
+        assert_eq!(pet_state, "feed");
+        assert_eq!(status, Status::Satisfied);
+        assert_eq!(summary, "fed 2 queued Need(s)");
+    }
 }

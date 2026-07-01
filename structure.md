@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-07-01, after modular field-pack post-apply validation, desktop-pet error classification, and translate-mini-4 Need -> Feed verification.
+Updated: 2026-07-01, after research-mini-4 self-evolution, structured Need context parsing, Feed metadata flattening, and desktop-pet partial-state validation.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -133,14 +133,14 @@ Octopus/
 
 | Module | Role | Main files | Lines |
 | --- | --- | --- | ---: |
-| Stable kernel | Goal/Need/Feed contracts, state mutation, route scores, memory, Feed traces, and public kernel API | `crates/octopus-core/src/lib.rs` | 8,999 |
+| Stable kernel | Goal/Need/Feed contracts, state mutation, route scores, memory, Feed traces, and public kernel API | `crates/octopus-core/src/lib.rs` | 9,047 |
 | Clean brain loop boundary | Converts Goal/Mem/recent Feed into clean cognitive Needs and Goal refinement reports. This is the debug entry when Brain output leaks tool choreography or over-specific implementation steps. | `brain_loop.rs`, `BrainExploreReport`, `BrainGoalReport`, `BrainContextReport` | 1,082 |
 | Brain/Goal command surface | Owns user Goal editing, Brain command validation, Brain session/report dispatch, clean-brain Need audit rendering, and Goal text output. This is the debug entry when the user can change more than Goal, Brain modes leak into the product surface, or Goal/Need audit text is confusing. | `brain_goal_surface.rs`, `handle_goal_command`, `handle_brain_command`, `print_brain_*`, `print_goal` | 1,610 |
 | LLM provider boundary | Shared model request substrate for brain and tentacle intelligence: ChatClient contract, OpenAI-compatible config/body parsing, Codex CLI prompt-file execution, retries, timeout, and Plan JSON recovery. This is the debug entry when model calls, local model routing, or provider response parsing fail. | `llm_provider.rs`, `ChatClient`, `OpenAiCompatibleChatClient`, `CodexCliChatClient`, `ChatPlanner` | 704 |
 | LLM layer routing | Maps configured provider prefixes into chat, clean-brain, tentacle-planning, and harness-evolution clients. This is the debug entry when the provider works but one Octopus layer uses the wrong prefix or disabled layer. | `llm_layers.rs`, `BrainLlmPrefixOverride`, `manifest_llm_factory`, `clean_brain_*_llm_client` | 300 |
 | Provider surface boundary | User-facing provider profiles, `.octopus/llm.env` generation, secret-safe key save, provider check/status, provider matrix evidence, and client factory selection for brain, tentacle, and harness evolution layers. | `provider_surface.rs`, `ProviderProfile`, `ProviderStatusReport`, `ProviderMatrixReport`, `provider_client_factory` | 1,887 |
 | Manifest catalog boundary | Manifest/profile structs, registry loading, manifest inspection, missing-entrypoint checks, and conversion into installed tentacles. This is the debug entry when manifests install incorrectly or editable harness metadata is missing. | `manifest_catalog.rs`, `TentacleManifest`, `TentacleProfile`, `InstalledTentacle`, `TentacleManifestReport` | 373 |
-| Manifest tentacle runtime | Tool-side LLM planning, structured field mini-task selection, manifest tool authorization, command/http execution, `octopus-json-v1` parsing, and compact Feed assembly. This is the debug entry when a Need reaches a tentacle but no correct Action/Feed returns. | `manifest_runtime.rs`, `ManifestTentacle`, `TentacleThinkingPlan` | 1,090 |
+| Manifest tentacle runtime | Tool-side LLM planning, structured field mini-task selection, manifest tool authorization, command/http execution, `octopus-json-v1` parsing, tool-output metadata flattening, and compact Feed assembly. This is the debug entry when a Need reaches a tentacle but no correct Action/Feed returns. | `manifest_runtime.rs`, `ManifestTentacle`, `TentacleThinkingPlan` | 1,150 |
 | Need queue boundary | Owns queued Need creation, take/drop, queue status, and queue report separation between human Goal hints and agent commands. | `need_queue.rs`, `NeedQueueItem`, `NeedQueueReport` | 234 |
 | Need command surface | Owns `octopus needs`: queue display, run/take/drop output, executable queue script generation, and review-session artifacts. This is the debug entry when queue JSON is right but CLI/app/script/session output hides Need, Feed, field, or trace evidence. | `need_surface.rs`, `handle_needs_command`, `print_need_queue*`, `write_need_queue_*` | 663 |
 | Need runner boundary | Takes queued Needs into the real Feed path, writes the live Need event before Feed and Feed state after execution, attaches field mini-task context, records automatic verifier hints, and emits parallel worker action events. This is the debug entry when the pet shows a Need but no Feed follows. | `need_runner.rs`, `run_queued_need_with_observer_state`, `NeedRunReport`, `record_auto_field_verifier_from_feed` | 544 |
@@ -157,7 +157,7 @@ Octopus/
 | Evolution contract | Manifest-owned surface requirements, required-surface validation, candidate ID normalization, LLM retry guardrails without field-specific Rust branches | `evolution.rs`, `tentacles/*/manifest.json`, `tentacles/tentacle.schema.json` | 471 |
 | Evolution apply boundary | Authorized provider patch application, `git apply --check`, field-pack post-apply schema validation with automatic reverse on failure, reverse already-applied detection, summary helpers, safety tests, and live apply reports shared by CLI apply and autonomous drive | `evolution_apply.rs` | 453 |
 | Evolution artifact boundary | Writes proposal/apply markdown, json, and authorized patch artifacts under `.octopus/evolution/**`; keeps review artifacts separate from planner logic and apply authorization. | `evolution_artifact.rs` | 401 |
-| Evolution candidate boundary | Parses provider JSON, validates LLM candidate fields, targets, and field-pack schema shape, recovers target files from provider diffs, builds patch-draft metadata, and keeps planner-output errors separate from stable kernel state. Wrong `task_layers` or object-shaped `mini_tasks` candidates are rejected here so the LLM planner can retry. | `evolution_candidate.rs` | 299 |
+| Evolution candidate boundary | Parses provider JSON, validates LLM candidate fields, targets, field-pack schema shape, and harder-layer field-pack/template patch pairs, recovers target files from provider diffs, builds patch-draft metadata, and keeps planner-output errors separate from stable kernel state. Wrong `task_layers`, object-shaped `mini_tasks`, or orphan harder-layer templates are rejected here so the LLM planner can retry. | `evolution_candidate.rs` | 411 |
 | Evolution data contract | Public data shapes for evolution policy, surfaces, requirements, proposals, file targets, patch candidates, feedback, apply plans, artifacts, recommendations, and harness-beat reports. It owns serde defaults for manifest evolution surfaces and keeps contract shape separate from planner/apply execution. | `evolution_contract.rs` | 222 |
 | Observation contract | Shared pet-visible event contract for harness evolution: stage names, provider/apply/schema error classes, and structured event writes. This is the first code boundary when the desktop pet turns red but the failing phase is unclear. | `observation_contract.rs`, `PetEvent.stage`, `PetEvent.error_class` | 155 |
 | Evolution cycle compatibility | Thin compatibility layer for autonomous `evolve drive` stage/error writes; it delegates the actual observation contract to `observation_contract.rs`. | `evolution_cycle.rs` | 99 |
@@ -168,13 +168,13 @@ Octopus/
 | Evolution command surface | Owns `octopus evolve`: parallel worker start, drive dispatch, recommend/apply/score command flow, proposal/apply artifact loading, structured pet-event writes around evolution actions, and user/JSON output selection. This is the debug entry when self-evolution commands do not light the desktop pet or return misleading command output. | `evolution_surface.rs`, `handle_evolve_command`, `propose_evolution_for_cli`, `evolution_score_report` | 849 |
 | Evolution drive surface | CLI args, JSON report shape, and human-readable printing for `evolve drive` | `evolution_drive_surface.rs` | 116 |
 | Evolution driver | Autonomous harness loop for one cycle: stage events, planning, apply, manifest checks, and Feed delegation. It no longer owns CLI/report shape, patch execution, Feed execution, or retry objective shaping. | `evolution_driver.rs` | 318 |
-| Evolution Feed boundary | Field mini-task Feed execution, queued Need worker state, desktop pet launch, Feed event writes, and blocked reporting when no queued Need actually reaches Feed | `evolution_feed.rs` | 131 |
+| Evolution Feed boundary | Field mini-task Feed execution, queued Need worker state, desktop pet launch, Feed event writes, partial/failed batch status folding, and blocked reporting when no queued Need actually reaches Feed | `evolution_feed.rs` | 206 |
 | Evolution patch boundary | Normalizes provider patch text, strips apply-patch/markdown wrappers, splits embedded diff headers, inserts missing new-file headers, extracts diff paths, renders display paths, and filters authorized patch paths before artifact/apply code can write a patch file. | `evolution_patch.rs` | 340 |
 | Evolution target boundary | Resolves manifest editable targets, field-pack targets, repair-template wildcard scopes, candidate target files, and field-name scopes for patch/prompt/candidate modules. | `evolution_target.rs` | 318 |
 | Field curriculum boundary | Selects the next concrete field for a harder mini-task layer from real trajectory summaries. It prefers unfinished/least-layer fields and returns a field-specific objective and agent action. This is the debug entry when the field pool says every field is complete but app/desktop cannot name the next field. | `field_curriculum.rs`, `state_report.rs` | 123 |
-| Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, verifier-status normalization, pyfrag prevalidation, compile/execute template checks, evolved math-mini-5 verifier coverage, evolved swe-mini-4 before/after unit-test evidence, write-mini-4 artifact-backed Feed evidence, and translate-mini-4 artifact-backed translation evidence | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 7,256 |
+| Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, verifier-status normalization, pyfrag prevalidation, compile/execute template checks, evolved math-mini-5 verifier coverage, evolved swe-mini-4 before/after unit-test evidence, write-mini-4 and translate-mini-4 artifact-backed Feed evidence, and research-mini-4 clean-brain policy evidence | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 7,923 |
 | Field adaptation surface | Owns `octopus fields`: field-pack reports, field matching, field trajectory summaries, verifier score recording, pet-event append after verifier scoring, parallel field worker slots, field-pool latest activity, and user-visible field status lines. This is the debug entry when field state exists but the app/CLI explains the wrong active domain, score, worker slot, or verifier pet state. | `field_surface.rs`, `handle_fields_command`, `FieldMatchReport`, `print_field_trajectory_report`, `field_pool_status_line`, `parallel_run_status_line` | 558 |
-| CLI and product backend | Command dispatch, chat, starter/install/check flows, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; Need command logic lives in `need_surface.rs`; Evolution command logic lives in `evolution_surface.rs`; Route/Trace command logic lives in `route_surface.rs`; Feedback command logic lives in `feedback_surface.rs`; Field command logic lives in `field_surface.rs`; beat command logic lives in `heartbeat_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 20,118 |
+| CLI and product backend | Command dispatch, structured direct Need context parsing, chat, starter/install/check flows, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; Need command logic lives in `need_surface.rs`; Evolution command logic lives in `evolution_surface.rs`; Route/Trace command logic lives in `route_surface.rs`; Feedback command logic lives in `feedback_surface.rs`; Field command logic lives in `field_surface.rs`; beat command logic lives in `heartbeat_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 20,203 |
 | Provider env | Loads `.octopus/llm.env` for CLI commands with a scoped guard; existing shell variables win, and values are restored after command execution | `provider_env.rs`, `app_bridge.rs::parse_env_overlay` | 107 |
 | Local app bridge | Local HTTP/SSE server, `/api/config` state-path injection, app policy, command allow-list, embedded app/docs/showcase assets, read-only pet supervision access, field activity observer with fresh pet-event handling | `app_bridge.rs`, `docs/app.html` | 2,027 |
 | Release and install gates | Low-level release records, benchmark evidence, download/install manifest, and real-machine record parsing used by the preflight surface | `release_gate.rs`, `preflight_surface.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 2,312 |
@@ -183,7 +183,7 @@ Octopus/
 | Strategy diagnostics | Checks the three core traits and composes pet supervision: clean brain context, LLM tool-side tentacles, editable goal, field surface, observation-chain freshness, active work, native desktop process/state-path evidence, stage/error evidence, JSONL latest-event coverage, Feed/evolution evidence | `diagnostics.rs`, `strategy_surface.rs`, `pet_supervision.rs`, `octopus diagnose strategy --json`, `octopus pet supervise --json` | 1,086 |
 | Tentacle scaffold boundary | Generates user-owned code-as-harness tentacle manifests and optional python/node/shell seed tools. This is the debug entry when `octopus scaffold` creates an invalid manifest, missing executable, or wrong `octopus-json-v1` contract. | `tentacle_scaffold.rs`, `octopus scaffold` | 291 |
 | Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,085 |
-| Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, declared evolution requirements, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 19,111 |
+| Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, declared evolution requirements, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 22,158 |
 
 ## Core, Distinctive, Editable
 
@@ -208,8 +208,9 @@ These should remain stable and hard to accidentally mutate:
 - LLM layer routing rule: `llm_layers.rs` owns chat/brain/manifest/evolve prefix selection, enable flags, and client factories. Provider setup lives in `provider_surface.rs`; request execution lives in `llm_provider.rs`.
 - Provider surface rule: `provider_surface.rs` owns provider profiles, env-file generation, secret-safe key save, provider status/check/matrix reports, and client factory selection. CLI/app surfaces may present this data but should not duplicate provider setup logic.
 - Manifest catalog rule: `manifest_catalog.rs` owns manifest/profile structs, registry loading, manifest inspection, missing-entrypoint checks, and installed-tentacle conversion. Runtime/state modules consume installed data and should not parse manifest files directly.
-- Manifest runtime rule: `manifest_runtime.rs` owns tool-side LLM plan selection, permission grants, command/http execution, multi-action summaries, and `octopus-json-v1` Feed parsing. Brain/state/report modules must not run tools directly.
+- Manifest runtime rule: `manifest_runtime.rs` owns tool-side LLM plan selection, permission grants, command/http execution, multi-action summaries, and `octopus-json-v1` Feed parsing. Tool JSON may return evolving metadata shapes; this boundary flattens them into stable Feed metadata so verifier/pet/state code can stay small. Brain/state/report modules must not run tools directly.
 - Need queue rule: `need_queue.rs` owns queued Need state changes; queue reports must keep `next` user-facing and put executable commands in `agent_next`.
+- Direct Need rule: `octopus need <kind> [--context key=value] <query>` may carry structured debug/automation context. Context flags must never be appended to natural-language query text; product users still change Goal, while agent internals may pass structured Need context.
 - Need surface rule: `need_surface.rs` owns CLI/report/script/session surfaces for queued Needs. Queue mutation stays in `need_queue.rs`; Feed execution stays in `need_runner.rs`; tool execution stays in `manifest_runtime.rs`. It must not invent Feed or hide field/trace evidence.
 - Need runner rule: `need_runner.rs` owns the handoff from queued Need to Feed. It must save the Need pet event before `feed_one`, save the Feed state after `feed_one`, and keep field mini-task/parallel worker evidence attached to the Feed path.
 - Feedback surface rule: `feedback_surface.rs` owns CLI Feedback mutation and printing. It may record feedback on an existing Feed trace and append the resulting pet event, but it must not execute tools, synthesize Feed, or change route scoring outside `HarnessState::record_feed_feedback`.
@@ -235,7 +236,7 @@ These should remain stable and hard to accidentally mutate:
 - Evolution apply rule: provider patches are checked and applied only through `evolution_apply.rs`; CLI apply and autonomous drive share the same authorized patch execution path. Field-pack patches must parse after apply and are automatically reversed when schema validation fails.
 - Evolution artifact rule: local proposal/apply review files are rendered and written only through `evolution_artifact.rs`; artifact rendering must not perform planning or mutate harness code directly.
 - Evolution contract rule: policy/proposal/candidate/apply/recommendation/artifact structs live in `evolution_contract.rs`; this module has no provider calls, patch application, file mutation, or route scoring.
-- Evolution candidate rule: provider JSON parsing, LLM candidate validation, manifest-relative target parsing, provider-diff target recovery, and patch draft metadata live in `evolution_candidate.rs`; `lib.rs` only asks for a parsed plan.
+- Evolution candidate rule: provider JSON parsing, LLM candidate validation, harder-layer field-pack/template pair validation, manifest-relative target parsing, provider-diff target recovery, and patch draft metadata live in `evolution_candidate.rs`; `lib.rs` only asks for a parsed plan.
 - Evolution LLM planner rule: planner system prompt, retry note, provider chat call, and provider JSON parsing call live in `evolution_llm_plan.rs`; the core only asks for a plan.
 - Evolution planning rule: recommendation artifacts and apply-failure retry objectives live in `evolution_plan.rs`; driver only asks for the next plan.
 - Evolution prompt rule: LLM planner payload construction, trace/history compaction, target-file context selection, and prompt-budget env knobs live in `evolution_prompt.rs`; proposal/candidate protocol stays in `lib.rs`.
@@ -245,6 +246,7 @@ These should remain stable and hard to accidentally mutate:
 - Evolution command surface rule: `evolution_surface.rs` owns `octopus evolve` command handling, proposal/apply artifact loading, evolution score reports reused by repair scoring, and pet-event writes around recommend/apply/score/parallel actions. Driver logic stays in `evolution_driver.rs`; Feed execution stays in `evolution_feed.rs`; patch application stays in `evolution_apply.rs`.
 - Evolution drive surface rule: `evolve drive` CLI/report formatting lives in `evolution_drive_surface.rs`; stage execution stays in `evolution_driver.rs`.
 - Evolution driver rule: `evolve drive` uses `evolution_cycle.rs` for stage/error events. Apply-check failures are fed back to the LLM once for a regenerated current-file patch.
+- Evolution Feed rule: `evolution_feed.rs` folds verifier/Feed statuses across the actual batch. A batch with any partial verifier result must show `harness/partial`, not a fake `feed/satisfied` event.
 - Field surface rule: `field_surface.rs` owns field-adaptation command handling, display, matching reports, field-pool lines, verifier score recording, verifier result printing, and parallel field run rendering. It may append the verifier pet event created by `record_field_verifier_result`; it must not mutate harness code or bypass field-pack/manifest runtime execution.
 - Patch apply rule: provider-created new-file patches are normalized before `git apply`; missing `new file mode 100644` is inserted when a diff uses `--- /dev/null`.
 - Release gates: preflight, benchmark evidence, field-pool visibility, real-machine records, local app readiness.
@@ -267,12 +269,14 @@ Use this before changing UI or harness code:
 | Pet red/blocked with `field_pack_schema_failed` | `stage=applying`, `error_class=field_pack_schema_failed`, then inspect the patch artifact | A field-pack patch applied cleanly as text but broke the editable JSON contract; the apply boundary should reverse it before checks run | `evolution_apply.rs`, affected `field-packs/<field>/field-pack.json`, affected repair template |
 | Pet red/blocked during checking | `stage=checking`, `error_class=check_failed` | Harness patch applied but its declared check failed | tentacle check policy or editable harness code |
 | Pet red/blocked during feeding | `stage=feeding`, `error_class=feed_missing_queued_need` | No queued Need actually reached Feed; the system must not report fake success | `evolution_feed.rs` queued-Need boundary |
+| Pet shows `harness/partial` after a Feed | `last_event.state=harness`, `status=partial`, then compare latest verifier result | A real Feed ran, but verifier still found partial evidence. The pet is observing the unresolved harness result, not controlling it. | `evolution_feed.rs` status fold; then `need_runner.rs` verifier and affected repair template |
 | Pet shows Need but no Feed follows | inspect `NeedRunReport`, latest pet event, and `.octopus/state.json` around the queue item | Queued Need was taken but did not reach `feed_one`, or observer state was not saved after Feed | `need_runner.rs`, affected manifest runtime |
 | User can change too many things, or Brain/Goal text is confusing | `octopus goal --json`, `octopus brain --session --json`, then compare printed output | Goal/Brain surface leaked internal modes into the user path, or audit text hid polluted Needs | `brain_goal_surface.rs`; Need generation stays in `brain_loop.rs` |
 | Brain suggests tool steps instead of Needs | inspect `brain/context` report and Need audit | Clean-brain loop leaked implementation details into Need | `brain_loop.rs` |
 | LLM call hangs or returns empty/invalid content | inspect provider env and provider response error | Request timeout, retry, response extraction, or JSON recovery failed | `llm_provider.rs`, `provider_env.rs` |
 | Provider appears configured but brain/tentacle/evolution layer does not use it | `octopus provider status --json`, `octopus provider check <PREFIX>`, provider matrix record | Profile/env/status or layer prefix selection is wrong | `provider_surface.rs`, `llm_layers.rs`, `.octopus/llm.env`, `.octopus/providers/*.env` |
 | Tentacle thinks but no action or wrong Feed returns | `octopus think ... --json`, Feed metadata `plan_source`, `tools`, `contract`, `authorization_required` | Need reached a local tool brain, but planning, authorization, execution, or Feed parsing failed | `manifest_runtime.rs`, affected `tentacles/*/manifest.json`, affected tool code |
+| Direct `octopus need` routes to the wrong field | Inspect returned `need.context` and ensure `--context key=value` did not land in `need.query` | Structured Need context was missing or parsed as text, so field matching guessed from prose | `main.rs::parse_need_command_args`, then `field_pack.rs` matcher |
 | Manifest install or inspect reports wrong metadata | `octopus manifests <root> --json`, missing entrypoints, installed tentacle metadata | Manifest/profile loading, report derivation, or installed conversion is wrong | `manifest_catalog.rs`, affected `tentacles/*/manifest.json` |
 | Queued Need cannot be run/taken/dropped | inspect `needs --json` and item status | Queue mutation or user/agent next split is wrong | `need_queue.rs` |
 | Need queue text/script/session is wrong | compare `octopus needs --json`, `octopus needs script --json`, `octopus needs session --json`, and generated files | Queue data exists, but the command surface hid evidence or generated the wrong observer artifact | `need_surface.rs`; mutation stays in `need_queue.rs`, execution stays in `need_runner.rs` |
@@ -421,14 +425,14 @@ field-packs/
 
 | File | Lines |
 | --- | ---: |
-| `main.rs` | 20,067 |
-| `lib.rs` | 8,999 |
+| `main.rs` | 20,203 |
+| `lib.rs` | 9,047 |
 | `repair_surface.rs` | 6,670 |
 | `provider_surface.rs` | 1,887 |
 | `brain_goal_surface.rs` | 1,610 |
 | `app_bridge.rs` | 1,167 |
 | `preflight_surface.rs` | 1,101 |
-| `manifest_runtime.rs` | 1,090 |
+| `manifest_runtime.rs` | 1,150 |
 | `brain_loop.rs` | 1,082 |
 | `field_pack.rs` | 868 |
 | `evolution_surface.rs` | 849 |
@@ -441,7 +445,7 @@ field-packs/
 | `need_surface.rs` | 663 |
 | `field_surface.rs` | 558 |
 | `need_runner.rs` | 544 |
-| `bundled_harness.rs` | 427 |
+| `bundled_harness.rs` | 431 |
 | `evolution_artifact.rs` | 401 |
 | `desktop_pet.rs` | 377 |
 | `manifest_catalog.rs` | 373 |
@@ -453,7 +457,7 @@ field-packs/
 | `evolution_target.rs` | 318 |
 | `doctor_surface.rs` | 302 |
 | `llm_layers.rs` | 300 |
-| `evolution_candidate.rs` | 299 |
+| `evolution_candidate.rs` | 411 |
 | `tentacle_scaffold.rs` | 291 |
 | `evolution_apply.rs` | 453 |
 | `pet.rs` | 280 |
@@ -465,7 +469,7 @@ field-packs/
 | `route_surface.rs` | 205 |
 | `download.rs` | 175 |
 | `observation_contract.rs` | 155 |
-| `evolution_feed.rs` | 131 |
+| `evolution_feed.rs` | 206 |
 | `field_curriculum.rs` | 123 |
 | `user_surface.rs` | 123 |
 | `pet_events.rs` | 118 |
@@ -488,7 +492,7 @@ field-packs/
 | `repo-maintainer` | 8 | 719 |
 | `computer-use-agent` | 10 | 644 |
 | `profile-registry` | 1 | 600 |
-| `field-mini-task` | 72 | 5,666 |
+| `field-mini-task` | 97 | 7,300 |
 | `swe-agent` | 6 | 217 |
 | `json-feed` | 2 | 162 |
 | `bash-only` | 2 | 77 |
@@ -508,8 +512,8 @@ field-packs/
 - Construction verification: `OCTOPUS_LLM_TIMEOUT=1 OCTOPUS_LLM_RETRIES=0 octopus --json evolve recommend field-mini-task ...` now records `blocked`, `stage=planning`, `error_class=provider_timeout`; `octopus pet supervise --json` reports `last_stage=pass`, `error_category=pass`, `desktop_process=pass`, `runtime_state=warn`, and `active_work=warn` so a fresh visible failure is not counted as active work.
 - Pet URL chain verification: `pet auto` must not combine a non-pending queued Need, stale Feed trace, and fresh blocked event. The current rule only shows pending Need text, or a Need/Feed pair from the same latest Feed trace, or text from the fresh event itself.
 - Field evolution proof point: SWE evolved to `swe-mini-4` through real `evolve drive`, exposed syntax and patch-context failures, fed those failures back into `evolve score`, added patch-wrapper normalization, line-numbered retry context, pyfrag runtime prevalidation, and finally passed Need -> Feed with trace #97 and `before_rc=1 after_rc=0`.
-- Field evolution proof points: write evolved to `write-mini-4` through concrete curriculum selection and passed Need -> Feed with trace #99; translate evolved to `translate-mini-4`, first broke field-pack JSON visibly, then passed Need -> Feed with trace #100, `verifier_status=satisfied`, and artifact-backed evidence under `.octopus/field-mini-task/translate/`.
+- Field evolution proof points: write evolved to `write-mini-4` through concrete curriculum selection and passed Need -> Feed with trace #99; translate evolved to `translate-mini-4`, first broke field-pack JSON visibly, then passed Need -> Feed with trace #100, `verifier_status=satisfied`, and artifact-backed evidence under `.octopus/field-mini-task/translate/`; research evolved to `research-mini-4`, exposed orphan-template, invalid JSON, stale patch-context, partial Feed, and missing metadata propagation failures, then passed structured Need -> Feed with trace #104 and evidence under `.octopus/field-mini-task/research/research-mini-4/`.
 - Cleanup audit after the evolution-boundary commits moved prompt, candidate, artifact, patch, target, contract, recommendation, LLM planner, scaffold, clean-brain loop, Need queue, Need runner, Feedback surface, heartbeat surface, route surface, state-report, status surface, field surface, LLM provider, LLM layer routing, manifest catalog, manifest runtime, provider surface, preflight surface, doctor surface, and strategy surface responsibilities out of the largest files. Remaining discomfort: `main.rs` is still product-backend aggregation, and `lib.rs` still owns broad state mutation.
 - Evolution surface requirements now belong to manifests. Rust validates declared missing surfaces and must not grow domain-specific trigger rules.
-- Current field-mini-task template coverage is 37/37 satisfied after translate-mini-4. The apply path normalizes LLM patch file headers, strips patch wrappers before `git apply`, rejects field-pack schema-shape mistakes before apply, runs an apply precheck first, reverses post-apply invalid field-pack JSON, and field-mini-task normalizes common LLM template result shapes into `octopus-json-v1` Feed. The next concrete curriculum field is `research`.
+- Current field-mini-task template coverage is 38/38 satisfied after research-mini-4. The apply path normalizes LLM patch file headers, strips patch wrappers before `git apply`, rejects field-pack schema-shape and orphan harder-layer mistakes before apply, runs an apply precheck first, reverses post-apply invalid field-pack JSON, and field-mini-task normalizes common LLM template result shapes into `octopus-json-v1` Feed. The next concrete curriculum field is `computer-use`.
 - The release showcase is screenshot-first. The local app surface in `docs/app.html` observes and updates the real local Octopus loop.
