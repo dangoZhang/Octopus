@@ -1,0 +1,191 @@
+if field == "swe" and mini_task == "swe-mini-6":
+    import csv
+    import difflib
+    import json
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    field_pack_name = "swe"
+    mini_task_name = "swe-mini-6"
+    expected_feed_text = globals().get(
+        "field_expected_feed",
+        "Return a compact, artifact-backed summary for swe-mini-6.",
+    )
+
+    session_root = Path(session)
+    scratch = session_root / "scratch-swe-invoice-validator"
+    artifact_root = (
+        session_root / ".octopus" / "field-mini-task" / field_pack_name / mini_task_name
+    )
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    evidence_path = artifact_root / "evidence.json"
+
+    parser_file = scratch / "invoice_parser.py"
+    tests_file = scratch / "test_invoice_parser.py"
+    data_file = scratch / "invoices.csv"
+
+    before_source = '''from pathlib import Path
+
+
+def parse_invoices(path):
+    rows = []
+    for row in Path(path).read_text(encoding="utf-8").splitlines():
+        if not row or row.startswith("id,"):
+            continue
+        order_id, item, qty = row.split(",")
+        rows.append(
+            {
+                "id": order_id.strip(),
+                "item": item.strip(),
+                "qty": int(qty),
+            }
+        )
+    return rows
+'''
+
+    after_source = '''from pathlib import Path
+import csv
+
+
+def parse_invoices(path):
+    rows = []
+    with Path(path).open("r", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            qty = int(row["qty"])
+            if qty < 0:
+                raise ValueError("qty must be non-negative")
+            rows.append(
+                {
+                    "id": row["id"].strip(),
+                    "item": row["item"].strip(),
+                    "qty": qty,
+                }
+            )
+    return rows
+'''
+
+    tests_source = r'''import unittest
+from invoice_parser import parse_invoices
+
+
+class InvoiceParserTest(unittest.TestCase):
+    def setUp(self):
+        with open("invoices.csv", "w", encoding="utf-8") as f:
+            f.write("id,item,qty\n")
+            f.write("A1,\"wrench, metric\",2\n")
+            f.write("B2,bearing,1\n")
+
+    def test_parses_quoted_item(self):
+        rows = parse_invoices("invoices.csv")
+        self.assertEqual(rows[0]["item"], "wrench, metric")
+        self.assertEqual(rows[0]["qty"], 2)
+
+    def test_rejects_negative_qty(self):
+        with open("invoices.csv", "w", encoding="utf-8") as f:
+            f.write("id,item,qty\n")
+            f.write("A1,bad,-2\n")
+        with self.assertRaises(ValueError):
+            parse_invoices("invoices.csv")
+
+
+if __name__ == "__main__":
+    unittest.main()
+'''
+
+    gap = []
+
+    try:
+        if scratch.exists():
+            shutil.rmtree(scratch)
+        scratch.mkdir(parents=True, exist_ok=True)
+
+        parser_file.write_text(before_source, encoding="utf-8")
+        tests_file.write_text(tests_source, encoding="utf-8")
+        data_file.write_text(
+            'id,item,qty\nA1,"wrench, metric",2\nB2,bearing,1\n',
+            encoding="utf-8",
+        )
+
+        before_run = subprocess.run(
+            [sys.executable, "-B", "-m", "unittest", "-q", "test_invoice_parser.py"],
+            cwd=str(scratch),
+            text=True,
+            capture_output=True,
+        )
+
+        parser_file.write_text(after_source, encoding="utf-8")
+
+        after_run = subprocess.run(
+            [sys.executable, "-B", "-m", "unittest", "-q", "test_invoice_parser.py"],
+            cwd=str(scratch),
+            text=True,
+            capture_output=True,
+        )
+
+        before_ok = before_run.returncode == 0
+        after_ok = after_run.returncode == 0
+
+        evidence = {
+            "field_pack": field_pack_name,
+            "field_mini_task": mini_task_name,
+            "expected_feed": expected_feed_text,
+            "before_run": {
+                "returncode": before_run.returncode,
+                "stdout": before_run.stdout,
+                "stderr": before_run.stderr,
+            },
+            "after_run": {
+                "returncode": after_run.returncode,
+                "stdout": after_run.stdout,
+                "stderr": after_run.stderr,
+            },
+            "diff": list(
+                difflib.unified_diff(
+                    before_source.splitlines(),
+                    after_source.splitlines(),
+                    fromfile="before_invoice_parser.py",
+                    tofile="after_invoice_parser.py",
+                    lineterm="",
+                )
+            ),
+        }
+
+        evidence_path.write_text(json.dumps(evidence, indent=2), encoding="utf-8")
+
+        status = "satisfied" if (not before_ok and after_ok) else "partial"
+
+        if before_ok:
+            gap.append("pre-fix regression was not demonstrated")
+        if not after_ok:
+            gap.append("repaired implementation still fails required tests")
+        if not evidence_path.exists():
+            gap.append("artifact evidence file was not written")
+
+    except Exception as exc:
+        status = "partial"
+        gap.append(f"template execution error: {exc}")
+        evidence_path.write_text(
+            json.dumps(
+                {
+                    "field_pack": field_pack_name,
+                    "field_mini_task": mini_task_name,
+                    "error": str(exc),
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+    field_result = {
+        "status": status,
+        "field_pack": field_pack_name,
+        "field_mini_task": mini_task_name,
+        "field_expected_feed": expected_feed_text,
+        "changed_paths": ["invoice_parser.py", "test_invoice_parser.py"],
+        "field_pass_evidence": str(evidence_path) if status == "satisfied" else None,
+        "artifacts": [str(evidence_path)],
+        "gap": gap if status == "partial" else None,
+        "verifier_status": status,
+    }

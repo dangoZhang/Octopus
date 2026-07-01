@@ -22,6 +22,11 @@
   "trajectory_labels": ["issue", "repro", "root_cause", "patch", "tests", "feed"],
   "mini_tasks": [
     {
+      "id": "swe-mini-6",
+      "goal": "Harden SWE mini-tasking with a harder invoice data regression that requires quoted CSV parsing, negative quantity rejection, and evidence-backed before/after verification.",
+      "expected_feed": "Return a compact, artifact-backed summary for swe-mini-6. Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata. Prove pre-fix tests fail and repaired tests pass, with `.octopus/field-mini-task/swe/swe-mini-6/evidence.json` included."
+    },
+    {
       "id": "swe-mini-5",
       "goal": "Harden SWE mini-tasking with multi-file regression and API-contract preservation.",
       "expected_feed": "Return a compact, artifact-backed summary for swe-mini-5 that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata. Write verifier evidence under .octopus/field-mini-task/swe/swe-mini-5/ with before-vs-after test outputs, deterministic diffs, explicit verifier_status, and explicit gap metadata when evidence is missing."
