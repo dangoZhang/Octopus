@@ -518,7 +518,8 @@ fn preflight_field_pack_patch(
     };
     let result = (|| {
         let _ = fs::remove_dir_all(&temp_dir);
-        copy_patch_inputs_to_temp(cwd, &temp_dir, changed_paths)?;
+        let input_paths = dry_run_input_paths(changed_paths, &targets);
+        copy_patch_inputs_to_temp(cwd, &temp_dir, &input_paths)?;
         init_dry_run_git_repo(&temp_dir)?;
         let output = Command::new("git")
             .arg("apply")
@@ -540,6 +541,16 @@ fn preflight_field_pack_patch(
     })();
     let _ = fs::remove_dir_all(&temp_dir);
     result
+}
+
+fn dry_run_input_paths(changed_paths: &[String], field_pack_targets: &[String]) -> Vec<String> {
+    let mut paths = changed_paths.to_vec();
+    for target in field_pack_targets {
+        if !paths.iter().any(|path| path == target) {
+            paths.push(target.clone());
+        }
+    }
+    paths
 }
 
 fn init_dry_run_git_repo(temp_dir: &Path) -> Result<(), String> {
@@ -906,6 +917,53 @@ mod tests {
         );
         assert_eq!(fs::read_to_string(&pack_path).unwrap(), original);
         assert!(!template_path.exists());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn apply_allows_template_only_repair_when_field_pack_task_exists() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolution-apply-template-only-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("field-packs/search")).unwrap();
+        fs::create_dir_all(dir.join("tentacles/field-mini-task/repair-templates/search")).unwrap();
+        run_git(&dir, &["init"]);
+        fs::write(
+            dir.join("field-packs/search/field-pack.json"),
+            "{\n  \"id\": \"search\",\n  \"mini_tasks\": [\n    {\n      \"id\": \"search-mini-7\",\n      \"goal\": \"g\",\n      \"expected_feed\": \"f\"\n    }\n  ]\n}\n",
+        )
+        .unwrap();
+        let template_path =
+            dir.join("tentacles/field-mini-task/repair-templates/search/search-mini-7.pyfrag");
+        fs::write(&template_path, "evidence.update({})\n").unwrap();
+        let patch_path = dir.join("candidate.patch");
+        fs::write(
+            &patch_path,
+            "diff --git a/tentacles/field-mini-task/repair-templates/search/search-mini-7.pyfrag b/tentacles/field-mini-task/repair-templates/search/search-mini-7.pyfrag\n--- a/tentacles/field-mini-task/repair-templates/search/search-mini-7.pyfrag\n+++ b/tentacles/field-mini-task/repair-templates/search/search-mini-7.pyfrag\n@@ -1,1 +1,2 @@\n+evidence = {}\n evidence.update({})\n",
+        )
+        .unwrap();
+        let mut plan = test_plan();
+        plan.candidate_id = "04-field-pack-tasks".to_string();
+        plan.target =
+            "tentacles/field-mini-task/repair-templates/search/search-mini-7.pyfrag".to_string();
+        plan.target_files = vec![
+            "field-packs/search/field-pack.json".to_string(),
+            "tentacles/field-mini-task/repair-templates/search/search-mini-7.pyfrag".to_string(),
+        ];
+        plan.suggested_patch = Some(fs::read_to_string(&patch_path).unwrap());
+        let artifact = test_artifact(Some(patch_path.to_str().unwrap()));
+
+        let report = apply_authorized_suggested_patch(&dir, &plan, &artifact);
+
+        assert!(report.applied, "{report:?}");
+        assert_eq!(report.status, "applied");
+        assert_eq!(
+            fs::read_to_string(template_path).unwrap(),
+            "evidence = {}\nevidence.update({})\n"
+        );
 
         let _ = fs::remove_dir_all(dir);
     }
