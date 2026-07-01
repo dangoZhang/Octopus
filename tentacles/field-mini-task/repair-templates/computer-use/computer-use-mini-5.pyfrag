@@ -1,0 +1,177 @@
+if field == 'computer-use' and mini_task == 'computer-use-mini-5':
+    import json
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    root_dir = Path(root)
+    now = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    evidence_dir = (
+        root_dir
+        / '.octopus'
+        / 'field-mini-task'
+        / 'computer-use'
+        / 'computer-use-mini-5'
+        / now
+    )
+    evidence_path = evidence_dir / 'evidence.json'
+
+    field_pack_path = root_dir / 'field-packs' / 'computer-use' / 'field-pack.json'
+    adapter_dir = root_dir / 'tentacles' / 'computer-use-agent'
+    adapter_manifest_path = adapter_dir / 'manifest.json'
+    adapter_tool_dir = adapter_dir / 'tools'
+
+    inspected_files = []
+    read_texts = []
+
+    def local_rel(path: Path) -> str:
+        try:
+            return str(path.relative_to(root_dir))
+        except Exception:
+            return str(path)
+
+    def add_inspection(path: Path, label: str) -> str:
+        if not path.exists():
+            inspected_files.append({'label': label, 'path': local_rel(path), 'exists': False})
+            return ''
+        inspected_files.append({'label': label, 'path': local_rel(path), 'exists': True})
+        try:
+            text = path.read_text(encoding='utf-8', errors='replace')
+            inspected_files[-1]['readable'] = True
+            inspected_files[-1]['size'] = len(text)
+            read_texts.append(text.lower())
+            return text
+        except Exception as exc:
+            inspected_files[-1]['readable'] = False
+            inspected_files[-1]['error'] = str(exc)
+            return ''
+
+    pack_data = None
+    pack_parsed = False
+    task_entry = None
+    if field_pack_path.exists():
+        try:
+            pack_text = add_inspection(field_pack_path, 'field_pack')
+            pack_data = json.loads(pack_text)
+            pack_parsed = isinstance(pack_data, dict)
+            if pack_parsed and isinstance(pack_data.get('mini_tasks'), list):
+                task_entry = next(
+                    (
+                        item for item in pack_data['mini_tasks']
+                        if isinstance(item, dict) and item.get('id') == mini_task
+                    ),
+                    None,
+                )
+        except Exception:
+            pack_parsed = False
+    else:
+        inspected_files.append({'label': 'field_pack', 'path': local_rel(field_pack_path), 'exists': False})
+
+    add_inspection(adapter_manifest_path, 'adapter_manifest')
+    if adapter_tool_dir.exists() and adapter_tool_dir.is_dir():
+        for path in sorted(adapter_tool_dir.iterdir()):
+            if path.is_file() and path.suffix in {'.py', '.sh', '.js', '.ts'}:
+                add_inspection(path, 'adapter_tool_file')
+    else:
+        for candidate in ('__init__.py', 'client.py', 'tool.py', 'runner.py', 'adapter.py'):
+            add_inspection(adapter_dir / candidate, 'adapter_tool_file')
+
+    combined_text = '\n'.join(read_texts)
+
+    checks = {
+        'field_pack_exists': field_pack_path.exists(),
+        'field_pack_parsed': pack_parsed,
+        'task_registered_in_pack': task_entry is not None,
+        'adapter_dir_exists': adapter_dir.exists() and adapter_dir.is_dir(),
+        'adapter_manifest_present': adapter_manifest_path.exists(),
+        'tool_files_seen': len([
+            x
+            for x in inspected_files
+            if x.get('label') in {'adapter_tool_py', 'adapter_tool_file'} and x.get('exists', False)
+        ]) > 0,
+        'mcp_readiness_keyword': ('mcp' in combined_text or 'model context protocol' in combined_text),
+        'browser_readiness_keyword': (
+            'browser' in combined_text
+            or 'screenshot' in combined_text
+            or 'webdriver' in combined_text
+            or 'playwright' in combined_text
+        ),
+        'clipboard_readiness_keyword': (
+            'clipboard' in combined_text
+            or 'copy' in combined_text
+            or 'paste' in combined_text
+        ),
+        'bash_readiness_keyword': ('bash' in combined_text or 'shell' in combined_text or 'subprocess' in combined_text),
+    }
+
+    required_checks = [
+        'field_pack_exists',
+        'field_pack_parsed',
+        'task_registered_in_pack',
+        'adapter_manifest_present',
+        'tool_files_seen',
+    ]
+    missing_required = [name for name in required_checks if not checks[name]]
+    readiness_keys = [
+        'mcp_readiness_keyword',
+        'browser_readiness_keyword',
+        'clipboard_readiness_keyword',
+        'bash_readiness_keyword',
+    ]
+    missing_readiness = [name for name in readiness_keys if not checks[name]]
+
+    verifier_status = 'satisfied'
+    if missing_required or missing_readiness:
+        verifier_status = 'partial'
+
+    gaps = []
+    if missing_required:
+        gaps.append({'kind': 'missing_required_evidence', 'items': missing_required})
+    if missing_readiness:
+        gaps.append({'kind': 'missing_readiness_markers', 'items': missing_readiness})
+
+    evidence = {
+        'field': field,
+        'mini_task': mini_task,
+        'timestamp': now,
+        'checks': checks,
+        'gaps': gaps,
+        'evidence_root': local_rel(evidence_dir),
+        'field_pack': {
+            'path': local_rel(field_pack_path),
+            'found': checks['field_pack_exists'],
+            'parsed': checks['field_pack_parsed'],
+            'entry': task_entry if isinstance(task_entry, dict) else None,
+        },
+        'adapter': {
+            'path': local_rel(adapter_dir),
+            'manifest_path': local_rel(adapter_manifest_path),
+            'manifest_exists': checks['adapter_manifest_present'],
+            'inspected_files': inspected_files,
+            'keywords': {
+                'mcp': checks['mcp_readiness_keyword'],
+                'browser': checks['browser_readiness_keyword'],
+                'clipboard': checks['clipboard_readiness_keyword'],
+                'bash': checks['bash_readiness_keyword'],
+            },
+        },
+        'metadata': {
+            'goal_in_pack': task_entry.get('goal') if isinstance(task_entry, dict) else None,
+            'expected_feed_in_pack': task_entry.get('expected_feed') if isinstance(task_entry, dict) else None,
+            'needle_pack_expected_feed': expected_feed,
+        },
+    }
+
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    evidence_path.write_text(json.dumps(evidence, indent=2, ensure_ascii=True), encoding='utf-8')
+
+    field_result = {
+        'status': verifier_status,
+        'field_pack': field,
+        'field_mini_task': mini_task,
+        'field_expected_feed': expected_feed,
+        'verifier_status': verifier_status,
+        'field_pass_evidence': str(evidence_path),
+        'checks': checks,
+        'gaps': gaps,
+        'summary': 'Local computer-use adapter readiness check completed with artifact evidence.',
+    }

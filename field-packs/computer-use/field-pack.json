@@ -22,6 +22,11 @@
   "trajectory_labels": ["screen", "target", "action", "observation", "verification", "feed"],
   "mini_tasks": [
     {
+      "id": "computer-use-mini-5",
+      "goal": "Verify local computer-use adapter readiness for MCP, browser, and clipboard tool support before action.",
+      "expected_feed": "Return a compact, artifact-backed summary for computer-use-mini-5 that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata; inspect local computer-use manifest and tool files, verify MCP/browser/clipboard/bash readiness evidence, include explicit gap metadata when evidence is missing, and report verifier_status."
+    },
+    {
       "id": "computer-use-mini-1",
       "goal": "Open the local Octopus demo page and verify the title is visible.",
       "expected_feed": "Observed URL, visible title, and verification status."
