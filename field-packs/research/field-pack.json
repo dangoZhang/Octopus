@@ -22,6 +22,11 @@
   "trajectory_labels": ["claim", "sources", "evidence", "synthesis", "limits", "feed"],
   "mini_tasks": [
     {
+      "id": "research-mini-6",
+      "goal": "Verify repository evidence and trajectory artifacts for a harder research layer: enforce clean-brain boundary constraints in policy, cross-check source-backed claims across docs and field-pack metadata, and require artifact-backed feed output metadata.",
+      "expected_feed": "Return a compact, artifact-backed research synthesis for research-mini-6. Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata. Require evidence from at least five local sources with stable IDs, source-date checks, explicit uncertainty notes, and `.octopus/field-mini-task/` artifact-backed Feed evidence."
+    },
+    {
       "id": "research-mini-5",
       "goal": "Cross-validate octopus architecture claims across multiple local sources with explicit date checks, claim mapping, and explicit gap reporting.",
       "expected_feed": "Return a compact, artifact-backed research synthesis for research-mini-5 that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata; validate at least three local source dates, map each claim to local evidence, and return partial with explicit gap metadata when evidence is missing."

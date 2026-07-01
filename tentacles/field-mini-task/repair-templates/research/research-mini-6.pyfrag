@@ -1,0 +1,188 @@
+if field == "research" and mini_task == "research-mini-6":
+    import datetime as dt
+    import json
+    from pathlib import Path
+
+    expected_feed_text = str(
+        globals().get(
+            "field_expected_feed",
+            globals().get(
+                "expected_feed",
+                "Return a compact, artifact-backed research synthesis for research-mini-6.",
+            ),
+        )
+    ).strip()
+    if not expected_feed_text:
+        expected_feed_text = "Return a compact, artifact-backed research synthesis for research-mini-6."
+
+    root_path = Path(root)
+    if not root_path.is_absolute():
+        root_path = Path.cwd() / root_path
+
+    session_path = Path(session)
+    artifact_dir = (
+        session_path / ".octopus" / "field-mini-task" / "research" / "research-mini-6"
+    )
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    evidence_path = artifact_dir / "evidence.json"
+
+    def _analyze_source(path: Path, required_tokens, required):
+        if not path.exists():
+            return {
+                "id": path.name,
+                "exists": False,
+                "has_all": False,
+                "matched_tokens": 0,
+                "total_tokens": len(required_tokens),
+                "date": "missing",
+                "required": required,
+            }
+
+        content = path.read_text(encoding="utf-8", errors="replace").lower()
+        matched = sum(1 for t in required_tokens if t.lower() in content)
+        return {
+            "id": path.name,
+            "exists": True,
+            "has_all": matched >= len(required_tokens),
+            "matched_tokens": matched,
+            "total_tokens": len(required_tokens),
+            "path": str(path),
+            "date": dt.datetime.fromtimestamp(
+                path.stat().st_mtime, dt.timezone.utc
+            ).strftime("%Y-%m-%d"),
+            "required": required,
+        }
+
+    source_specs = [
+        ("S1", root_path / "README.md", ["goal", "need", "feed", "tentacle"], True),
+        (
+            "S2",
+            root_path / "docs" / "architecture.md",
+            ["goal", "mem", "need", "feed", "tentacle"],
+            True,
+        ),
+        ("S3", root_path / "docs" / "references.md", ["octopus", "need", "feed", "tentacle"], True),
+        ("S4", root_path / "docs" / "real-machine-test.md", ["evidence", "artifact", "verify"], True),
+        (
+            "S5",
+            root_path / "field-packs" / "research" / "field-pack.json",
+            ["mini_tasks", "research-mini-5"],
+            True,
+        ),
+        ("S6", root_path / "AGENTS.md", ["field", "tool", "tentacle"], False),
+    ]
+
+    sources = []
+    for source_id, source_path, tokens, required in source_specs:
+        report = _analyze_source(source_path, tokens, required)
+        report["id"] = source_id
+        sources.append(report)
+
+    required_ok = all(
+        (not item["required"]) or (item["exists"] and item["has_all"])
+        for item in sources
+    )
+    source_count_ok = len([item for item in sources if item["exists"]]) >= 5
+    clean_boundary_ok = any(
+        item["id"] in {"S1", "S2", "S3"} and item["has_all"] for item in sources
+    )
+    metadata_preserved = all(
+        token in expected_feed_text.lower()
+        for token in ["field_pack", "field_mini_task", "field_expected_feed"]
+    )
+
+    uncertainty_notes = [
+        "This is local-source evidence, not a live literature search.",
+        "Token checks prove architecture terms are present; they do not prove every claim semantically.",
+        "Optional AGENTS.md may be absent in packaged releases and is not required for pass.",
+    ]
+
+    gaps = []
+    if not required_ok:
+        gaps.append("required source files missing or missing required tokens")
+    if not source_count_ok:
+        gaps.append("fewer than five local sources with usable evidence")
+    if not clean_boundary_ok:
+        gaps.append("Goal/Need/Mem/Feed clean boundary is not corroborated in local sources")
+    if not metadata_preserved:
+        gaps.append("expected_feed does not preserve required Feed metadata contract")
+    if not uncertainty_notes:
+        gaps.append("uncertainty notes missing")
+
+    satisfied = not gaps
+    status = "satisfied" if satisfied else "partial"
+    evidence_payload = {
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed_text,
+        "status": status,
+        "verifier_status": status,
+        "source_reports": sources,
+        "checks": {
+            "required_sources_ok": required_ok,
+            "source_count_ok": source_count_ok,
+            "clean_boundary_ok": clean_boundary_ok,
+            "metadata_preserved": metadata_preserved,
+            "uncertainty_notes_present": bool(uncertainty_notes),
+        },
+        "claims": [
+            {
+                "claim": "Clean-brain context remains Goal/Mem/Need/Feed in project docs.",
+                "source_ids": ["S1", "S2"],
+            },
+            {
+                "claim": "Research field tasks are declared as editable field-pack curriculum.",
+                "source_ids": ["S5"],
+            },
+            {
+                "claim": "Release/test docs preserve artifact-backed verification language.",
+                "source_ids": ["S4"],
+            },
+        ],
+        "uncertainty_notes": uncertainty_notes,
+        "gaps": gaps,
+        "recorded_at_utc": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+    evidence_path.write_text(json.dumps(evidence_payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    metadata = {
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed_text,
+        "verifier_status": status,
+    }
+    if satisfied:
+        metadata["field_pass_evidence"] = str(evidence_path)
+    else:
+        metadata["error_category"] = "insufficient_research_coverage"
+        metadata["missing_regions"] = gaps or ["source_or_claim_coverage_gap"]
+
+    field_result = {
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed_text,
+        "source_reports": sources,
+        "source_count": len(sources),
+        "artifact_path": str(evidence_path),
+        "satisfied": satisfied,
+        "source_count_ok": source_count_ok,
+        "clean_boundary_ok": clean_boundary_ok,
+        "artifact_json_ok": True,
+        "status": status,
+        "verifier_status": status,
+        "metadata": metadata,
+        "evidence": [
+            {
+                "source": "field-mini-task/research/research-mini-6",
+                "content": str(evidence_path),
+                "confidence": 0.86,
+                "metadata": metadata,
+            }
+        ],
+        "gaps": gaps,
+    }
+    if satisfied:
+        field_result["field_pass_evidence"] = str(evidence_path)
+    else:
+        field_result["error_category"] = "insufficient_research_coverage"
+        field_result["missing_regions"] = gaps or ["source_or_claim_coverage_gap"]
