@@ -22,6 +22,11 @@
   "trajectory_labels": ["files_read", "patch", "tests", "failures", "feed"],
   "mini_tasks": [
     {
+      "id": "code-mini-6",
+      "goal": "Refactor a local endpoint utility with strict input validation, deterministic failure handling, and a focused test suite, then report artifact-backed evidence of correctness.",
+      "expected_feed": "Return a compact, artifact-backed summary for code-mini-6. Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata. Verify defensive parsing and test outcomes using evidence stored at .octopus/field-mini-task/code/code-mini-6/.../evidence.json."
+    },
+    {
       "id": "code-mini-1",
       "goal": "Update one documentation sentence and verify the diff only touches that file.",
       "expected_feed": "A scoped diff summary and git diff verification."

@@ -1,0 +1,165 @@
+if field == "code" and mini_task == "code-mini-6":
+    import difflib
+    import json
+    import subprocess
+    import sys
+    from datetime import datetime, timezone
+
+    scratch = session / "scratch-code-mini-6"
+    scratch.mkdir(parents=True, exist_ok=True)
+    module_file = scratch / "endpoint_parser.py"
+    test_file = scratch / "test_endpoint_parser.py"
+
+    artifact_dir = (
+        session / ".octopus" / "field-mini-task" / "code" / "code-mini-6" /
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    )
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    evidence_path = artifact_dir / "evidence.json"
+
+    before_source = [
+        "def normalize_endpoint(endpoint):",
+        "    host, port = endpoint.split(':')",
+        "    return host, int(port)",
+        "",
+        "if __name__ == '__main__':",
+        "    cases = ['127.0.0.1:80', 'localhost:not-a-port']",
+        "    for case in cases:",
+        "        try:",
+        "            print(normalize_endpoint(case))",
+        "        except Exception as e:",
+        "            print(type(e).__name__)",
+        "",
+    ]
+
+    after_source = [
+        "def normalize_endpoint(endpoint):",
+        "    if not isinstance(endpoint, str):",
+        "        return None",
+        "    text = endpoint.strip()",
+        "    if ':' not in text:",
+        "        return None",
+        "    host, port = text.split(':', 1)",
+        "    if not host.strip() or not port.strip():",
+        "        return None",
+        "    if not port.strip().isdigit():",
+        "        return None",
+        "    port_value = int(port.strip())",
+        "    if not (1 <= port_value <= 65535):",
+        "        return None",
+        "    return host.strip(), port_value",
+        "",
+        "if __name__ == '__main__':",
+        "    for case in ['127.0.0.1:80', 'localhost:not-a-port', 'bad-entry', 'host:70000', 'host:443']:",
+        "        try:",
+        "            print(normalize_endpoint(case))",
+        "        except Exception as e:",
+        "            print(type(e).__name__)",
+        "",
+    ]
+
+    module_file.write_text("\n".join(before_source), encoding="utf-8")
+    before_run = subprocess.run(
+        [sys.executable, str(module_file)],
+        cwd=str(scratch),
+        text=True,
+        capture_output=True,
+    )
+
+    module_file.write_text("\n".join(after_source), encoding="utf-8")
+    after_run = subprocess.run(
+        [sys.executable, str(module_file)],
+        cwd=str(scratch),
+        text=True,
+        capture_output=True,
+    )
+
+    test_source = [
+        "import unittest",
+        "from endpoint_parser import normalize_endpoint",
+        "",
+        "class EndpointParserTest(unittest.TestCase):",
+        "    def test_valid_endpoint(self):",
+        "        self.assertEqual(normalize_endpoint('127.0.0.1:443'), ('127.0.0.1', 443))",
+        "",
+        "    def test_bad_endpoint(self):",
+        "        self.assertIsNone(normalize_endpoint('localhost:not-a-port'))",
+        "        self.assertIsNone(normalize_endpoint('bad-entry'))",
+        "        self.assertIsNone(normalize_endpoint('localhost:70000'))",
+        "",
+        "if __name__ == '__main__':",
+        "    unittest.main()",
+        "",
+    ]
+    test_file.write_text("\n".join(test_source), encoding="utf-8")
+    test_run = subprocess.run(
+        [sys.executable, "-m", "unittest", "test_endpoint_parser.py"],
+        cwd=str(scratch),
+        text=True,
+        capture_output=True,
+    )
+
+    diff_lines = list(
+        difflib.unified_diff(
+            before_source,
+            after_source,
+            fromfile="a/endpoint_parser.py",
+            tofile="b/endpoint_parser.py",
+            lineterm="",
+        )
+    )
+
+    before_output = (before_run.stdout + before_run.stderr).strip()
+    after_output = (after_run.stdout + after_run.stderr).strip()
+
+    checks = {
+        "changed_paths": ["endpoint_parser.py", "test_endpoint_parser.py"],
+        "tests_pass": test_run.returncode == 0,
+        "probe_behavior_changed": before_output != after_output,
+        "has_validation": all(
+            marker in "\n".join(after_source)
+            for marker in [
+                "not isinstance(endpoint, str)",
+                "1 <= port_value <= 65535",
+                "return None",
+            ]
+        ),
+        "diff_line_count": len(diff_lines),
+        "test_stdout": test_run.stdout.strip(),
+        "test_stderr": test_run.stderr.strip(),
+    }
+
+    evidence = {
+        "field_pack": "code",
+        "field_mini_task": "code-mini-6",
+        "checks": checks,
+        "before_output": before_output,
+        "after_output": after_output,
+        "diff_sample": diff_lines[:40],
+    }
+    evidence_path.write_text(json.dumps(evidence, indent=2), encoding="utf-8")
+
+    if checks["tests_pass"] and checks["has_validation"] and checks["probe_behavior_changed"] and checks["diff_line_count"] > 0:
+        field_result = {
+            "verifier_status": "satisfied",
+            "checks": checks,
+            "field_pass_evidence": str(evidence_path),
+        }
+    else:
+        missing = []
+        if not checks["tests_pass"]:
+            missing.append("unit tests must pass")
+        if not checks["has_validation"]:
+            missing.append("defensive normalization checks missing")
+        if not checks["probe_behavior_changed"]:
+            missing.append("before/after probe behavior did not change")
+        if checks["diff_line_count"] == 0:
+            missing.append("diff not captured")
+
+        field_result = {
+            "verifier_status": "partial",
+            "error_category": "verification_failure",
+            "missing_regions": missing,
+            "checks": checks,
+            "field_evidence": str(evidence_path),
+        }
