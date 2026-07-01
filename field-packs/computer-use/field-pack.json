@@ -35,6 +35,11 @@
       "id": "computer-use-mini-3",
       "goal": "Observe the local docs/demo surface, identify the primary call-to-action, and verify the page has a visible Octopus product signal.",
       "expected_feed": "Observed URL, primary call-to-action, visible Octopus signal, and verification status without destructive actions."
+    },
+    {
+      "id": "computer-use-mini-4",
+      "goal": "Recover from patch_check_failed by verifying computer-use mini-task self-evolution metadata and emitting artifact-backed Feed evidence.",
+      "expected_feed": "Return a compact, artifact-backed summary that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata, and includes verifier_status plus .octopus/field-mini-task evidence path."
     }
   ]
 }

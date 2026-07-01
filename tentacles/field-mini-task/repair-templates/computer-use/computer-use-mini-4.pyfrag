@@ -1,0 +1,89 @@
+if field == "computer-use" and mini_task == "computer-use-mini-4":
+    import json
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    root_dir = Path(root)
+    now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    pack_path = root_dir / "field-packs" / "computer-use" / "field-pack.json"
+    template_path = (
+        root_dir
+        / "tentacles"
+        / "field-mini-task"
+        / "repair-templates"
+        / "computer-use"
+        / "computer-use-mini-4.pyfrag"
+    )
+    evidence_dir = root_dir / ".octopus" / "field-mini-task" / "computer-use" / "computer-use-mini-4" / now
+    evidence_path = evidence_dir / "evidence.json"
+
+    pack_exists = pack_path.exists()
+    parser_ok = False
+    task_entry = None
+    if pack_exists:
+        try:
+            pack_data = json.loads(pack_path.read_text(encoding="utf-8"))
+            parser_ok = isinstance(pack_data, dict)
+            mini_tasks = pack_data.get("mini_tasks", []) if isinstance(pack_data, dict) else []
+            task_entry = next((item for item in mini_tasks if isinstance(item, dict) and item.get("id") == "computer-use-mini-4"), None)
+        except Exception:
+            parser_ok = False
+
+    template_exists = template_path.exists()
+    template_text = ""
+    if template_exists:
+        template_text = template_path.read_text(encoding="utf-8", errors="replace")
+
+    checks = {
+        "field_pack_file_exists": pack_exists,
+        "field_pack_json_parsable": parser_ok,
+        "mini_task_entry_present": task_entry is not None,
+        "template_file_exists": template_exists,
+        "template_has_guard": "if field == \"computer-use\" and mini_task == \"computer-use-mini-4\"" in template_text,
+    }
+    expected_feed = ""
+    if task_entry and isinstance(task_entry, dict):
+        expected_feed = task_entry.get("expected_feed", "")
+    if not expected_feed:
+        expected_feed = "Return a compact, artifact-backed summary that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata, and includes verifier_status plus .octopus/field-mini-task evidence path."
+
+    verifier_status = "satisfied" if all(checks.values()) else "partial"
+    missing = [key for key, ok in checks.items() if not ok]
+
+    observation = {
+        "mode": "self-evolution-check",
+        "field_pack": field,
+        "mini_task": mini_task,
+        "checks": checks,
+        "actions": [
+            "read field-pack",
+            "confirm computer-use-mini-4 entry exists",
+            "verify template presence and guard",
+            "write artifact evidence",
+        ],
+    }
+
+    field_result = {
+        "status": verifier_status,
+        "summary": "Satisfied: computer-use-mini-4 self-evolution evidence is complete."
+        if verifier_status == "satisfied"
+        else "Partial: computer-use-mini-4 missing required self-evolution evidence metadata.",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "verifier_status": verifier_status,
+        "checks": checks,
+        "field_pass_evidence": str(evidence_path),
+    }
+    if verifier_status != "satisfied":
+        field_result["verifier_status"] = "partial"
+        field_result["error_category"] = "missing_template_or_pack_metadata"
+        field_result["gap_metadata"] = {"missing": missing}
+
+    evidence = {
+        "generated_at": now,
+        "observation": observation,
+        "field_result": field_result,
+    }
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    evidence_path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8")

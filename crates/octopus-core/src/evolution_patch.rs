@@ -21,7 +21,9 @@ fn normalize_suggested_patch_text(patch: &str) -> Option<String> {
     (!patch.is_empty()).then(|| {
         let patch = strip_patch_wrappers(patch);
         let patch = normalize_patch_file_headers(&patch);
-        format!("{}\n", normalize_new_file_hunks(&patch).trim())
+        let patch = normalize_new_file_hunks(&patch);
+        let patch = normalize_diff_boundaries(&patch);
+        format!("{}\n", recount_hunk_headers(&patch).trim())
     })
 }
 
@@ -115,6 +117,108 @@ fn normalize_new_file_hunks(patch: &str) -> String {
         normalized.push(line.to_string());
     }
     normalized.join("\n")
+}
+
+fn normalize_diff_boundaries(patch: &str) -> String {
+    let mut normalized: Vec<String> = Vec::new();
+    for line in patch.lines() {
+        if line.trim_start().starts_with("diff --git ") {
+            while normalized
+                .last()
+                .is_some_and(|previous| previous.trim().is_empty())
+            {
+                normalized.pop();
+            }
+            normalized.push(line.trim_start().to_string());
+        } else {
+            normalized.push(line.to_string());
+        }
+    }
+    normalized.join("\n")
+}
+
+fn recount_hunk_headers(patch: &str) -> String {
+    let mut lines = patch.lines().map(str::to_string).collect::<Vec<_>>();
+    let mut index = 0;
+    while index < lines.len() {
+        if !lines[index].starts_with("@@ ") {
+            index += 1;
+            continue;
+        }
+        let Some(header) = ParsedHunkHeader::parse(&lines[index]) else {
+            index += 1;
+            continue;
+        };
+        let header_index = index;
+        index += 1;
+        let mut old_count = 0usize;
+        let mut new_count = 0usize;
+        while index < lines.len()
+            && !lines[index].starts_with("@@ ")
+            && !lines[index].starts_with("diff --git ")
+        {
+            let line = &lines[index];
+            if line.starts_with("\\ No newline") {
+                index += 1;
+                continue;
+            }
+            if line.starts_with('-') {
+                old_count += 1;
+            } else if line.starts_with('+') {
+                new_count += 1;
+            } else if line.starts_with(' ') {
+                old_count += 1;
+                new_count += 1;
+            }
+            index += 1;
+        }
+        lines[header_index] = header.with_counts(old_count, new_count);
+    }
+    lines.join("\n")
+}
+
+struct ParsedHunkHeader {
+    old_start: String,
+    new_start: String,
+    tail: String,
+}
+
+impl ParsedHunkHeader {
+    fn parse(line: &str) -> Option<Self> {
+        let rest = line.strip_prefix("@@")?;
+        let close = rest.find("@@")?;
+        let inside = rest[..close].trim();
+        let tail = rest[close + 2..].to_string();
+        let mut old_start = None;
+        let mut new_start = None;
+        for token in inside.split_whitespace() {
+            if let Some(range) = token.strip_prefix('-') {
+                old_start = Some(range_start(range));
+            } else if let Some(range) = token.strip_prefix('+') {
+                new_start = Some(range_start(range));
+            }
+        }
+        Some(Self {
+            old_start: old_start?,
+            new_start: new_start?,
+            tail,
+        })
+    }
+
+    fn with_counts(&self, old_count: usize, new_count: usize) -> String {
+        format!(
+            "@@ -{},{} +{},{} @@{}",
+            self.old_start, old_count, self.new_start, new_count, self.tail
+        )
+    }
+}
+
+fn range_start(range: &str) -> String {
+    range
+        .split_once(',')
+        .map(|(start, _)| start)
+        .unwrap_or(range)
+        .to_string()
 }
 
 fn provider_patch_for_plan(plan: &EvolutionApplyPlan, patch: &str) -> Option<String> {
@@ -266,6 +370,7 @@ fn collapse_repeated_tentacle_prefix(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{fs, process::Command};
 
     #[test]
     fn clean_suggested_patch_strips_apply_patch_wrappers() {
@@ -335,6 +440,84 @@ new file mode 100644
                 "field-packs/write/field-pack.json",
                 "tentacles/field-mini-task/repair-templates/write/write-mini-4.pyfrag"
             ]
+        );
+    }
+
+    #[test]
+    fn clean_suggested_patch_recounts_short_hunks_and_removes_diff_separator_blank() {
+        let patch = r#"diff --git a/field-packs/computer-use/field-pack.json b/field-packs/computer-use/field-pack.json
+--- a/field-packs/computer-use/field-pack.json
++++ b/field-packs/computer-use/field-pack.json
+@@ -7,2 +7,9 @@
+-    }
+-  ]
++    },
++    {
++      "id": "computer-use-mini-4",
++      "goal": "Validate placement.",
++      "expected_feed": "Artifact-backed Feed evidence."
++    }
++  ]
+
+diff --git a/tentacles/field-mini-task/repair-templates/computer-use/computer-use-mini-4.pyfrag b/tentacles/field-mini-task/repair-templates/computer-use/computer-use-mini-4.pyfrag
+new file mode 100644
+--- /dev/null
++++ b/tentacles/field-mini-task/repair-templates/computer-use/computer-use-mini-4.pyfrag
+@@ -0,0 +1,5 @@
++if field == "computer-use" and mini_task == "computer-use-mini-4":
++    field_result = {
++        "verifier_status": "satisfied",
++    }
+"#;
+
+        let cleaned = clean_suggested_patch(Some(patch.to_string())).unwrap();
+
+        assert!(cleaned.contains("@@ -7,2 +7,7 @@"));
+        assert!(cleaned.contains("@@ -0,0 +1,4 @@"));
+        assert!(!cleaned.contains("]\n\ndiff --git"));
+
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolution-patch-recount-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("field-packs/computer-use")).unwrap();
+        fs::create_dir_all(dir.join("tentacles/field-mini-task/repair-templates/computer-use"))
+            .unwrap();
+        run_git(&dir, &["init"]);
+        fs::write(
+            dir.join("field-packs/computer-use/field-pack.json"),
+            "{\n  \"id\": \"computer-use\",\n  \"mini_tasks\": [\n    {\n      \"id\": \"computer-use-mini-3\",\n      \"goal\": \"Observe.\",\n      \"expected_feed\": \"Verify.\"\n    }\n  ]\n}\n",
+        )
+        .unwrap();
+        let patch_path = dir.join("candidate.patch");
+        fs::write(&patch_path, cleaned).unwrap();
+
+        run_git(
+            &dir,
+            &[
+                "apply",
+                "--check",
+                "--recount",
+                "--unidiff-zero",
+                patch_path.to_str().unwrap(),
+            ],
+        );
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    fn run_git(cwd: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
         );
     }
 }

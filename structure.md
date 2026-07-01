@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-07-01, after research-mini-4 self-evolution, structured Need context parsing, Feed metadata flattening, and desktop-pet partial-state validation.
+Updated: 2026-07-01, after computer-use-mini-4 self-evolution, provider patch recount normalization, bundled harness coverage sync, and desktop-pet Need/Feed verification.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -38,7 +38,7 @@ Octopus/
 │       ├── evolution_driver.rs One-cycle autonomous harness evolution driver: LLM recommendation, patch apply, check, Need/Feed, optional desktop pet.
 │       ├── evolution_feed.rs  Feed-stage runner for field mini-task evolution, worker state, and desktop observer launch.
 │       ├── evolution_llm_plan.rs LLM harness-planner chat messages, retry note, and JSON plan parsing.
-│       ├── evolution_patch.rs Provider patch normalization, diff path extraction, and apply allow-list filtering.
+│       ├── evolution_patch.rs Provider patch normalization, hunk recounting, diff path extraction, and apply allow-list filtering.
 │       ├── evolution_plan.rs  LLM patch recommendation artifacts and apply-failure retry objective shaping.
 │       ├── evolution_prompt.rs LLM evolution prompt, compact trace/history payloads, and target-file context budget.
 │       ├── evolution_recommend.rs Proposal assembly, candidate scoring, apply-plan selection, and harness-beat artifact orchestration.
@@ -169,10 +169,10 @@ Octopus/
 | Evolution drive surface | CLI args, JSON report shape, and human-readable printing for `evolve drive` | `evolution_drive_surface.rs` | 116 |
 | Evolution driver | Autonomous harness loop for one cycle: stage events, planning, apply, manifest checks, and Feed delegation. It no longer owns CLI/report shape, patch execution, Feed execution, or retry objective shaping. | `evolution_driver.rs` | 318 |
 | Evolution Feed boundary | Field mini-task Feed execution, queued Need worker state, desktop pet launch, Feed event writes, partial/failed batch status folding, and blocked reporting when no queued Need actually reaches Feed | `evolution_feed.rs` | 206 |
-| Evolution patch boundary | Normalizes provider patch text, strips apply-patch/markdown wrappers, splits embedded diff headers, inserts missing new-file headers, extracts diff paths, renders display paths, and filters authorized patch paths before artifact/apply code can write a patch file. | `evolution_patch.rs` | 340 |
+| Evolution patch boundary | Normalizes provider patch text, strips apply-patch/markdown wrappers, splits embedded diff headers, removes diff-boundary blank separators, recounts hunk headers from actual patch body, inserts missing new-file headers, extracts diff paths, renders display paths, and filters authorized patch paths before artifact/apply code can write a patch file. | `evolution_patch.rs` | 523 |
 | Evolution target boundary | Resolves manifest editable targets, field-pack targets, repair-template wildcard scopes, candidate target files, and field-name scopes for patch/prompt/candidate modules. | `evolution_target.rs` | 318 |
 | Field curriculum boundary | Selects the next concrete field for a harder mini-task layer from real trajectory summaries. It prefers unfinished/least-layer fields and returns a field-specific objective and agent action. This is the debug entry when the field pool says every field is complete but app/desktop cannot name the next field. | `field_curriculum.rs`, `state_report.rs` | 123 |
-| Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, verifier-status normalization, pyfrag prevalidation, compile/execute template checks, evolved math-mini-5 verifier coverage, evolved swe-mini-4 before/after unit-test evidence, write-mini-4 and translate-mini-4 artifact-backed Feed evidence, and research-mini-4 clean-brain policy evidence | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 7,923 |
+| Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, verifier-status normalization, pyfrag prevalidation, compile/execute template checks, evolved math-mini-5 verifier coverage, evolved swe-mini-4 before/after unit-test evidence, write-mini-4 and translate-mini-4 artifact-backed Feed evidence, research-mini-4 clean-brain policy evidence, and computer-use-mini-4 self-evolution metadata evidence | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 8,048 |
 | Field adaptation surface | Owns `octopus fields`: field-pack reports, field matching, field trajectory summaries, verifier score recording, pet-event append after verifier scoring, parallel field worker slots, field-pool latest activity, and user-visible field status lines. This is the debug entry when field state exists but the app/CLI explains the wrong active domain, score, worker slot, or verifier pet state. | `field_surface.rs`, `handle_fields_command`, `FieldMatchReport`, `print_field_trajectory_report`, `field_pool_status_line`, `parallel_run_status_line` | 558 |
 | CLI and product backend | Command dispatch, structured direct Need context parsing, chat, starter/install/check flows, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; Need command logic lives in `need_surface.rs`; Evolution command logic lives in `evolution_surface.rs`; Route/Trace command logic lives in `route_surface.rs`; Feedback command logic lives in `feedback_surface.rs`; Field command logic lives in `field_surface.rs`; beat command logic lives in `heartbeat_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 20,203 |
 | Provider env | Loads `.octopus/llm.env` for CLI commands with a scoped guard; existing shell variables win, and values are restored after command execution | `provider_env.rs`, `app_bridge.rs::parse_env_overlay` | 107 |
@@ -241,7 +241,7 @@ These should remain stable and hard to accidentally mutate:
 - Evolution planning rule: recommendation artifacts and apply-failure retry objectives live in `evolution_plan.rs`; driver only asks for the next plan.
 - Evolution prompt rule: LLM planner payload construction, trace/history compaction, target-file context selection, and prompt-budget env knobs live in `evolution_prompt.rs`; proposal/candidate protocol stays in `lib.rs`.
 - Evolution recommendation rule: proposal assembly, scored candidate choice, apply-plan construction, and harness-beat proposal/apply artifact orchestration live in `evolution_recommend.rs`; it consumes real state traces and must not invent success.
-- Evolution patch rule: provider patch normalization, diff path extraction, display-path collapsing, and authorized patch allow-list checks live in `evolution_patch.rs`; artifact rendering can only ask for an already authorized patch.
+- Evolution patch rule: provider patch normalization, diff-boundary cleanup, hunk-header recounting, diff path extraction, display-path collapsing, and authorized patch allow-list checks live in `evolution_patch.rs`; artifact rendering can only ask for an already authorized patch.
 - Evolution target rule: manifest editable targets, field-pack paths, repair-template wildcard scopes, and field-name path extraction live in `evolution_target.rs`; planner/prompt/candidate/patch modules ask this boundary for files.
 - Evolution command surface rule: `evolution_surface.rs` owns `octopus evolve` command handling, proposal/apply artifact loading, evolution score reports reused by repair scoring, and pet-event writes around recommend/apply/score/parallel actions. Driver logic stays in `evolution_driver.rs`; Feed execution stays in `evolution_feed.rs`; patch application stays in `evolution_apply.rs`.
 - Evolution drive surface rule: `evolve drive` CLI/report formatting lives in `evolution_drive_surface.rs`; stage execution stays in `evolution_driver.rs`.
@@ -399,11 +399,11 @@ field-packs/
   code/       mini-1..4
   swe/
   research/
-  computer-use/
+  computer-use/ mini-1..4
   ib/
   robotics/
-  write/      mini-1..3
-  translate/  mini-1..3
+  write/      mini-1..4
+  translate/  mini-1..4
 ```
 
 ## Code Size
@@ -412,10 +412,10 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 56 | 59,182 |
+| `crates/octopus-core/src` | 56 | 60,751 |
 | `crates/octopus-core/examples` | 0 | 0 |
-| `tentacles` | 84 | 19,111 |
-| `field-packs` | 14 | 603 |
+| `tentacles` | 84 | 19,803 |
+| `field-packs` | 14 | 628 |
 | `desktop/pet` | 1 | 841 |
 | `docs` | 29 md/html/json/sh files | 7,937 |
 | `cowork` | 3 | 101 |
@@ -445,14 +445,14 @@ field-packs/
 | `need_surface.rs` | 663 |
 | `field_surface.rs` | 558 |
 | `need_runner.rs` | 544 |
-| `bundled_harness.rs` | 431 |
+| `bundled_harness.rs` | 447 |
 | `evolution_artifact.rs` | 401 |
 | `desktop_pet.rs` | 377 |
 | `manifest_catalog.rs` | 373 |
 | `pet_surface.rs` | 385 |
 | `diagnostics.rs` | 354 |
 | `evolution_prompt.rs` | 345 |
-| `evolution_patch.rs` | 340 |
+| `evolution_patch.rs` | 523 |
 | `evolution_driver.rs` | 318 |
 | `evolution_target.rs` | 318 |
 | `doctor_surface.rs` | 302 |
@@ -492,7 +492,7 @@ field-packs/
 | `repo-maintainer` | 8 | 719 |
 | `computer-use-agent` | 10 | 644 |
 | `profile-registry` | 1 | 600 |
-| `field-mini-task` | 97 | 7,300 |
+| `field-mini-task` | 46 | 4,945 |
 | `swe-agent` | 6 | 217 |
 | `json-feed` | 2 | 162 |
 | `bash-only` | 2 | 77 |
@@ -506,14 +506,14 @@ field-packs/
 - If the pet stays red with no Need bubble, inspect `.octopus/state.json.last_pet_event`, `.octopus/pet-events.jsonl`, `.octopus/state.json.need_queue`, and `.octopus/state.json.parallel_evolution_runs`. A red idle pet means the latest real event is blocked or stale, not a desktop control failure.
 - If CLI LLM works in the app but not terminal, inspect `.octopus/llm.env` and `provider_env.rs`. The CLI now auto-loads missing OCTOPUS provider variables from that file.
 - If LLM evolution apply fails on new files, inspect `.octopus/evolution/<tentacle>/apply/*.patch`; the normalizer in `evolution_patch.rs` must preserve `/dev/null` and insert `new file mode 100644`.
-- If LLM evolution apply fails with `*** End Patch`, markdown fences, or stale hunk context, inspect `evolution_patch.rs` wrapper stripping and `evolution_prompt.rs` line-numbered target content. Retry prompts should include the current target path so the planner sees exact current lines.
-- If field-pack evolution proposes `task_layers`, object-shaped `mini_tasks`, patch text with a nested `diff --git`, or a syntactically applied but invalid field-pack JSON, inspect `evolution_prompt.rs`, `evolution_candidate.rs`, `evolution_patch.rs`, and `evolution_apply.rs`. The planner should see `field-packs/field-pack.schema.json`, bad schema shapes should be rejected before apply, embedded diff headers should be normalized before `git apply`, and post-apply schema failures should be reversed with `field_pack_schema_failed`.
+- If LLM evolution apply fails with `*** End Patch`, markdown fences, stale hunk context, bad hunk counts, or blank lines between diff file sections, inspect `evolution_patch.rs` wrapper stripping, diff-boundary cleanup, hunk recounting, and `evolution_prompt.rs` line-numbered target content. Retry prompts should include the current target path so the planner sees exact current lines.
+- If field-pack evolution proposes `task_layers`, object-shaped `mini_tasks`, patch text with a nested `diff --git`, or a syntactically applied but invalid field-pack JSON, inspect `evolution_prompt.rs`, `evolution_candidate.rs`, `evolution_patch.rs`, and `evolution_apply.rs`. The planner should see `field-packs/field-pack.schema.json`, bad schema shapes should be rejected before apply, embedded diff headers and bad hunk counts should be normalized before `git apply`, and post-apply schema failures should be reversed with `field_pack_schema_failed`.
 - If `octopus evolve` stays in planning, run with explicit bounds such as `OCTOPUS_LLM_TIMEOUT=60 OCTOPUS_LLM_RETRIES=0`. A timeout must become a fresh `blocked` pet event with `stage=planning` and `error_class=provider_timeout`; if it does not, inspect `observation_contract.rs`, `evolution_surface.rs`, `evolution_llm_plan.rs`, and `llm_provider.rs`.
 - Construction verification: `OCTOPUS_LLM_TIMEOUT=1 OCTOPUS_LLM_RETRIES=0 octopus --json evolve recommend field-mini-task ...` now records `blocked`, `stage=planning`, `error_class=provider_timeout`; `octopus pet supervise --json` reports `last_stage=pass`, `error_category=pass`, `desktop_process=pass`, `runtime_state=warn`, and `active_work=warn` so a fresh visible failure is not counted as active work.
 - Pet URL chain verification: `pet auto` must not combine a non-pending queued Need, stale Feed trace, and fresh blocked event. The current rule only shows pending Need text, or a Need/Feed pair from the same latest Feed trace, or text from the fresh event itself.
 - Field evolution proof point: SWE evolved to `swe-mini-4` through real `evolve drive`, exposed syntax and patch-context failures, fed those failures back into `evolve score`, added patch-wrapper normalization, line-numbered retry context, pyfrag runtime prevalidation, and finally passed Need -> Feed with trace #97 and `before_rc=1 after_rc=0`.
-- Field evolution proof points: write evolved to `write-mini-4` through concrete curriculum selection and passed Need -> Feed with trace #99; translate evolved to `translate-mini-4`, first broke field-pack JSON visibly, then passed Need -> Feed with trace #100, `verifier_status=satisfied`, and artifact-backed evidence under `.octopus/field-mini-task/translate/`; research evolved to `research-mini-4`, exposed orphan-template, invalid JSON, stale patch-context, partial Feed, and missing metadata propagation failures, then passed structured Need -> Feed with trace #104 and evidence under `.octopus/field-mini-task/research/research-mini-4/`.
+- Field evolution proof points: write evolved to `write-mini-4` through concrete curriculum selection and passed Need -> Feed with trace #99; translate evolved to `translate-mini-4`, first broke field-pack JSON visibly, then passed Need -> Feed with trace #100, `verifier_status=satisfied`, and artifact-backed evidence under `.octopus/field-mini-task/translate/`; research evolved to `research-mini-4`, exposed orphan-template, invalid JSON, stale patch-context, partial Feed, and missing metadata propagation failures, then passed structured Need -> Feed with trace #105; computer-use evolved to `computer-use-mini-4`, exposed patch-header, JSON-placement, and bad-hunk-count failures, then passed `planning -> recommended -> applied -> checking -> need -> feed` with trace #106 and evidence under `.octopus/field-mini-task/computer-use/computer-use-mini-4/`.
 - Cleanup audit after the evolution-boundary commits moved prompt, candidate, artifact, patch, target, contract, recommendation, LLM planner, scaffold, clean-brain loop, Need queue, Need runner, Feedback surface, heartbeat surface, route surface, state-report, status surface, field surface, LLM provider, LLM layer routing, manifest catalog, manifest runtime, provider surface, preflight surface, doctor surface, and strategy surface responsibilities out of the largest files. Remaining discomfort: `main.rs` is still product-backend aggregation, and `lib.rs` still owns broad state mutation.
 - Evolution surface requirements now belong to manifests. Rust validates declared missing surfaces and must not grow domain-specific trigger rules.
-- Current field-mini-task template coverage is 38/38 satisfied after research-mini-4. The apply path normalizes LLM patch file headers, strips patch wrappers before `git apply`, rejects field-pack schema-shape and orphan harder-layer mistakes before apply, runs an apply precheck first, reverses post-apply invalid field-pack JSON, and field-mini-task normalizes common LLM template result shapes into `octopus-json-v1` Feed. The next concrete curriculum field is `computer-use`.
+- Current field-mini-task template coverage is 39/39 satisfied after computer-use-mini-4. The apply path normalizes LLM patch file headers, strips patch wrappers before `git apply`, removes diff-boundary blank lines, recounts hunk headers, rejects field-pack schema-shape and orphan harder-layer mistakes before apply, runs an apply precheck first, reverses post-apply invalid field-pack JSON, and field-mini-task normalizes common LLM template result shapes into `octopus-json-v1` Feed. The next concrete curriculum field is `ib`.
 - The release showcase is screenshot-first. The local app surface in `docs/app.html` observes and updates the real local Octopus loop.

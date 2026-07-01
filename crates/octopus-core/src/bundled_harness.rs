@@ -119,6 +119,10 @@ const BUNDLED_TENTACLE_FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../../tentacles/field-mini-task/repair-templates/computer-use/computer-use-mini-3.pyfrag"),
     ),
     (
+        "field-mini-task/repair-templates/computer-use/computer-use-mini-4.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/computer-use/computer-use-mini-4.pyfrag"),
+    ),
+    (
         "field-mini-task/repair-templates/ib/ib-mini-1.pyfrag",
         include_bytes!("../../../tentacles/field-mini-task/repair-templates/ib/ib-mini-1.pyfrag"),
     ),
@@ -145,6 +149,10 @@ const BUNDLED_TENTACLE_FILES: &[(&str, &[u8])] = &[
     (
         "field-mini-task/repair-templates/math/math-mini-4.pyfrag",
         include_bytes!("../../../tentacles/field-mini-task/repair-templates/math/math-mini-4.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/math/math-mini-5.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/math/math-mini-5.pyfrag"),
     ),
     (
         "field-mini-task/repair-templates/research/research-mini-1.pyfrag",
@@ -203,6 +211,10 @@ const BUNDLED_TENTACLE_FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../../tentacles/field-mini-task/repair-templates/swe/swe-mini-3.pyfrag"),
     ),
     (
+        "field-mini-task/repair-templates/swe/swe-mini-4.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/swe/swe-mini-4.pyfrag"),
+    ),
+    (
         "field-mini-task/repair-templates/write/write-mini-1.pyfrag",
         include_bytes!("../../../tentacles/field-mini-task/repair-templates/write/write-mini-1.pyfrag"),
     ),
@@ -213,6 +225,10 @@ const BUNDLED_TENTACLE_FILES: &[(&str, &[u8])] = &[
     (
         "field-mini-task/repair-templates/write/write-mini-3.pyfrag",
         include_bytes!("../../../tentacles/field-mini-task/repair-templates/write/write-mini-3.pyfrag"),
+    ),
+    (
+        "field-mini-task/repair-templates/write/write-mini-4.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/write/write-mini-4.pyfrag"),
     ),
     (
         "field-mini-task/repair-templates/translate/translate-mini-1.pyfrag",
