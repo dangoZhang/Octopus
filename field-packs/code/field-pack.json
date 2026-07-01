@@ -40,6 +40,11 @@
       "id": "code-mini-4",
       "goal": "Refactor a short Python function and make the change safer by handling malformed inputs, then verify behavior remains correct for valid rows and tests still pass.",
       "expected_feed": "A compact evidence-backed summary with before/after output comparison, exact check outcomes (including unittest pass/fail and invalid-input guard behavior), and artifact-backed trajectory path under .octopus/field-mini-task/."
+    },
+    {
+      "id": "code-mini-5",
+      "goal": "Harder patch verification task: compare pre-edit and post-edit command outputs and only return satisfied when deterministic artifact-backed evidence is generated.",
+      "expected_feed": "Return a compact, artifact-backed summary that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata; include before-vs-after outputs, deterministic data-hygiene checks, verifier_status, and explicit gap metadata."
     }
   ]
 }
