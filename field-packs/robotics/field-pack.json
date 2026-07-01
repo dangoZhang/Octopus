@@ -45,6 +45,11 @@
       "id": "robotics-mini-5",
       "goal": "Handle dynamic obstacle appearance and confidence-triggered replanning by re-evaluating trajectory in simulation under energy and collision constraints.",
       "expected_feed": "Return a compact, artifact-backed summary for robotics-mini-5 that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata. Include planned route, detection step, replanned route, min clearance, battery budget check, simulator-only safety gates, and explicit gap metadata when any condition fails."
+    },
+    {
+      "id": "robotics-mini-6",
+      "goal": "Handle dynamic map perturbations by detecting confidence drop, replanning in simulator, preserving safety checks, and staying within battery budget.",
+      "expected_feed": "Return a compact, artifact-backed summary for robotics-mini-6. Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata. Require evidence from .octopus/field-mini-task/robotics/robotics-mini-6/<timestamp>/trajectory.json and evidence.json showing dynamic obstacle detection, simulator-only replanning, and battery-safe routing."
     }
   ]
 }
