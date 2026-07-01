@@ -50,6 +50,11 @@
       "id": "math-mini-6",
       "goal": "Find and verify all stationary points of f(x)=x^4-4x^2+1, classify each point via second derivative sign, and confirm local behavior with finite-difference checks.",
       "expected_feed": "Return a compact, artifact-backed summary for math-mini-6: prove all stationary points of f(x)=x^4-4x^2+1 and their classifications with symbolic derivative/second-derivative reasoning, provide finite-difference checks at a fixed epsilon around each point, and preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata."
+    },
+    {
+      "id": "math-mini-7",
+      "goal": "Find the stationary points of f(x)=x^3-3x^2+2x, classify each as local max/min via second derivative, and verify each classification with finite-difference checks at fixed epsilon.",
+      "expected_feed": "Return a compact, artifact-backed summary for math-mini-7: solve f'(x)=0 for f(x)=x^3-3x^2+2x, classify each stationary point with symbolic second-derivative logic, verify nearby finite-difference behavior with epsilon steps, and preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata."
     }
   ]
 }

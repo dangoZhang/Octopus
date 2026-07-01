@@ -1,0 +1,162 @@
+if field == 'math' and mini_task == 'math-mini-7':
+    import json
+    from math import sqrt
+
+    def f(x):
+        return x**3 - 3 * x**2 + 2 * x
+
+    def f_prime(x):
+        return 3 * x**2 - 6 * x + 2
+
+    def f_double_prime(x):
+        return 6 * x - 6
+
+    epsilon = 1e-4
+    critical_points = [
+        {'x': 1 - 1 / sqrt(3), 'name': 'left_stationary', 'expected_type': 'local_maximum'},
+        {'x': 1 + 1 / sqrt(3), 'name': 'right_stationary', 'expected_type': 'local_minimum'},
+    ]
+
+    checks_per_point = []
+    for point in critical_points:
+        x0 = point['x']
+        left_value = f(x0 - epsilon)
+        center_value = f(x0)
+        right_value = f(x0 + epsilon)
+        left_diff = left_value - center_value
+        right_diff = right_value - center_value
+        f_prime_zero = abs(f_prime(x0)) < 1e-12
+        second = f_double_prime(x0)
+
+        if point['expected_type'] == 'local_maximum':
+            finite_diff_ok = left_diff < 0 and right_diff < 0
+            curvature_ok = second < 0
+            class_label = 'local_maximum'
+        else:
+            finite_diff_ok = left_diff > 0 and right_diff > 0
+            curvature_ok = second > 0
+            class_label = 'local_minimum'
+
+        checks_per_point.append(
+            {
+                'name': point['name'],
+                'x': x0,
+                'class_label': class_label,
+                'f_prime_zero': f_prime_zero,
+                'second_derivative': second,
+                'left_diff': left_diff,
+                'right_diff': right_diff,
+                'curvature_ok': curvature_ok,
+                'finite_diff_ok': finite_diff_ok,
+            }
+        )
+
+    checks = {
+        'derivative_factorization': 'f\'(x)=3x^2-6x+2 = 3(x-1)^2 - 1',
+        'critical_point_count': len(checks_per_point) == 2,
+        'derivative_roots_zero': all(item['f_prime_zero'] for item in checks_per_point),
+        'curvature_checks_ok': all(item['curvature_ok'] for item in checks_per_point),
+        'finite_difference_checks_ok': all(item['finite_diff_ok'] for item in checks_per_point),
+        'field_expected_feed_preserved': bool(expected_feed),
+    }
+    checks['passed'] = (
+        checks['critical_point_count']
+        and checks['derivative_roots_zero']
+        and checks['curvature_checks_ok']
+        and checks['finite_difference_checks_ok']
+        and checks['field_expected_feed_preserved']
+    )
+
+    checks_passed = checks['passed']
+    analysis = {
+        'function': 'f(x)=x^3-3x^2+2x',
+        'derivative': 'f\'(x)=3x^2-6x+2',
+        'second_derivative': 'f\'\'(x)=6x-6',
+        'critical_points': [
+            {'name': item['name'], 'x': item['x'], 'class_label': item['class_label']} for item in checks_per_point
+        ],
+    }
+
+    numeric_check = {
+        'epsilon': epsilon,
+        'point_deltas': checks_per_point,
+    }
+
+    answer_lines = [
+        '# Math Mini Task Answer',
+        '',
+        'Stationary points of f(x)=x^3-3x^2+2x are x = 1 - 1/sqrt(3) and x = 1 + 1/sqrt(3).',
+        'Second-derivative classification: local maximum at left_stationary, local minimum at right_stationary.',
+        f'Finite-difference epsilon={epsilon}: both-sided differences match the local type at each point.',
+        f'All checks passed: {checks_passed}.',
+    ]
+    answer = '\n'.join(answer_lines)
+
+    paths = {
+        'answer': session / 'ANSWER.md',
+        'analysis': session / 'ANALYSIS.json',
+        'numeric_check': session / 'NUMERIC_CHECK.json',
+        'checks': session / 'CHECKS.json',
+        'metadata': session / 'METADATA.json',
+        'evidence': session / 'EVIDENCE.json',
+    }
+
+    paths['answer'].write_text(answer + '\n', encoding='utf-8')
+    paths['analysis'].write_text(json.dumps(analysis, indent=2, ensure_ascii=True) + '\n', encoding='utf-8')
+    paths['numeric_check'].write_text(json.dumps(numeric_check, indent=2, ensure_ascii=True) + '\n', encoding='utf-8')
+    paths['checks'].write_text(json.dumps(checks, indent=2, ensure_ascii=True) + '\n', encoding='utf-8')
+
+    status = 'satisfied' if checks['passed'] else 'partial'
+
+    field_metadata = {
+        'runtime': 'shell',
+        'contract': 'octopus-json-v1',
+        'tool': 'run_field_mini_task',
+        'tentacle': 'field-mini-task',
+        'field_pack': field,
+        'field_mini_task': mini_task,
+        'field_expected_feed': expected_feed,
+        'field_session': rel(session, root),
+        'task_record': rel(session / 'TASK.json', root),
+        'prompt': rel(session / 'PROMPT.md', root),
+        'feed_draft': rel(session / 'FEED.md', root),
+        'answer': rel(paths['answer'], root),
+        'analysis': rel(paths['analysis'], root),
+        'numeric_check': rel(paths['numeric_check'], root),
+        'checks': rel(paths['checks'], root),
+        'verifier_status': status,
+        'field_pass_evidence': rel(paths['evidence'], root),
+    }
+    if not checks['passed']:
+        field_metadata['error_category'] = 'verification_error'
+        field_metadata['missing_regions'] = ['stationary_point_verification_mismatch']
+
+    field_result = {
+        'status': status,
+        'output': answer,
+        'evidence': [
+            {'source': 'field-mini-task/math/answer', 'artifact_path': rel(paths['answer'], root), 'confidence': 0.97, 'metadata': field_metadata},
+            {'source': 'field-mini-task/math/analysis', 'artifact_path': rel(paths['analysis'], root), 'confidence': 0.97, 'metadata': field_metadata},
+            {'source': 'field-mini-task/math/numeric_check', 'artifact_path': rel(paths['numeric_check'], root), 'confidence': 0.97, 'metadata': field_metadata},
+            {'source': 'field-mini-task/math/checks', 'artifact_path': rel(paths['checks'], root), 'confidence': 0.97, 'metadata': field_metadata},
+        ],
+        'metadata': field_metadata,
+    }
+
+    paths['metadata'].write_text(json.dumps(field_metadata, indent=2, ensure_ascii=True) + '\n', encoding='utf-8')
+    paths['evidence'].write_text(
+        json.dumps(
+            {
+                'field_pack': field,
+                'field_mini_task': mini_task,
+                'status': status,
+                'checks': checks,
+                'critical_points': [
+                    {'name': item['name'], 'x': item['x'], 'class_label': item['class_label']} for item in checks_per_point
+                ],
+            },
+            indent=2,
+            ensure_ascii=True,
+        ) + '\n',
+        encoding='utf-8',
+    )

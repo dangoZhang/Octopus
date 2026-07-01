@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-07-01, after field-pack evolution dry-run validation and prompt tail-context hardening.
+Updated: 2026-07-01, after field-pack dry-run validation and math-mini-7 self-evolution.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -172,7 +172,7 @@ Octopus/
 | Evolution patch boundary | Normalizes provider patch text, strips apply-patch/markdown wrappers, splits embedded diff headers, strips provider-prefixed patch control lines, inserts missing existing-file and new-file headers, removes diff-boundary blank separators, recounts hunk headers from actual patch body, extracts diff paths, renders display paths, filters authorized patch paths before artifact/apply code can write a patch file, and reports target-boundary violations before live apply. | `evolution_patch.rs` | 673 |
 | Evolution target boundary | Resolves manifest editable targets, field-pack targets, repair-template wildcard scopes, candidate target files, and field-name scopes for patch/prompt/candidate modules. | `evolution_target.rs` | 318 |
 | Field curriculum boundary | Selects the next concrete field for a harder mini-task layer from real trajectory summaries. It prefers unfinished/least-layer fields and returns a field-specific objective and agent action. This is the debug entry when the field pool says every field is complete but app/desktop cannot name the next field. | `field_curriculum.rs`, `state_report.rs` | 123 |
-| Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, verifier-status normalization, pyfrag prevalidation, compile/execute template checks, verifier artifact propagation, FEED.md status sync, evolved math-mini-6 stationary-point evidence, evolved write-mini-6 claim-map evidence, evolved translate-mini-6 term-preservation evidence, evolved search-mini-6 source-dedupe evidence, evolved code-mini-6 endpoint-validation evidence, evolved swe-mini-6 invoice-regression evidence, evolved research-mini-6 local-source synthesis evidence, evolved computer-use-mini-6 local-app region evidence, evolved ib-mini-6 stress-matrix evidence, and evolved robotics-mini-6 simulator replan evidence | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 9,399 |
+| Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, verifier-status normalization, pyfrag prevalidation, compile/execute template checks, verifier artifact propagation, FEED.md status sync, evolved math-mini-7 stationary-point evidence, evolved write-mini-6 claim-map evidence, evolved translate-mini-6 term-preservation evidence, evolved search-mini-6 source-dedupe evidence, evolved code-mini-6 endpoint-validation evidence, evolved swe-mini-6 invoice-regression evidence, evolved research-mini-6 local-source synthesis evidence, evolved computer-use-mini-6 local-app region evidence, evolved ib-mini-6 stress-matrix evidence, and evolved robotics-mini-6 simulator replan evidence | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 9,566 |
 | Field adaptation surface | Owns `octopus fields`: field-pack reports, field matching, field trajectory summaries, verifier score recording, pet-event append after verifier scoring, parallel field worker slots, field-pool latest activity, and user-visible field status lines. This is the debug entry when field state exists but the app/CLI explains the wrong active domain, score, worker slot, or verifier pet state. | `field_surface.rs`, `handle_fields_command`, `FieldMatchReport`, `print_field_trajectory_report`, `field_pool_status_line`, `parallel_run_status_line` | 558 |
 | CLI and product backend | Command dispatch, structured direct Need context parsing, chat, starter/install/check flows, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; Need command logic lives in `need_surface.rs`; Evolution command logic lives in `evolution_surface.rs`; Route/Trace command logic lives in `route_surface.rs`; Feedback command logic lives in `feedback_surface.rs`; Field command logic lives in `field_surface.rs`; beat command logic lives in `heartbeat_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 20,203 |
 | Provider env | Loads `.octopus/llm.env` for CLI commands with a scoped guard; existing shell variables win, and values are restored after command execution | `provider_env.rs`, `app_bridge.rs::parse_env_overlay` | 107 |
@@ -183,7 +183,7 @@ Octopus/
 | Strategy diagnostics | Checks the three core traits and composes pet supervision: clean brain context, LLM tool-side tentacles, editable goal, field surface, observation-chain freshness, active work, native desktop process/state-path evidence, stage/error evidence, JSONL latest-event coverage, Feed/evolution evidence | `diagnostics.rs`, `strategy_surface.rs`, `pet_supervision.rs`, `octopus diagnose strategy --json`, `octopus pet supervise --json` | 1,086 |
 | Tentacle scaffold boundary | Generates user-owned code-as-harness tentacle manifests and optional python/node/shell seed tools. This is the debug entry when `octopus scaffold` creates an invalid manifest, missing executable, or wrong `octopus-json-v1` contract. | `tentacle_scaffold.rs`, `octopus scaffold` | 291 |
 | Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,085 |
-| Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, declared evolution requirements, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 22,037 |
+| Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, declared evolution requirements, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 22,579 |
 
 ## Core, Distinctive, Editable
 
@@ -357,6 +357,7 @@ These are the project identity:
 - Need -> Feed -> Feedback loop with compact Feed traces.
 - Three-heart surface: heartbeat, memory beat, harness beat. Harness beat can write evolution artifacts only through a configured LLM planner; local rule candidates are removed.
 - Field evolution proof point: math-mini-5 was generated through `evolve recommend`, failed through apply/check/Feed, repaired in editable harness, then passed Need -> Tentacle -> Feed with trace evidence. Math then evolved to `math-mini-6`, exposed hunk-only existing-file patch output from the LLM planner, added generic patch header normalization, applied the same candidate, repaired the editable template result shape, and passed Need -> Feed with trace #122 and stationary-point evidence under `.octopus/field-mini-task/math/20260701T051444Z-math-mini-6/`. Write then evolved to `write-mini-6`, exposed provider-prefixed new-file control lines that dropped the template, added generic control-line normalization, restored the editable template, and passed Need -> Feed with trace #123 and claim-map evidence under `.octopus/field-mini-task/write/write-mini-6/20260701T052609Z/`. Translate then evolved to `translate-mini-6`, exposed a partial-result metadata failure, self-repaired its runtime template, cleaned stale unreachable code, synced FEED.md to satisfied, propagated verifier artifact metadata, and passed official Need -> Feed with trace #126. Search then evolved to `search-mini-6`, passed `planning -> recommended -> applied -> checking -> need -> feed`, and passed rebuilt-binary Need -> Feed with trace #128 and evidence under `.octopus/field-mini-task/search/20260701T055157Z-search-mini-6/artifacts/search-mini-6/CHECKS.json`. Code then evolved to `code-mini-6`, exposed a bad newline-emission repair, removed the global monkey-patch direction, and passed formal Need -> Feed with trace #131 and endpoint-validation evidence under `.octopus/field-mini-task/code/20260701T060312Z-code-mini-6/`. SWE then evolved to `swe-mini-6`, exposed test-source newline escaping failure, fixed the editable template, and passed formal Need -> Feed with trace #133 and invoice-regression evidence under `.octopus/field-mini-task/swe/20260701T061032Z-swe-mini-6/`. Research then evolved to `research-mini-6`, exposed a partial-gap metadata failure, repaired the editable template, and passed formal Need -> Feed with trace #134 and local-source synthesis evidence under `.octopus/field-mini-task/research/20260701T062105Z-research-mini-6/`.
+- Latest self-evolution proof point: math-mini-7 was generated by `evolve drive`, passed `planning -> recommended -> applied -> checking -> need -> feed`, refreshed the native desktop pet, and produced Feed trace #138 plus verifier #118 with evidence under `.octopus/field-mini-task/math/20260701T071328Z-math-mini-7/`.
 - Pixel Octopus state and color-changing pet.
 - Native desktop observer: reads `.octopus/state.json`, shows Goal, transient Need bubble, independent action/Feed bubbles, Feed/evolution/blocked colors, and maps each active worker window to its own queued Need, field/task label, worker status color, and work bubbles.
 - Native desktop observer can also read the serialized peer field pool from `.octopus/state.json`, show the active field first, use worker update timestamps for transient work bubbles, expand to the latest run worker count only while that run is active, accept only fresh pet events for color/state, include worker policy, requested worker capacity, active slots, and candidate field pool in the click-open Goal sheet, fall back to legacy traces and latest run policy for old state files, and keep this as observation rather than a control surface.
@@ -394,7 +395,7 @@ Current field pack layout:
 ```text
 field-packs/
   _template/
-  math/      mini-1..6
+  math/      mini-1..7
   search/    mini-1..6
   code/       mini-1..6
   swe/       mini-1..6
@@ -412,10 +413,10 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 58 | 61,697 |
+| `crates/octopus-core/src` | 58 | 61,701 |
 | `crates/octopus-core/examples` | 0 | 0 |
-| `tentacles` | 102 | 22,417 |
-| `field-packs` | 14 | 733 |
+| `tentacles` | 103 | 22,579 |
+| `field-packs` | 14 | 738 |
 | `desktop/pet` | 1 | 841 |
 | `docs` | 29 md/html/json/sh files | 7,937 |
 | `cowork` | 3 | 112 |
@@ -445,7 +446,7 @@ field-packs/
 | `need_surface.rs` | 663 |
 | `field_surface.rs` | 558 |
 | `need_runner.rs` | 563 |
-| `bundled_harness.rs` | 531 |
+| `bundled_harness.rs` | 535 |
 | `evolution_artifact.rs` | 401 |
 | `desktop_pet.rs` | 377 |
 | `manifest_catalog.rs` | 373 |
