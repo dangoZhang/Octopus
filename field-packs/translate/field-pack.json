@@ -50,6 +50,11 @@
       "id": "translate-mini-6",
       "goal": "Translate a harder policy note into zh-CN, preserve required policy terms exactly, report ambiguity explicitly, and provide a concrete artifact-backed evidence path in Feed.",
       "expected_feed": "Return a compact, artifact-backed translation Feed for translate-mini-6. Preserve the terms Goal, Mem, Need, Feed, tentacle, harness, artifact, field_pack, and verifier_status. Include ambiguity notes and a concrete path to CHECKS.json or evidence.json under .octopus/field-mini-task/translate/translate-mini-6/<timestamp>/."
+    },
+    {
+      "id": "translate-mini-7",
+      "goal": "Translate a harder policy note into zh-CN, enforce clean-brain/tentacle context policy, preserve required terminology exactly, and return explicit ambiguity notes plus verifier evidence.",
+      "expected_feed": "Return a compact, artifact-backed translation Feed for translate-mini-7. Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata. Include a concrete .octopus/field-mini-task/translate/translate-mini-7/<timestamp>/EVIDENCE.json path, term map, ambiguity notes, quality checks, and verifier_status."
     }
   ]
 }
