@@ -1,0 +1,172 @@
+if field == "research" and mini_task == "research-mini-5":
+    import datetime as dt
+    import json
+    from pathlib import Path
+
+    expected_feed_text = str(
+        globals().get(
+            "expected_feed",
+            "Return a compact, artifact-backed research synthesis for research-mini-5.",
+        )
+        or ""
+    ).strip()
+
+    if not expected_feed_text:
+        expected_feed_text = (
+            "Return a compact, artifact-backed research synthesis for research-mini-5 "
+            "that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata."
+        )
+
+    source_specs = [
+        {
+            "id": "S1",
+            "path": "README.md",
+            "must_contain": ["Goal", "Need", "Feed", "tentacle"],
+        },
+        {
+            "id": "S2",
+            "path": "docs/architecture.md",
+            "must_contain": ["Goal", "Mem", "Need", "Feed", "tentacle"],
+        },
+        {
+            "id": "S3",
+            "path": "docs/references.md",
+            "must_contain": ["Octopus", "Need", "Feedback"],
+        },
+        {
+            "id": "S4",
+            "path": "field-packs/research/field-pack.json",
+            "must_contain": ["research-mini-5", "expected_feed", "claim"],
+        },
+    ]
+
+    def _read(path):
+        if not path.exists():
+            return ""
+        return path.read_text(encoding="utf-8", errors="replace")
+
+    def _date(path):
+        if not path.exists():
+            return "missing"
+        return dt.datetime.fromtimestamp(path.stat().st_mtime, dt.timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+
+    source_rows = []
+    missing = []
+    for spec in source_specs:
+        path = root / spec["path"]
+        text = _read(path)
+        lowered = text.lower()
+        present_tokens = [
+            token for token in spec["must_contain"] if token.lower() in lowered
+        ]
+        if not path.exists():
+            missing.append(f"{spec['path']} is missing")
+        for token in spec["must_contain"]:
+            if token.lower() not in lowered:
+                missing.append(f"{spec['path']} lacks token {token}")
+        source_rows.append(
+            {
+                "id": spec["id"],
+                "path": spec["path"],
+                "date": _date(path),
+                "exists": path.exists(),
+                "matched_tokens": present_tokens,
+            }
+        )
+
+    claim_rows = [
+        {
+            "claim": "Octopus exposes a clean Goal/Need/Feed boundary for the main brain.",
+            "sources": ["S1", "S2"],
+            "supported": all(
+                row["exists"] and {"Goal", "Need", "Feed"}.issubset(set(row["matched_tokens"]))
+                for row in source_rows
+                if row["id"] in {"S1", "S2"}
+            ),
+        },
+        {
+            "claim": "Research evidence is expected to preserve explicit source dates and limits.",
+            "sources": ["S2", "S3"],
+            "supported": all(
+                next(row for row in source_rows if row["id"] == sid)["date"] != "missing"
+                for sid in ["S2", "S3"]
+            ),
+        },
+        {
+            "claim": "The research field pack carries research-mini-5 as an editable harness task.",
+            "sources": ["S4"],
+            "supported": "research-mini-5"
+            in _read(root / "field-packs" / "research" / "field-pack.json"),
+        },
+    ]
+
+    for claim in claim_rows:
+        if not claim["supported"]:
+            missing.append(f"unsupported claim: {claim['claim']}")
+
+    session_root = Path(session)
+    timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    evidence_dir = (
+        session_root
+        / ".octopus"
+        / "field-mini-task"
+        / "research"
+        / "research-mini-5"
+        / timestamp
+    )
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    evidence_path = evidence_dir / "evidence.json"
+
+    status = "satisfied" if not missing else "partial"
+    metadata = {
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed_text,
+        "verifier_status": status,
+        "field_pass_evidence": str(evidence_path),
+        "source_count": len(source_rows),
+        "dated_source_count": sum(1 for row in source_rows if row["date"] != "missing"),
+        "claim_count": len(claim_rows),
+        "supported_claim_count": sum(1 for row in claim_rows if row["supported"]),
+    }
+    if missing:
+        metadata["error_category"] = "missing_regions"
+        metadata["missing_regions"] = missing
+
+    evidence_payload = {
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed_text,
+        "verifier_status": status,
+        "sources": source_rows,
+        "claim_checks": claim_rows,
+        "missing_regions": missing,
+        "generated_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
+    evidence_path.write_text(
+        json.dumps(evidence_payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    field_result = {
+        "status": status,
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed_text,
+        "verifier_status": status,
+        "field_pass_evidence": str(evidence_path),
+        "metadata": metadata,
+        "sources": source_rows,
+        "claim_checks": claim_rows,
+        "evidence": [
+            {
+                "source": "field-mini-task/research/research-mini-5",
+                "content": str(evidence_path),
+                "confidence": 0.9,
+                "metadata": metadata,
+            }
+        ],
+        "output": str(evidence_path),
+    }

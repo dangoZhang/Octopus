@@ -22,6 +22,11 @@
   "trajectory_labels": ["claim", "sources", "evidence", "synthesis", "limits", "feed"],
   "mini_tasks": [
     {
+      "id": "research-mini-5",
+      "goal": "Cross-validate octopus architecture claims across multiple local sources with explicit date checks, claim mapping, and explicit gap reporting.",
+      "expected_feed": "Return a compact, artifact-backed research synthesis for research-mini-5 that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata; validate at least three local source dates, map each claim to local evidence, and return partial with explicit gap metadata when evidence is missing."
+    },
+    {
       "id": "research-mini-1",
       "goal": "Ground one sentence about octopus distributed control using provided sources.",
       "expected_feed": "A short synthesis with source coverage and uncertainty."
