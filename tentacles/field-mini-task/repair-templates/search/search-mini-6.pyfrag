@@ -1,0 +1,132 @@
+if field == "search" and mini_task == "search-mini-6":
+    def source_date(path):
+        if not path.exists():
+            return "missing"
+        return dt.datetime.fromtimestamp(path.stat().st_mtime, dt.timezone.utc).strftime("%Y-%m-%d")
+
+    def rel_path(path):
+        try:
+            return str(path.resolve().relative_to(root.resolve()))
+        except Exception:
+            return str(path)
+
+    def read_text(path):
+        if not path.exists():
+            return ""
+        return path.read_text(encoding="utf-8", errors="replace")
+
+    source_specs = [
+        (
+            "search pack manifest",
+            root / "field-packs" / "search" / "field-pack.json",
+            ["search-mini-6", "mini_tasks", "expected_feed"],
+        ),
+        (
+            "field-mini-task manifest",
+            root / "tentacles" / "field-mini-task" / "manifest.json",
+            ["live", "artifact-backed", "field_mini_task"],
+        ),
+        (
+            "runtime script",
+            root / "tentacles" / "field-mini-task" / "tools" / "run_field_mini_task.sh",
+            ["repair-templates", "field_pass_evidence", "field_result"],
+        ),
+        (
+            "template checker",
+            root / "tentacles" / "field-mini-task" / "tools" / "check_repair_templates.py",
+            ["partial", "satisfied_count", "invalid"],
+        ),
+        (
+            "existing harder reference",
+            root / "tentacles" / "field-mini-task" / "repair-templates" / "search" / "search-mini-5.pyfrag",
+            ["search-mini-5", "artifact-backed"],
+        ),
+    ]
+
+    checks = []
+    dedupe_seen = {}
+    duplicates = []
+    evidence_paths = []
+
+    for label, path, required_terms in source_specs:
+        content = read_text(path).lower()
+        exists = path.exists()
+        missing_terms = [term for term in required_terms if term not in content]
+        key = rel_path(path)
+        if key in dedupe_seen:
+            duplicates.append(key)
+        else:
+            dedupe_seen[key] = 1
+        checks.append(
+            {
+                "label": label,
+                "path": key,
+                "exists": exists,
+                "date": source_date(path),
+                "len_chars": len(content),
+                "missing_terms": missing_terms,
+            }
+        )
+
+    artifact_dir = session / "artifacts" / "search-mini-6"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    artifact_file = artifact_dir / "CHECKS.json"
+
+    history_root = root / ".octopus" / "field-mini-task" / "search"
+    if history_root.exists():
+        for path in sorted(history_root.rglob("*.json")):
+            path_text = str(path)
+            if "search-mini-6" in path_text:
+                evidence_paths.append(rel_path(path))
+
+    hard_failures = []
+    if any(not item["exists"] for item in checks):
+        hard_failures.append("missing required local harness artifacts")
+    if any(item["missing_terms"] for item in checks):
+        hard_failures.append("missing required evidence terms in one or more local files")
+    if len(checks) < 4:
+        hard_failures.append("fewer than four source checkpoints")
+    if len(dedupe_seen) != len(checks):
+        hard_failures.append("duplicate source identifiers detected")
+
+    artifact_paths = sorted(set(evidence_paths))
+    if not artifact_paths:
+        artifact_paths = [rel_path(artifact_file)]
+
+    evidence = {
+        "source_checks": checks,
+        "dedupe_keys": sorted(dedupe_seen),
+        "duplicates": sorted(set(duplicates)),
+        "history_artifacts": artifact_paths,
+        "required_source_count": 4,
+        "source_count": len(checks),
+        "covered_count": len([item for item in checks if item["exists"]]),
+        "hard_failures": hard_failures,
+    }
+
+    artifact_file.write_text(json.dumps(evidence, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+
+    status = "satisfied"
+    if hard_failures:
+        status = "partial"
+
+    field_result = {
+        "verifier_status": status,
+        "field_pack": "search",
+        "field_mini_task": "search-mini-6",
+        "field_expected_feed": "Return a compact, artifact-backed summary for search-mini-6. Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata. Include at least four candidate sources with stable IDs and dedupe reasoning, date coverage checks, unsupported gaps, and explicit partial metadata when any hard requirement is not met.",
+        "field_pass_evidence": rel_path(artifact_file),
+        "status": status,
+        "source_count": len(checks),
+        "artifact_count": len(artifact_paths),
+        "dedupe_count": len(dedupe_seen),
+    }
+
+    if status == "partial":
+        field_result["error_category"] = "missing_evidence"
+        field_result["missing_regions"] = hard_failures
+        field_result["status"] = "partial"
+    else:
+        field_result["status"] = "satisfied"
+
+    (artifact_dir / "field_result.json").write_text(json.dumps(field_result, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")

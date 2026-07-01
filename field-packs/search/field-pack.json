@@ -45,6 +45,11 @@
       "id": "search-mini-5",
       "goal": "Run a harder offline search mini-task that audits multiple local sources, dedupes evidence, validates local dates, and only marks satisfied when artifact-backed evidence is complete.",
       "expected_feed": "Return a compact, artifact-backed summary for search-mini-5 that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata. Write verifier evidence under .octopus/field-mini-task/search/search-mini-5/ with verifier_status, source checks, URL dedupe results, date checks, and explicit unsupported_gaps."
+    },
+    {
+      "id": "search-mini-6",
+      "goal": "Verify a stricter local search trajectory by assembling at least four evidence sources, deduplicating by source key, and validating artifact-backed check coverage for the search mini-task harness.",
+      "expected_feed": "Return a compact, artifact-backed summary for search-mini-6. Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata. Include at least four candidate sources with stable IDs and dedupe reasoning, date coverage checks, unsupported gaps, and explicit partial metadata when any hard requirement is not met."
     }
   ]
 }
