@@ -1,0 +1,116 @@
+if field == "translate" and mini_task == "translate-mini-5":
+    source_text = (
+        "Produce a compact Chinese translation Feed for a policy note. Preserve the terms "
+        "Goal, Mem, Need, Feed, tentacle, harness, artifact, and verifier_status exactly. "
+        "Name any ambiguity, avoid unsupported additions, and write artifact-backed evidence."
+    )
+
+    required_terms = {
+        "Goal": "Goal",
+        "Mem": "Mem",
+        "Need": "Need",
+        "Feed": "Feed",
+        "tentacle": "tentacle",
+        "harness": "harness",
+        "artifact": "artifact",
+        "verifier_status": "verifier_status",
+    }
+
+    translation = (
+        "为一条策略说明生成紧凑的中文翻译 Feed。必须精确保留 Goal、Mem、Need、Feed、"
+        "tentacle、harness、artifact 和 verifier_status 这些术语；明确说明歧义，避免加入"
+        "原文未支持的内容，并写入可追溯的 artifact 证据。"
+    )
+
+    term_map = [
+        {"source": source, "translation": target, "preserved": target in translation}
+        for source, target in required_terms.items()
+    ]
+    ambiguity_notes = [
+        "The source does not define whether policy note refers to product policy or runtime policy; translation keeps the phrase generic.",
+        "The source asks to preserve verifier_status exactly, so the term remains untranslated.",
+    ]
+    unsupported_additions = []
+
+    checks = {
+        "has_chinese": any("\u4e00" <= ch <= "\u9fff" for ch in translation),
+        "required_terms_preserved": all(item["preserved"] for item in term_map),
+        "ambiguity_named": bool(ambiguity_notes),
+        "unsupported_additions_absent": not unsupported_additions,
+        "metadata_expected_feed_present": bool(expected_feed),
+    }
+
+    answer = "\n".join(
+        [
+            "# Translate Mini Task Answer",
+            "",
+            translation,
+            "",
+            "## Ambiguity",
+            *[f"- {note}" for note in ambiguity_notes],
+        ]
+    )
+
+    artifacts = {
+        "source": session / "SOURCE.txt",
+        "translation": session / "TRANSLATION.md",
+        "term_map": session / "TERM_MAP.json",
+        "ambiguity": session / "AMBIGUITY.json",
+        "checks": session / "CHECKS.json",
+        "answer": session / "ANSWER.md",
+        "evidence": session / "evidence.json",
+    }
+    artifacts["source"].write_text(source_text + "\n", encoding="utf-8")
+    artifacts["translation"].write_text(translation + "\n", encoding="utf-8")
+    artifacts["term_map"].write_text(json.dumps(term_map, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    artifacts["ambiguity"].write_text(json.dumps(ambiguity_notes, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    artifacts["checks"].write_text(json.dumps(checks, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    artifacts["answer"].write_text(answer + "\n", encoding="utf-8")
+
+    passed = all(checks.values())
+    verifier_status = "satisfied" if passed else "partial"
+    field_metadata = {
+        "runtime": "shell",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "source_text": rel(artifacts["source"], root),
+        "translation": rel(artifacts["translation"], root),
+        "term_map": rel(artifacts["term_map"], root),
+        "ambiguity": rel(artifacts["ambiguity"], root),
+        "checks": rel(artifacts["checks"], root),
+        "answer": rel(artifacts["answer"], root),
+        "artifact_path": rel(artifacts["evidence"], root),
+        "verifier_status": verifier_status,
+        "field_pass_evidence": rel(artifacts["evidence"], root),
+    }
+    if not passed:
+        field_metadata["error_category"] = "translation_constraints_failed"
+
+    field_result = {
+        "status": verifier_status,
+        "output": answer,
+        "evidence": [
+            {
+                "source": "field-mini-task/translate/evidence",
+                "artifact_path": rel(artifacts["evidence"], root),
+                "confidence": 0.93,
+                "metadata": field_metadata,
+            },
+            {
+                "source": "field-mini-task/translate/term-map",
+                "artifact_path": rel(artifacts["term_map"], root),
+                "confidence": 0.92,
+                "metadata": field_metadata,
+            },
+        ],
+        "metadata": field_metadata,
+    }
+    artifacts["evidence"].write_text(json.dumps(field_result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

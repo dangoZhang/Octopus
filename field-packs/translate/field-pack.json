@@ -40,6 +40,11 @@
       "id": "translate-mini-4",
       "goal": "Translate a policy context sentence with strict term-preservation and explicit ambiguity handling, and require artifact-backed Feed evidence under .octopus/field-mini-task/.",
       "expected_feed": "Return translation output, preserved-term map, ambiguity notes, explicit gap metadata when evidence is incomplete, and artifact path under .octopus/field-mini-task/ for verifier evidence."
+    },
+    {
+      "id": "translate-mini-5",
+      "goal": "Create a harder-layer translate mini-task that enforces policy-term preservation, explicit ambiguity handling, and artifact-backed Feed evidence.",
+      "expected_feed": "Return a compact, artifact-backed translation summary that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata, includes term map and explicit gap metadata when evidence is missing, and reports verifier_status plus .octopus/field-mini-task evidence path."
     }
   ]
 }
