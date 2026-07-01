@@ -1,0 +1,159 @@
+if field == 'swe' and mini_task == 'swe-mini-5':
+    import csv
+    import difflib
+    import json
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    field_pack_name = 'swe'
+    mini_task_name = 'swe-mini-5'
+    expected_feed_text = globals().get(
+        'field_expected_feed',
+        'Return a compact, artifact-backed summary for swe-mini-5.',
+    )
+    session_root = Path(session)
+    scratch = session_root / 'scratch-swe-quoted-csv'
+    artifact_root = (
+        session_root / '.octopus' / 'field-mini-task' / field_pack_name / mini_task_name
+    )
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    evidence_path = artifact_root / 'evidence.json'
+
+    try:
+        if scratch.exists():
+            shutil.rmtree(scratch)
+        scratch.mkdir(parents=True, exist_ok=True)
+
+        parser_file = scratch / 'csv_parser.py'
+        service_file = scratch / 'order_service.py'
+        tests_file = scratch / 'test_order_service.py'
+
+        before_parser = '''\
+def parse_order_line(raw_line):
+    order_id, qty, item = raw_line.split(',')
+    return {'id': order_id.strip(), 'qty': int(qty), 'item': item.strip()}
+'''
+        after_parser = '''\
+import csv
+
+def parse_order_line(raw_line):
+    row = next(csv.reader([raw_line], skipinitialspace=True))
+    if len(row) != 3:
+        raise ValueError('order line must be id,qty,item')
+    order_id, qty, item = row
+    return {'id': order_id.strip(), 'qty': int(qty), 'item': item.strip()}
+'''
+        service_source = '''\
+from csv_parser import parse_order_line
+
+def parse_orders(raw_text):
+    return [parse_order_line(line) for line in raw_text.splitlines() if line.strip()]
+
+def total_qty(raw_text):
+    return sum(item['qty'] for item in parse_orders(raw_text))
+'''
+        test_source = '''\
+import unittest
+from order_service import parse_orders, total_qty
+
+class OrderCsvContractTest(unittest.TestCase):
+    def test_handles_quoted_comma_items(self):
+        raw = 'A12,2,widget\\nB03,3,"widget, deluxe"'
+        self.assertEqual(total_qty(raw), 5)
+
+    def test_trims_item_whitespace(self):
+        rows = parse_orders('C09,1,  spaced item   ')
+        self.assertEqual(rows[0]['item'], 'spaced item')
+
+    def test_rejects_invalid_rows(self):
+        with self.assertRaises(ValueError):
+            parse_orders('bad,row,with,extra,column')
+
+if __name__ == '__main__':
+    unittest.main()
+'''
+
+        parser_file.write_text(before_parser, encoding='utf-8')
+        service_file.write_text(service_source, encoding='utf-8')
+        tests_file.write_text(test_source, encoding='utf-8')
+
+        before = subprocess.run(
+            [sys.executable, '-B', '-m', 'unittest', 'discover', '-s', str(scratch)],
+            cwd=str(scratch),
+            text=True,
+            capture_output=True,
+        )
+
+        parser_file.write_text(after_parser, encoding='utf-8')
+
+        after = subprocess.run(
+            [sys.executable, '-B', '-m', 'unittest', 'discover', '-s', str(scratch)],
+            cwd=str(scratch),
+            text=True,
+            capture_output=True,
+        )
+
+        gaps = []
+        if before.returncode == 0:
+            gaps.append('baseline should fail before applying the fix')
+        if after.returncode != 0:
+            gaps.append('post-fix tests still failing')
+
+        evidence = {
+            'field_pack': field_pack_name,
+            'field_mini_task': mini_task_name,
+            'field_expected_feed': expected_feed_text,
+            'field_pass_evidence': str(evidence_path),
+            'verifier_status': 'satisfied' if not gaps else 'partial',
+            'before': {
+                'returncode': before.returncode,
+                'stdout': before.stdout,
+                'stderr': before.stderr,
+            },
+            'after': {
+                'returncode': after.returncode,
+                'stdout': after.stdout,
+                'stderr': after.stderr,
+            },
+            'diff': ''.join(
+                difflib.unified_diff(
+                    before_parser.splitlines(keepends=True),
+                    after_parser.splitlines(keepends=True),
+                    fromfile='before_parser.py',
+                    tofile='after_parser.py',
+                )
+            ),
+        }
+        evidence_path.write_text(json.dumps(evidence, indent=2), encoding='utf-8')
+
+        status = 'satisfied' if not gaps else 'partial'
+        field_result = {
+            'status': status,
+            'verifier_status': 'satisfied' if not gaps else 'partial',
+            'field_pack': field_pack_name,
+            'field_mini_task': mini_task_name,
+            'field_expected_feed': expected_feed_text,
+            'field_pass_evidence': str(evidence_path),
+            'gap': gaps,
+        }
+    except Exception as exc:
+        evidence = {
+            'status': 'partial',
+            'error': str(exc),
+            'field_pack': field_pack_name,
+            'field_mini_task': mini_task_name,
+            'field_expected_feed': expected_feed_text,
+            'field_pass_evidence': str(evidence_path),
+        }
+        evidence_path.write_text(json.dumps(evidence, indent=2), encoding='utf-8')
+        field_result = {
+            'status': 'partial',
+            'verifier_status': 'partial',
+            'field_pack': field_pack_name,
+            'field_mini_task': mini_task_name,
+            'field_expected_feed': expected_feed_text,
+            'field_pass_evidence': str(evidence_path),
+            'gap': [str(exc)],
+        }

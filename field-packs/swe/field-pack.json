@@ -22,6 +22,11 @@
   "trajectory_labels": ["issue", "repro", "root_cause", "patch", "tests", "feed"],
   "mini_tasks": [
     {
+      "id": "swe-mini-5",
+      "goal": "Harden SWE mini-tasking with multi-file regression and API-contract preservation.",
+      "expected_feed": "Return a compact, artifact-backed summary for swe-mini-5 that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata. Write verifier evidence under .octopus/field-mini-task/swe/swe-mini-5/ with before-vs-after test outputs, deterministic diffs, explicit verifier_status, and explicit gap metadata when evidence is missing."
+    },
+    {
       "id": "swe-mini-1",
       "goal": "Fix a deliberately failing tiny test fixture and report the regression evidence.",
       "expected_feed": "Root cause, patch summary, and test output."
