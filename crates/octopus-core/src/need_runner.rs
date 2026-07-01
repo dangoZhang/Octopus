@@ -211,11 +211,30 @@ pub(crate) fn record_auto_field_verifier_from_feed(
                     feed.status
                 ),
             };
+            let artifact = field_verifier_artifact_from_feed(feed);
             state
-                .record_field_verifier_result(index, verifier_status, error_category, None, summary)
+                .record_field_verifier_result(index, verifier_status, error_category, artifact, summary)
                 .ok()
         });
     (feed_trace_index, field, verifier_result)
+}
+
+fn field_verifier_artifact_from_feed(feed: &Feed) -> Option<String> {
+    [
+        "field_pass_evidence",
+        "artifact_path",
+        "trajectory_artifact",
+        "checks_path",
+        "artifact",
+    ]
+    .iter()
+    .find_map(|key| {
+        feed.metadata
+            .get(*key)
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    })
 }
 
 fn need_run_batch_next_actions(

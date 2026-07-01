@@ -285,6 +285,34 @@ def mark_template_result(result, template_path):
     return result
 
 
+def write_feed_draft(result):
+    if not isinstance(result, dict):
+        return
+    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+    status = compact(result.get("status") or metadata.get("verifier_status") or "partial", 80)
+    output = compact(result.get("output") or result.get("summary") or "", 600)
+    artifact = (
+        artifact_path_from_metadata(metadata)
+        or result.get("field_pass_evidence")
+        or result.get("artifact_path")
+        or output
+    )
+    lines = [
+        "# Current Feed",
+        "",
+        f"Status: {status}",
+        "",
+        f"Field: `{field}`",
+        f"Mini task: `{mini_task}`",
+    ]
+    if artifact:
+        lines.extend(["", f"Evidence: `{artifact}`"])
+    if output:
+        lines.extend(["", "## Summary", "", output])
+    lines.append("")
+    (session / "FEED.md").write_text("\n".join(lines), encoding="utf-8")
+
+
 payload = read_payload(sys.argv[2])
 root = Path(sys.argv[1] or ".").expanduser()
 if not root.is_absolute():
@@ -366,15 +394,22 @@ if template_path is not None:
         source = template_path.read_text(encoding="utf-8", errors="replace")
         exec(compile(source, str(template_path), "exec"), globals(), globals())
     except Exception as exc:
-        print(json.dumps(template_error_result(str(exc), template_path), ensure_ascii=True))
+        result = template_error_result(str(exc), template_path)
+        write_feed_draft(result)
+        print(json.dumps(result, ensure_ascii=True))
         raise SystemExit(0)
     if field_result is not None:
-        print(json.dumps(mark_template_result(field_result, template_path), ensure_ascii=True))
+        result = mark_template_result(field_result, template_path)
+        write_feed_draft(result)
+        print(json.dumps(result, ensure_ascii=True))
         raise SystemExit(0)
-    print(json.dumps(template_missing_result(template_path), ensure_ascii=True))
+    result = template_missing_result(template_path)
+    write_feed_draft(result)
+    print(json.dumps(result, ensure_ascii=True))
     raise SystemExit(0)
 
 if field_result is not None:
+    write_feed_draft(field_result)
     print(json.dumps(field_result, ensure_ascii=True))
     raise SystemExit(0)
 
