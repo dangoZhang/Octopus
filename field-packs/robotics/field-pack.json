@@ -40,6 +40,11 @@
       "id": "robotics-mini-4",
       "goal": "Run a simulator-only robotics task with dynamic obstacle detection, a safety stop condition, and replanned recovery to reach the goal.",
       "expected_feed": "Return a compact, artifact-backed summary proving simulator-only execution and recovery, preserving field_pack, field_mini_task, and field_expected_feed in Feed metadata and writing evidence under .octopus/field-mini-task/robotics/robotics-mini-4/."
+    },
+    {
+      "id": "robotics-mini-5",
+      "goal": "Handle dynamic obstacle appearance and confidence-triggered replanning by re-evaluating trajectory in simulation under energy and collision constraints.",
+      "expected_feed": "Return a compact, artifact-backed summary for robotics-mini-5 that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata. Include planned route, detection step, replanned route, min clearance, battery budget check, simulator-only safety gates, and explicit gap metadata when any condition fails."
     }
   ]
 }
