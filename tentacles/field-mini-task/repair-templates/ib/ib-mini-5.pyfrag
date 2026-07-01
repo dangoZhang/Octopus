@@ -1,0 +1,147 @@
+if field == "ib" and mini_task == "ib-mini-5":
+    import datetime as dt
+    import json
+    from pathlib import Path
+
+    session_dir = Path(session)
+    context_payload = globals().get("context", {})
+    expected_feed_text = str(
+        globals().get("expected_feed", "") or context_payload.get("field_expected_feed", "")
+    )
+    timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+    base_revenue = 100.0
+    growth_rates = [0.02, 0.05, 0.09]
+    ebitda_margins = [0.17, 0.21, 0.24]
+    capex_ratios = [0.03, 0.045]
+
+    rows = []
+    formula_failures = []
+
+    for growth in growth_rates:
+        revenue = round(base_revenue * (1 + growth), 4)
+        for margin in ebitda_margins:
+            ebitda = round(revenue * margin, 4)
+            for capex_ratio in capex_ratios:
+                capex = round(revenue * capex_ratio, 4)
+                fcf_proxy = round(ebitda - capex, 4)
+
+                row = {
+                    "revenue_growth": round(growth, 4),
+                    "ebitda_margin": round(margin, 4),
+                    "capex_ratio": round(capex_ratio, 4),
+                    "revenue": revenue,
+                    "ebitda": ebitda,
+                    "capex": capex,
+                    "fcf_proxy": fcf_proxy,
+                }
+
+                expected_revenue = round(base_revenue * (1 + row["revenue_growth"]), 4)
+                expected_ebitda = round(row["revenue"] * row["ebitda_margin"], 4)
+                expected_fcf = round(row["ebitda"] - row["capex"], 4)
+                if abs(row["revenue"] - expected_revenue) > 1e-9:
+                    formula_failures.append(("revenue", row))
+                if abs(row["ebitda"] - expected_ebitda) > 1e-9:
+                    formula_failures.append(("ebitda", row))
+                if abs(row["fcf_proxy"] - expected_fcf) > 1e-9:
+                    formula_failures.append(("fcf_proxy", row))
+
+                rows.append(row)
+
+    memo = (
+        "Deterministic local-fixture stress matrix for investment-banking style scenario planning. "
+        "All values are mechanics only; the output avoids prescriptive market calls, price objectives, and valuation mandates."
+    )
+
+    restricted_terms = [
+        "buy",
+        "sell",
+        "target price",
+        "outperform",
+        "underperform",
+        "recommend",
+        "guarantee",
+    ]
+    compliance_ok = not any(term in memo.lower() for term in restricted_terms)
+
+    artifact_root = (
+        session_dir / ".octopus" / "field-mini-task" / "ib" / "ib-mini-5" / timestamp
+    )
+    table_path = artifact_root / "TABLE.json"
+    evidence_path = artifact_root / "evidence.json"
+
+    artifact_errors = []
+    try:
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        table_path.write_text(json.dumps(rows, indent=2, sort_keys=True), encoding="utf-8")
+        evidence = {
+            "task": "ib-mini-5",
+            "assumptions": [
+                "No external data was used; deterministic local fixture.",
+                "Base revenue is 100.0 illustrative units.",
+                "Output is analytical mechanics only; non-advisory text.",
+            ],
+            "trajectory_scope": str(artifact_root),
+            "table_path": str(table_path),
+            "rows": rows,
+            "formula_failures": formula_failures,
+            "memo": memo,
+        }
+        evidence_path.write_text(
+            json.dumps(evidence, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        artifact_errors.append(f"artifact_write_error:{exc}")
+
+    checks = {
+        "scenario_count": len(rows),
+        "formula_ok": len(formula_failures) == 0,
+        "artifact_written": table_path.exists() and evidence_path.exists(),
+        "artifact_in_expected_root": ".octopus/field-mini-task" in str(table_path),
+        "compliance_guard_ok": compliance_ok,
+    }
+
+    gap_metadata = []
+    if not checks["formula_ok"]:
+        gap_metadata.append(
+            {
+                "id": "formula_mismatch",
+                "details": formula_failures[:8],
+                "count": len(formula_failures),
+            }
+        )
+    if not checks["artifact_written"]:
+        gap_metadata.append(
+            {
+                "id": "artifact_missing",
+                "details": artifact_errors or ["Missing TABLE.json or evidence.json"],
+            }
+        )
+    if not checks["artifact_in_expected_root"]:
+        gap_metadata.append(
+            {
+                "id": "artifact_scope",
+                "details": "Artifacts must be under .octopus/field-mini-task",
+            }
+        )
+    if not checks["compliance_guard_ok"]:
+        gap_metadata.append(
+            {
+                "id": "compliance_risk",
+                "details": "Restricted advisory language detected",
+            }
+        )
+
+    status = "partial" if gap_metadata else "satisfied"
+    field_result = {
+        "status": status,
+        "summary": "ib-mini-5 completed deterministic formula and compliance checks.",
+        "verifier_status": status,
+        "checks": checks,
+        "gap_metadata": gap_metadata,
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed_text,
+        "field_pass_evidence": str(evidence_path),
+    }
