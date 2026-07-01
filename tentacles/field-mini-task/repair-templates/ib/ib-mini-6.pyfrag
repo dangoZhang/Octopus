@@ -1,0 +1,144 @@
+if field == "ib" and mini_task == "ib-mini-6":
+    import datetime as dt
+    import json
+    from pathlib import Path
+
+    session_dir = Path(session)
+    context_payload = globals().get("context", {})
+    expected_feed_text = str(
+        globals().get("expected_feed", "") or context_payload.get("field_expected_feed", "")
+    ).strip()
+
+    timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    artifact_root = (
+        session_dir
+        / ".octopus"
+        / "field-mini-task"
+        / "ib"
+        / "ib-mini-6"
+        / timestamp
+    )
+    artifact_root.mkdir(parents=True, exist_ok=True)
+
+    base_revenue = 100.0
+    growth_rates = [0.02, 0.05, 0.09]
+    ebitda_margins = [0.18, 0.21, 0.24]
+    capex_ratios = [0.03, 0.045]
+
+    rows = []
+    formula_checks = []
+    for growth in growth_rates:
+        revenue = round(base_revenue * (1 + growth), 4)
+        for margin in ebitda_margins:
+            ebitda = round(revenue * margin, 4)
+            for capex_ratio in capex_ratios:
+                capex = round(revenue * capex_ratio, 4)
+                fcf_proxy = round(ebitda - capex, 4)
+                row = {
+                    "revenue_growth": round(growth, 4),
+                    "ebitda_margin": round(margin, 4),
+                    "capex_ratio": round(capex_ratio, 4),
+                    "revenue": revenue,
+                    "ebitda": ebitda,
+                    "capex": capex,
+                    "fcf_proxy": fcf_proxy,
+                }
+                expected_fcf = round(row["revenue"] * row["ebitda_margin"] - row["revenue"] * row["capex_ratio"], 4)
+                formula_checks.append(abs(row["fcf_proxy"] - expected_fcf) < 1e-9)
+                rows.append(row)
+
+    memo = (
+        "Local deterministic stress matrix for ib-mini-6. Growth, EBITDA margin, and capex ratio are "
+        "illustrative and do not provide investment advice."
+    )
+
+    restricted_terms = ["buy", "sell", "target price", "recommend", "downgrade", "upgrade"]
+    compliance_ok = not any(term in memo.lower() for term in restricted_terms)
+
+    checks = {
+        "rows_complete": len(rows) == len(growth_rates) * len(ebitda_margins) * len(capex_ratios),
+        "formula_checks": all(formula_checks),
+        "compliance_ok": compliance_ok,
+        "expected_feed_present": bool(expected_feed_text),
+    }
+
+    missing_regions = []
+    if not checks["rows_complete"]:
+        missing_regions.append("row_generation")
+    if not checks["formula_checks"]:
+        missing_regions.append("formula_gap")
+    if not checks["compliance_ok"]:
+        missing_regions.append("compliance_gap")
+    if not checks["expected_feed_present"]:
+        missing_regions.append("feed_gap")
+
+    if missing_regions:
+        verifier_status = "partial"
+        if "formula_gap" in missing_regions:
+            error_category = "formula_error"
+        elif "compliance_gap" in missing_regions:
+            error_category = "compliance_risk"
+        elif "feed_gap" in missing_regions:
+            error_category = "source_gap"
+        else:
+            error_category = "unsupported_assumption"
+        gap_metadata = {
+            "missing_regions": missing_regions,
+            "error_category": error_category,
+            "verifier_status": verifier_status,
+        }
+    else:
+        verifier_status = "satisfied"
+        gap_metadata = {}
+
+    assumptions = [
+        "No external market data or paid sources were used.",
+        "Scenario inputs are deterministic local fixtures.",
+        "No advisory or trading language is included in the memo content.",
+    ]
+
+    table_path = artifact_root / "TABLE.json"
+    assumptions_path = artifact_root / "ASSUMPTIONS.json"
+    evidence_path = artifact_root / "evidence.json"
+
+    table_path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+    assumptions_path.write_text(json.dumps(assumptions, indent=2), encoding="utf-8")
+
+    evidence = {
+        "field_pack": "ib",
+        "field_mini_task": "ib-mini-6",
+        "field_expected_feed": expected_feed_text,
+        "generated_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "verifier_status": verifier_status,
+        "checks": checks,
+        "gap_metadata": gap_metadata,
+        "artifact_paths": {
+            "table": str(table_path),
+            "assumptions": str(assumptions_path),
+            "evidence": str(evidence_path),
+        },
+    }
+    evidence_path.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
+
+    (session_dir / "TABLE.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")
+    (session_dir / "ASSUMPTIONS.json").write_text(json.dumps(assumptions, indent=2), encoding="utf-8")
+    (session_dir / "evidence.json").write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
+
+    field_result = {
+        "verifier_status": verifier_status,
+        "field_pack": "ib",
+        "field_mini_task": "ib-mini-6",
+        "field_expected_feed": expected_feed_text,
+        "checks": checks,
+        "artifact_paths": {
+            "table": str(table_path),
+            "assumptions": str(assumptions_path),
+            "evidence": str(evidence_path),
+        },
+    }
+
+    if verifier_status == "satisfied":
+        field_result["field_pass_evidence"] = str(evidence_path)
+    else:
+        field_result["gap_metadata"] = gap_metadata
+        field_result["field_pass_evidence"] = ""

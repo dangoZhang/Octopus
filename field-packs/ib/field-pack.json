@@ -45,6 +45,11 @@
       "id": "ib-mini-5",
       "goal": "Build a harder IB mini-task that performs a deterministic growth/margin/capex stress-matrix with formula validation and explicit non-advisory compliance constraints.",
       "expected_feed": "Return a compact, artifact-backed ib-mini-5 summary that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata. Generate TABLE.json and evidence.json under .octopus/field-mini-task/ib/ib-mini-5/<timestamp>/, validate all scenario formulas, include a no-advisory compliance check, and return partial with explicit gap_metadata when required checks or artifacts are missing."
+    },
+    {
+      "id": "ib-mini-6",
+      "goal": "Generate a deterministic investment-banking scenario stress matrix with explicit formula ties, compliance-safe narrative guardrails, and explicit artifact evidence requirements.",
+      "expected_feed": "Return a compact, artifact-backed summary for ib-mini-6. Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata. Require evidence at .octopus/field-mini-task/ib/ib-mini-6/<timestamp>/evidence.json and report missing regions when checks are incomplete."
     }
   ]
 }
