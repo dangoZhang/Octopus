@@ -13,6 +13,12 @@ use crate::{check_report, pet_events, record_check_report};
 use octopus_core::{HarnessState, Status};
 use std::env;
 use std::path::Path;
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
+use std::time::{Duration, Instant};
+
+const DEFAULT_PLANNING_TIMEOUT_SECONDS: u64 = 90;
+const DEFAULT_PLANNING_PROGRESS_SECONDS: u64 = 15;
 
 pub(crate) fn drive_evolution_cycle(
     state_path: &Path,
@@ -50,7 +56,14 @@ pub(crate) fn drive_evolution_cycle(
     };
 
     let (evolution_artifact, recommendation, apply_artifact) =
-        match recommend_current_patch(&cwd, &args.tentacle_id, &args.objective, &loaded) {
+        match recommend_current_patch_observed(
+            state_path,
+            &mut loaded,
+            &cwd,
+            &args.tentacle_id,
+            &args.objective,
+            EvolutionDriveStage::Planning,
+        ) {
             Ok(result) => (
                 result.evolution_artifact,
                 result.recommendation,
@@ -129,43 +142,70 @@ pub(crate) fn drive_evolution_cycle(
             ),
             Status::Partial,
         )?;
-        if let Ok(result) =
-            recommend_current_patch(&cwd, &args.tentacle_id, &retry_objective, &loaded)
-        {
-            report.stage = EvolutionDriveStage::ApplyRetryPlanning.as_str().to_string();
-            report.objective = retry_objective;
-            report.evolution_artifact = Some(result.evolution_artifact);
-            report.apply_artifact = Some(result.apply_artifact.clone());
-            report.next = vec![format!(
-                "octopus evolve apply {} {}",
-                shell_arg(&args.tentacle_id),
-                shell_arg(&result.recommendation.candidate_id)
-            )];
-            live_apply = apply_authorized_suggested_patch(
-                &cwd,
-                &result.recommendation.apply,
-                &result.apply_artifact,
-            );
-            let retry_state = if live_apply.applied {
-                "success"
-            } else {
-                "blocked"
-            };
-            record_apply_event(
-                state_path,
-                &mut loaded,
-                &args.tentacle_id,
-                retry_state,
-                live_apply_summary(&result.recommendation, &live_apply),
-                if live_apply.applied {
-                    Status::Satisfied
+        match recommend_current_patch_observed(
+            state_path,
+            &mut loaded,
+            &cwd,
+            &args.tentacle_id,
+            &retry_objective,
+            EvolutionDriveStage::ApplyRetryPlanning,
+        ) {
+            Ok(result) => {
+                report.stage = EvolutionDriveStage::ApplyRetryPlanning.as_str().to_string();
+                report.objective = retry_objective;
+                report.evolution_artifact = Some(result.evolution_artifact);
+                report.apply_artifact = Some(result.apply_artifact.clone());
+                report.next = vec![format!(
+                    "octopus evolve apply {} {}",
+                    shell_arg(&args.tentacle_id),
+                    shell_arg(&result.recommendation.candidate_id)
+                )];
+                live_apply = apply_authorized_suggested_patch(
+                    &cwd,
+                    &result.recommendation.apply,
+                    &result.apply_artifact,
+                );
+                let retry_state = if live_apply.applied {
+                    "success"
                 } else {
-                    Status::Failed
-                },
-                &live_apply,
-            )?;
-            report.live_apply = Some(live_apply.clone());
-            report.recommendation = Some(result.recommendation);
+                    "blocked"
+                };
+                record_apply_event(
+                    state_path,
+                    &mut loaded,
+                    &args.tentacle_id,
+                    retry_state,
+                    live_apply_summary(&result.recommendation, &live_apply),
+                    if live_apply.applied {
+                        Status::Satisfied
+                    } else {
+                        Status::Failed
+                    },
+                    &live_apply,
+                )?;
+                report.live_apply = Some(live_apply.clone());
+                report.recommendation = Some(result.recommendation);
+            }
+            Err(error) => {
+                record_drive_error_event(
+                    state_path,
+                    &mut loaded,
+                    EvolutionDriveStage::ApplyRetryPlanning,
+                    "blocked",
+                    &args.tentacle_id,
+                    format!("retry planning failed: {error}"),
+                    Status::Failed,
+                    classify_planner_error(&error),
+                )?;
+                report.stage = EvolutionDriveStage::ApplyRetryPlanning.as_str().to_string();
+                report.objective = retry_objective;
+                report.next = vec![format!(
+                    "octopus evolve recommend {} {}",
+                    shell_arg(&args.tentacle_id),
+                    shell_arg("repair failed self-evolution apply retry")
+                )];
+                return Ok(report);
+            }
         }
     }
 
@@ -247,6 +287,99 @@ pub(crate) fn drive_evolution_cycle(
     }
 
     Ok(report)
+}
+
+fn recommend_current_patch_observed(
+    state_path: &Path,
+    state: &mut HarnessState,
+    cwd: &Path,
+    tentacle_id: &str,
+    objective: &str,
+    stage: EvolutionDriveStage,
+) -> Result<crate::evolution_plan::EvolutionPatchPlanArtifacts, String> {
+    let timeout = Duration::from_secs(planning_timeout_seconds());
+    let progress_interval = Duration::from_secs(planning_progress_seconds());
+    let started = Instant::now();
+    let (tx, rx) = mpsc::channel();
+    let cwd = cwd.to_path_buf();
+    let tentacle_id_for_thread = tentacle_id.to_string();
+    let objective_for_thread = objective.to_string();
+    let state_for_thread = state.clone();
+
+    thread::spawn(move || {
+        let result = recommend_current_patch(
+            &cwd,
+            &tentacle_id_for_thread,
+            &objective_for_thread,
+            &state_for_thread,
+        );
+        let _ = tx.send(result);
+    });
+
+    loop {
+        let elapsed = started.elapsed();
+        if elapsed >= timeout {
+            return Err(planning_timeout_error(timeout));
+        }
+        let remaining = timeout.saturating_sub(elapsed);
+        let wait = remaining.min(progress_interval);
+        match rx.recv_timeout(wait) {
+            Ok(result) => return result,
+            Err(RecvTimeoutError::Timeout) => {
+                let elapsed_seconds = started.elapsed().as_secs();
+                if elapsed_seconds >= timeout.as_secs() {
+                    return Err(planning_timeout_error(timeout));
+                }
+                record_drive_event(
+                    state_path,
+                    state,
+                    stage,
+                    "evolution",
+                    tentacle_id,
+                    format!(
+                        "still planning {} (elapsed={}s, timeout={}s)",
+                        pet_events::summary_text(objective),
+                        elapsed_seconds,
+                        timeout.as_secs()
+                    ),
+                    Status::Partial,
+                )?;
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                return Err("evolution planner stopped before returning a plan".to_string());
+            }
+        }
+    }
+}
+
+fn planning_timeout_error(timeout: Duration) -> String {
+    format!(
+        "evolution planner timed out after {}s; set OCTOPUS_EVOLVE_PLANNING_TIMEOUT to adjust",
+        timeout.as_secs()
+    )
+}
+
+fn planning_timeout_seconds() -> u64 {
+    env_u64(
+        "OCTOPUS_EVOLVE_PLANNING_TIMEOUT",
+        DEFAULT_PLANNING_TIMEOUT_SECONDS,
+    )
+    .clamp(10, 600)
+}
+
+fn planning_progress_seconds() -> u64 {
+    env_u64(
+        "OCTOPUS_EVOLVE_PLANNING_PROGRESS_SECONDS",
+        DEFAULT_PLANNING_PROGRESS_SECONDS,
+    )
+    .clamp(5, 120)
+}
+
+fn env_u64(key: &str, fallback: u64) -> u64 {
+    env::var(key)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(fallback)
 }
 
 fn record_drive_event(

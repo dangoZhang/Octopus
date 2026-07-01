@@ -3,7 +3,7 @@ use octopus_core::{
     evolution_patch_diff_paths, evolution_patch_unauthorized_diff_paths_for_plan,
     EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionRecommendation,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -132,6 +132,25 @@ pub(crate) fn apply_authorized_suggested_patch(
                     stdout: String::from_utf8_lossy(&check.stdout).to_string(),
                     stderr: String::from_utf8_lossy(&check.stderr).to_string(),
                 };
+            }
+            match apply_structured_field_pack_patch(cwd, plan, patch_path, &changed_paths) {
+                Ok(Some(report)) => return report,
+                Ok(None) => {}
+                Err(error) => {
+                    return EvolutionLiveApplyReport {
+                        applied: false,
+                        status: "structured_field_pack_apply_failed".to_string(),
+                        command: Some(format!(
+                            "field-pack structured apply {}",
+                            shell_arg(patch_path)
+                        )),
+                        patch_path: Some(patch_path.to_string()),
+                        changed_paths: changed_paths.clone(),
+                        target_boundary_violations: Vec::new(),
+                        stdout: String::new(),
+                        stderr: error,
+                    };
+                }
             }
             match relocate_patch_hunks(cwd, patch_path) {
                 Ok(Some(relocated_path)) => {
@@ -373,6 +392,276 @@ fn git_apply_check(
         .arg(patch_path)
         .current_dir(cwd)
         .output()
+}
+
+fn apply_structured_field_pack_patch(
+    cwd: &Path,
+    plan: &EvolutionApplyPlan,
+    patch_path: &str,
+    changed_paths: &[String],
+) -> Result<Option<EvolutionLiveApplyReport>, String> {
+    let pack_paths = field_pack_targets(plan)
+        .into_iter()
+        .filter(|path| changed_paths.iter().any(|changed| changed == path))
+        .collect::<Vec<_>>();
+    if pack_paths.is_empty() {
+        return Ok(None);
+    }
+    let patch = fs::read_to_string(patch_path).map_err(|error| error.to_string())?;
+    let template_paths = changed_paths
+        .iter()
+        .filter(|path| path.contains("/repair-templates/") && path.ends_with(".pyfrag"))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut backups = BTreeMap::new();
+    let mut created = Vec::new();
+    let result = (|| -> Result<(), String> {
+        for pack_path in &pack_paths {
+            let added_tasks = added_field_pack_tasks(&patch, pack_path)?;
+            if added_tasks.is_empty() {
+                continue;
+            }
+            let full_path = cwd.join(pack_path);
+            let original = fs::read_to_string(&full_path)
+                .map_err(|error| format!("{}: {error}", full_path.display()))?;
+            backups.insert(pack_path.clone(), Some(original.clone()));
+            let mut value =
+                serde_json::from_str::<serde_json::Value>(&original).map_err(|error| {
+                    format!("{pack_path}: invalid JSON before structured apply: {error}")
+                })?;
+            let tasks = value
+                .get_mut("mini_tasks")
+                .and_then(serde_json::Value::as_array_mut)
+                .ok_or_else(|| format!("{pack_path}: missing mini_tasks array"))?;
+            let mut existing_ids = tasks
+                .iter()
+                .filter_map(|task| task.get("id").and_then(serde_json::Value::as_str))
+                .map(str::to_string)
+                .collect::<BTreeSet<_>>();
+            let mut new_tasks = Vec::new();
+            for task in added_tasks {
+                let Some(id) = task.get("id").and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                if !existing_ids.contains(id) {
+                    existing_ids.insert(id.to_string());
+                    new_tasks.push(task);
+                }
+            }
+            if new_tasks.is_empty() {
+                continue;
+            }
+            let content = append_field_pack_tasks_text(&original, &new_tasks)
+                .map_err(|error| format!("{pack_path}: {error}"))?;
+            fs::write(&full_path, content)
+                .map_err(|error| format!("{}: {error}", full_path.display()))?;
+        }
+        for template_path in &template_paths {
+            let Some(content) = added_file_content(&patch, template_path) else {
+                continue;
+            };
+            let full_path = cwd.join(template_path);
+            if full_path.exists() {
+                backups.insert(
+                    template_path.clone(),
+                    Some(
+                        fs::read_to_string(&full_path)
+                            .map_err(|error| format!("{}: {error}", full_path.display()))?,
+                    ),
+                );
+            } else {
+                backups.insert(template_path.clone(), None);
+                created.push(template_path.clone());
+            }
+            if let Some(parent) = full_path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|error| format!("{}: {error}", parent.display()))?;
+            }
+            fs::write(&full_path, content)
+                .map_err(|error| format!("{}: {error}", full_path.display()))?;
+        }
+        validate_field_pack_targets(cwd, plan)?;
+        validate_field_pack_template_pairs(cwd, plan, changed_paths)?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        for (path, content) in backups.iter().rev() {
+            let full_path = cwd.join(path);
+            if let Some(content) = content {
+                let _ = fs::write(&full_path, content);
+            } else {
+                let _ = fs::remove_file(&full_path);
+            }
+        }
+        for path in created {
+            let _ = fs::remove_file(cwd.join(path));
+        }
+        return Err(error);
+    }
+    Ok(Some(EvolutionLiveApplyReport {
+        applied: true,
+        status: "applied_structured_field_pack".to_string(),
+        command: Some(format!(
+            "field-pack structured apply {}",
+            shell_arg(patch_path)
+        )),
+        patch_path: Some(patch_path.to_string()),
+        changed_paths: changed_paths.to_vec(),
+        target_boundary_violations: Vec::new(),
+        stdout: "applied field-pack mini_tasks and repair templates from provider patch"
+            .to_string(),
+        stderr: String::new(),
+    }))
+}
+
+fn added_field_pack_tasks(patch: &str, pack_path: &str) -> Result<Vec<serde_json::Value>, String> {
+    let added = added_lines_for_path(patch, pack_path).join("\n");
+    let mut tasks = Vec::new();
+    for object in json_objects_in_text(&added) {
+        let value = serde_json::from_str::<serde_json::Value>(&object)
+            .map_err(|error| format!("{pack_path}: invalid added task JSON: {error}"))?;
+        let is_task = value
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .is_some()
+            && value
+                .get("goal")
+                .and_then(serde_json::Value::as_str)
+                .is_some()
+            && value
+                .get("expected_feed")
+                .and_then(serde_json::Value::as_str)
+                .is_some();
+        if is_task {
+            tasks.push(value);
+        }
+    }
+    Ok(tasks)
+}
+
+fn append_field_pack_tasks_text(
+    original: &str,
+    tasks: &[serde_json::Value],
+) -> Result<String, String> {
+    let rendered = tasks
+        .iter()
+        .map(render_field_pack_task)
+        .collect::<Result<Vec<_>, _>>()?
+        .join(",\n");
+    if original.contains("\"mini_tasks\": []") {
+        return Ok(original.replace(
+            "\"mini_tasks\": []",
+            &format!("\"mini_tasks\": [\n{rendered}\n  ]"),
+        ));
+    }
+    let Some(index) = original.rfind("\n  ]") else {
+        return Err("cannot locate mini_tasks closing bracket".to_string());
+    };
+    let mut output = String::new();
+    output.push_str(&original[..index]);
+    output.push_str(",\n");
+    output.push_str(&rendered);
+    output.push_str(&original[index..]);
+    if !output.ends_with('\n') {
+        output.push('\n');
+    }
+    Ok(output)
+}
+
+fn render_field_pack_task(task: &serde_json::Value) -> Result<String, String> {
+    let id = task
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "added task missing id".to_string())?;
+    let goal = task
+        .get("goal")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "added task missing goal".to_string())?;
+    let expected_feed = task
+        .get("expected_feed")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "added task missing expected_feed".to_string())?;
+    Ok(format!(
+        "    {{\n      \"id\": {},\n      \"goal\": {},\n      \"expected_feed\": {}\n    }}",
+        serde_json::to_string(id).map_err(|error| error.to_string())?,
+        serde_json::to_string(goal).map_err(|error| error.to_string())?,
+        serde_json::to_string(expected_feed).map_err(|error| error.to_string())?
+    ))
+}
+
+fn added_file_content(patch: &str, target_path: &str) -> Option<String> {
+    let lines = added_lines_for_path(patch, target_path);
+    (!lines.is_empty()).then(|| format!("{}\n", lines.join("\n")))
+}
+
+fn added_lines_for_path(patch: &str, target_path: &str) -> Vec<String> {
+    let mut current_path: Option<String> = None;
+    let mut in_hunk = false;
+    let mut lines = Vec::new();
+    for line in patch.lines() {
+        if let Some(path) = diff_file_path(line).or_else(|| plus_file_path(line)) {
+            current_path = Some(path);
+            in_hunk = false;
+            continue;
+        }
+        if line.starts_with("@@ ") {
+            in_hunk = true;
+            continue;
+        }
+        if line.starts_with("diff --git ") {
+            in_hunk = false;
+            continue;
+        }
+        if !in_hunk || current_path.as_deref() != Some(target_path) {
+            continue;
+        }
+        if line.starts_with("+++") {
+            continue;
+        }
+        if let Some(value) = line.strip_prefix('+') {
+            lines.push(value.to_string());
+        }
+    }
+    lines
+}
+
+fn json_objects_in_text(text: &str) -> Vec<String> {
+    let mut objects = Vec::new();
+    let mut start = None;
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (index, ch) in text.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '{' => {
+                if depth == 0 {
+                    start = Some(index);
+                }
+                depth += 1;
+            }
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    if let Some(start) = start.take() {
+                        objects.push(text[start..index + ch.len_utf8()].to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    objects
 }
 
 fn relocate_patch_hunks(cwd: &Path, patch_path: &str) -> Result<Option<PathBuf>, String> {
@@ -964,6 +1253,54 @@ mod tests {
             fs::read_to_string(template_path).unwrap(),
             "evidence = {}\nevidence.update({})\n"
         );
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn apply_structures_field_pack_append_when_patch_context_is_stale() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolution-apply-structured-field-pack-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("field-packs/code")).unwrap();
+        fs::create_dir_all(dir.join("tentacles/field-mini-task/repair-templates/code")).unwrap();
+        run_git(&dir, &["init"]);
+        let pack_path = dir.join("field-packs/code/field-pack.json");
+        fs::write(
+            &pack_path,
+            "{\n  \"id\": \"code\",\n  \"mini_tasks\": [\n    {\n      \"id\": \"code-mini-5\",\n      \"goal\": \"g\",\n      \"expected_feed\": \"current feed with verifier_status\"\n    }\n  ]\n}\n",
+        )
+        .unwrap();
+        let template_path =
+            dir.join("tentacles/field-mini-task/repair-templates/code/code-mini-7.pyfrag");
+        let patch_path = dir.join("candidate.patch");
+        fs::write(
+            &patch_path,
+            "diff --git a/field-packs/code/field-pack.json b/field-packs/code/field-pack.json\n--- a/field-packs/code/field-pack.json\n+++ b/field-packs/code/field-pack.json\n@@ -4,7 +4,12 @@\n     {\n       \"id\": \"code-mini-5\",\n       \"goal\": \"g\",\n       \"expected_feed\": \"stale feed without current words\"\n-    }\n+    },\n+    {\n+      \"id\": \"code-mini-7\",\n+      \"goal\": \"harder\",\n+      \"expected_feed\": \"artifact-backed\"\n+    }\n   ]\n }\ndiff --git a/tentacles/field-mini-task/repair-templates/code/code-mini-7.pyfrag b/tentacles/field-mini-task/repair-templates/code/code-mini-7.pyfrag\nnew file mode 100644\n--- /dev/null\n+++ b/tentacles/field-mini-task/repair-templates/code/code-mini-7.pyfrag\n@@ -0,0 +1,2 @@\n+if field == 'code' and mini_task == 'code-mini-7':\n+    field_result = {'status': 'satisfied'}\n",
+        )
+        .unwrap();
+        let mut plan = test_plan();
+        plan.candidate_id = "04-field-pack-tasks".to_string();
+        plan.target = "field-packs/code/field-pack.json".to_string();
+        plan.target_files = vec![
+            "field-packs/code/field-pack.json".to_string(),
+            "tentacles/field-mini-task/repair-templates/code/code-mini-7.pyfrag".to_string(),
+        ];
+        plan.suggested_patch = Some(fs::read_to_string(&patch_path).unwrap());
+        let artifact = test_artifact(Some(patch_path.to_str().unwrap()));
+
+        let report = apply_authorized_suggested_patch(&dir, &plan, &artifact);
+
+        assert!(report.applied, "{report:?}");
+        assert_eq!(report.status, "applied_structured_field_pack");
+        let pack = fs::read_to_string(pack_path).unwrap();
+        assert!(pack.contains("\"id\": \"code-mini-7\""));
+        assert!(pack.contains("current feed with verifier_status"));
+        assert!(fs::read_to_string(template_path)
+            .unwrap()
+            .contains("code-mini-7"));
 
         let _ = fs::remove_dir_all(dir);
     }

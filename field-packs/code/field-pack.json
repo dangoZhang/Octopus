@@ -50,6 +50,11 @@
       "id": "code-mini-5",
       "goal": "Harder patch verification task: compare pre-edit and post-edit command outputs and only return satisfied when deterministic artifact-backed evidence is generated.",
       "expected_feed": "Return a compact, artifact-backed summary that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata; include before-vs-after outputs, deterministic data-hygiene checks, verifier_status, and explicit gap metadata."
+    },
+    {
+      "id": "code-mini-7",
+      "goal": "Harden patch verification with deterministic pre-edit and post-edit execution, validate behavior delta, and enforce artifact-backed reproducibility checks.",
+      "expected_feed": "Return a compact, artifact-backed summary for code-mini-7. Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata. Require evidence at .octopus/field-mini-task/code/code-mini-7/<timestamp>/evidence.json with before-vs-after outputs, deterministic replay checks, and explicit gap metadata."
     }
   ]
 }

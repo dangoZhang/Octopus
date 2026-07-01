@@ -1,0 +1,185 @@
+if field == 'code' and mini_task == 'code-mini-7':
+    import difflib
+    import json
+    import os
+    import subprocess
+    import sys
+    from datetime import datetime, timezone
+
+    scratch = session / 'scratch-code-mini-7'
+    scratch.mkdir(parents=True, exist_ok=True)
+    script = scratch / 'patch_score.py'
+
+    artifact_dir = (
+        session / '.octopus' / 'field-mini-task' / 'code' / 'code-mini-7' /
+        datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    )
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    evidence_path = artifact_dir / 'evidence.json'
+
+    before_source = '''def patch_score(values):
+    total = 0
+    for item in values:
+        total += int(item)
+    return total
+
+if __name__ == "__main__":
+    print(patch_score([1, 2, 3]))
+'''
+    after_source = '''def patch_score(values):
+    total = 0
+    for item in values:
+        text = str(item).strip()
+        if not text:
+            continue
+        if not text.lstrip('-').isdigit():
+            continue
+        value = int(text)
+        if value <= 0:
+            continue
+        total += value
+    return total
+
+if __name__ == "__main__":
+    print(patch_score([1, 2, None, 3, 4, -1]))
+'''
+
+    script.write_text(before_source, encoding='utf-8')
+    env = os.environ.copy()
+    env['PYTHONHASHSEED'] = '0'
+
+    before_run = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=str(scratch),
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+    before_output = (before_run.stdout + before_run.stderr).strip()
+
+    script.write_text(after_source, encoding='utf-8')
+    after_run = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=str(scratch),
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+    after_output = (after_run.stdout + after_run.stderr).strip()
+
+    after_repeat_run = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=str(scratch),
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+    after_repeat_output = (after_repeat_run.stdout + after_repeat_run.stderr).strip()
+
+    diff_lines = list(
+        difflib.unified_diff(
+            before_source.splitlines(),
+            after_source.splitlines(),
+            fromfile='a/patch_score.py',
+            tofile='b/patch_score.py',
+            lineterm='',
+        )
+    )
+
+    gaps = []
+    checks = {
+        'changed_paths': ['patch_score.py'] if diff_lines else [],
+        'only_patch_file': bool(diff_lines),
+        'diff_line_count': len(diff_lines),
+        'before_returncode': before_run.returncode,
+        'after_returncode': after_run.returncode,
+        'after_repeat_returncode': after_repeat_run.returncode,
+        'before_output': before_output,
+        'after_output': after_output,
+        'before_vs_after_delta': before_output != after_output,
+        'before_output_is_expected': before_output == '6',
+        'after_output_is_expected': after_output == '10',
+        'replayable_after': after_output == after_repeat_output,
+        'artifact_under_session_root': str(artifact_dir).startswith(str(session)),
+        'output_is_numeric': after_output.isdigit(),
+    }
+
+    if before_run.returncode != 0:
+        gaps.append('before_task_failed_to_run')
+    if after_run.returncode != 0:
+        gaps.append('after_task_failed_to_run')
+    if after_repeat_run.returncode != 0:
+        gaps.append('after_task_repeat_failed_to_run')
+    if before_output == after_output:
+        gaps.append('no_behavior_delta')
+    if after_output != '10':
+        gaps.append('unexpected_after_output')
+    if before_output != '6':
+        gaps.append('unexpected_before_output')
+    if after_output != after_repeat_output:
+        gaps.append('non_deterministic_after_output')
+    if not diff_lines:
+        gaps.append('no_code_delta')
+
+    checks['gaps_count'] = len(gaps)
+
+    artifact_error = ''
+    artifact_written = False
+    evidence = {
+        'field_pack': field,
+        'field_mini_task': mini_task,
+        'field_expected_feed': expected_feed,
+        'generated_at': datetime.now(timezone.utc).isoformat(),
+        'verifier_status': 'satisfied',
+        'gaps': gaps.copy(),
+        'checks': checks,
+        'before_after_outputs': {'before': before_output, 'after': after_output},
+        'diff_lines': diff_lines,
+        'artifact_path': str(artifact_dir),
+    }
+
+    if gaps:
+        evidence['verifier_status'] = 'partial'
+
+    try:
+        evidence_path.write_text(json.dumps(evidence, indent=2), encoding='utf-8')
+        artifact_written = evidence_path.exists()
+    except Exception as exc:  # pragma: no cover
+        artifact_error = f'{exc.__class__.__name__}: {exc}'
+        gaps.append(f'artifact_write_failed: {artifact_error}')
+        evidence['gaps'] = gaps
+        evidence['verifier_status'] = 'partial'
+        checks['artifact_written'] = False
+
+    checks['artifact_written'] = artifact_written
+    checks['artifact_error'] = artifact_error
+
+    if evidence['gaps']:
+        status = 'partial'
+    elif not artifact_written:
+        status = 'partial'
+    else:
+        status = 'satisfied'
+
+    field_metadata = {
+        'field_pack': field,
+        'field_mini_task': mini_task,
+        'field_expected_feed': expected_feed,
+        'tool': 'run_field_mini_task',
+        'runtime': 'shell',
+        'verifier_status': evidence['verifier_status'],
+        'artifact_path': str(evidence_path),
+        'field_pass_evidence': str(evidence_path),
+    }
+
+    field_result = {
+        'status': status,
+        'verifier_status': evidence['verifier_status'],
+        'field_pack': field,
+        'field_mini_task': mini_task,
+        'field_expected_feed': expected_feed,
+        'field_pass_evidence': str(evidence_path),
+        'checks': checks,
+        'gaps': gaps,
+        'metadata': field_metadata,
+    }
