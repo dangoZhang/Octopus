@@ -21,6 +21,7 @@ fn normalize_suggested_patch_text(patch: &str) -> Option<String> {
     (!patch.is_empty()).then(|| {
         let patch = strip_patch_wrappers(patch);
         let patch = normalize_patch_file_headers(&patch);
+        let patch = normalize_prefixed_patch_control_lines(&patch);
         let patch = normalize_missing_existing_file_headers(&patch);
         let patch = normalize_new_file_hunks(&patch);
         let patch = normalize_diff_boundaries(&patch);
@@ -58,6 +59,42 @@ fn normalize_patch_file_headers(patch: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn normalize_prefixed_patch_control_lines(patch: &str) -> String {
+    let mut normalized = Vec::new();
+    let mut before_hunk = false;
+    for line in patch.lines() {
+        if line.starts_with("diff --git ") {
+            before_hunk = true;
+            normalized.push(line.to_string());
+            continue;
+        }
+        if before_hunk {
+            if let Some(stripped) = line.strip_prefix("+new file mode ") {
+                normalized.push(format!("new file mode {stripped}"));
+                continue;
+            }
+            if let Some(stripped) = line.strip_prefix("+--- /dev/null") {
+                normalized.push(format!("--- /dev/null{stripped}"));
+                continue;
+            }
+            if let Some(stripped) = line.strip_prefix("++++ ") {
+                normalized.push(format!("+++ {stripped}"));
+                continue;
+            }
+            if let Some(stripped) = line.strip_prefix("+@@ ") {
+                normalized.push(format!("@@ {stripped}"));
+                before_hunk = false;
+                continue;
+            }
+            if line.starts_with("@@ ") {
+                before_hunk = false;
+            }
+        }
+        normalized.push(line.to_string());
+    }
+    normalized.join("\n")
 }
 
 fn normalize_missing_existing_file_headers(patch: &str) -> String {
@@ -567,6 +604,31 @@ new file mode 100644
                 "field-packs/math/field-pack.json",
                 "tentacles/field-mini-task/repair-templates/math/math-mini-6.pyfrag"
             ]
+        );
+    }
+
+    #[test]
+    fn clean_suggested_patch_strips_plus_prefixed_new_file_headers() {
+        let patch = r#"diff --git a/tentacles/field-mini-task/repair-templates/write/write-mini-6.pyfrag b/tentacles/field-mini-task/repair-templates/write/write-mini-6.pyfrag
++new file mode 100644
++--- /dev/null
+++++ b/tentacles/field-mini-task/repair-templates/write/write-mini-6.pyfrag
++@@ -0,0 +1,2 @@
++if field == "write":
++    pass
+"#;
+
+        let cleaned = clean_suggested_patch(Some(patch.to_string())).unwrap();
+
+        assert!(cleaned.contains("\nnew file mode 100644\n"));
+        assert!(cleaned.contains("\n--- /dev/null\n"));
+        assert!(cleaned.contains(
+            "\n+++ b/tentacles/field-mini-task/repair-templates/write/write-mini-6.pyfrag\n"
+        ));
+        assert!(cleaned.contains("\n@@ -0,0 +1,2 @@\n"));
+        assert_eq!(
+            diff_paths(&cleaned),
+            vec!["tentacles/field-mini-task/repair-templates/write/write-mini-6.pyfrag"]
         );
     }
 

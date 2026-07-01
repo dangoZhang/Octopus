@@ -45,6 +45,11 @@
       "id": "write-mini-5",
       "goal": "Handle a harder write mini-task by producing an artifact-backed brief with explicit claim-source linkage and gap metadata.",
       "expected_feed": "Return a compact, artifact-backed write summary that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata, maps each claim to local source IDs with confidence, lists explicit unsupported gaps, and writes verifier evidence under .octopus/field-mini-task/write/write-mini-5/<timestamp>/evidence.json."
+    },
+    {
+      "id": "write-mini-6",
+      "goal": "Generate a tougher writing mini-task output with confidence-weighted claim mapping, explicit gap metadata, and mandatory local evidence artifacts.",
+      "expected_feed": "Return a compact, artifact-backed summary for write-mini-6. Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata. Generate a four-sentence draft from local notes only, map each sentence-level claim to note IDs with confidence scores, and write evidence artifacts under .octopus/field-mini-task/write/write-mini-6/<timestamp>/evidence.json."
     }
   ]
 }
