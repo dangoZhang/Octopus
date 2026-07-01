@@ -2,7 +2,7 @@ use crate::shell_words::shell_arg;
 use octopus_core::{EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionRecommendation};
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -50,29 +50,12 @@ pub(crate) fn apply_authorized_suggested_patch(
             stderr: String::new(),
         };
     };
-    let command_text = format!(
-        "git apply --recount --unidiff-zero {}",
-        shell_arg(patch_path)
-    );
-    let check_output = Command::new("git")
-        .arg("apply")
-        .arg("--check")
-        .arg("--recount")
-        .arg("--unidiff-zero")
-        .arg(patch_path)
-        .current_dir(cwd)
-        .output();
+    let mut effective_patch_path = patch_path.to_string();
+    let check_output = git_apply_check(cwd, &effective_patch_path, false);
     match check_output {
         Ok(check) if check.status.success() => {}
         Ok(check) => {
-            let reverse_check = Command::new("git")
-                .arg("apply")
-                .arg("--reverse")
-                .arg("--check")
-                .arg("--recount")
-                .arg(patch_path)
-                .current_dir(cwd)
-                .output();
+            let reverse_check = git_apply_check(cwd, patch_path, true);
             let (applied, status) = if reverse_check
                 .as_ref()
                 .is_ok_and(|reverse| reverse.status.success())
@@ -81,17 +64,96 @@ pub(crate) fn apply_authorized_suggested_patch(
             } else {
                 (false, "check_failed")
             };
-            return EvolutionLiveApplyReport {
-                applied,
-                status: status.to_string(),
-                command: Some(format!(
-                    "git apply --check --recount --unidiff-zero {}",
-                    shell_arg(patch_path)
-                )),
-                patch_path: Some(patch_path.to_string()),
-                stdout: String::from_utf8_lossy(&check.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&check.stderr).to_string(),
-            };
+            if applied {
+                return EvolutionLiveApplyReport {
+                    applied,
+                    status: status.to_string(),
+                    command: Some(format!(
+                        "git apply --check --recount --unidiff-zero {}",
+                        shell_arg(patch_path)
+                    )),
+                    patch_path: Some(patch_path.to_string()),
+                    stdout: String::from_utf8_lossy(&check.stdout).to_string(),
+                    stderr: String::from_utf8_lossy(&check.stderr).to_string(),
+                };
+            }
+            match relocate_patch_hunks(cwd, patch_path) {
+                Ok(Some(relocated_path)) => {
+                    let relocated_path = relocated_path.to_string_lossy().to_string();
+                    match git_apply_check(cwd, &relocated_path, false) {
+                        Ok(relocated_check) if relocated_check.status.success() => {
+                            effective_patch_path = relocated_path;
+                        }
+                        Ok(relocated_check) => {
+                            return EvolutionLiveApplyReport {
+                                applied: false,
+                                status: "check_failed".to_string(),
+                                command: Some(format!(
+                                    "git apply --check --recount --unidiff-zero {}",
+                                    shell_arg(&relocated_path)
+                                )),
+                                patch_path: Some(relocated_path),
+                                stdout: join_stdout(
+                                    &String::from_utf8_lossy(&check.stdout),
+                                    &String::from_utf8_lossy(&relocated_check.stdout),
+                                ),
+                                stderr: join_stderr(
+                                    &String::from_utf8_lossy(&check.stderr),
+                                    &format!(
+                                        "relocated patch check failed: {}",
+                                        String::from_utf8_lossy(&relocated_check.stderr)
+                                    ),
+                                ),
+                            };
+                        }
+                        Err(error) => {
+                            return EvolutionLiveApplyReport {
+                                applied: false,
+                                status: "check_failed_to_start".to_string(),
+                                command: Some(format!(
+                                    "git apply --check --recount --unidiff-zero {}",
+                                    shell_arg(&relocated_path)
+                                )),
+                                patch_path: Some(relocated_path),
+                                stdout: String::from_utf8_lossy(&check.stdout).to_string(),
+                                stderr: join_stderr(
+                                    &String::from_utf8_lossy(&check.stderr),
+                                    &format!("relocated patch check failed to start: {error}"),
+                                ),
+                            };
+                        }
+                    }
+                }
+                Ok(None) => {
+                    return EvolutionLiveApplyReport {
+                        applied: false,
+                        status: "check_failed".to_string(),
+                        command: Some(format!(
+                            "git apply --check --recount --unidiff-zero {}",
+                            shell_arg(patch_path)
+                        )),
+                        patch_path: Some(patch_path.to_string()),
+                        stdout: String::from_utf8_lossy(&check.stdout).to_string(),
+                        stderr: String::from_utf8_lossy(&check.stderr).to_string(),
+                    };
+                }
+                Err(error) => {
+                    return EvolutionLiveApplyReport {
+                        applied: false,
+                        status: "check_failed".to_string(),
+                        command: Some(format!(
+                            "git apply --check --recount --unidiff-zero {}",
+                            shell_arg(patch_path)
+                        )),
+                        patch_path: Some(patch_path.to_string()),
+                        stdout: String::from_utf8_lossy(&check.stdout).to_string(),
+                        stderr: join_stderr(
+                            &String::from_utf8_lossy(&check.stderr),
+                            &format!("relocated patch unavailable: {error}"),
+                        ),
+                    };
+                }
+            }
         }
         Err(error) => {
             return EvolutionLiveApplyReport {
@@ -107,11 +169,15 @@ pub(crate) fn apply_authorized_suggested_patch(
             };
         }
     }
+    let command_text = format!(
+        "git apply --recount --unidiff-zero {}",
+        shell_arg(&effective_patch_path)
+    );
     let output = Command::new("git")
         .arg("apply")
         .arg("--recount")
         .arg("--unidiff-zero")
-        .arg(patch_path)
+        .arg(&effective_patch_path)
         .current_dir(cwd)
         .output();
     match output {
@@ -131,7 +197,7 @@ pub(crate) fn apply_authorized_suggested_patch(
                         .arg("--reverse")
                         .arg("--recount")
                         .arg("--unidiff-zero")
-                        .arg(patch_path)
+                        .arg(&effective_patch_path)
                         .current_dir(cwd)
                         .output();
                     applied = false;
@@ -176,7 +242,7 @@ pub(crate) fn apply_authorized_suggested_patch(
                     .arg("--reverse")
                     .arg("--check")
                     .arg("--recount")
-                    .arg(patch_path)
+                    .arg(&effective_patch_path)
                     .current_dir(cwd)
                     .output();
                 if reverse_check
@@ -191,7 +257,7 @@ pub(crate) fn apply_authorized_suggested_patch(
                 applied,
                 status,
                 command: Some(command_text),
-                patch_path: Some(patch_path.to_string()),
+                patch_path: Some(effective_patch_path),
                 stdout,
                 stderr,
             }
@@ -200,11 +266,144 @@ pub(crate) fn apply_authorized_suggested_patch(
             applied: false,
             status: "failed_to_start".to_string(),
             command: Some(command_text),
-            patch_path: Some(patch_path.to_string()),
+            patch_path: Some(effective_patch_path),
             stdout: String::new(),
             stderr: error.to_string(),
         },
     }
+}
+
+fn git_apply_check(
+    cwd: &Path,
+    patch_path: &str,
+    reverse: bool,
+) -> std::io::Result<std::process::Output> {
+    let mut command = Command::new("git");
+    command.arg("apply");
+    if reverse {
+        command.arg("--reverse");
+    }
+    command
+        .arg("--check")
+        .arg("--recount")
+        .arg("--unidiff-zero")
+        .arg(patch_path)
+        .current_dir(cwd)
+        .output()
+}
+
+fn relocate_patch_hunks(cwd: &Path, patch_path: &str) -> Result<Option<PathBuf>, String> {
+    let patch = fs::read_to_string(patch_path).map_err(|error| error.to_string())?;
+    let Some(relocated) = relocate_patch_hunks_text(cwd, &patch)? else {
+        return Ok(None);
+    };
+    let relocated_path = PathBuf::from(format!("{patch_path}.relocated.patch"));
+    fs::write(&relocated_path, relocated).map_err(|error| error.to_string())?;
+    Ok(Some(relocated_path))
+}
+
+fn relocate_patch_hunks_text(cwd: &Path, patch: &str) -> Result<Option<String>, String> {
+    let lines = patch.lines().map(str::to_string).collect::<Vec<_>>();
+    let mut relocated = lines.clone();
+    let mut current_path: Option<String> = None;
+    let mut index = 0usize;
+    let mut changed = false;
+    while index < lines.len() {
+        let line = &lines[index];
+        if let Some(path) = diff_file_path(line) {
+            current_path = Some(path);
+            index += 1;
+            continue;
+        }
+        if let Some(path) = plus_file_path(line) {
+            current_path = Some(path);
+            index += 1;
+            continue;
+        }
+        if !line.starts_with("@@ ") {
+            index += 1;
+            continue;
+        }
+        let Some(path) = current_path.as_deref() else {
+            return Err("hunk without target file".to_string());
+        };
+        let hunk_start = index;
+        index += 1;
+        let mut old_lines = Vec::new();
+        let mut old_count = 0usize;
+        let mut new_count = 0usize;
+        while index < lines.len()
+            && !lines[index].starts_with("@@ ")
+            && !lines[index].starts_with("diff --git ")
+        {
+            let hunk_line = &lines[index];
+            if hunk_line.starts_with("\\ No newline") {
+                index += 1;
+                continue;
+            }
+            if let Some(value) = hunk_line.strip_prefix('-') {
+                old_lines.push(value.to_string());
+                old_count += 1;
+            } else if hunk_line.starts_with('+') {
+                new_count += 1;
+            } else if let Some(value) = hunk_line.strip_prefix(' ') {
+                old_lines.push(value.to_string());
+                old_count += 1;
+                new_count += 1;
+            }
+            index += 1;
+        }
+        if old_lines.is_empty() {
+            continue;
+        }
+        let target = cwd.join(path);
+        let target_text = fs::read_to_string(&target)
+            .map_err(|error| format!("{}: {error}", target.display()))?;
+        let target_lines = target_text.lines().map(str::to_string).collect::<Vec<_>>();
+        let Some(start) = find_line_sequence(&target_lines, &old_lines) else {
+            continue;
+        };
+        let new_start = start + 1;
+        let replacement = format!("@@ -{new_start},{old_count} +{new_start},{new_count} @@");
+        if relocated[hunk_start] != replacement {
+            relocated[hunk_start] = replacement;
+            changed = true;
+        }
+    }
+    Ok(changed.then(|| format!("{}\n", relocated.join("\n"))))
+}
+
+fn diff_file_path(line: &str) -> Option<String> {
+    let value = line.strip_prefix("diff --git ")?;
+    value
+        .split_whitespace()
+        .nth(1)
+        .and_then(normalize_patch_path)
+}
+
+fn plus_file_path(line: &str) -> Option<String> {
+    let value = line.strip_prefix("+++ ")?;
+    normalize_patch_path(value)
+}
+
+fn normalize_patch_path(value: &str) -> Option<String> {
+    let value = value.trim().trim_matches('"');
+    if value == "/dev/null" {
+        return None;
+    }
+    value
+        .strip_prefix("b/")
+        .or_else(|| value.strip_prefix("a/"))
+        .map(str::to_string)
+}
+
+fn find_line_sequence(haystack: &[String], needle: &[String]) -> Option<usize> {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return None;
+    }
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 fn validate_field_pack_targets(cwd: &Path, plan: &EvolutionApplyPlan) -> Result<(), String> {
@@ -386,6 +585,50 @@ mod tests {
         assert_eq!(report.status, "post_apply_validation_failed");
         assert!(report.stderr.contains("invalid JSON"));
         assert_eq!(fs::read_to_string(&pack_path).unwrap(), original);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn apply_relocates_bad_line_number_hunk_by_current_file_content() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolution-apply-relocate-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("tentacles/field-mini-task/repair-templates/ib")).unwrap();
+        run_git(&dir, &["init"]);
+        let template_path =
+            dir.join("tentacles/field-mini-task/repair-templates/ib/ib-mini-4.pyfrag");
+        fs::write(
+            &template_path,
+            "if field == \"ib\" and mini_task == \"ib-mini-4\":\n    assumptions = [\n        \"No guidance language such as buy/sell/target is allowed in the result summary or memo.\"\n    ]\n",
+        )
+        .unwrap();
+        let patch_path = dir.join("candidate.patch");
+        fs::write(
+            &patch_path,
+            "diff --git a/tentacles/field-mini-task/repair-templates/ib/ib-mini-4.pyfrag b/tentacles/field-mini-task/repair-templates/ib/ib-mini-4.pyfrag\n--- a/tentacles/field-mini-task/repair-templates/ib/ib-mini-4.pyfrag\n+++ b/tentacles/field-mini-task/repair-templates/ib/ib-mini-4.pyfrag\n@@ -1,1 +1,1 @@\n-        \"No guidance language such as buy/sell/target is allowed in the result summary or memo.\"\n+        \"No directional trading or price-target language is allowed in the result summary or memo.\"\n",
+        )
+        .unwrap();
+        let relocated = relocate_patch_hunks_text(&dir, &fs::read_to_string(&patch_path).unwrap())
+            .unwrap()
+            .unwrap();
+        assert!(relocated.contains("@@ -3,1 +3,1 @@"));
+        let mut plan = test_plan();
+        plan.target = "tentacles/field-mini-task/repair-templates/ib/ib-mini-4.pyfrag".to_string();
+        plan.target_files =
+            vec!["tentacles/field-mini-task/repair-templates/ib/ib-mini-4.pyfrag".to_string()];
+        plan.suggested_patch = Some(fs::read_to_string(&patch_path).unwrap());
+        let artifact = test_artifact(Some(patch_path.to_str().unwrap()));
+
+        let report = apply_authorized_suggested_patch(&dir, &plan, &artifact);
+
+        assert!(report.applied, "{report:?}");
+        assert_eq!(report.status, "applied");
+        let changed = fs::read_to_string(template_path).unwrap();
+        assert!(changed.contains("No directional trading or price-target language"));
+        assert!(!changed.contains("buy/sell/target"));
 
         let _ = fs::remove_dir_all(dir);
     }

@@ -35,6 +35,11 @@
       "id": "ib-mini-3",
       "goal": "Create a tiny sensitivity table for revenue growth versus margin, then draft a neutral diligence question.",
       "expected_feed": "Sensitivity table, formula checks, separated assumptions, and a non-advisory diligence question."
+    },
+    {
+      "id": "ib-mini-4",
+      "goal": "Run a stricter deterministic IB scenario stress test across growth, margin, and capex trajectories; validate all formulas, maintain deterministic local inputs, and enforce non-prescriptive language.",
+      "expected_feed": "Return a compact, artifact-backed summary that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata and writes verifier evidence under .octopus/field-mini-task/ib/ib-mini-4/ with verifier_status, formula checks, and restricted-language compliance checks."
     }
   ]
 }
