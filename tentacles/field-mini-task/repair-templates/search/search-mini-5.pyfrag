@@ -1,0 +1,151 @@
+if field == "search" and mini_task == "search-mini-5":
+    def source_date(path):
+        if not path.exists():
+            return "missing"
+        return dt.datetime.fromtimestamp(path.stat().st_mtime, dt.timezone.utc).strftime("%Y-%m-%d")
+
+    def source_text(path):
+        if not path.exists():
+            return ""
+        return path.read_text(encoding="utf-8", errors="replace")
+
+    def rel_path(path):
+        try:
+            return str(path.resolve().relative_to(root.resolve()))
+        except Exception:
+            return str(path)
+
+    source_specs = [
+        (
+            "search pack manifest",
+            root / "field-packs" / "search" / "field-pack.json",
+            ["search-mini-5", "dedupe", "trajectory_labels", "constraints"],
+        ),
+        (
+            "field-mini-task contract",
+            root / "tentacles" / "field-mini-task" / "manifest.json",
+            ["live", "artifact-backed", "field_mini_task"],
+        ),
+        (
+            "runtime entrypoint",
+            root / "tentacles" / "field-mini-task" / "tools" / "run_field_mini_task.sh",
+            ["repair-templates", "field_result", "field_pass_evidence"],
+        ),
+        (
+            "prior search layer",
+            root / "tentacles" / "field-mini-task" / "repair-templates" / "search" / "search-mini-4.pyfrag",
+            ["artifact", "field_pass_evidence", "dedupe"],
+        ),
+        (
+            "current search layer",
+            root / "tentacles" / "field-mini-task" / "repair-templates" / "search" / "search-mini-5.pyfrag",
+            ["unsupported_gaps", "search", "field_pass_evidence"],
+        ),
+        (
+            "project README",
+            root / "README.md",
+            ["octopus", "search"],
+        ),
+    ]
+
+    now = dt.datetime.now(dt.timezone.utc)
+    now_date = now.strftime("%Y-%m-%d")
+
+    sources = []
+    term_checks = []
+    for label, path, required_terms in source_specs:
+        content = source_text(path).lower()
+        hits = [term for term in required_terms if term.lower() in content]
+        source_entry = {
+            "label": label,
+            "path": rel_path(path),
+            "exists": path.exists(),
+            "date": source_date(path),
+            "term_checks": {
+                "required": required_terms,
+                "hits": hits,
+                "missing": sorted(set(required_terms) - set(hits)),
+            },
+        }
+        sources.append(source_entry)
+        term_checks.append(
+            {
+                "source": source_entry["path"],
+                "required_terms": required_terms,
+                "present_terms": hits,
+            }
+        )
+
+    path_counts = {}
+    for item in sources:
+        path_counts[item["path"]] = path_counts.get(item["path"], 0) + 1
+    duplicates = sorted([path for path, count in path_counts.items() if count > 1])
+
+    unique_sources = [item for item in sources if path_counts[item["path"]] == 1]
+    missing_sources = [item["path"] for item in sources if not item["exists"]]
+    missing_term_sources = [item["path"] for item in sources if item["exists"] and item["term_checks"]["missing"]]
+
+    missing_dates = [item["path"] for item in sources if item["date"] == "missing"]
+    future_dates = []
+    invalid_dates = []
+    for item in sources:
+        if item["date"] == "missing":
+            continue
+        try:
+            parsed = dt.datetime.strptime(item["date"], "%Y-%m-%d").replace(tzinfo=dt.timezone.utc)
+        except ValueError:
+            invalid_dates.append(item["path"])
+            continue
+        if parsed > now:
+            future_dates.append(item["path"])
+
+    unsupported_gaps = []
+    if duplicates:
+        unsupported_gaps.append({"type": "duplicate_source", "details": duplicates})
+    if missing_sources:
+        unsupported_gaps.append({"type": "missing_source", "details": sorted(set(missing_sources))})
+    if missing_term_sources:
+        unsupported_gaps.append({"type": "missing_required_terms", "details": sorted(set(missing_term_sources))})
+    if missing_dates:
+        unsupported_gaps.append({"type": "missing_source_date", "details": sorted(set(missing_dates))})
+    if future_dates:
+        unsupported_gaps.append({"type": "future_source_date", "details": sorted(set(future_dates))})
+    if invalid_dates:
+        unsupported_gaps.append({"type": "invalid_source_date", "details": sorted(set(invalid_dates))})
+    if len(unique_sources) < 4:
+        unsupported_gaps.append({"type": "coverage_gap", "details": "Need at least four distinct local sources for offline evidence audit."})
+
+    status = "satisfied" if not unsupported_gaps else "partial"
+
+    checks = {
+        "dedupe": {
+            "input_count": len(sources),
+            "unique_source_count": len(unique_sources),
+            "duplicate_paths": duplicates,
+        },
+        "dates": {
+            "as_of_utc": now_date,
+            "missing_dates": sorted(set(missing_dates)),
+            "future_dates": sorted(set(future_dates)),
+            "invalid_dates": sorted(set(invalid_dates)),
+        },
+        "term_checks": term_checks,
+        "coverage": {
+            "required_path_count": 4,
+            "found_path_count": len(unique_sources),
+        },
+    }
+
+    field_result = {
+        "status": status,
+        "verifier_status": status,
+        "field_pack": "search",
+        "field_mini_task": "search-mini-5",
+        "field_expected_feed": expected_feed,
+        "checks": checks,
+        "sources": sources,
+        "unsupported_gaps": unsupported_gaps,
+        "field_pass_evidence": str(session / "evidence.json"),
+    }
+
+    (session / "evidence.json").write_text(json.dumps(field_result, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
