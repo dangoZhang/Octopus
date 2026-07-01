@@ -1,5 +1,8 @@
 use crate::shell_words::shell_arg;
-use octopus_core::{EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionRecommendation};
+use octopus_core::{
+    evolution_patch_diff_paths, evolution_patch_unauthorized_diff_paths_for_plan,
+    EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionRecommendation,
+};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,6 +14,8 @@ pub(crate) struct EvolutionLiveApplyReport {
     pub(crate) status: String,
     pub(crate) command: Option<String>,
     pub(crate) patch_path: Option<String>,
+    pub(crate) changed_paths: Vec<String>,
+    pub(crate) target_boundary_violations: Vec<String>,
     pub(crate) stdout: String,
     pub(crate) stderr: String,
 }
@@ -26,6 +31,8 @@ pub(crate) fn apply_authorized_suggested_patch(
             status: "skipped_not_authorized".to_string(),
             command: None,
             patch_path: artifact.patch_path.clone(),
+            changed_paths: Vec::new(),
+            target_boundary_violations: Vec::new(),
             stdout: String::new(),
             stderr: String::new(),
         };
@@ -36,6 +43,8 @@ pub(crate) fn apply_authorized_suggested_patch(
             status: "skipped_no_suggested_patch".to_string(),
             command: None,
             patch_path: artifact.patch_path.clone(),
+            changed_paths: Vec::new(),
+            target_boundary_violations: Vec::new(),
             stdout: String::new(),
             stderr: String::new(),
         };
@@ -46,10 +55,51 @@ pub(crate) fn apply_authorized_suggested_patch(
             status: "skipped_missing_patch_artifact".to_string(),
             command: None,
             patch_path: None,
+            changed_paths: Vec::new(),
+            target_boundary_violations: Vec::new(),
             stdout: String::new(),
             stderr: String::new(),
         };
     };
+    let patch_text = match fs::read_to_string(patch_path) {
+        Ok(patch_text) => patch_text,
+        Err(error) => {
+            return EvolutionLiveApplyReport {
+                applied: false,
+                status: "check_failed_to_start".to_string(),
+                command: Some(format!(
+                    "git apply --check --recount --unidiff-zero {}",
+                    shell_arg(patch_path)
+                )),
+                patch_path: Some(patch_path.to_string()),
+                changed_paths: Vec::new(),
+                target_boundary_violations: Vec::new(),
+                stdout: String::new(),
+                stderr: format!("patch artifact unreadable: {error}"),
+            };
+        }
+    };
+    let changed_paths = evolution_patch_diff_paths(&patch_text);
+    let target_boundary_violations =
+        evolution_patch_unauthorized_diff_paths_for_plan(plan, &patch_text);
+    if !target_boundary_violations.is_empty() {
+        return EvolutionLiveApplyReport {
+            applied: false,
+            status: "target_boundary_failed".to_string(),
+            command: Some(format!(
+                "git apply --check --recount --unidiff-zero {}",
+                shell_arg(patch_path)
+            )),
+            patch_path: Some(patch_path.to_string()),
+            changed_paths,
+            target_boundary_violations: target_boundary_violations.clone(),
+            stdout: String::new(),
+            stderr: format!(
+                "patch target boundary violation: {}",
+                target_boundary_violations.join(", ")
+            ),
+        };
+    }
     let mut effective_patch_path = patch_path.to_string();
     let check_output = git_apply_check(cwd, &effective_patch_path, false);
     match check_output {
@@ -73,6 +123,8 @@ pub(crate) fn apply_authorized_suggested_patch(
                         shell_arg(patch_path)
                     )),
                     patch_path: Some(patch_path.to_string()),
+                    changed_paths: changed_paths.clone(),
+                    target_boundary_violations: Vec::new(),
                     stdout: String::from_utf8_lossy(&check.stdout).to_string(),
                     stderr: String::from_utf8_lossy(&check.stderr).to_string(),
                 };
@@ -93,6 +145,8 @@ pub(crate) fn apply_authorized_suggested_patch(
                                     shell_arg(&relocated_path)
                                 )),
                                 patch_path: Some(relocated_path),
+                                changed_paths: changed_paths.clone(),
+                                target_boundary_violations: Vec::new(),
                                 stdout: join_stdout(
                                     &String::from_utf8_lossy(&check.stdout),
                                     &String::from_utf8_lossy(&relocated_check.stdout),
@@ -115,6 +169,8 @@ pub(crate) fn apply_authorized_suggested_patch(
                                     shell_arg(&relocated_path)
                                 )),
                                 patch_path: Some(relocated_path),
+                                changed_paths: changed_paths.clone(),
+                                target_boundary_violations: Vec::new(),
                                 stdout: String::from_utf8_lossy(&check.stdout).to_string(),
                                 stderr: join_stderr(
                                     &String::from_utf8_lossy(&check.stderr),
@@ -133,6 +189,8 @@ pub(crate) fn apply_authorized_suggested_patch(
                             shell_arg(patch_path)
                         )),
                         patch_path: Some(patch_path.to_string()),
+                        changed_paths: changed_paths.clone(),
+                        target_boundary_violations: Vec::new(),
                         stdout: String::from_utf8_lossy(&check.stdout).to_string(),
                         stderr: String::from_utf8_lossy(&check.stderr).to_string(),
                     };
@@ -146,6 +204,8 @@ pub(crate) fn apply_authorized_suggested_patch(
                             shell_arg(patch_path)
                         )),
                         patch_path: Some(patch_path.to_string()),
+                        changed_paths: changed_paths.clone(),
+                        target_boundary_violations: Vec::new(),
                         stdout: String::from_utf8_lossy(&check.stdout).to_string(),
                         stderr: join_stderr(
                             &String::from_utf8_lossy(&check.stderr),
@@ -164,6 +224,8 @@ pub(crate) fn apply_authorized_suggested_patch(
                     shell_arg(patch_path)
                 )),
                 patch_path: Some(patch_path.to_string()),
+                changed_paths: changed_paths.clone(),
+                target_boundary_violations: Vec::new(),
                 stdout: String::new(),
                 stderr: error.to_string(),
             };
@@ -258,6 +320,8 @@ pub(crate) fn apply_authorized_suggested_patch(
                 status,
                 command: Some(command_text),
                 patch_path: Some(effective_patch_path),
+                changed_paths,
+                target_boundary_violations: Vec::new(),
                 stdout,
                 stderr,
             }
@@ -267,6 +331,8 @@ pub(crate) fn apply_authorized_suggested_patch(
             status: "failed_to_start".to_string(),
             command: Some(command_text),
             patch_path: Some(effective_patch_path),
+            changed_paths,
+            target_boundary_violations: Vec::new(),
             stdout: String::new(),
             stderr: error.to_string(),
         },
@@ -544,6 +610,8 @@ mod tests {
             status: "check_failed".to_string(),
             command: None,
             patch_path: Some("candidate.patch".to_string()),
+            changed_paths: Vec::new(),
+            target_boundary_violations: Vec::new(),
             stdout: String::new(),
             stderr: "error: patch failed at current file context".to_string(),
         };
@@ -552,6 +620,43 @@ mod tests {
 
         assert!(summary.contains("01-runtime-code check_failed"));
         assert!(summary.contains("patch failed"));
+    }
+
+    #[test]
+    fn apply_blocks_patch_outside_target_files() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolution-apply-boundary-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("tentacles/field-mini-task/tools")).unwrap();
+        run_git(&dir, &["init"]);
+        let allowed_path = dir.join("tentacles/field-mini-task/tools/run_field_mini_task.sh");
+        fs::write(&allowed_path, "echo allowed\n").unwrap();
+        let readme_path = dir.join("README.md");
+        fs::write(&readme_path, "old\n").unwrap();
+        let patch_path = dir.join("candidate.patch");
+        fs::write(
+            &patch_path,
+            "diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1,1 +1,1 @@\n-old\n+new\n",
+        )
+        .unwrap();
+        let mut plan = test_plan();
+        plan.suggested_patch = Some(fs::read_to_string(&patch_path).unwrap());
+        let artifact = test_artifact(Some(patch_path.to_str().unwrap()));
+
+        let report = apply_authorized_suggested_patch(&dir, &plan, &artifact);
+
+        assert!(!report.applied);
+        assert_eq!(report.status, "target_boundary_failed");
+        assert_eq!(report.changed_paths, vec!["README.md".to_string()]);
+        assert_eq!(
+            report.target_boundary_violations,
+            vec!["README.md".to_string()]
+        );
+        assert_eq!(fs::read_to_string(readme_path).unwrap(), "old\n");
+
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

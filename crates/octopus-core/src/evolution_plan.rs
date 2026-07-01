@@ -64,6 +64,8 @@ mod tests {
             status: "check_failed".to_string(),
             command: Some("git apply --check candidate.patch".to_string()),
             patch_path: Some("candidate.patch".to_string()),
+            changed_paths: Vec::new(),
+            target_boundary_violations: Vec::new(),
             stdout: String::new(),
             stderr: "error: patch failed: a very specific context mismatch".to_string(),
         };

@@ -12,6 +12,26 @@ pub(crate) fn authorized_apply_patch(plan: &EvolutionApplyPlan) -> Option<String
         .and_then(|patch| provider_patch_for_plan(plan, patch))
 }
 
+pub fn unauthorized_diff_paths_for_plan(plan: &EvolutionApplyPlan, patch: &str) -> Vec<String> {
+    let Some(patch) = normalize_suggested_patch_text(patch) else {
+        return Vec::new();
+    };
+    let paths = diff_paths(&patch);
+    let allowed_paths = allowed_patch_paths(plan);
+    let allowed_template_fields = fields_mentioned_in_field_paths(&plan.target_files.join(" "));
+    paths
+        .into_iter()
+        .filter(|path| {
+            !allowed_paths.iter().any(|allowed| allowed == path)
+                && !allowed_field_repair_template_path(
+                    path,
+                    &plan.tentacle_id,
+                    &allowed_template_fields,
+                )
+        })
+        .collect()
+}
+
 pub(crate) fn clean_suggested_patch(patch: Option<String>) -> Option<String> {
     normalize_suggested_patch_text(patch?.as_str())
 }
@@ -300,6 +320,24 @@ fn provider_patch_for_plan(plan: &EvolutionApplyPlan, patch: &str) -> Option<Str
     if paths.is_empty() {
         return None;
     }
+    let allowed_paths = allowed_patch_paths(plan);
+    let allowed_template_fields = fields_mentioned_in_field_paths(&plan.target_files.join(" "));
+    if allowed_paths.is_empty()
+        || paths.iter().any(|path| {
+            !allowed_paths.iter().any(|allowed| allowed == path)
+                && !allowed_field_repair_template_path(
+                    path,
+                    &plan.tentacle_id,
+                    &allowed_template_fields,
+                )
+        })
+    {
+        return None;
+    }
+    Some(patch)
+}
+
+fn allowed_patch_paths(plan: &EvolutionApplyPlan) -> Vec<String> {
     let mut allowed_paths = plan
         .target_files
         .iter()
@@ -320,20 +358,7 @@ fn provider_patch_for_plan(plan: &EvolutionApplyPlan, patch: &str) -> Option<Str
             );
         }
     }
-    let allowed_template_fields = fields_mentioned_in_field_paths(&plan.target_files.join(" "));
-    if allowed_paths.is_empty()
-        || paths.iter().any(|path| {
-            !allowed_paths.iter().any(|allowed| allowed == path)
-                && !allowed_field_repair_template_path(
-                    path,
-                    &plan.tentacle_id,
-                    &allowed_template_fields,
-                )
-        })
-    {
-        return None;
-    }
-    Some(patch)
+    allowed_paths
 }
 
 fn resolve_existing_patch_targets(target: &str) -> Vec<PathBuf> {
@@ -370,7 +395,7 @@ fn allowed_field_repair_template_path(path: &str, tentacle_id: &str, fields: &[S
     })
 }
 
-pub(crate) fn diff_paths(patch: &str) -> Vec<String> {
+pub fn diff_paths(patch: &str) -> Vec<String> {
     let mut paths = Vec::new();
     for line in patch.lines() {
         if let Some(value) = line.strip_prefix("diff --git ") {

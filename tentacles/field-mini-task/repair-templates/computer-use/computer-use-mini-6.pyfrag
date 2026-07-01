@@ -1,0 +1,117 @@
+if field == "computer-use" and mini_task == "computer-use-mini-6":
+    import json
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    def safe_text(path: Path) -> str:
+        try:
+            return path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return ""
+
+    root_dir = Path(root)
+    now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+    pack_path = root_dir / "field-packs" / "computer-use" / "field-pack.json"
+    demo_page = root_dir / "docs" / "demo.html"
+    app_page = root_dir / "docs" / "app.html"
+
+    evidence_dir = root_dir / ".octopus" / "field-mini-task" / "computer-use" / "computer-use-mini-6" / now
+    evidence_path = evidence_dir / "evidence.json"
+
+    demo_html = safe_text(demo_page).lower()
+    app_html = safe_text(app_page).lower()
+    required_regions = ["goal", "current need", "current feed", "output"]
+    region_checks = {label: label in app_html for label in required_regions}
+    missing_regions = [label for label, ok in region_checks.items() if not ok]
+
+    pack_loaded = False
+    pack_entry = None
+    pack_error = ""
+    try:
+        pack_payload = json.loads(pack_path.read_text(encoding="utf-8"))
+        pack_loaded = isinstance(pack_payload, dict)
+        if pack_loaded:
+            mini_tasks = pack_payload.get("mini_tasks", [])
+            pack_entry = next((item for item in mini_tasks if isinstance(item, dict) and item.get("id") == "computer-use-mini-6"), None)
+    except Exception as exc:
+        pack_error = f"{type(exc).__name__}: {exc}"
+
+    checks = {
+        "field_pack": {
+            "path": str(pack_path),
+            "exists": pack_path.exists(),
+            "parsed": pack_loaded,
+            "parse_error": pack_error,
+            "contains_mini_task": pack_entry is not None,
+            "expected_feed_has_artifact_signal": "artifact-backed" in ((pack_entry or {}).get("expected_feed", "").lower()),
+        },
+        "page_checks": {
+            "demo_exists": demo_page.exists(),
+            "app_exists": app_page.exists(),
+            "demo_octopus_signal": "octopus" in demo_html,
+            "required_regions": region_checks,
+            "missing_regions": missing_regions,
+        },
+        "query": {
+            "text": query if isinstance(query, str) else "",
+            "contains_mini_hint": "computer-use-mini-6" in (query or ""),
+        },
+    }
+
+    passed = all(
+        [
+            checks["field_pack"]["exists"],
+            checks["field_pack"]["parsed"],
+            checks["field_pack"]["contains_mini_task"],
+            checks["field_pack"]["expected_feed_has_artifact_signal"],
+            checks["page_checks"]["demo_exists"],
+            checks["page_checks"]["app_exists"],
+            checks["page_checks"]["demo_octopus_signal"],
+            not missing_regions,
+        ]
+    )
+
+    evidence = {
+        "field_pack": "computer-use",
+        "field_mini_task": "computer-use-mini-6",
+        "checks": checks,
+        "actions": [
+            "inspect field-pack/computer-use",
+            "verify mini-task entry in mini_tasks",
+            "inspect docs/demo.html and docs/app.html",
+            "write artifact-backed evidence",
+        ],
+        "artifact_dir": str(evidence_dir),
+        "timestamp": now,
+        "passed": passed,
+    }
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    evidence_path.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
+
+    field_result = {
+        "verifier_status": "satisfied" if passed else "partial",
+        "checks": checks,
+        "observation": {
+            "mode": "computer-use-mini-6",
+            "artifact": str(evidence_path),
+            "target": str(app_page),
+            "actions": [
+                "inspect field-pack/computer-use",
+                "verify mini-task entry in mini_tasks",
+                "inspect docs/demo.html and docs/app.html",
+                "write artifact-backed evidence",
+            ],
+        },
+        "field_pack": "computer-use",
+        "field_mini_task": "computer-use-mini-6",
+        "field_expected_feed": "Return a compact, artifact-backed summary for computer-use-mini-6. Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata. Require evidence at .octopus/field-mini-task/computer-use/computer-use-mini-6/<timestamp>/evidence.json showing docs/demo.html and docs/app.html checks and pack registration.",
+        "field_pass_evidence": str(evidence_path),
+    }
+    if not passed:
+        if not checks["field_pack"]["contains_mini_task"] or not checks["field_pack"]["parsed"]:
+            field_result["error_category"] = "bad_observation"
+        elif checks["page_checks"]["missing_regions"]:
+            field_result["error_category"] = "verification_missing"
+        else:
+            field_result["error_category"] = "action_failed"

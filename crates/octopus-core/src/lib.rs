@@ -30,6 +30,10 @@ pub use evolution_contract::{
     EvolutionRecommendation, EvolutionRequirement, EvolutionSurface, HarnessBeatEvolution,
     TentacleEvolutionProposal,
 };
+pub use evolution_patch::{
+    diff_paths as evolution_patch_diff_paths,
+    unauthorized_diff_paths_for_plan as evolution_patch_unauthorized_diff_paths_for_plan,
+};
 use evolution_recommend::tentacle_evolution_context;
 pub use evolution_recommend::{
     plan_tentacle_evolution_apply, recommend_tentacle_evolution_apply,
