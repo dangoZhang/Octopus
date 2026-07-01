@@ -35,6 +35,11 @@
       "id": "robotics-mini-3",
       "goal": "Plan a simulator-only recovery action when the robot detects an unexpected obstacle mid-route.",
       "expected_feed": "Initial route, unexpected-obstacle detection, recovery plan, safety stop condition, and no-hardware status."
+    },
+    {
+      "id": "robotics-mini-4",
+      "goal": "Run a simulator-only robotics task with dynamic obstacle detection, a safety stop condition, and replanned recovery to reach the goal.",
+      "expected_feed": "Return a compact, artifact-backed summary proving simulator-only execution and recovery, preserving field_pack, field_mini_task, and field_expected_feed in Feed metadata and writing evidence under .octopus/field-mini-task/robotics/robotics-mini-4/."
     }
   ]
 }
