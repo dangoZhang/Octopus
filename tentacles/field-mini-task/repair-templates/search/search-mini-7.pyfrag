@@ -1,0 +1,113 @@
+if field == "search" and mini_task == "search-mini-7":
+    def rel_path(path):
+        try:
+            return str(path.resolve().relative_to(root.resolve()))
+        except Exception:
+            return str(path)
+
+    source_paths = [
+        root / "field-packs" / "search" / "field-pack.json",
+        root / "field-packs" / "index.json",
+        root / "tentacles" / "field-mini-task" / "manifest.json",
+        root / "tentacles" / "field-mini-task" / "tools" / "run_field_mini_task.sh",
+        root / "tentacles" / "field-mini-task" / "tools" / "check_repair_templates.py",
+        root / "tentacles" / "field-mini-task" / "repair-templates" / "search" / "search-mini-6.pyfrag",
+    ]
+
+    now_utc = dt.datetime.now(dt.timezone.utc)
+    entries = []
+    failures = []
+    dedupe = set()
+    duplicates = []
+
+    for idx, path in enumerate(source_paths):
+        path_key = rel_path(path)
+        if path_key in dedupe:
+            duplicates.append(path_key)
+        else:
+            dedupe.add(path_key)
+
+        exists = path.exists()
+        date = None
+        if exists:
+            date = dt.datetime.fromtimestamp(path.stat().st_mtime, dt.timezone.utc).strftime("%Y-%m-%d")
+            if path.stat().st_mtime > now_utc.timestamp() + 1:
+                failures.append(f"{path_key}: future_date")
+        else:
+            failures.append(f"{path_key}: missing")
+
+        if not exists or date is None:
+            failures.append(f"{path_key}: invalid_or_missing_date")
+
+        entries.append({"path": path_key, "exists": exists, "date": date})
+
+    supported = len([item for item in entries if item["exists"]])
+    if supported < 5:
+        failures.append(f"supported_source_count={supported} < 5")
+
+    if duplicates:
+        failures.append(f"duplicate_source_ids={', '.join(sorted(set(duplicates)))}")
+
+    status = "satisfied" if not failures else "partial"
+    unsupported = sorted(set(failures))
+
+    checks = {
+        "required_source_count": 5,
+        "supported_source_count": supported,
+        "source_count": len(entries),
+        "duplicates": duplicates,
+        "unsupported_gaps": unsupported,
+    }
+
+    artifact = {
+        "field_pack": "search",
+        "field_mini_task": "search-mini-7",
+        "field_expected_feed": expected_feed,
+        "verifier_status": status,
+        "checks": checks,
+        "sources": entries,
+        "unsupported_gaps": unsupported,
+    }
+
+    evidence_file = session / "evidence.json"
+    (session / "SOURCES.json").write_text(json.dumps(entries, indent=2, ensure_ascii=True) + "\\n", encoding="utf-8")
+    (session / "CHECKS.json").write_text(json.dumps(checks, indent=2, ensure_ascii=True) + "\\n", encoding="utf-8")
+
+    answer_lines = [
+        f"search-mini-7: {status}",
+        f"supported_sources={supported}",
+        f"unsupported_gaps={'; '.join(unsupported) if unsupported else 'none'}",
+    ]
+    answer = "\\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer + "\\n", encoding="utf-8")
+
+    field_result = {
+        "status": status,
+        "verifier_status": status,
+        "field_pack": "search",
+        "field_mini_task": "search-mini-7",
+        "field_expected_feed": expected_feed,
+        "field_pass_evidence": rel_path(evidence_file),
+        "checks": checks,
+        "unsupported_gaps": unsupported,
+        "output": answer,
+        "metadata": {
+            "runtime": "python",
+            "contract": "octopus-json-v1",
+            "tool": "run_field_mini_task",
+            "tentacle": "field-mini-task",
+            "field_pack": "search",
+            "field_mini_task": "search-mini-7",
+            "field_expected_feed": expected_feed,
+            "field_session": rel_path(session),
+            "field_pass_evidence": rel_path(evidence_file),
+        },
+    }
+
+    if status == "partial":
+        field_result["error_category"] = "missing_evidence"
+        field_result["missing_regions"] = unsupported
+
+    evidence = dict(field_result)
+    evidence.update({"error_category": field_result.get("error_category"), "missing_regions": field_result.get("missing_regions", [])})
+    evidence_file.write_text(json.dumps(evidence, indent=2, ensure_ascii=True) + "\\n", encoding="utf-8")

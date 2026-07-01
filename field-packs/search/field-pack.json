@@ -50,6 +50,11 @@
       "id": "search-mini-6",
       "goal": "Verify a stricter local search trajectory by assembling at least four evidence sources, deduplicating by source key, and validating artifact-backed check coverage for the search mini-task harness.",
       "expected_feed": "Return a compact, artifact-backed summary for search-mini-6. Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata. Include at least four candidate sources with stable IDs and dedupe reasoning, date coverage checks, unsupported gaps, and explicit partial metadata when any hard requirement is not met."
+    },
+    {
+      "id": "search-mini-7",
+      "goal": "Run a harder offline search mini-task that requires at least five local evidence sources, strict UTC-date checks, stable source dedupe validation, and partial reporting when artifact evidence is incomplete.",
+      "expected_feed": "Return a compact, artifact-backed summary for search-mini-7. Preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata. Include at least five local candidate sources with stable IDs, UTC date checks, dedupe coverage, unsupported_gaps, and explicit partial metadata (error_category + missing_regions) whenever any hard requirement is not met."
     }
   ]
 }
