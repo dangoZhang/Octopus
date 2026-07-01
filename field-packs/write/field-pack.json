@@ -40,6 +40,11 @@
       "id": "write-mini-4",
       "goal": "From local source notes only, produce a strict 3-sentence write-up that maps exactly five claims to note IDs with confidence scores and keeps Goal, Mem, Need, and Feed as the clean-brain scope.",
       "expected_feed": "A 3-sentence brief plus exactly five source-backed claims with confidence scores, explicit unsupported gaps, and local artifact-backed verifier evidence under .octopus/field-mini-task/."
+    },
+    {
+      "id": "write-mini-5",
+      "goal": "Handle a harder write mini-task by producing an artifact-backed brief with explicit claim-source linkage and gap metadata.",
+      "expected_feed": "Return a compact, artifact-backed write summary that preserves field_pack, field_mini_task, and field_expected_feed in Feed metadata, maps each claim to local source IDs with confidence, lists explicit unsupported gaps, and writes verifier evidence under .octopus/field-mini-task/write/write-mini-5/<timestamp>/evidence.json."
     }
   ]
 }

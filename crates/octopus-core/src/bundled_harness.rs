@@ -239,6 +239,10 @@ const BUNDLED_TENTACLE_FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../../tentacles/field-mini-task/repair-templates/write/write-mini-4.pyfrag"),
     ),
     (
+        "field-mini-task/repair-templates/write/write-mini-5.pyfrag",
+        include_bytes!("../../../tentacles/field-mini-task/repair-templates/write/write-mini-5.pyfrag"),
+    ),
+    (
         "field-mini-task/repair-templates/translate/translate-mini-1.pyfrag",
         include_bytes!("../../../tentacles/field-mini-task/repair-templates/translate/translate-mini-1.pyfrag"),
     ),

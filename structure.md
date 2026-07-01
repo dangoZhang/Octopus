@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-07-01, after robotics-mini-4 self-evolution, provider patch retry verification, bundled harness coverage sync, and desktop-pet Need/Feed verification.
+Updated: 2026-07-01, after write-mini-5 self-evolution, repair-template check repair, bundled harness coverage sync, and desktop-pet Need/Feed verification.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -168,11 +168,11 @@ Octopus/
 | Evolution command surface | Owns `octopus evolve`: parallel worker start, drive dispatch, recommend/apply/score command flow, proposal/apply artifact loading, structured pet-event writes around evolution actions, and user/JSON output selection. This is the debug entry when self-evolution commands do not light the desktop pet or return misleading command output. | `evolution_surface.rs`, `handle_evolve_command`, `propose_evolution_for_cli`, `evolution_score_report` | 849 |
 | Evolution drive surface | CLI args, JSON report shape, and human-readable printing for `evolve drive` | `evolution_drive_surface.rs` | 116 |
 | Evolution driver | Autonomous harness loop for one cycle: stage events, planning, apply, manifest checks, and Feed delegation. It no longer owns CLI/report shape, patch execution, Feed execution, or retry objective shaping. | `evolution_driver.rs` | 318 |
-| Evolution Feed boundary | Field mini-task Feed execution, queued Need worker state, desktop pet launch, Feed event writes, partial/failed batch status folding, and blocked reporting when no queued Need actually reaches Feed | `evolution_feed.rs` | 206 |
+| Evolution Feed boundary | Field mini-task Feed execution, queued Need worker state, desktop pet launch, Feed event writes, partial/failed batch status folding, blocked reporting when opened workers fail to reach Feed, and non-blocked success reporting for harness-only repairs with zero workers | `evolution_feed.rs` | 259 |
 | Evolution patch boundary | Normalizes provider patch text, strips apply-patch/markdown wrappers, splits embedded diff headers, removes diff-boundary blank separators, recounts hunk headers from actual patch body, inserts missing new-file headers, extracts diff paths, renders display paths, and filters authorized patch paths before artifact/apply code can write a patch file. | `evolution_patch.rs` | 523 |
 | Evolution target boundary | Resolves manifest editable targets, field-pack targets, repair-template wildcard scopes, candidate target files, and field-name scopes for patch/prompt/candidate modules. | `evolution_target.rs` | 318 |
 | Field curriculum boundary | Selects the next concrete field for a harder mini-task layer from real trajectory summaries. It prefers unfinished/least-layer fields and returns a field-specific objective and agent action. This is the debug entry when the field pool says every field is complete but app/desktop cannot name the next field. | `field_curriculum.rs`, `state_report.rs` | 123 |
-| Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, verifier-status normalization, pyfrag prevalidation, compile/execute template checks, evolved math-mini-5 verifier coverage, evolved swe-mini-4 before/after unit-test evidence, write-mini-4 and translate-mini-4 artifact-backed Feed evidence, research-mini-4 clean-brain policy evidence, computer-use-mini-4 self-evolution metadata evidence, ib-mini-4 formula/compliance evidence, and robotics-mini-4 simulator recovery evidence | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 11,044 |
+| Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, verifier-status normalization, pyfrag prevalidation, compile/execute template checks, evolved math-mini-5 verifier coverage, evolved swe-mini-4 before/after unit-test evidence, write-mini-5 claim-source evidence, translate-mini-4 artifact-backed Feed evidence, research-mini-4 clean-brain policy evidence, computer-use-mini-4 self-evolution metadata evidence, ib-mini-4 formula/compliance evidence, and robotics-mini-4 simulator recovery evidence | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 11,603 |
 | Field adaptation surface | Owns `octopus fields`: field-pack reports, field matching, field trajectory summaries, verifier score recording, pet-event append after verifier scoring, parallel field worker slots, field-pool latest activity, and user-visible field status lines. This is the debug entry when field state exists but the app/CLI explains the wrong active domain, score, worker slot, or verifier pet state. | `field_surface.rs`, `handle_fields_command`, `FieldMatchReport`, `print_field_trajectory_report`, `field_pool_status_line`, `parallel_run_status_line` | 558 |
 | CLI and product backend | Command dispatch, structured direct Need context parsing, chat, starter/install/check flows, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; Need command logic lives in `need_surface.rs`; Evolution command logic lives in `evolution_surface.rs`; Route/Trace command logic lives in `route_surface.rs`; Feedback command logic lives in `feedback_surface.rs`; Field command logic lives in `field_surface.rs`; beat command logic lives in `heartbeat_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 20,203 |
 | Provider env | Loads `.octopus/llm.env` for CLI commands with a scoped guard; existing shell variables win, and values are restored after command execution | `provider_env.rs`, `app_bridge.rs::parse_env_overlay` | 107 |
@@ -246,7 +246,7 @@ These should remain stable and hard to accidentally mutate:
 - Evolution command surface rule: `evolution_surface.rs` owns `octopus evolve` command handling, proposal/apply artifact loading, evolution score reports reused by repair scoring, and pet-event writes around recommend/apply/score/parallel actions. Driver logic stays in `evolution_driver.rs`; Feed execution stays in `evolution_feed.rs`; patch application stays in `evolution_apply.rs`.
 - Evolution drive surface rule: `evolve drive` CLI/report formatting lives in `evolution_drive_surface.rs`; stage execution stays in `evolution_driver.rs`.
 - Evolution driver rule: `evolve drive` uses `evolution_cycle.rs` for stage/error events. Apply-check failures are fed back to the LLM once for a regenerated current-file patch.
-- Evolution Feed rule: `evolution_feed.rs` folds verifier/Feed statuses across the actual batch. A batch with any partial verifier result must show `harness/partial`, not a fake `feed/satisfied` event.
+- Evolution Feed rule: `evolution_feed.rs` folds verifier/Feed statuses across the actual batch. A batch with any partial verifier result must show `harness/partial`, not a fake `feed/satisfied` event. A harness-only repair with zero workers must not become `feed_missing_queued_need`; opened workers with no Feed still block.
 - Field surface rule: `field_surface.rs` owns field-adaptation command handling, display, matching reports, field-pool lines, verifier score recording, verifier result printing, and parallel field run rendering. It may append the verifier pet event created by `record_field_verifier_result`; it must not mutate harness code or bypass field-pack/manifest runtime execution.
 - Patch apply rule: provider-created new-file patches are normalized before `git apply`; missing `new file mode 100644` is inserted when a diff uses `--- /dev/null`.
 - Release gates: preflight, benchmark evidence, field-pool visibility, real-machine records, local app readiness.
@@ -268,7 +268,7 @@ Use this before changing UI or harness code:
 | Pet red/blocked during applying | `stage=applying`, `error_class=patch_*` | LLM produced an invalid, missing, or unauthorized patch | apply/patch normalization boundary |
 | Pet red/blocked with `field_pack_schema_failed` | `stage=applying`, `error_class=field_pack_schema_failed`, then inspect the patch artifact | A field-pack patch applied cleanly as text but broke the editable JSON contract; the apply boundary should reverse it before checks run | `evolution_apply.rs`, affected `field-packs/<field>/field-pack.json`, affected repair template |
 | Pet red/blocked during checking | `stage=checking`, `error_class=check_failed` | Harness patch applied but its declared check failed | tentacle check policy or editable harness code |
-| Pet red/blocked during feeding | `stage=feeding`, `error_class=feed_missing_queued_need` | No queued Need actually reached Feed; the system must not report fake success | `evolution_feed.rs` queued-Need boundary |
+| Pet red/blocked during feeding | `stage=feeding`, `error_class=feed_missing_queued_need` | Worker slots were opened but no queued Need actually reached Feed; the system must not report fake success | `evolution_feed.rs` queued-Need boundary |
 | Pet shows `harness/partial` after a Feed | `last_event.state=harness`, `status=partial`, then compare latest verifier result | A real Feed ran, but verifier still found partial evidence. The pet is observing the unresolved harness result, not controlling it. | `evolution_feed.rs` status fold; then `need_runner.rs` verifier and affected repair template |
 | Pet shows Need but no Feed follows | inspect `NeedRunReport`, latest pet event, and `.octopus/state.json` around the queue item | Queued Need was taken but did not reach `feed_one`, or observer state was not saved after Feed | `need_runner.rs`, affected manifest runtime |
 | User can change too many things, or Brain/Goal text is confusing | `octopus goal --json`, `octopus brain --session --json`, then compare printed output | Goal/Brain surface leaked internal modes into the user path, or audit text hid polluted Needs | `brain_goal_surface.rs`; Need generation stays in `brain_loop.rs` |
@@ -402,7 +402,7 @@ field-packs/
   computer-use/ mini-1..4
   ib/        mini-1..4
   robotics/ mini-1..4
-  write/      mini-1..4
+  write/      mini-1..5
   translate/  mini-1..4
 ```
 
@@ -412,10 +412,10 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 58 | 61,002 |
+| `crates/octopus-core/src` | 58 | 61,059 |
 | `crates/octopus-core/examples` | 0 | 0 |
-| `tentacles` | 183 | 24,162 |
-| `field-packs` | 14 | 638 |
+| `tentacles` | 194 | 24,721 |
+| `field-packs` | 14 | 643 |
 | `desktop/pet` | 1 | 841 |
 | `docs` | 29 md/html/json/sh files | 7,937 |
 | `cowork` | 3 | 101 |
@@ -445,7 +445,7 @@ field-packs/
 | `need_surface.rs` | 663 |
 | `field_surface.rs` | 558 |
 | `need_runner.rs` | 544 |
-| `bundled_harness.rs` | 455 |
+| `bundled_harness.rs` | 459 |
 | `evolution_artifact.rs` | 401 |
 | `desktop_pet.rs` | 377 |
 | `manifest_catalog.rs` | 373 |
@@ -469,7 +469,7 @@ field-packs/
 | `route_surface.rs` | 205 |
 | `download.rs` | 175 |
 | `observation_contract.rs` | 155 |
-| `evolution_feed.rs` | 206 |
+| `evolution_feed.rs` | 259 |
 | `field_curriculum.rs` | 123 |
 | `user_surface.rs` | 123 |
 | `pet_events.rs` | 118 |
@@ -492,7 +492,7 @@ field-packs/
 | `repo-maintainer` | 8 | 719 |
 | `computer-use-agent` | 10 | 644 |
 | `profile-registry` | 1 | 600 |
-| `field-mini-task` | 145 | 9,304 |
+| `field-mini-task` | 156 | 9,863 |
 | `swe-agent` | 6 | 217 |
 | `json-feed` | 2 | 162 |
 | `bash-only` | 2 | 77 |
@@ -512,8 +512,8 @@ field-packs/
 - Construction verification: `OCTOPUS_LLM_TIMEOUT=1 OCTOPUS_LLM_RETRIES=0 octopus --json evolve recommend field-mini-task ...` now records `blocked`, `stage=planning`, `error_class=provider_timeout`; `octopus pet supervise --json` reports `last_stage=pass`, `error_category=pass`, `desktop_process=pass`, `runtime_state=warn`, and `active_work=warn` so a fresh visible failure is not counted as active work.
 - Pet URL chain verification: `pet auto` must not combine a non-pending queued Need, stale Feed trace, and fresh blocked event. The current rule only shows pending Need text, or a Need/Feed pair from the same latest Feed trace, or text from the fresh event itself.
 - Field evolution proof point: SWE evolved to `swe-mini-4` through real `evolve drive`, exposed syntax and patch-context failures, fed those failures back into `evolve score`, added patch-wrapper normalization, line-numbered retry context, pyfrag runtime prevalidation, and finally passed Need -> Feed with trace #97 and `before_rc=1 after_rc=0`.
-- Field evolution proof points: write evolved to `write-mini-4` through concrete curriculum selection and passed Need -> Feed with trace #99; translate evolved to `translate-mini-4`, first broke field-pack JSON visibly, then passed Need -> Feed with trace #100, `verifier_status=satisfied`, and artifact-backed evidence under `.octopus/field-mini-task/translate/`; research evolved to `research-mini-4`, exposed orphan-template, invalid JSON, stale patch-context, partial Feed, and missing metadata propagation failures, then passed structured Need -> Feed with trace #105; computer-use evolved to `computer-use-mini-4`, exposed patch-header, JSON-placement, and bad-hunk-count failures, then passed `planning -> recommended -> applied -> checking -> need -> feed` with trace #106 and evidence under `.octopus/field-mini-task/computer-use/computer-use-mini-4/`; ib evolved to `ib-mini-4`, exposed new-file header, missing context guard, restricted-language, and bad patch-context failures, then passed Need -> Feed with trace #109 and evidence under `.octopus/field-mini-task/ib/20260701T025958Z-ib-mini-4/`; robotics evolved to `robotics-mini-4`, exposed a field-pack patch-context failure, regenerated the patch, then passed Need -> Feed with trace #110 and evidence under `.octopus/field-mini-task/robotics/20260701T031129Z-robotics-mini-4/`.
+- Field evolution proof points: write evolved to `write-mini-4` through concrete curriculum selection and passed Need -> Feed with trace #99; write evolved again to `write-mini-5`, exposed invalid field-pack JSON, top-level pyfrag import, and timestamp warning failures, repaired the editable template, then passed Need -> Feed with trace #111 and evidence under `.octopus/field-mini-task/write/write-mini-5/20260701T032204Z/`; translate evolved to `translate-mini-4`, first broke field-pack JSON visibly, then passed Need -> Feed with trace #100, `verifier_status=satisfied`, and artifact-backed evidence under `.octopus/field-mini-task/translate/`; research evolved to `research-mini-4`, exposed orphan-template, invalid JSON, stale patch-context, partial Feed, and missing metadata propagation failures, then passed structured Need -> Feed with trace #105; computer-use evolved to `computer-use-mini-4`, exposed patch-header, JSON-placement, and bad-hunk-count failures, then passed `planning -> recommended -> applied -> checking -> need -> feed` with trace #106 and evidence under `.octopus/field-mini-task/computer-use/computer-use-mini-4/`; ib evolved to `ib-mini-4`, exposed new-file header, missing context guard, restricted-language, and bad patch-context failures, then passed Need -> Feed with trace #109 and evidence under `.octopus/field-mini-task/ib/20260701T025958Z-ib-mini-4/`; robotics evolved to `robotics-mini-4`, exposed a field-pack patch-context failure, regenerated the patch, then passed Need -> Feed with trace #110 and evidence under `.octopus/field-mini-task/robotics/20260701T031129Z-robotics-mini-4/`.
 - Cleanup audit after the evolution-boundary commits moved prompt, candidate, artifact, patch, target, contract, recommendation, LLM planner, scaffold, clean-brain loop, Need queue, Need runner, Feedback surface, heartbeat surface, route surface, state-report, status surface, field surface, LLM provider, LLM layer routing, manifest catalog, manifest runtime, provider surface, preflight surface, doctor surface, and strategy surface responsibilities out of the largest files. Remaining discomfort: `main.rs` is still product-backend aggregation, and `lib.rs` still owns broad state mutation.
 - Evolution surface requirements now belong to manifests. Rust validates declared missing surfaces and must not grow domain-specific trigger rules.
-- Current field-mini-task template coverage is 41/41 satisfied after robotics-mini-4. The apply path normalizes LLM patch file headers, strips patch wrappers before `git apply`, removes diff-boundary blank lines, recounts hunk headers, relocates exact-content hunks when provider line numbers drift, rejects field-pack schema-shape and orphan harder-layer mistakes before apply, runs an apply precheck first, reverses post-apply invalid field-pack JSON, retries with current-file context after patch failure, and field-mini-task normalizes common LLM template result shapes into `octopus-json-v1` Feed. The next concrete curriculum field is `write`.
+- Current field-mini-task template coverage is 42/42 satisfied after write-mini-5. The apply path normalizes LLM patch file headers, strips patch wrappers before `git apply`, removes diff-boundary blank lines, recounts hunk headers, relocates exact-content hunks when provider line numbers drift, rejects field-pack schema-shape and orphan harder-layer mistakes before apply, runs an apply precheck first, reverses post-apply invalid field-pack JSON, retries with current-file context after patch failure, and field-mini-task normalizes common LLM template result shapes into `octopus-json-v1` Feed. The next concrete curriculum field is `translate`.
 - The release showcase is screenshot-first. The local app surface in `docs/app.html` observes and updates the real local Octopus loop.

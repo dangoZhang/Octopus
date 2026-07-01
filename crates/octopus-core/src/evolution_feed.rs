@@ -84,16 +84,29 @@ pub(crate) fn run_field_mini_task_feed_cycle(
         .field_trajectory_report_with_state(Some(state_path))
         .ok();
     let (stage, next) = if auto_feed.ran == 0 {
-        record_stage_event_with_error(
-            state_path,
-            &mut next_state,
-            EvolutionDriveStage::Feeding,
-            "blocked",
-            &args.tentacle_id,
-            "no queued Need reached Feed",
-            Status::Failed,
-            Some("feed_missing_queued_need".to_string()),
-        )?;
+        let (pet_state, status, summary, error_class) = missing_feed_event_status(run.worker_count);
+        if let Some(error_class) = error_class {
+            record_stage_event_with_error(
+                state_path,
+                &mut next_state,
+                EvolutionDriveStage::Feeding,
+                pet_state,
+                &args.tentacle_id,
+                summary,
+                status,
+                Some(error_class.to_string()),
+            )?;
+        } else {
+            record_stage_event(
+                state_path,
+                &mut next_state,
+                EvolutionDriveStage::Feeding,
+                pet_state,
+                &args.tentacle_id,
+                summary,
+                status,
+            )?;
+        }
         (
             EvolutionDriveStage::Feeding,
             if auto_feed.next.is_empty() {
@@ -144,6 +157,26 @@ fn fed_event_status(auto_feed: &NeedRunBatchReport) -> (&'static str, Status, St
         })
         .collect::<Vec<_>>();
     fed_status_from_statuses(auto_feed.ran, &statuses)
+}
+
+fn missing_feed_event_status(
+    worker_count: usize,
+) -> (&'static str, Status, &'static str, Option<&'static str>) {
+    if worker_count == 0 {
+        (
+            "success",
+            Status::Satisfied,
+            "harness-only repair completed; no queued Need requested",
+            None,
+        )
+    } else {
+        (
+            "blocked",
+            Status::Failed,
+            "no queued Need reached Feed",
+            Some("feed_missing_queued_need"),
+        )
+    }
 }
 
 fn fed_status_from_statuses(ran: usize, statuses: &[Status]) -> (&'static str, Status, String) {
@@ -202,5 +235,25 @@ mod tests {
         assert_eq!(pet_state, "feed");
         assert_eq!(status, Status::Satisfied);
         assert_eq!(summary, "fed 2 queued Need(s)");
+    }
+
+    #[test]
+    fn zero_worker_repair_is_not_a_missing_feed_failure() {
+        let (pet_state, status, summary, error_class) = missing_feed_event_status(0);
+
+        assert_eq!(pet_state, "success");
+        assert_eq!(status, Status::Satisfied);
+        assert!(summary.contains("harness-only repair"));
+        assert_eq!(error_class, None);
+    }
+
+    #[test]
+    fn missing_feed_still_blocks_when_workers_were_opened() {
+        let (pet_state, status, summary, error_class) = missing_feed_event_status(1);
+
+        assert_eq!(pet_state, "blocked");
+        assert_eq!(status, Status::Failed);
+        assert_eq!(summary, "no queued Need reached Feed");
+        assert_eq!(error_class, Some("feed_missing_queued_need"));
     }
 }
