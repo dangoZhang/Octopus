@@ -7,6 +7,10 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, serde::Serialize)]
 pub(crate) struct EvolutionLiveApplyReport {
@@ -235,6 +239,19 @@ pub(crate) fn apply_authorized_suggested_patch(
         "git apply --recount --unidiff-zero {}",
         shell_arg(&effective_patch_path)
     );
+    if let Err(error) = preflight_field_pack_patch(cwd, plan, &effective_patch_path, &changed_paths)
+    {
+        return EvolutionLiveApplyReport {
+            applied: false,
+            status: "pre_apply_validation_failed".to_string(),
+            command: Some(command_text),
+            patch_path: Some(effective_patch_path),
+            changed_paths,
+            target_boundary_violations: Vec::new(),
+            stdout: String::new(),
+            stderr: format!("field-pack dry-run validation failed: {error}"),
+        };
+    }
     let output = Command::new("git")
         .arg("apply")
         .arg("--recount")
@@ -483,6 +500,158 @@ fn validate_field_pack_targets(cwd: &Path, plan: &EvolutionApplyPlan) -> Result<
     Ok(())
 }
 
+fn preflight_field_pack_patch(
+    cwd: &Path,
+    plan: &EvolutionApplyPlan,
+    patch_path: &str,
+    changed_paths: &[String],
+) -> Result<(), String> {
+    let targets = field_pack_targets(plan);
+    if targets.is_empty() {
+        return Ok(());
+    }
+    let temp_dir = env_temp_dir("octopus-field-pack-preflight");
+    let patch_path = if Path::new(patch_path).is_absolute() {
+        PathBuf::from(patch_path)
+    } else {
+        cwd.join(patch_path)
+    };
+    let result = (|| {
+        let _ = fs::remove_dir_all(&temp_dir);
+        copy_patch_inputs_to_temp(cwd, &temp_dir, changed_paths)?;
+        init_dry_run_git_repo(&temp_dir)?;
+        let output = Command::new("git")
+            .arg("apply")
+            .arg("--recount")
+            .arg("--unidiff-zero")
+            .arg(&patch_path)
+            .current_dir(&temp_dir)
+            .output()
+            .map_err(|error| format!("dry-run apply failed to start: {error}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "dry-run apply failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        validate_field_pack_targets(&temp_dir, plan)?;
+        validate_field_pack_template_pairs(&temp_dir, plan, changed_paths)?;
+        Ok(())
+    })();
+    let _ = fs::remove_dir_all(&temp_dir);
+    result
+}
+
+fn init_dry_run_git_repo(temp_dir: &Path) -> Result<(), String> {
+    let output = Command::new("git")
+        .arg("init")
+        .arg("-q")
+        .current_dir(temp_dir)
+        .output()
+        .map_err(|error| format!("dry-run git init failed to start: {error}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "dry-run git init failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
+}
+
+fn copy_patch_inputs_to_temp(
+    cwd: &Path,
+    temp_dir: &Path,
+    changed_paths: &[String],
+) -> Result<(), String> {
+    fs::create_dir_all(temp_dir)
+        .map_err(|error| format!("create dry-run directory {}: {error}", temp_dir.display()))?;
+    for target in changed_paths {
+        let source = cwd.join(target);
+        let destination = temp_dir.join(target);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("create dry-run parent {}: {error}", parent.display()))?;
+        }
+        if source.is_file() {
+            fs::copy(&source, &destination).map_err(|error| {
+                format!(
+                    "copy dry-run input {} to {}: {error}",
+                    source.display(),
+                    destination.display()
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_field_pack_template_pairs(
+    cwd: &Path,
+    plan: &EvolutionApplyPlan,
+    changed_paths: &[String],
+) -> Result<(), String> {
+    for (field, task_id) in repair_template_field_task_ids(plan, changed_paths) {
+        let target = format!("field-packs/{field}/field-pack.json");
+        let path = cwd.join(&target);
+        let text = fs::read_to_string(&path).map_err(|error| format!("{target}: {error}"))?;
+        let value = serde_json::from_str::<serde_json::Value>(&text)
+            .map_err(|error| format!("{target}: invalid JSON: {error}"))?;
+        let Some(tasks) = value.get("mini_tasks").and_then(|value| value.as_array()) else {
+            return Err(format!("{target}: missing mini_tasks array"));
+        };
+        let found = tasks.iter().any(|task| {
+            task.get("id")
+                .and_then(|value| value.as_str())
+                .is_some_and(|id| id == task_id)
+        });
+        if !found {
+            return Err(format!(
+                "{target}: repair template {task_id}.pyfrag has no matching mini_tasks[].id"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn repair_template_field_task_ids(
+    plan: &EvolutionApplyPlan,
+    changed_paths: &[String],
+) -> Vec<(String, String)> {
+    let mut ids = BTreeSet::new();
+    for path in changed_paths.iter().chain(plan.target_files.iter()) {
+        if let Some(pair) = repair_template_field_task_id(path, &plan.tentacle_id) {
+            ids.insert(pair);
+        }
+    }
+    ids.into_iter().collect()
+}
+
+fn repair_template_field_task_id(path: &str, tentacle_id: &str) -> Option<(String, String)> {
+    let path = path.replace('\\', "/");
+    let manifest_prefix = format!("tentacles/{tentacle_id}/repair-templates/");
+    let suffix = path
+        .strip_prefix(&manifest_prefix)
+        .or_else(|| path.strip_prefix("repair-templates/"))?;
+    let mut parts = suffix.split('/');
+    let field = parts.next()?.to_string();
+    let file = parts.next()?;
+    if parts.next().is_some() || !file.ends_with(".pyfrag") {
+        return None;
+    }
+    let task_id = file.trim_end_matches(".pyfrag").to_string();
+    Some((field, task_id))
+}
+
+fn env_temp_dir(prefix: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let counter = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!("{prefix}-{}-{nanos}-{counter}", std::process::id()))
+}
+
 fn field_pack_targets(plan: &EvolutionApplyPlan) -> Vec<String> {
     let mut targets = BTreeSet::new();
     for path in &plan.target_files {
@@ -660,7 +829,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_reverses_field_pack_patch_that_breaks_json() {
+    fn apply_blocks_field_pack_patch_that_breaks_json_before_live_apply() {
         let dir = std::env::temp_dir().join(format!(
             "octopus-evolution-apply-field-pack-{}",
             std::process::id()
@@ -687,9 +856,56 @@ mod tests {
         let report = apply_authorized_suggested_patch(&dir, &plan, &artifact);
 
         assert!(!report.applied);
-        assert_eq!(report.status, "post_apply_validation_failed");
+        assert_eq!(report.status, "pre_apply_validation_failed");
         assert!(report.stderr.contains("invalid JSON"));
         assert_eq!(fs::read_to_string(&pack_path).unwrap(), original);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn apply_blocks_field_pack_template_id_without_matching_task() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolution-apply-field-pack-pair-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("field-packs/translate")).unwrap();
+        fs::create_dir_all(dir.join("tentacles/field-mini-task/repair-templates/translate"))
+            .unwrap();
+        run_git(&dir, &["init"]);
+        let pack_path = dir.join("field-packs/translate/field-pack.json");
+        let original = "{\n  \"id\": \"translate\",\n  \"mini_tasks\": []\n}\n";
+        fs::write(&pack_path, original).unwrap();
+        let template_path = dir
+            .join("tentacles/field-mini-task/repair-templates/translate/translate-mini-8.pyfrag");
+        let patch_path = dir.join("candidate.patch");
+        fs::write(
+            &patch_path,
+            "diff --git a/field-packs/translate/field-pack.json b/field-packs/translate/field-pack.json\n--- a/field-packs/translate/field-pack.json\n+++ b/field-packs/translate/field-pack.json\n@@ -1,4 +1,10 @@\n {\n   \"id\": \"translate\",\n-  \"mini_tasks\": []\n+  \"mini_tasks\": [\n+    {\n+      \"id\": \"translate-mini-7\",\n+      \"goal\": \"g\",\n+      \"expected_feed\": \"f\"\n+    }\n+  ]\n }\ndiff --git a/tentacles/field-mini-task/repair-templates/translate/translate-mini-8.pyfrag b/tentacles/field-mini-task/repair-templates/translate/translate-mini-8.pyfrag\nnew file mode 100644\n--- /dev/null\n+++ b/tentacles/field-mini-task/repair-templates/translate/translate-mini-8.pyfrag\n@@ -0,0 +1,2 @@\n+if field == \"translate\" and mini_task == \"translate-mini-8\":\n+    pass\n",
+        )
+        .unwrap();
+        let mut plan = test_plan();
+        plan.candidate_id = "04-field-pack-tasks".to_string();
+        plan.target = "field-packs/translate/field-pack.json".to_string();
+        plan.target_files = vec![
+            "field-packs/translate/field-pack.json".to_string(),
+            "tentacles/field-mini-task/repair-templates/translate/translate-mini-8.pyfrag"
+                .to_string(),
+        ];
+        plan.suggested_patch = Some(fs::read_to_string(&patch_path).unwrap());
+        let artifact = test_artifact(Some(patch_path.to_str().unwrap()));
+
+        let report = apply_authorized_suggested_patch(&dir, &plan, &artifact);
+
+        assert!(!report.applied);
+        assert_eq!(report.status, "pre_apply_validation_failed");
+        assert!(
+            report.stderr.contains("no matching mini_tasks[].id"),
+            "{report:?}"
+        );
+        assert_eq!(fs::read_to_string(&pack_path).unwrap(), original);
+        assert!(!template_path.exists());
 
         let _ = fs::remove_dir_all(dir);
     }

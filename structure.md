@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-07-01, after robotics-mini-6 evolution, bundled harness coverage sync, and desktop-pet Need/Action/Feed verification.
+Updated: 2026-07-01, after field-pack evolution dry-run validation and prompt tail-context hardening.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -29,7 +29,7 @@ Octopus/
 │       ├── download.rs        Download/install manifest and artifact checks.
 │       ├── desktop_pet.rs     macOS read-only desktop pet launcher.
 │       ├── evolution.rs       Manifest-owned evolution surface requirement validation.
-│       ├── evolution_apply.rs Authorized provider patch apply/check execution for harness evolution.
+│       ├── evolution_apply.rs Authorized provider patch check, dry-run validation, and apply execution.
 │       ├── evolution_artifact.rs Evolution proposal/apply artifact writing and markdown rendering.
 │       ├── evolution_candidate.rs LLM response parsing, candidate target validation, target-file recovery, and patch draft metadata.
 │       ├── evolution_contract.rs Public evolution policy, proposal, candidate, apply, artifact, and harness-beat data contracts.
@@ -40,7 +40,7 @@ Octopus/
 │       ├── evolution_llm_plan.rs LLM harness-planner chat messages, retry note, and JSON plan parsing.
 │       ├── evolution_patch.rs Provider patch normalization, hunk recounting, diff path extraction, and apply allow-list filtering.
 │       ├── evolution_plan.rs  LLM patch recommendation artifacts and apply-failure retry objective shaping.
-│       ├── evolution_prompt.rs LLM evolution prompt, compact trace/history payloads, and target-file context budget.
+│       ├── evolution_prompt.rs LLM evolution prompt, compact payloads, and target/tail context budget.
 │       ├── evolution_recommend.rs Proposal assembly, candidate scoring, apply-plan selection, and harness-beat artifact orchestration.
 │       ├── evolution_surface.rs `evolve` command surface, pet event writes, recommend/apply/score/parallel dispatch.
 │       ├── evolution_target.rs Manifest/field-pack/repair-template target resolution for harness evolution.
@@ -155,7 +155,7 @@ Octopus/
 | Harness repair surface | Owns `octopus repair`: repair plan extraction, repair continuation, patch apply/verify, repair scoring, repair outcome journal, and repair report rendering. This is the debug entry when a harness change, repair plan, score, or post-apply check cannot be diagnosed from Need/Feed traces alone. | `repair_surface.rs`, `RepairReport`, `RepairPlanReport`, `RepairScoreReport`, `handle_repair_command` | 6,670 |
 | Heartbeat command surface | Owns `octopus beat`: memory keep parsing, early heartbeat pet event, seed-source repair before beat, three-heart report rendering, and harness-beat evolution artifact recommendation. This is the debug entry when the desktop pet looks stale during beat, memory/harness beat output is wrong, or harness beat chooses the wrong repair target. | `heartbeat_surface.rs`, `handle_beat_command`, `print_heartbeat_report`, `write_harness_beat_evolution_artifacts_with_bundled_manifest` | 246 |
 | Evolution contract | Manifest-owned surface requirements, required-surface validation, candidate ID normalization, LLM retry guardrails without field-specific Rust branches | `evolution.rs`, `tentacles/*/manifest.json`, `tentacles/tentacle.schema.json` | 471 |
-| Evolution apply boundary | Authorized provider patch application, target-boundary diff audit before live apply, `git apply --check`, exact-content hunk relocation when provider line numbers drift, field-pack post-apply schema validation with automatic reverse on failure, reverse already-applied detection, summary helpers, safety tests, and live apply reports shared by CLI apply and autonomous drive | `evolution_apply.rs` | 801 |
+| Evolution apply boundary | Authorized provider patch application, target-boundary diff audit before live apply, `git apply --check`, exact-content hunk relocation when provider line numbers drift, field-pack dry-run schema/template validation before live apply, post-apply reverse fallback, reverse already-applied detection, summary helpers, safety tests, and live apply reports shared by CLI apply and autonomous drive | `evolution_apply.rs` | 1,017 |
 | Evolution artifact boundary | Writes proposal/apply markdown, json, and authorized patch artifacts under `.octopus/evolution/**`; keeps review artifacts separate from planner logic and apply authorization. | `evolution_artifact.rs` | 401 |
 | Evolution candidate boundary | Parses provider JSON, validates LLM candidate fields, targets, field-pack schema shape, and harder-layer field-pack/template patch pairs, recovers target files from provider diffs, builds patch-draft metadata, and keeps planner-output errors separate from stable kernel state. Wrong `task_layers`, object-shaped `mini_tasks`, or orphan harder-layer templates are rejected here so the LLM planner can retry. | `evolution_candidate.rs` | 411 |
 | Evolution data contract | Public data shapes for evolution policy, surfaces, requirements, proposals, file targets, patch candidates, feedback, apply plans, artifacts, recommendations, and harness-beat reports. It owns serde defaults for manifest evolution surfaces and keeps contract shape separate from planner/apply execution. | `evolution_contract.rs` | 222 |
@@ -163,7 +163,7 @@ Octopus/
 | Evolution cycle compatibility | Thin compatibility layer for autonomous `evolve drive` stage/error writes; it delegates the actual observation contract to `observation_contract.rs`. | `evolution_cycle.rs` | 99 |
 | Evolution LLM planner boundary | Builds the harness-planner chat request, preserves the clean-brain/tentacle context policy prompt, retries once with validator feedback, and parses provider JSON into candidate plans. | `evolution_llm_plan.rs` | 52 |
 | Evolution planning boundary | LLM patch recommendation artifact writing and apply-failure retry objective shaping | `evolution_plan.rs` | 83 |
-| Evolution prompt boundary | Builds the LLM planner payload from proposal, trace, check-history, file-target, surface, prompt-budget data, and supporting schema contracts. It owns context compaction, objective path hints, line-numbered current target content, and field-pack schema context for harness evolution while `lib.rs` keeps the public proposal/candidate contract. | `evolution_prompt.rs` | 345 |
+| Evolution prompt boundary | Builds the LLM planner payload from proposal, trace, check-history, file-target, surface, prompt-budget data, and supporting schema contracts. It owns context compaction, objective path hints, line-numbered current target content, line-numbered tail context for truncated files, and field-pack schema context for harness evolution while `lib.rs` keeps the public proposal/candidate contract. | `evolution_prompt.rs` | 415 |
 | Evolution recommendation boundary | Assembles proposal context from manifests and state, scores candidates from outcomes/Feed traces/check history, builds apply plans, and writes harness-beat proposal/apply artifacts. This is where a wrong candidate choice or missing harness-beat artifact should be debugged. | `evolution_recommend.rs` | 679 |
 | Evolution command surface | Owns `octopus evolve`: parallel worker start, drive dispatch, recommend/apply/score command flow, proposal/apply artifact loading, structured pet-event writes around evolution actions, and user/JSON output selection. This is the debug entry when self-evolution commands do not light the desktop pet or return misleading command output. | `evolution_surface.rs`, `handle_evolve_command`, `propose_evolution_for_cli`, `evolution_score_report` | 849 |
 | Evolution drive surface | CLI args, JSON report shape, and human-readable printing for `evolve drive` | `evolution_drive_surface.rs` | 116 |
@@ -233,13 +233,13 @@ These should remain stable and hard to accidentally mutate:
 - Desktop observer rule: stale Feed traces cannot drive the native pet's current color or Need bubble. A Feed/action color must come from a fresh `last_pet_event` or an active worker update.
 - Provider env rule: CLI reads `.octopus/llm.env` through `provider_env.rs`; explicit shell variables are never overwritten.
 - Provider timeout rule: Codex CLI prompts are passed through a temp prompt file inside `llm_provider.rs`, not blocking `stdin.write_all`; `OCTOPUS_LLM_TIMEOUT` and `OCTOPUS_LLM_RETRIES` bound harness evolution calls.
-- Evolution apply rule: provider patches are checked and applied only through `evolution_apply.rs`; CLI apply and autonomous drive share the same authorized patch execution path. Field-pack patches must parse after apply and are automatically reversed when schema validation fails.
+- Evolution apply rule: provider patches are checked and applied only through `evolution_apply.rs`; CLI apply and autonomous drive share the same authorized patch execution path. Field-pack patches run a temp-worktree dry-run before live apply, must preserve valid `mini_tasks`, and template filenames must match a `mini_tasks[].id`; post-apply reverse remains the fallback.
 - Evolution artifact rule: local proposal/apply review files are rendered and written only through `evolution_artifact.rs`; artifact rendering must not perform planning or mutate harness code directly.
 - Evolution contract rule: policy/proposal/candidate/apply/recommendation/artifact structs live in `evolution_contract.rs`; this module has no provider calls, patch application, file mutation, or route scoring.
 - Evolution candidate rule: provider JSON parsing, LLM candidate validation, harder-layer field-pack/template pair validation, manifest-relative target parsing, provider-diff target recovery, and patch draft metadata live in `evolution_candidate.rs`; `lib.rs` only asks for a parsed plan.
 - Evolution LLM planner rule: planner system prompt, retry note, provider chat call, and provider JSON parsing call live in `evolution_llm_plan.rs`; the core only asks for a plan.
 - Evolution planning rule: recommendation artifacts and apply-failure retry objectives live in `evolution_plan.rs`; driver only asks for the next plan.
-- Evolution prompt rule: LLM planner payload construction, trace/history compaction, target-file context selection, and prompt-budget env knobs live in `evolution_prompt.rs`; proposal/candidate protocol stays in `lib.rs`.
+- Evolution prompt rule: LLM planner payload construction, trace/history compaction, target-file/tail context selection, and prompt-budget env knobs live in `evolution_prompt.rs`; proposal/candidate protocol stays in `lib.rs`.
 - Evolution recommendation rule: proposal assembly, scored candidate choice, apply-plan construction, and harness-beat proposal/apply artifact orchestration live in `evolution_recommend.rs`; it consumes real state traces and must not invent success.
 - Evolution patch rule: provider patch normalization, diff-boundary cleanup, hunk-header recounting, diff path extraction, display-path collapsing, and authorized patch allow-list checks live in `evolution_patch.rs`; artifact rendering can only ask for an already authorized patch.
 - Evolution target rule: manifest editable targets, field-pack paths, repair-template wildcard scopes, and field-name path extraction live in `evolution_target.rs`; planner/prompt/candidate/patch modules ask this boundary for files.
@@ -266,7 +266,7 @@ Use this before changing UI or harness code:
 | Preflight says desktop/app is not ready | `octopus preflight --json`, then the failing check id | Product readiness aggregation failed; inspect the check evidence before editing app or harness code | `preflight_surface.rs`, then the boundary named by the check |
 | Pet red/blocked during planning | `last_event.stage=planning`, `error_class=provider_timeout/provider_error` | LLM planner did not return a harness candidate | provider config/client and evolution planner boundary |
 | Pet red/blocked during applying | `stage=applying`, `error_class=patch_*` | LLM produced an invalid, missing, or unauthorized patch | apply/patch normalization boundary |
-| Pet red/blocked with `field_pack_schema_failed` | `stage=applying`, `error_class=field_pack_schema_failed`, then inspect the patch artifact | A field-pack patch applied cleanly as text but broke the editable JSON contract; the apply boundary should reverse it before checks run | `evolution_apply.rs`, affected `field-packs/<field>/field-pack.json`, affected repair template |
+| Pet red/blocked with `field_pack_schema_failed` | `stage=applying`, `error_class=field_pack_schema_failed`, then inspect the patch artifact | A field-pack patch applied cleanly as text but broke the editable JSON/template contract; the apply boundary should catch it in dry-run or reverse it before checks run | `evolution_apply.rs`, affected `field-packs/<field>/field-pack.json`, affected repair template |
 | Pet red/blocked during checking | `stage=checking`, `error_class=check_failed` | Harness patch applied but its declared check failed | tentacle check policy or editable harness code |
 | Pet red/blocked during feeding | `stage=feeding`, `error_class=feed_missing_queued_need` | Worker slots were opened but no queued Need actually reached Feed; the system must not report fake success | `evolution_feed.rs` queued-Need boundary |
 | Pet shows `harness/partial` after a Feed | `last_event.state=harness`, `status=partial`, then compare latest verifier result | A real Feed ran, but verifier still found partial evidence. The pet is observing the unresolved harness result, not controlling it. | `evolution_feed.rs` status fold; then `need_runner.rs` verifier and affected repair template |
@@ -412,7 +412,7 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 58 | 61,411 |
+| `crates/octopus-core/src` | 58 | 61,697 |
 | `crates/octopus-core/examples` | 0 | 0 |
 | `tentacles` | 102 | 22,417 |
 | `field-packs` | 14 | 733 |
@@ -451,7 +451,7 @@ field-packs/
 | `manifest_catalog.rs` | 373 |
 | `pet_surface.rs` | 385 |
 | `diagnostics.rs` | 354 |
-| `evolution_prompt.rs` | 345 |
+| `evolution_prompt.rs` | 415 |
 | `evolution_patch.rs` | 673 |
 | `evolution_driver.rs` | 318 |
 | `evolution_target.rs` | 318 |
@@ -459,7 +459,7 @@ field-packs/
 | `llm_layers.rs` | 300 |
 | `evolution_candidate.rs` | 411 |
 | `tentacle_scaffold.rs` | 291 |
-| `evolution_apply.rs` | 801 |
+| `evolution_apply.rs` | 1,017 |
 | `pet.rs` | 280 |
 | `status_surface.rs` | 257 |
 | `heartbeat_surface.rs` | 246 |
@@ -507,7 +507,7 @@ field-packs/
 - If CLI LLM works in the app but not terminal, inspect `.octopus/llm.env` and `provider_env.rs`. The CLI now auto-loads missing OCTOPUS provider variables from that file.
 - If LLM evolution apply fails on new files, inspect `.octopus/evolution/<tentacle>/apply/*.patch`; the normalizer in `evolution_patch.rs` must preserve `/dev/null`, insert `new file mode 100644`, and strip provider-prefixed control lines such as `+--- /dev/null`, `++++ b/...`, and `+@@ ...`.
 - If LLM evolution apply fails with `*** End Patch`, markdown fences, stale hunk context, bad hunk counts, blank lines between diff file sections, or valid old-context with wrong hunk line numbers, inspect `evolution_patch.rs` wrapper stripping, diff-boundary cleanup, hunk recounting, `evolution_apply.rs` exact-content hunk relocation, and `evolution_prompt.rs` line-numbered target content. Retry prompts should include the current target path so the planner sees exact current lines.
-- If field-pack evolution proposes `task_layers`, object-shaped `mini_tasks`, patch text with a nested `diff --git`, or a syntactically applied but invalid field-pack JSON, inspect `evolution_prompt.rs`, `evolution_candidate.rs`, `evolution_patch.rs`, and `evolution_apply.rs`. The planner should see `field-packs/field-pack.schema.json`, bad schema shapes should be rejected before apply, embedded diff headers and bad hunk counts should be normalized before `git apply`, and post-apply schema failures should be reversed with `field_pack_schema_failed`.
+- If field-pack evolution proposes `task_layers`, object-shaped `mini_tasks`, patch text with a nested `diff --git`, a syntactically applied but invalid field-pack JSON, or a repair template id missing from `mini_tasks`, inspect `evolution_prompt.rs`, `evolution_candidate.rs`, `evolution_patch.rs`, and `evolution_apply.rs`. The planner should see `field-packs/field-pack.schema.json`, field-pack tail context should show the array closing point, bad schema shapes should be rejected before apply, embedded diff headers and bad hunk counts should be normalized before `git apply`, dry-run validation should reject broken field-pack/template contracts before live apply, and post-apply schema failures should be reversed with `field_pack_schema_failed`.
 - If `octopus evolve` stays in planning, run with explicit bounds such as `OCTOPUS_LLM_TIMEOUT=60 OCTOPUS_LLM_RETRIES=0`. A timeout must become a fresh `blocked` pet event with `stage=planning` and `error_class=provider_timeout`; if it does not, inspect `observation_contract.rs`, `evolution_surface.rs`, `evolution_llm_plan.rs`, and `llm_provider.rs`.
 - Construction verification: `OCTOPUS_LLM_TIMEOUT=1 OCTOPUS_LLM_RETRIES=0 octopus --json evolve recommend field-mini-task ...` now records `blocked`, `stage=planning`, `error_class=provider_timeout`; `octopus pet supervise --json` reports `last_stage=pass`, `error_category=pass`, `desktop_process=pass`, `runtime_state=warn`, and `active_work=warn` so a fresh visible failure is not counted as active work.
 - Pet URL chain verification: `pet auto` must not combine a non-pending queued Need, stale Feed trace, and fresh blocked event. The current rule only shows pending Need text, or a Need/Feed pair from the same latest Feed trace, or text from the fresh event itself.

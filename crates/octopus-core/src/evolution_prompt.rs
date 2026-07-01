@@ -43,8 +43,8 @@ pub(crate) fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Resu
             "target_file_bytes_for_small_scope": llm_evolution_file_bytes_for_path_count(8)
         },
         "patch_requirements": {
-            "format": "suggested_patch must be a complete git unified diff that starts with diff --git, includes --- and +++ file headers, includes @@ -line,count +line,count @@ hunk headers, and can be applied by git apply. Use exact nearby lines from target_file_contents.content and target_file_contents.line_numbered_content; do not invent line numbers or old context. On apply retry, treat line_numbered_content as the current file. Do not return apply_patch, *** Begin Patch, or prose-only patches.",
-            "field_pack_tasks": "suggested_patch is required for this surface. If required_surfaces contains field_pack_tasks, at least one candidate must use surface_id=field_pack_tasks. Patch only the named field-pack JSON files and matching tentacles/<tentacle>/repair-templates/<field>/<mini-task>.pyfrag files needed by the objective. New mini task layers must add both the field-pack entry and matching repair template. Field-pack mini_tasks is an array of objects with id, goal, and expected_feed; append a new object to that array and keep the JSON schema valid. Do not create task_layers or convert mini_tasks to an object. Do not merely harden an existing mini task when the objective asks for a harder layer. Do not patch kernel Rust or unrelated runtime code from this surface.",
+            "format": "suggested_patch must be a complete git unified diff that starts with diff --git, includes --- and +++ file headers, includes @@ -line,count +line,count @@ hunk headers, and can be applied by git apply. Use exact nearby lines from target_file_contents.content, target_file_contents.line_numbered_content, and target_file_contents.line_numbered_tail_content when present; do not invent line numbers or old context. On apply retry, treat line_numbered_content and line_numbered_tail_content as the current file. Do not return apply_patch, *** Begin Patch, or prose-only patches.",
+            "field_pack_tasks": "suggested_patch is required for this surface. If required_surfaces contains field_pack_tasks, at least one candidate must use surface_id=field_pack_tasks. Patch only the named field-pack JSON files and matching tentacles/<tentacle>/repair-templates/<field>/<mini-task>.pyfrag files needed by the objective. New mini task layers must add both the field-pack entry and matching repair template. Field-pack mini_tasks is an array of objects with id, goal, and expected_feed; append the new object inside mini_tasks before the array closing bracket, preserve the comma pattern around the previous object, and keep the JSON schema valid. Use line_numbered_tail_content for end-of-array context when it is present. Do not create task_layers or convert mini_tasks to an object. Do not merely harden an existing mini task when the objective asks for a harder layer. Do not patch kernel Rust or unrelated runtime code from this surface.",
             "runtime_code": "suggested_patch is preferred when the objective names an executable harness gap. Patch declared harness targets only."
         },
         "return_schema": {
@@ -226,12 +226,23 @@ fn evolution_target_file_contexts(proposal: &TentacleEvolutionProposal) -> Vec<s
         .into_iter()
         .filter_map(|path| {
             let content = fs::read_to_string(&path).ok()?;
-            Some(serde_json::json!({
-                "path": path,
-                "content": short_text(&content, file_bytes),
-                "line_numbered_content": short_text(&line_numbered_text(&content), file_bytes),
-                "truncated": content.len() > file_bytes
-            }))
+            let line_numbered_content = line_numbered_text(&content);
+            if line_numbered_content.len() > file_bytes {
+                Some(serde_json::json!({
+                    "path": path,
+                    "content": short_text(&content, file_bytes),
+                    "line_numbered_content": short_text(&line_numbered_content, file_bytes),
+                    "line_numbered_tail_content": line_numbered_tail_text(&content, 40),
+                    "truncated": true
+                }))
+            } else {
+                Some(serde_json::json!({
+                    "path": path,
+                    "content": short_text(&content, file_bytes),
+                    "line_numbered_content": line_numbered_content,
+                    "truncated": content.len() > file_bytes
+                }))
+            }
         })
         .collect()
 }
@@ -253,6 +264,18 @@ fn line_numbered_text(content: &str) -> String {
     content
         .lines()
         .enumerate()
+        .map(|(index, line)| format!("{:>4}: {line}", index + 1))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn line_numbered_tail_text(content: &str, max_lines: usize) -> String {
+    let lines = content.lines().collect::<Vec<_>>();
+    let start = lines.len().saturating_sub(max_lines);
+    lines
+        .iter()
+        .enumerate()
+        .skip(start)
         .map(|(index, line)| format!("{:>4}: {line}", index + 1))
         .collect::<Vec<_>>()
         .join("\n")
@@ -313,6 +336,19 @@ mod tests {
     }
 
     #[test]
+    fn line_numbered_tail_text_preserves_end_of_file_context() {
+        let content = (1..=80)
+            .map(|index| format!("line-{index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let tail = line_numbered_tail_text(&content, 4);
+
+        assert!(!tail.contains("   1: line-1"));
+        assert!(tail.contains("  77: line-77"));
+        assert!(tail.contains("  80: line-80"));
+    }
+
+    #[test]
     fn objective_path_hints_prioritize_existing_retry_targets() {
         let dir = env::temp_dir().join(format!(
             "octopus-evolution-prompt-paths-{}",
@@ -341,5 +377,39 @@ mod tests {
         assert!(text.contains("field-pack.schema.json"));
         assert!(text.contains("mini_tasks is an array"));
         assert!(text.contains("task_layers"));
+    }
+
+    #[test]
+    fn field_pack_task_prompt_points_to_tail_context() {
+        let proposal = TentacleEvolutionProposal {
+            tentacle_id: "field-mini-task".to_string(),
+            tentacle_name: "Field Mini Task".to_string(),
+            objective: "add a harder math mini task layer".to_string(),
+            generator: "test".to_string(),
+            planner_summary: String::new(),
+            manifest_path: "tentacles/field-mini-task/manifest.json".to_string(),
+            brain_kind: "llm".to_string(),
+            current_brain_prompt: String::new(),
+            editable: Vec::new(),
+            surfaces: vec![EvolutionSurface {
+                id: "field_pack_tasks".to_string(),
+                description: "field tasks".to_string(),
+                targets: vec!["field-packs/*/field-pack.json".to_string()],
+            }],
+            requirements: Vec::new(),
+            checks: Vec::new(),
+            constraints: Vec::new(),
+            previous_outcomes: Vec::new(),
+            recent_feed_traces: Vec::new(),
+            recent_check_history: Vec::new(),
+            files: Vec::new(),
+            patch_candidates: Vec::new(),
+            next_steps: Vec::new(),
+        };
+
+        let prompt = llm_evolution_prompt(&proposal).unwrap();
+
+        assert!(prompt.contains("line_numbered_tail_content"));
+        assert!(prompt.contains("before the array closing bracket"));
     }
 }
