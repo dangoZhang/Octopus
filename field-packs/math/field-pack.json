@@ -22,11 +22,6 @@
   "trajectory_labels": ["problem_type", "method", "calculation", "check", "feed"],
   "mini_tasks": [
     {
-      "id": "math-mini-5",
-      "goal": "Find and verify the local extrema of f(x)=x^3 - 6x^2 + 9x + 1, including symbolic derivative and second-derivative classification plus finite-difference numeric checks.",
-      "expected_feed": "Show derivative and critical points exactly, classify x=1 as local maximum and x=3 as local minimum, and provide finite-difference checks as artifact-backed verification."
-    },
-    {
       "id": "math-mini-1",
       "goal": "Compute the derivative of x^3 + 2x and verify by finite difference at x = 2.",
       "expected_feed": "Derivative 3x^2 + 2 with a numeric check near 14."
@@ -45,6 +40,16 @@
       "id": "math-mini-4",
       "goal": "Minimize f(x) = x^2 - 6x + 13 by completing the square, then verify the minimum with a derivative check and nearby numeric comparisons.",
       "expected_feed": "Completed square form, minimum point, derivative check, nearby numeric comparison, and artifact-backed verifier evidence."
+    },
+    {
+      "id": "math-mini-5",
+      "goal": "Find and verify the local extrema of f(x)=x^3 - 6x^2 + 9x + 1, including symbolic derivative and second-derivative classification plus finite-difference numeric checks.",
+      "expected_feed": "Show derivative and critical points exactly, classify x=1 as local maximum and x=3 as local minimum, and provide finite-difference checks as artifact-backed verification."
+    },
+    {
+      "id": "math-mini-6",
+      "goal": "Find and verify all stationary points of f(x)=x^4-4x^2+1, classify each point via second derivative sign, and confirm local behavior with finite-difference checks.",
+      "expected_feed": "Return a compact, artifact-backed summary for math-mini-6: prove all stationary points of f(x)=x^4-4x^2+1 and their classifications with symbolic derivative/second-derivative reasoning, provide finite-difference checks at a fixed epsilon around each point, and preserve field_pack, field_mini_task, and field_expected_feed in Feed metadata."
     }
   ]
 }

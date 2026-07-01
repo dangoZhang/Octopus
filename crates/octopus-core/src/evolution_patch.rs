@@ -21,6 +21,7 @@ fn normalize_suggested_patch_text(patch: &str) -> Option<String> {
     (!patch.is_empty()).then(|| {
         let patch = strip_patch_wrappers(patch);
         let patch = normalize_patch_file_headers(&patch);
+        let patch = normalize_missing_existing_file_headers(&patch);
         let patch = normalize_new_file_hunks(&patch);
         let patch = normalize_diff_boundaries(&patch);
         format!("{}\n", recount_hunk_headers(&patch).trim())
@@ -57,6 +58,41 @@ fn normalize_patch_file_headers(patch: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn normalize_missing_existing_file_headers(patch: &str) -> String {
+    let lines = patch.lines().map(str::to_string).collect::<Vec<_>>();
+    let mut normalized = Vec::new();
+    let mut index = 0;
+    while index < lines.len() {
+        let line = &lines[index];
+        if let Some((old_path, new_path)) = parse_diff_git_paths(line) {
+            normalized.push(line.to_string());
+            let mut lookahead = index + 1;
+            while lookahead < lines.len() && lines[lookahead].trim().is_empty() {
+                normalized.push(lines[lookahead].clone());
+                lookahead += 1;
+            }
+            if lookahead < lines.len() && lines[lookahead].starts_with("@@ ") {
+                normalized.push(format!("--- {old_path}"));
+                normalized.push(format!("+++ {new_path}"));
+            }
+            index = lookahead;
+            continue;
+        }
+        normalized.push(line.to_string());
+        index += 1;
+    }
+    normalized.join("\n")
+}
+
+fn parse_diff_git_paths(line: &str) -> Option<(String, String)> {
+    let rest = line.strip_prefix("diff --git ")?;
+    let mut parts = rest.split_whitespace();
+    let old_path = parts.next()?.trim_matches('"');
+    let new_path = parts.next()?.trim_matches('"');
+    (old_path.starts_with("a/") && new_path.starts_with("b/"))
+        .then(|| (old_path.to_string(), new_path.to_string()))
 }
 
 fn normalize_new_file_hunks(patch: &str) -> String {
@@ -505,6 +541,33 @@ new file mode 100644
         );
 
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn clean_suggested_patch_adds_missing_existing_file_headers() {
+        let patch = r#"diff --git a/field-packs/math/field-pack.json b/field-packs/math/field-pack.json
+@@ -1,0 +2,1 @@
++{}
+diff --git a/tentacles/field-mini-task/repair-templates/math/math-mini-6.pyfrag b/tentacles/field-mini-task/repair-templates/math/math-mini-6.pyfrag
+new file mode 100644
+--- /dev/null
++++ b/tentacles/field-mini-task/repair-templates/math/math-mini-6.pyfrag
+@@ -0,0 +1,1 @@
++if field == "math":
++    pass
+"#;
+
+        let cleaned = clean_suggested_patch(Some(patch.to_string())).unwrap();
+
+        assert!(cleaned.contains("--- a/field-packs/math/field-pack.json"));
+        assert!(cleaned.contains("+++ b/field-packs/math/field-pack.json"));
+        assert_eq!(
+            diff_paths(&cleaned),
+            vec![
+                "field-packs/math/field-pack.json",
+                "tentacles/field-mini-task/repair-templates/math/math-mini-6.pyfrag"
+            ]
+        );
     }
 
     fn run_git(cwd: &Path, args: &[&str]) {

@@ -1,0 +1,146 @@
+if field == "math" and mini_task == "math-mini-6":
+    from math import sqrt
+    import json
+
+    def f(x):
+        return x ** 4 - 4 * x**2 + 1
+
+    def f_prime(x):
+        return 4 * x**3 - 8 * x
+
+    def f_double_prime(x):
+        return 12 * x**2 - 8
+
+    epsilon = 1e-4
+    sqrt2 = sqrt(2)
+    critical_points = [
+        {"x": -sqrt2, "name": "left_min"},
+        {"x": 0.0, "name": "max"},
+        {"x": sqrt2, "name": "right_min"},
+    ]
+
+    checks = []
+    for point in critical_points:
+        x0 = point["x"]
+        left_value = f(x0 - epsilon)
+        center_value = f(x0)
+        right_value = f(x0 + epsilon)
+        left_diff = left_value - center_value
+        right_diff = right_value - center_value
+        deriv_zero = abs(f_prime(x0)) < 1e-12
+        if point["name"] == "max":
+            is_local_type = left_diff < 0 and right_diff < 0
+            curvature_ok = f_double_prime(x0) < 0
+            class_label = "local_maximum"
+        else:
+            is_local_type = left_diff > 0 and right_diff > 0
+            curvature_ok = f_double_prime(x0) > 0
+            class_label = "local_minimum"
+
+        checks.append(
+            {
+                "name": point["name"],
+                "x": x0,
+                "f_x": center_value,
+                "f_prime_zero": deriv_zero,
+                "finite_left_minus_center": left_diff,
+                "finite_right_minus_center": right_diff,
+                "nearby_behavior_matches_type": is_local_type,
+                "curvature_sign_matches_type": curvature_ok,
+                "classification": class_label,
+            }
+        )
+
+    passed = (
+        len(checks) == 3
+        and all(check["f_prime_zero"] for check in checks)
+        and all(check["nearby_behavior_matches_type"] for check in checks)
+        and all(check["curvature_sign_matches_type"] for check in checks)
+        and bool(expected_feed)
+    )
+
+    answer_lines = [
+        "# Math Mini Task Answer",
+        "",
+        "Function: `f(x) = x^4 - 4x^2 + 1`.",
+        "Critical points: `x = 0`, `x = -sqrt(2)`, `x = sqrt(2)`.",
+        "Derivative and second-derivative checks plus finite-difference validation are in `CHECKS.json`.",
+    ]
+    answer = "\\n".join(answer_lines)
+    (session / "ANSWER.md").write_text(answer, encoding="utf-8")
+
+    checks_payload = {
+        "function": "x^4 - 4x^2 + 1",
+        "critical_points": checks,
+        "epsilon": epsilon,
+    }
+    (session / "ANALYSIS.json").write_text(
+        json.dumps(checks_payload, indent=2, ensure_ascii=True) + "\\n",
+        encoding="utf-8",
+    )
+    (session / "CHECKS.json").write_text(
+        json.dumps({"passed": passed, "checks": checks}, indent=2, ensure_ascii=True) + "\\n",
+        encoding="utf-8",
+    )
+    (session / "NUMERIC_CHECK.json").write_text(
+        json.dumps(
+            {"epsilon": epsilon, "f(0)": f(0), "f(1)": f(1), "f(-1)": f(-1), "f_sqrt2": f(sqrt2)},
+            indent=2,
+            ensure_ascii=True,
+        )
+        + "\\n",
+        encoding="utf-8",
+    )
+
+    status = "satisfied" if passed else "partial"
+    field_metadata = {
+        "runtime": "python",
+        "contract": "octopus-json-v1",
+        "tool": "run_field_mini_task",
+        "tentacle": "field-mini-task",
+        "field_pack": field,
+        "field_mini_task": mini_task,
+        "field_expected_feed": expected_feed,
+        "field_session": rel(session, root),
+        "task_record": rel(session / "TASK.json", root),
+        "prompt": rel(session / "PROMPT.md", root),
+        "feed_draft": rel(session / "FEED.md", root),
+        "answer": rel(session / "ANSWER.md", root),
+        "analysis": rel(session / "ANALYSIS.json", root),
+        "checks": rel(session / "CHECKS.json", root),
+        "numeric_check": rel(session / "NUMERIC_CHECK.json", root),
+        "verifier_status": status,
+        "field_pass_evidence": rel(session / "CHECKS.json", root),
+    }
+    if not passed:
+        field_metadata["error_category"] = "verification_error"
+        field_metadata["missing_regions"] = ["stationary_point_verification_mismatch"]
+    field_result = {
+        "status": status,
+        "output": answer,
+        "evidence": [
+            {
+                "source": "field-mini-task/math/answer",
+                "content": rel(session / "ANSWER.md", root),
+                "confidence": 0.94,
+                "metadata": field_metadata,
+            },
+            {
+                "source": "field-mini-task/math/analysis",
+                "content": rel(session / "ANALYSIS.json", root),
+                "confidence": 0.94,
+                "metadata": field_metadata,
+            },
+            {
+                "source": "field-mini-task/math/checks",
+                "content": rel(session / "CHECKS.json", root),
+                "confidence": 0.96,
+                "metadata": field_metadata,
+            },
+        ],
+        "metadata": field_metadata,
+    }
+    (session / "METADATA.json").write_text(
+        json.dumps(field_metadata, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
