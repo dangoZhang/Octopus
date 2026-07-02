@@ -341,6 +341,7 @@ mod tests {
             previous_outcomes: Vec::new(),
             recent_feed_traces: Vec::new(),
             recent_check_history: Vec::new(),
+            environment_gaps: Vec::new(),
             files: Vec::new(),
             patch_candidates: Vec::new(),
             next_steps: Vec::new(),

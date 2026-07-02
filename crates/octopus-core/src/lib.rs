@@ -25,10 +25,10 @@ pub use evolution_artifact::{
     write_tentacle_evolution_artifacts,
 };
 pub use evolution_contract::{
-    EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, EvolutionFileTarget,
-    EvolutionPatchCandidate, EvolutionPatchDraft, EvolutionPatchFeedback, EvolutionPolicy,
-    EvolutionRecommendation, EvolutionRequirement, EvolutionSurface, HarnessBeatEvolution,
-    TentacleEvolutionProposal,
+    EvolutionApplyArtifact, EvolutionApplyPlan, EvolutionArtifact, EvolutionEnvironmentGap,
+    EvolutionFileTarget, EvolutionPatchCandidate, EvolutionPatchDraft, EvolutionPatchFeedback,
+    EvolutionPolicy, EvolutionRecommendation, EvolutionRequirement, EvolutionSurface,
+    HarnessBeatEvolution, TentacleEvolutionProposal,
 };
 pub use evolution_patch::{
     diff_paths as evolution_patch_diff_paths,
@@ -7669,6 +7669,86 @@ mod tests {
         assert!(fake.prompt.contains("observed README before evolution"));
         assert!(fake.prompt.contains("read check failed before evolution"));
         let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn llm_evolution_prompt_receives_environment_gap_context() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        let mut state = HarnessState::default();
+        let trace = state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Verify, "Run swe-go-default-smoke mini task"),
+            status: Status::Partial,
+            evidence: vec![Evidence::new("field-mini-task", "go binary not found")],
+            summary: "SWE Go worker could not run because Go is missing".to_string(),
+            metadata: BTreeMap::from([
+                ("tentacle".to_string(), "field-mini-task".to_string()),
+                ("tool".to_string(), "run_field_mini_task".to_string()),
+                ("field_pack".to_string(), "swe".to_string()),
+                (
+                    "field_mini_task".to_string(),
+                    "swe-go-default-smoke".to_string(),
+                ),
+                (
+                    "error_category".to_string(),
+                    "go_runtime_missing".to_string(),
+                ),
+            ]),
+        });
+        state
+            .record_field_verifier_result(
+                trace.index,
+                Status::Partial,
+                Some("go_runtime_missing".to_string()),
+                None,
+                "Go runtime is missing",
+            )
+            .unwrap();
+        let mut fake = EvolutionFakeChat {
+            response: r#"{
+              "summary": "adapt runtime without hiding missing Go",
+              "candidates": [
+                {
+                  "surface_id": "runtime_code",
+                  "title": "Keep SWE missing-Go fallback honest",
+                  "target": "workers/swe/swe-go-default-smoke/main.go",
+                  "rationale": "environment gaps should stay visible to Feed",
+                  "change_plan": ["add artifact-backed fallback guidance"],
+                  "checks": ["octopus need verify --context field_pack=swe --context field_mini_task=swe-go-default-smoke run"],
+                  "suggested_patch": "diff --git a/tentacles/field-mini-task/workers/swe/swe-go-default-smoke/main.go b/tentacles/field-mini-task/workers/swe/swe-go-default-smoke/main.go\n--- a/tentacles/field-mini-task/workers/swe/swe-go-default-smoke/main.go\n+++ b/tentacles/field-mini-task/workers/swe/swe-go-default-smoke/main.go\n@@ -1,2 +1,3 @@\n package main\n+// provider-assisted environment evidence\n"
+                }
+              ]
+            }"#
+            .to_string(),
+            responses: Vec::new(),
+            prompt: String::new(),
+        };
+
+        let proposal = propose_tentacle_evolution_with_client(
+            &root,
+            "field-mini-task",
+            "adapt swe field runtime to current environment after go_runtime_missing",
+            &state,
+            &mut fake,
+        )
+        .unwrap();
+
+        assert_eq!(proposal.environment_gaps.len(), 1);
+        assert_eq!(proposal.environment_gaps[0].field, "swe");
+        assert_eq!(
+            proposal.environment_gaps[0].error_category.as_deref(),
+            Some("go_runtime_missing")
+        );
+        let markdown = render_tentacle_evolution_proposal(&proposal);
+        assert!(markdown.contains("## Environment Gaps"));
+        assert!(markdown.contains("go_runtime_missing"));
+        assert!(fake.prompt.contains("\"environment_gaps\""));
+        assert!(fake.prompt.contains("\"needs_environment\": true"));
+        assert!(fake.prompt.contains("swe-go-default-smoke"));
+        assert!(fake
+            .prompt
+            .contains("do not mark missing runtime as satisfied"));
     }
 
     #[test]

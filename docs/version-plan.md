@@ -112,8 +112,9 @@ Active todo tree:
 │   ├── product gap `go_runtime_missing` appears only when an environment-blocked field exists
 │   └── provider and harness checks remain separate from runtime readiness
 ├── commit 4: feed environment-gap context into the LLM harness planner
-│   ├── planner sees `needs_environment`
-│   ├── planner may add real fallback evidence or runtime guidance
+│   ├── proposal carries `environment_gaps` from real field trajectory summaries
+│   ├── prompt shows `needs_environment`, field, mini task, trace/verifier indexes, and guidance
+│   ├── proposal markdown includes an `Environment Gaps` section for human and subagent review
 │   └── planner must not mark missing Go as satisfied
 ├── commit 5: rerun SWE environment adaptation through Need -> Feed
 │   ├── same `swe-go-default-smoke` target

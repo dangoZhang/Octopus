@@ -265,6 +265,25 @@ pub fn render_tentacle_evolution_proposal(proposal: &TentacleEvolutionProposal) 
             ));
         }
     }
+    if !proposal.environment_gaps.is_empty() {
+        markdown.push_str("\n## Environment Gaps\n\n");
+        for gap in &proposal.environment_gaps {
+            let mini_task = gap.mini_task.as_deref().unwrap_or("unknown");
+            let error = gap.error_category.as_deref().unwrap_or("environment");
+            let trace = gap
+                .latest_trace_index
+                .map(|index| format!("trace #{index}"))
+                .unwrap_or_else(|| "trace unknown".to_string());
+            markdown.push_str(&format!(
+                "- `{}` / `{}`: {} from {}; {}\n",
+                gap.field,
+                mini_task,
+                error,
+                trace,
+                one_line(&gap.guidance)
+            ));
+        }
+    }
     markdown.push_str("\n## Patch Candidates\n\n");
     for candidate in &proposal.patch_candidates {
         markdown.push_str(&format!(

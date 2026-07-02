@@ -53,9 +53,27 @@ pub struct TentacleEvolutionProposal {
     pub recent_feed_traces: Vec<FeedTraceRecord>,
     #[serde(default)]
     pub recent_check_history: Vec<CheckHistoryRecord>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub environment_gaps: Vec<EvolutionEnvironmentGap>,
     pub files: Vec<EvolutionFileTarget>,
     pub patch_candidates: Vec<EvolutionPatchCandidate>,
     pub next_steps: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EvolutionEnvironmentGap {
+    pub field: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mini_task: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_trace_index: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_verifier_result_index: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_summary: Option<String>,
+    pub guidance: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

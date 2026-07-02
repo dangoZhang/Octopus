@@ -1,8 +1,9 @@
 use crate::{
     evolution,
     evolution_target::{evolution_file_target, evolution_target_files},
-    one_line, push_unique_limited, short_text, CheckHistoryRecord, EvolutionFileTarget,
-    EvolutionOutcome, EvolutionSurface, FeedTraceRecord, TentacleEvolutionProposal,
+    one_line, push_unique_limited, short_text, CheckHistoryRecord, EvolutionEnvironmentGap,
+    EvolutionFileTarget, EvolutionOutcome, EvolutionSurface, FeedTraceRecord,
+    TentacleEvolutionProposal,
 };
 use std::collections::BTreeMap;
 use std::env;
@@ -28,9 +29,15 @@ pub(crate) fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Resu
         "previous_outcomes": compact_evolution_outcomes(&proposal.previous_outcomes),
         "recent_feed_traces": compact_feed_trace_records(&proposal.recent_feed_traces),
         "recent_check_history": compact_check_history_records(&proposal.recent_check_history),
+        "environment_gaps": compact_environment_gaps(&proposal.environment_gaps),
         "files": compact_evolution_file_targets(&proposal.files),
         "target_file_contents": evolution_target_file_contexts(proposal),
         "supporting_contracts": supporting_evolution_contracts(&required_surfaces),
+        "environment_gap_policy": {
+            "needs_environment": "planner should adapt the editable harness to the current machine or emit runtime guidance as evidence",
+            "missing_runtime": "do not mark missing runtime as satisfied; keep Feed partial unless a real fallback path creates artifact-backed evidence",
+            "go_runtime_missing": "Go worker tasks may add shell/Python fallback evidence or clear install guidance, but should not fake Go execution"
+        },
         "context_policy": {
             "clean_brain": ["Goal", "Mem", "Need", "Feed"],
             "tentacle_brain": ["Need", "Tool", "Action", "Tool", "Action", "Feed"],
@@ -66,6 +73,24 @@ pub(crate) fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Resu
     Ok(format!(
         "Generate code-as-harness evolution candidates from this JSON. Keep the clean brain out of tool details and preserve the declared context policy. Return only a JSON object matching return_schema. Any suggested_patch must be a complete git unified diff that starts with diff --git, includes --- and +++ file headers, includes @@ -line,count +line,count @@ hunk headers, and applies with git apply; never return apply_patch or *** Begin Patch format.\n{payload}"
     ))
+}
+
+fn compact_environment_gaps(gaps: &[EvolutionEnvironmentGap]) -> Vec<serde_json::Value> {
+    gaps.iter()
+        .take(8)
+        .map(|gap| {
+            serde_json::json!({
+                "field": gap.field.as_str(),
+                "mini_task": gap.mini_task.as_deref(),
+                "error_category": gap.error_category.as_deref(),
+                "latest_trace_index": gap.latest_trace_index,
+                "latest_verifier_result_index": gap.latest_verifier_result_index,
+                "latest_summary": gap.latest_summary.as_ref().map(|value| short_text(&one_line(value), 320)),
+                "needs_environment": true,
+                "guidance": short_text(&one_line(&gap.guidance), 360)
+            })
+        })
+        .collect()
 }
 
 fn supporting_evolution_contracts(required_surfaces: &[String]) -> Vec<serde_json::Value> {
@@ -408,6 +433,7 @@ mod tests {
             previous_outcomes: Vec::new(),
             recent_feed_traces: Vec::new(),
             recent_check_history: Vec::new(),
+            environment_gaps: Vec::new(),
             files: Vec::new(),
             patch_candidates: Vec::new(),
             next_steps: Vec::new(),
@@ -417,5 +443,52 @@ mod tests {
 
         assert!(prompt.contains("line_numbered_tail_content"));
         assert!(prompt.contains("before the array closing bracket"));
+    }
+
+    #[test]
+    fn prompt_carries_environment_gap_without_marking_runtime_satisfied() {
+        let proposal = TentacleEvolutionProposal {
+            tentacle_id: "field-mini-task".to_string(),
+            tentacle_name: "Field Mini Task".to_string(),
+            objective: "adapt swe field runtime to current environment after go_runtime_missing"
+                .to_string(),
+            generator: "test".to_string(),
+            planner_summary: String::new(),
+            manifest_path: "tentacles/field-mini-task/manifest.json".to_string(),
+            brain_kind: "llm".to_string(),
+            current_brain_prompt: String::new(),
+            editable: Vec::new(),
+            surfaces: vec![EvolutionSurface {
+                id: "runtime_code".to_string(),
+                description: "runtime code".to_string(),
+                targets: vec!["workers/swe/swe-go-default-smoke/main.go".to_string()],
+            }],
+            requirements: Vec::new(),
+            checks: Vec::new(),
+            constraints: Vec::new(),
+            previous_outcomes: Vec::new(),
+            recent_feed_traces: Vec::new(),
+            recent_check_history: Vec::new(),
+            environment_gaps: vec![EvolutionEnvironmentGap {
+                field: "swe".to_string(),
+                mini_task: Some("swe-go-default-smoke".to_string()),
+                error_category: Some("go_runtime_missing".to_string()),
+                latest_trace_index: Some(153),
+                latest_verifier_result_index: Some(133),
+                latest_summary: Some("Go runtime unavailable".to_string()),
+                guidance: "add real fallback evidence or install guidance".to_string(),
+            }],
+            files: Vec::new(),
+            patch_candidates: Vec::new(),
+            next_steps: Vec::new(),
+        };
+
+        let prompt = llm_evolution_prompt(&proposal).unwrap();
+
+        assert!(prompt.contains("\"environment_gaps\""));
+        assert!(prompt.contains("\"needs_environment\": true"));
+        assert!(prompt.contains("swe-go-default-smoke"));
+        assert!(prompt.contains("go_runtime_missing"));
+        assert!(prompt.contains("do not mark missing runtime as satisfied"));
     }
 }

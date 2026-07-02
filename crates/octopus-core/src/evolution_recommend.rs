@@ -39,6 +39,25 @@ pub(crate) fn tentacle_evolution_context(
     let previous_outcomes = state.recent_evolution_outcomes(tentacle_id, 5);
     let recent_feed_traces = state.recent_feed_traces_for_tentacle(tentacle_id, 8);
     let recent_check_history = state.recent_check_history_for_tentacle(tentacle_id, 8);
+    let environment_gaps = state
+        .field_trajectory_report()
+        .map(|report| {
+            report
+                .fields
+                .into_iter()
+                .filter(|summary| summary.needs_environment)
+                .map(|summary| crate::EvolutionEnvironmentGap {
+                    field: summary.field,
+                    mini_task: summary.latest_mini_task.or(summary.next_mini_task),
+                    error_category: summary.latest_error_category,
+                    latest_trace_index: summary.latest_trace_index,
+                    latest_verifier_result_index: summary.latest_verifier_result_index,
+                    latest_summary: summary.latest_summary.map(|value| short_text(&one_line(&value), 320)),
+                    guidance: "treat this as an environment adaptation gap; add real fallback evidence or runtime guidance, and keep the Feed partial when the missing runtime remains unavailable".to_string(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     let mut next_steps = vec![
         "run the configured LLM harness planner".to_string(),
         "review LLM-generated harness candidates".to_string(),
@@ -78,6 +97,7 @@ pub(crate) fn tentacle_evolution_context(
         previous_outcomes: previous_outcomes.to_vec(),
         recent_feed_traces: recent_feed_traces.to_vec(),
         recent_check_history: recent_check_history.to_vec(),
+        environment_gaps,
         files,
         patch_candidates: Vec::new(),
         next_steps,
