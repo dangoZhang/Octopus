@@ -303,6 +303,51 @@ def go_worker_result(worker_package, worker_entry):
     return result
 
 
+def attach_go_runtime_artifact(result):
+    if not isinstance(result, dict):
+        return result
+    metadata = result.get("metadata")
+    if not isinstance(metadata, dict):
+        return result
+    if metadata.get("error_category") != "go_runtime_missing":
+        return result
+    if metadata.get("artifact_path"):
+        return result
+    evidence_dir = session / "artifacts" / "go-runtime"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    evidence_path = evidence_dir / "evidence.json"
+    evidence_payload = {
+        "timestamp": dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+        "field_pack": metadata.get("field_pack") or field,
+        "field_mini_task": metadata.get("field_mini_task") or mini_task,
+        "field_expected_feed": metadata.get("field_expected_feed") or expected_feed,
+        "error_category": "go_runtime_missing",
+        "go_worker": metadata.get("go_worker", ""),
+        "go_worker_entry": metadata.get("go_worker_entry", ""),
+        "probe": "go executable",
+        "probe_error": "go executable not found before Go worker execution",
+    }
+    evidence_path.write_text(
+        json.dumps(evidence_payload, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    artifact_path = rel(evidence_path, root)
+    metadata["artifact_path"] = artifact_path
+    result["metadata"] = metadata
+    for item in result.get("evidence", []):
+        if isinstance(item, dict):
+            item_metadata = item.get("metadata")
+            if isinstance(item_metadata, dict):
+                item_metadata.setdefault("artifact_path", artifact_path)
+    result.setdefault("evidence", []).append({
+        "source": "field-mini-task/go-runtime-artifact",
+        "content": artifact_path,
+        "confidence": 0.9,
+        "metadata": dict(metadata),
+    })
+    return result
+
+
 def specific_go_worker(root, tentacle_root, field, mini_task):
     candidates = [
         (tentacle_root / "workers" / field / mini_task / "main.go", f"./workers/{field}/{mini_task}"),
@@ -521,6 +566,7 @@ go_worker = specific_go_worker(root, tentacle_root, field, mini_task)
 if go_worker is not None:
     worker_entry, worker_package = go_worker
     result = go_worker_result(worker_package, worker_entry)
+    result = attach_go_runtime_artifact(result)
     write_feed_draft(result)
     print(json.dumps(result, ensure_ascii=True))
     raise SystemExit(0)
@@ -555,6 +601,7 @@ go_worker = default_go_worker(root, tentacle_root)
 if go_worker is not None:
     worker_entry, worker_package = go_worker
     result = go_worker_result(worker_package, worker_entry)
+    result = attach_go_runtime_artifact(result)
     write_feed_draft(result)
     print(json.dumps(result, ensure_ascii=True))
     raise SystemExit(0)

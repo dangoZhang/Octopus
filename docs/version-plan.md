@@ -61,7 +61,11 @@ Active todo tree:
 │   ├── LLM patch applied after retry feedback improved
 │   ├── trace #145 kept `field_mini_task=swe-go-default-smoke`
 │   └── current machine still returns honest partial because Go is unavailable
-└── commit 3+: continue improving SWE runtime evidence until explicit artifact-backed partial/pass
+├── commit 3: make missing-Go partial Feed artifact-backed
+│   ├── attach `artifact_path` to any Go-worker `go_runtime_missing` Feed
+│   ├── trace #148 kept `field_mini_task=swe-go-default-smoke`
+│   └── verifier #128 recorded the Go runtime evidence artifact
+└── commit 4+: continue SWE until Go-runtime availability or alternate runtime is evolved
 ```
 
 Next field tree:
