@@ -49,7 +49,18 @@ Active todo tree:
     └── keep runtime-created Go workers outside the static field-pack table
 ```
 
-Next version tree:
+Active todo tree:
+
+```text
+0.2.3 - make harness evolution recover from bad LLM patches
+├── commit 1: feed corrupt-patch evidence back into retry planning
+│   ├── include compact stderr
+│   ├── include the failed patch excerpt around `line N`
+│   └── ask the planner for one valid unified diff on retry
+└── commit 2+: rerun the SWE Go worker evolution until targeted Need reaches Feed
+```
+
+Next field tree:
 
 ```text
 0.2.3+ - repeat by field
