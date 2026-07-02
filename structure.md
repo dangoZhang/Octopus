@@ -1,8 +1,29 @@
 # Structure
 
-Updated: 2026-07-01, after observable evolution planning, structured field-pack apply, and code-mini-7 self-repair.
+Updated: 2026-07-02, after splitting the `0.2.1` work into version/commit todo trees.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
+
+## Active Todo Tree
+
+```text
+0.2.1 - align field evolution with the product architecture
+├── commit 1: record todo tree and architecture boundary
+├── commit 2: add the default Go worker substrate for field-mini-task
+├── commit 3: steer evolution toward .go worker patches; keep .pyfrag legacy-only
+├── commit 4: verify honest partial behavior, pet observation, and touched-core build
+└── push: publish after the commits are reviewable
+```
+
+Architecture boundary for this train:
+
+```text
+desktop pet  -> observes real state and JSONL events
+brain        -> thinks with Goal/Mem/Need/Feed
+tentacle     -> works through editable harness code; new field work defaults to Go
+memory       -> summarizes traces
+interaction  -> snowball goal edits
+```
 
 ## Repository Tree
 
