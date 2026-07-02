@@ -83,8 +83,24 @@ const BUNDLED_TENTACLE_FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../../tentacles/field-mini-task/tools/check_repair_templates.py"),
     ),
     (
+        "field-mini-task/tools/check_go_workers.py",
+        include_bytes!("../../../tentacles/field-mini-task/tools/check_go_workers.py"),
+    ),
+    (
         "field-mini-task/tools/run_field_mini_task.sh",
         include_bytes!("../../../tentacles/field-mini-task/tools/run_field_mini_task.sh"),
+    ),
+    (
+        "field-mini-task/go.mod",
+        include_bytes!("../../../tentacles/field-mini-task/go.mod"),
+    ),
+    (
+        "field-mini-task/internal/fieldworker/feed.go",
+        include_bytes!("../../../tentacles/field-mini-task/internal/fieldworker/feed.go"),
+    ),
+    (
+        "field-mini-task/workers/default/main.go",
+        include_bytes!("../../../tentacles/field-mini-task/workers/default/main.go"),
     ),
     (
         "field-mini-task/repair-templates/README.md",

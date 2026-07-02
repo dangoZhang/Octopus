@@ -10,30 +10,13 @@ if [ ! -t 0 ]; then
   cat > "$payload_file" || true
 fi
 
-python3 - "$script_dir" <<'PY'
-import ast
-import sys
-from pathlib import Path
-
-tentacle_root = Path(sys.argv[1])
-syntax_errors = []
-for path in sorted(tentacle_root.rglob("*.pyfrag")):
-    try:
-        ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    except SyntaxError as exc:
-        syntax_errors.append((str(path), exc.lineno or 0, exc.msg))
-
-if syntax_errors:
-    print("repair-template pre-validation failed:", file=sys.stderr)
-    for path, line, msg in syntax_errors:
-        print(f"{path}:{line}: {msg}", file=sys.stderr)
-    raise SystemExit(2)
-PY
-
 python3 - "$workspace" "$payload_file" "$script_dir" <<'PY'
 import datetime as dt
 import json
+import os
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -187,6 +170,153 @@ def template_missing_result(template_path):
         }],
         "metadata": metadata,
     }
+
+
+def go_worker_result(worker_package, worker_entry):
+    go_bin = shutil.which("go")
+    if not go_bin:
+        metadata = base_metadata()
+        metadata.update({
+            "runtime": "go",
+            "runtime_template": "go-worker",
+            "go_worker": worker_package,
+            "go_worker_entry": rel(worker_entry, root),
+            "verifier_status": "partial",
+            "error_category": "go_runtime_missing",
+            "next_need_kind": "execute",
+            "next_need_query": f"install Go or evolve a runtime available worker for {field}/{mini_task}",
+        })
+        output = f"Go worker is selected for {field}/{mini_task}, but the go runtime is not installed."
+        return {
+            "status": "partial",
+            "output": output,
+            "evidence": [{
+                "source": "field-mini-task/go-runtime",
+                "content": output,
+                "confidence": 0.88,
+                "metadata": metadata,
+            }],
+            "metadata": metadata,
+        }
+    env = os.environ.copy()
+    env.update({
+        "OCTOPUS_WORKSPACE": str(root),
+        "OCTOPUS_SESSION": rel(session, root),
+        "OCTOPUS_FIELD": field,
+        "OCTOPUS_MINI_TASK": mini_task,
+        "OCTOPUS_EXPECTED_FEED": expected_feed,
+        "OCTOPUS_NEED_QUERY": query,
+        "OCTOPUS_CONTEXT_JSON": json.dumps(context, ensure_ascii=True),
+    })
+    timeout = int(os.environ.get("OCTOPUS_GO_WORKER_TIMEOUT", "60") or "60")
+    try:
+        completed = subprocess.run(
+            [go_bin, "run", worker_package],
+            cwd=tentacle_root,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=max(timeout, 1),
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        metadata = base_metadata()
+        metadata.update({
+            "runtime": "go",
+            "runtime_template": "go-worker",
+            "go_worker": worker_package,
+            "go_worker_entry": rel(worker_entry, root),
+            "verifier_status": "partial",
+            "error_category": "go_worker_timeout",
+        })
+        output = f"Go worker timed out for {field}/{mini_task} after {timeout}s."
+        return {
+            "status": "partial",
+            "output": output,
+            "evidence": [{
+                "source": "field-mini-task/go-worker-timeout",
+                "content": output,
+                "confidence": 0.86,
+                "metadata": metadata,
+            }],
+            "metadata": metadata,
+        }
+    if completed.returncode != 0:
+        metadata = base_metadata()
+        metadata.update({
+            "runtime": "go",
+            "runtime_template": "go-worker",
+            "go_worker": worker_package,
+            "go_worker_entry": rel(worker_entry, root),
+            "verifier_status": "failed",
+            "error_category": "go_worker_failed",
+            "stderr": compact(completed.stderr, 900),
+        })
+        output = f"Go worker failed for {field}/{mini_task}: {compact(completed.stderr or completed.stdout, 900)}"
+        return {
+            "status": "failed",
+            "output": output,
+            "evidence": [{
+                "source": "field-mini-task/go-worker-failed",
+                "content": output,
+                "confidence": 0.9,
+                "metadata": metadata,
+            }],
+            "metadata": metadata,
+        }
+    try:
+        parsed = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        metadata = base_metadata()
+        metadata.update({
+            "runtime": "go",
+            "runtime_template": "go-worker",
+            "go_worker": worker_package,
+            "go_worker_entry": rel(worker_entry, root),
+            "verifier_status": "failed",
+            "error_category": "go_worker_invalid_json",
+        })
+        output = f"Go worker returned invalid JSON for {field}/{mini_task}: {compact(exc, 240)}"
+        return {
+            "status": "failed",
+            "output": output,
+            "evidence": [{
+                "source": "field-mini-task/go-worker-invalid-json",
+                "content": output,
+                "confidence": 0.9,
+                "metadata": metadata,
+            }],
+            "metadata": metadata,
+        }
+    result = normalize_field_result(parsed)
+    if isinstance(result, dict):
+        metadata = result.setdefault("metadata", {})
+        metadata.setdefault("runtime", "go")
+        metadata.setdefault("runtime_template", "go-worker")
+        metadata.setdefault("go_worker", worker_package)
+        metadata.setdefault("go_worker_entry", rel(worker_entry, root))
+        for evidence in result.get("evidence", []):
+            if isinstance(evidence, dict):
+                evidence_metadata = evidence.setdefault("metadata", {})
+                for key, value in metadata.items():
+                    evidence_metadata.setdefault(key, value)
+    return result
+
+
+def specific_go_worker(root, tentacle_root, field, mini_task):
+    candidates = [
+        (tentacle_root / "workers" / field / mini_task / "main.go", f"./workers/{field}/{mini_task}"),
+        (root / "tentacles" / "field-mini-task" / "workers" / field / mini_task / "main.go", f"./workers/{field}/{mini_task}"),
+    ]
+    return next(((entry, package) for entry, package in candidates if entry.exists()), None)
+
+
+def default_go_worker(root, tentacle_root):
+    candidates = [
+        (tentacle_root / "workers" / "default" / "main.go", "./workers/default"),
+        (root / "tentacles" / "field-mini-task" / "workers" / "default" / "main.go", "./workers/default"),
+    ]
+    return next(((entry, package) for entry, package in candidates if entry.exists()), None)
 
 
 def base_metadata(template_path=None):
@@ -387,6 +517,14 @@ task_record = {
     encoding="utf-8",
 )
 
+go_worker = specific_go_worker(root, tentacle_root, field, mini_task)
+if go_worker is not None:
+    worker_entry, worker_package = go_worker
+    result = go_worker_result(worker_package, worker_entry)
+    write_feed_draft(result)
+    print(json.dumps(result, ensure_ascii=True))
+    raise SystemExit(0)
+
 field_result = None
 template_path = repair_template_path(root, tentacle_root, field, mini_task)
 if template_path is not None:
@@ -411,6 +549,14 @@ if template_path is not None:
 if field_result is not None:
     write_feed_draft(field_result)
     print(json.dumps(field_result, ensure_ascii=True))
+    raise SystemExit(0)
+
+go_worker = default_go_worker(root, tentacle_root)
+if go_worker is not None:
+    worker_entry, worker_package = go_worker
+    result = go_worker_result(worker_package, worker_entry)
+    write_feed_draft(result)
+    print(json.dumps(result, ensure_ascii=True))
     raise SystemExit(0)
 
 next_query = f"evolve field-mini-task harness for {field} after {mini_task}"
