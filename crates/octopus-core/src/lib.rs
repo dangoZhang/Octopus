@@ -989,10 +989,14 @@ pub struct Feedback {
 
 impl Feedback {
     pub fn from_feeds(feeds: Vec<Feed>) -> Self {
-        let status = if feeds.iter().all(|feed| feed.status == Status::Satisfied) {
-            Status::Satisfied
+        let status = if feeds.is_empty() {
+            Status::Unsupported
         } else if feeds.iter().any(|feed| feed.status == Status::Failed) {
             Status::Failed
+        } else if feeds.iter().all(|feed| feed.status == Status::Satisfied) {
+            Status::Satisfied
+        } else if feeds.iter().any(|feed| feed.status == Status::Partial) {
+            Status::Partial
         } else if feeds.iter().any(|feed| feed.status == Status::Satisfied) {
             Status::Partial
         } else {
@@ -4439,6 +4443,32 @@ fn command_available(command: &str) -> bool {
 mod tests {
     use super::*;
     use std::sync::Arc;
+
+    #[test]
+    fn feedback_from_feeds_preserves_partial_status() {
+        let need = Need::new(NeedKind::Verify, "check current evidence");
+        let partial = Feed {
+            need: need.clone(),
+            status: Status::Partial,
+            evidence: vec![Evidence::new("probe", "partial evidence")],
+            summary: "partial evidence".to_string(),
+            metadata: BTreeMap::new(),
+        };
+        let unsupported = Feed::unsupported(&need, "no other route");
+
+        assert_eq!(
+            Feedback::from_feeds(vec![partial.clone()]).status,
+            Status::Partial
+        );
+        assert_eq!(
+            Feedback::from_feeds(vec![partial, unsupported.clone()]).status,
+            Status::Partial
+        );
+        assert_eq!(
+            Feedback::from_feeds(vec![unsupported]).status,
+            Status::Unsupported
+        );
+    }
 
     #[test]
     fn plan_from_llm_content_extracts_fenced_json() {
