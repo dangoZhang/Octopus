@@ -3731,6 +3731,7 @@ fn print_product_report(report: &ProductReport, language: Language) {
             println!("brain: {}", report.context.brain);
             println!("tentacle: {}", report.context.tentacle);
             println!("loop: {}", report.context.feedback_loop);
+            println!("runtime: {}", product_runtime_line(&report.runtime));
             println!(
                 "field_pool: {}",
                 product_field_pool_line(&report.field_pool, language)
@@ -3796,6 +3797,7 @@ fn print_product_report(report: &ProductReport, language: Language) {
             println!("主脑上下文: {}", report.context.brain);
             println!("触手上下文: {}", report.context.tentacle);
             println!("循环: {}", report.context.feedback_loop);
+            println!("运行时: {}", product_runtime_line(&report.runtime));
             println!(
                 "领域池: {}",
                 product_field_pool_line(&report.field_pool, language)
@@ -3844,6 +3846,16 @@ fn print_product_report(report: &ProductReport, language: Language) {
             println!("下一步: {}", join_or_none(&report.next));
         }
     }
+}
+
+fn product_runtime_line(report: &ProductRuntimeReport) -> String {
+    format!(
+        "go_ready={}, command={}, version={}, message={}",
+        report.go_ready,
+        report.go_command,
+        report.go_version.as_deref().unwrap_or("none"),
+        report.message
+    )
 }
 
 fn print_local_app_run_report(report: &app_bridge::LocalAppRunReport, language: Language) {
@@ -12003,6 +12015,11 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
             .iter()
             .find(|capability| capability.id == "runtime_neutral_harness")
             .unwrap();
+        let go_runtime_capability = product
+            .capabilities
+            .iter()
+            .find(|capability| capability.id == "go_runtime")
+            .unwrap();
         let field_capability = product
             .capabilities
             .iter()
@@ -12018,6 +12035,12 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert!(tentacle_capability.evidence.contains("manifests"));
         assert!(!tentacle_capability.evidence.contains("1 manifests"));
         assert_eq!(runtime_capability.status, "ready");
+        assert_eq!(product.runtime.go_command, "go version");
+        assert!(matches!(
+            go_runtime_capability.status.as_str(),
+            "ready" | "missing"
+        ));
+        assert_eq!(go_runtime_capability.command.as_deref(), Some("go version"));
         assert_eq!(field_capability.status, "ready");
         assert_eq!(field_harness_capability.status, "ready");
         assert!(field_capability.evidence.contains("peer slots"));
@@ -12047,6 +12070,7 @@ printf '%s' '{"choices":[{"message":{"content":"{\"summary\":\"session draft exp
         assert_eq!(product.field_pool.policy, parallel_field_pool_policy());
         assert_eq!(product.field_pool.worker_slots, parallel_worker_policy());
         assert!(doctor.manifest_count > 1);
+        assert_eq!(doctor.runtime.go_command, "go version");
         assert!(!doctor
             .broken_manifests
             .iter()

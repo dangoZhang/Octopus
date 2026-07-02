@@ -1,4 +1,5 @@
 use super::*;
+use std::process::Command;
 
 #[derive(Debug, serde::Serialize)]
 pub(crate) struct ProductReport {
@@ -6,6 +7,7 @@ pub(crate) struct ProductReport {
     pub(crate) state_path: String,
     pub(crate) state_exists: bool,
     pub(crate) context: ProductContextPolicy,
+    pub(crate) runtime: ProductRuntimeReport,
     pub(crate) field_pool: ProductFieldPoolReport,
     pub(crate) boundary: core_boundary::CoreBoundaryReport,
     pub(crate) harness_learning: HarnessLearningSummary,
@@ -20,6 +22,15 @@ pub(crate) struct ProductContextPolicy {
     pub(crate) brain: String,
     pub(crate) tentacle: String,
     pub(crate) feedback_loop: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct ProductRuntimeReport {
+    pub(crate) go_ready: bool,
+    pub(crate) go_command: String,
+    pub(crate) go_version: Option<String>,
+    pub(crate) message: String,
+    pub(crate) next: Vec<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -70,6 +81,7 @@ pub(crate) fn product_report(
     let boundary = core_boundary::report(state_path);
     let field_trajectory = state.field_trajectory_report_with_state(Some(state_path))?;
     let field_pool = product_field_pool_report(&field_trajectory, status.field_pool.as_ref());
+    let runtime = go_runtime_report();
     let pet_exists = repo_root().join("docs/pet.html").exists();
     let app_exists = repo_root().join("docs/app.html").exists();
     let docs_exists = repo_root().join("docs/index.html").exists();
@@ -270,6 +282,12 @@ pub(crate) fn product_report(
                 required_surfaces.join(", ")
             ),
             Some("octopus manifests"),
+        ),
+        product_capability(
+            "go_runtime",
+            if runtime.go_ready { "ready" } else { "missing" },
+            runtime.message.as_str(),
+            Some("go version"),
         ),
         product_capability(
             "field_parallel_pool",
@@ -573,6 +591,17 @@ pub(crate) fn product_report(
             "octopus env",
         ));
     }
+    if !runtime.go_ready && field_pool_has_environment_gap(&status.field_pool) {
+        gaps.push(product_gap(
+            "go_runtime_missing",
+            "Go worker field Feed is blocked by missing local Go runtime",
+            runtime
+                .next
+                .first()
+                .map(String::as_str)
+                .unwrap_or("install Go, then rerun octopus status"),
+        ));
+    }
     gaps.push(product_gap(
         "real_machine_gate",
         "0.1.0 and later tags need recorded real-machine testing",
@@ -606,6 +635,7 @@ pub(crate) fn product_report(
             tentacle: "Need + Tool + Action + Tool + Action -> Feed".to_string(),
             feedback_loop: "Need -> Feed -> Feedback".to_string(),
         },
+        runtime,
         field_pool,
         boundary,
         harness_learning: status.harness_learning,
@@ -613,6 +643,67 @@ pub(crate) fn product_report(
         gaps,
         agent_next,
         next,
+    })
+}
+
+pub(crate) fn go_runtime_report() -> ProductRuntimeReport {
+    match Command::new("go").arg("version").output() {
+        Ok(output) if output.status.success() => {
+            let version = String::from_utf8_lossy(&output.stdout)
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            let version = if version.is_empty() {
+                None
+            } else {
+                Some(version)
+            };
+            ProductRuntimeReport {
+                go_ready: true,
+                go_command: "go version".to_string(),
+                go_version: version.clone(),
+                message: version.unwrap_or_else(|| "go runtime ready".to_string()),
+                next: vec!["octopus fields summary".to_string()],
+            }
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr)
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            ProductRuntimeReport {
+                go_ready: false,
+                go_command: "go version".to_string(),
+                go_version: None,
+                message: if stderr.is_empty() {
+                    format!("go version exited with {}", output.status)
+                } else {
+                    format!("go version failed: {stderr}")
+                },
+                next: vec![
+                    "install Go, then run go version".to_string(),
+                    "octopus fields summary".to_string(),
+                ],
+            }
+        }
+        Err(error) => ProductRuntimeReport {
+            go_ready: false,
+            go_command: "go version".to_string(),
+            go_version: None,
+            message: format!("go runtime unavailable: {error}"),
+            next: vec![
+                "install Go, then run go version".to_string(),
+                "octopus fields summary".to_string(),
+            ],
+        },
+    }
+}
+
+fn field_pool_has_environment_gap(pool: &Option<FieldPoolStatusReport>) -> bool {
+    pool.as_ref().is_some_and(|pool| {
+        pool.slots
+            .iter()
+            .any(|slot| slot.needs_environment && !slot.completed)
     })
 }
 

@@ -107,9 +107,10 @@ Active todo tree:
 │   ├── `status` and `fields summary` refresh that snapshot while keeping stable state unchanged
 │   └── desktop pet can see `needs_environment` in `.octopus/state.json`
 ├── commit 3: add Go runtime readiness to doctor and product status
-│   ├── detect `go version`
-│   ├── show install/runtime guidance as environment evidence
-│   └── keep provider and harness checks separate
+│   ├── `doctor` and `report` expose `runtime.go_ready`, `go version`, and guidance
+│   ├── product capability `go_runtime` reports ready or missing
+│   ├── product gap `go_runtime_missing` appears only when an environment-blocked field exists
+│   └── provider and harness checks remain separate from runtime readiness
 ├── commit 4: feed environment-gap context into the LLM harness planner
 │   ├── planner sees `needs_environment`
 │   ├── planner may add real fallback evidence or runtime guidance

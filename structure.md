@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-07-03, after `0.2.4` observer state refresh for environment gaps.
+Updated: 2026-07-03, after `0.2.4` Go runtime readiness landed in doctor/product reports.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -10,7 +10,7 @@ Line counts are `wc -l` over source/text files. Generated state under `.octopus/
 0.2.4 - make field evolution environment-aware
 ├── commit 1: classify go_runtime_missing as an environment gap, not harness repair
 ├── commit 2: save derived field_pool observer snapshots from status and fields summary
-├── commit 3: add Go runtime readiness to doctor and product status
+├── commit 3: expose Go runtime readiness in doctor/product without mixing provider/harness checks
 ├── commit 4: feed environment-gap context into the LLM harness planner
 ├── commit 5: rerun SWE environment adaptation through Need -> Feed
 ├── commit 6: make app/docs show environment gaps as their own status
@@ -174,9 +174,9 @@ Octopus/
 | State report boundary | Builds read-only status, context, field trajectory, field pool, environment-gap classification, and harness-learning reports from `HarnessState`. It consumes the field curriculum decision instead of inventing the next harder field inline. This is the debug entry when app output, field pool state, or user-vs-agent next actions look wrong. | `state_report.rs`, `StatusReport`, `ContextReport`, `FieldPoolStatusReport` | 796 |
 | Status and context surface | CLI/report rendering for status, context, tentacle summaries, Goal summary, recent Need/Feed turns, and harness-learning lines. This is the debug entry when the state JSON is right but app/CLI text confuses Goal, tentacles, or learning state. | `status_surface.rs`, `print_status_report`, `print_context_report`, `status_tentacles`, `harness_learning_line` | 257 |
 | User surface boundary | Converts internal state into human Goal hints; keeps agent commands in observer fields so app/CLI users edit Goal only | `user_surface.rs`, `StatusReport`, `ContextReport`, `NeedQueueReport`, `FieldPoolStatusReport`, `ProductReport` | 129 |
-| Product report surface | Builds `octopus report` and app-facing capability/gap summaries. It keeps `next` as human Goal hints and `agent_next` as internal executable actions, so the product surface does not become a hidden control panel. | `product_surface.rs`, `ProductReport`, `ProductCapability`, `ProductGap`, `product_report` | 792 |
+| Product report surface | Builds `octopus report`, Go runtime readiness, and app-facing capability/gap summaries. It keeps `next` as human Goal hints and `agent_next` as internal executable actions, so the product surface does not become a hidden control panel. | `product_surface.rs`, `ProductReport`, `ProductRuntimeReport`, `ProductCapability`, `ProductGap`, `product_report` | 883 |
 | Preflight surface boundary | Builds `octopus preflight`, preflight scripts, real-machine record templates/audits/appends, release summary, and preflight printing. This is the debug entry when product readiness, real-machine evidence, or desktop/app release checks look wrong. | `preflight_surface.rs`, `PreflightReport`, `PreflightSummary`, `PreflightRecordCheckReport`, `preflight_report` | 1,101 |
-| Doctor surface boundary | Builds `octopus doctor`: state existence, detected environment, bundled/installed manifest health, profile registry, provider setup, pet page, warnings, and next Goal hints. This is the debug entry when a local install looks unhealthy before strategy-level checks. | `doctor_surface.rs`, `DoctorReport`, `DoctorLlmReport`, `doctor_report`, `print_doctor_report` | 302 |
+| Doctor surface boundary | Builds `octopus doctor`: state existence, detected environment, Go runtime readiness, bundled/installed manifest health, profile registry, provider setup, pet page, warnings, and next Goal hints. This is the debug entry when a local install looks unhealthy before strategy-level checks. | `doctor_surface.rs`, `DoctorReport`, `DoctorLlmReport`, `ProductRuntimeReport`, `doctor_report`, `print_doctor_report` | 327 |
 | Harness repair surface | Owns `octopus repair`: repair plan extraction, repair continuation, patch apply/verify, repair scoring, repair outcome journal, and repair report rendering. This is the debug entry when a harness change, repair plan, score, or post-apply check cannot be diagnosed from Need/Feed traces alone. | `repair_surface.rs`, `RepairReport`, `RepairPlanReport`, `RepairScoreReport`, `handle_repair_command` | 6,670 |
 | Heartbeat command surface | Owns `octopus beat`: memory keep parsing, early heartbeat pet event, seed-source repair before beat, three-heart report rendering, and harness-beat evolution artifact recommendation. This is the debug entry when the desktop pet looks stale during beat, memory/harness beat output is wrong, or harness beat chooses the wrong repair target. | `heartbeat_surface.rs`, `handle_beat_command`, `print_heartbeat_report`, `write_harness_beat_evolution_artifacts_with_bundled_manifest` | 246 |
 | Evolution contract | Manifest-owned surface requirements, required-surface validation, candidate ID normalization, LLM retry guardrails without field-specific Rust branches | `evolution.rs`, `tentacles/*/manifest.json`, `tentacles/tentacle.schema.json` | 471 |
@@ -199,7 +199,7 @@ Octopus/
 | Field curriculum boundary | Selects the next concrete field for a harder mini-task layer from real trajectory summaries. It prefers unfinished/least-layer fields, skips environment-blocked summaries, and returns a field-specific objective and agent action. This is the debug entry when the field pool says every field is complete but app/desktop cannot name the next field. | `field_curriculum.rs`, `state_report.rs` | 922 |
 | Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, verifier-status normalization, pyfrag prevalidation, compile/execute template checks, verifier artifact propagation, FEED.md status sync, Go-worker default path, SWE missing-Go artifact Feed, evolved SWE shell fallback, and evolved mini-task evidence across math/write/translate/search/code/SWE/research/computer-use/IB/robotics | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 10,216 |
 | Field adaptation surface | Owns `octopus fields`: field-pack reports, field matching, field trajectory summaries, read-only observer snapshot refresh, verifier score recording, pet-event append after verifier scoring, parallel field worker slots, field-pool latest activity, and user-visible field status lines. This is the debug entry when field state exists but the app/CLI explains the wrong active domain, score, worker slot, or verifier pet state. | `field_surface.rs`, `handle_fields_command`, `FieldMatchReport`, `print_field_trajectory_report`, `field_pool_status_line`, `parallel_run_status_line` | 559 |
-| CLI and product backend | Command dispatch, structured direct Need context parsing, chat, starter/install/check flows, read-only status observer refresh, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; Need command logic lives in `need_surface.rs`; Evolution command logic lives in `evolution_surface.rs`; Route/Trace command logic lives in `route_surface.rs`; Feedback command logic lives in `feedback_surface.rs`; Field command logic lives in `field_surface.rs`; beat command logic lives in `heartbeat_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 20,354 |
+| CLI and product backend | Command dispatch, structured direct Need context parsing, chat, starter/install/check flows, runtime/report printing, read-only status observer refresh, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; Need command logic lives in `need_surface.rs`; Evolution command logic lives in `evolution_surface.rs`; Route/Trace command logic lives in `route_surface.rs`; Feedback command logic lives in `feedback_surface.rs`; Field command logic lives in `field_surface.rs`; beat command logic lives in `heartbeat_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 20,378 |
 | Provider env | Loads `.octopus/llm.env` for CLI commands with a scoped guard; existing shell variables win, and values are restored after command execution | `provider_env.rs`, `app_bridge.rs::parse_env_overlay` | 107 |
 | Local app bridge | Local HTTP/SSE server, `/api/config` state-path injection, app policy, command allow-list, embedded app/docs/showcase assets, read-only pet supervision access, field activity observer with fresh pet-event handling | `app_bridge.rs`, `docs/app.html` | 2,027 |
 | Release and install gates | Low-level release records, benchmark evidence, download/install manifest, and real-machine record parsing used by the preflight surface | `release_gate.rs`, `preflight_surface.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 2,533 |
@@ -207,7 +207,7 @@ Octopus/
 | Pet and visual state | Pixel Octopus state, SVG/export helpers, unified event writes, JSONL event audit, latest-event audit coverage, native read-only observer, desktop process/state-path check, runtime-state detection, active-work detection, stage/error diagnostics, desktop source preflight, HTML preview. Native pet no longer treats stale Feed traces, stale historical workers, or fresh blocked events as live active work; colors come from fresh pet events, pending Needs, fresh active worker slots, verifier status, goal status, heartbeat, or memory. | `pet.rs`, `pet_surface.rs`, `pet_events.rs`, `pet_supervision.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 3,467 |
 | Strategy diagnostics | Checks the three core traits and composes pet supervision: clean brain context, LLM tool-side tentacles, editable goal, field surface, observation-chain freshness, active work, native desktop process/state-path evidence, stage/error evidence, JSONL latest-event coverage, Feed/evolution evidence | `diagnostics.rs`, `strategy_surface.rs`, `pet_supervision.rs`, `octopus diagnose strategy --json`, `octopus pet supervise --json` | 1,086 |
 | Tentacle scaffold boundary | Generates user-owned code-as-harness tentacle manifests and optional python/node/shell seed tools. This is the debug entry when `octopus scaffold` creates an invalid manifest, missing executable, or wrong `octopus-json-v1` contract. | `tentacle_scaffold.rs`, `octopus scaffold` | 291 |
-| Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages plus the core-file HTML index | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,431 |
+| Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages plus the core-file HTML index | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,432 |
 | Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, declared evolution requirements, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 22,966 |
 
 ## Core, Distinctive, Editable
@@ -444,12 +444,12 @@ field-packs/
 
 | Area | Files | Lines |
 | --- | ---: | ---: |
-| `crates/octopus-core/src` | 58 | 63,759 |
+| `crates/octopus-core/src` | 58 | 63,899 |
 | `crates/octopus-core/examples` | 0 | 0 |
 | `tentacles` | 107 | 52,489 |
 | `field-packs` | 14 | 802 |
 | `desktop/pet` | 1 | 841 |
-| `docs` | 30 md/html/json/sh files | 8,283 |
+| `docs` | 30 md/html/json/sh files | 8,284 |
 | `cowork` | 3 | 112 |
 | `local/docs` | 12 | 507 |
 
@@ -457,7 +457,7 @@ field-packs/
 
 | File | Lines |
 | --- | ---: |
-| `main.rs` | 20,354 |
+| `main.rs` | 20,378 |
 | `lib.rs` | 9,258 |
 | `repair_surface.rs` | 6,670 |
 | `provider_surface.rs` | 1,887 |
@@ -468,7 +468,7 @@ field-packs/
 | `brain_loop.rs` | 1,082 |
 | `field_pack.rs` | 868 |
 | `evolution_surface.rs` | 849 |
-| `product_surface.rs` | 792 |
+| `product_surface.rs` | 883 |
 | `state_report.rs` | 796 |
 | `llm_provider.rs` | 704 |
 | `release_gate.rs` | 703 |
@@ -487,7 +487,7 @@ field-packs/
 | `evolution_patch.rs` | 673 |
 | `evolution_driver.rs` | 318 |
 | `evolution_target.rs` | 318 |
-| `doctor_surface.rs` | 302 |
+| `doctor_surface.rs` | 327 |
 | `llm_layers.rs` | 300 |
 | `evolution_candidate.rs` | 411 |
 | `tentacle_scaffold.rs` | 291 |

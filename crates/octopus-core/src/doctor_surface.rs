@@ -10,6 +10,7 @@ pub(crate) struct DoctorReport {
     pub(crate) broken_manifests: Vec<String>,
     pub(crate) profile_registry: ProfileRegistryReport,
     pub(crate) llm: DoctorLlmReport,
+    pub(crate) runtime: ProductRuntimeReport,
     pub(crate) pet: DoctorPetReport,
     pub(crate) self_iteration_mode: String,
     pub(crate) warnings: Vec<String>,
@@ -61,6 +62,7 @@ pub(crate) fn doctor_report(
         .collect::<Vec<_>>();
     let status = state.status_report_with_state(Some(&state_path));
     let llm = doctor_llm_report();
+    let runtime = go_runtime_report();
     let profile_registry = profile_registry_report(&state_path);
     let pet_path = repo_root().join("docs/pet.html");
     let pet = DoctorPetReport {
@@ -81,6 +83,15 @@ pub(crate) fn doctor_report(
     if !pet.exists {
         warnings.push("pet page missing".to_string());
     }
+    if !runtime.go_ready
+        && status.field_pool.as_ref().is_some_and(|pool| {
+            pool.slots
+                .iter()
+                .any(|slot| slot.needs_environment && !slot.completed)
+        })
+    {
+        warnings.push(runtime.message.clone());
+    }
     if !profile_registry.ok {
         warnings.push(format!(
             "profile registry invalid: {}",
@@ -100,6 +111,7 @@ pub(crate) fn doctor_report(
     }
     next.push("octopus start --open".to_string());
     next.push("octopus update".to_string());
+    next.extend(runtime.next.iter().cloned());
     next.extend(profile_registry.next.iter().cloned());
     next.push(format!("open {}", pet.path));
     next.sort();
@@ -114,6 +126,7 @@ pub(crate) fn doctor_report(
         broken_manifests,
         profile_registry,
         llm,
+        runtime,
         pet,
         self_iteration_mode: self_iteration.mode,
         warnings,
@@ -188,6 +201,7 @@ pub(crate) fn print_doctor_report(report: &DoctorReport, language: Language) {
                 join_or_none(&report.broken_manifests)
             );
             println!("llm: {}", doctor_llm_line(&report.llm));
+            println!("runtime: {}", doctor_runtime_line(&report.runtime));
             println!(
                 "profile_registry: source={} path={} ok={} profiles={}",
                 report.profile_registry.source,
@@ -232,6 +246,7 @@ pub(crate) fn print_doctor_report(report: &DoctorReport, language: Language) {
                 join_or_none(&report.broken_manifests)
             );
             println!("LLM: {}", doctor_llm_line(&report.llm));
+            println!("运行时: {}", doctor_runtime_line(&report.runtime));
             println!(
                 "profile registry: 来源={} 路径={} 正常={} profiles={}",
                 report.profile_registry.source,
@@ -253,6 +268,16 @@ pub(crate) fn print_doctor_report(report: &DoctorReport, language: Language) {
             println!("下一步: {}", join_or_none(&report.next));
         }
     }
+}
+
+fn doctor_runtime_line(report: &ProductRuntimeReport) -> String {
+    format!(
+        "go_ready={}, command={}, version={}, message={}",
+        report.go_ready,
+        report.go_command,
+        report.go_version.as_deref().unwrap_or("none"),
+        report.message
+    )
 }
 
 fn doctor_llm_line(report: &DoctorLlmReport) -> String {
