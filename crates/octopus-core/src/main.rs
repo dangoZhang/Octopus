@@ -8535,6 +8535,49 @@ mod tests {
     }
 
     #[test]
+    fn field_verifier_preserves_feed_error_category() {
+        let mut state = HarnessState::default();
+        let mut need = Need::new(NeedKind::Verify, "Run swe-go-default-smoke mini task");
+        need.context
+            .insert("field_pack".to_string(), "swe".to_string());
+        need.context.insert(
+            "field_mini_task".to_string(),
+            "swe-go-default-smoke".to_string(),
+        );
+        let mut feed = Feed {
+            need,
+            status: Status::Partial,
+            evidence: vec![Evidence::new("field-mini-task/swe", "Go runtime missing")],
+            summary: "Go runtime missing".to_string(),
+            metadata: BTreeMap::from([
+                ("field_pack".to_string(), "swe".to_string()),
+                (
+                    "field_mini_task".to_string(),
+                    "swe-go-default-smoke".to_string(),
+                ),
+                ("verifier_status".to_string(), "partial".to_string()),
+                (
+                    "error_category".to_string(),
+                    "go_runtime_missing".to_string(),
+                ),
+            ]),
+        };
+        let trace = state.record_feed_trace_from_feed(&feed);
+        feed.metadata
+            .insert("feed_trace_index".to_string(), trace.index.to_string());
+
+        let (_, _, verifier_result) = record_auto_field_verifier_from_feed(&mut state, &feed);
+
+        let result = verifier_result.expect("field verifier result");
+        assert_eq!(result.status, Status::Partial);
+        assert_eq!(result.error_category.as_deref(), Some("go_runtime_missing"));
+        assert_eq!(
+            state.field_verifier_results[0].error_category.as_deref(),
+            Some("go_runtime_missing")
+        );
+    }
+
+    #[test]
     fn evolve_parallel_cli_auto_runs_worker_needs_to_feed() {
         let _env = env_guard();
         let dir = std::env::temp_dir().join(format!(

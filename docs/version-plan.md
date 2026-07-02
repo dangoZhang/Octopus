@@ -78,10 +78,14 @@ Active todo tree:
 │   ├── `Feedback::from_feeds` now preserves partial-only Feed results as `partial`
 │   ├── direct SWE Need no longer reports top-level `unsupported` while `feeds[0].status=partial`
 │   └── trace #152 confirms `status=partial`, `feed_status=partial`, and artifact-backed fallback evidence
-└── commit 7: keep the desktop pet honest after passing generic checks
+├── commit 7: keep the desktop pet honest after passing generic checks
     ├── `check field-mini-task` still records check history and can pass
     ├── unresolved field verifier state keeps pet at `harness/partial`
     └── latest pet event now says SWE #152 still needs repair instead of generic success
+└── commit 8: preserve the real field verifier root cause
+    ├── auto verifier now keeps Feed `error_category` such as `go_runtime_missing`
+    ├── trace #153 and verifier #133 record `go_runtime_missing`
+    └── field_pool now suggests improving SWE after `go_runtime_missing`, not generic incomplete
 ```
 
 Next field tree:

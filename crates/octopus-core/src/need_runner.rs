@@ -185,8 +185,15 @@ pub(crate) fn record_auto_field_verifier_from_feed(
                 Status::Satisfied | Status::Partial => Status::Partial,
             };
             let mini_task = feed.metadata.get("field_mini_task").cloned();
+            let feed_error_category = feed
+                .metadata
+                .get("error_category")
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
             let error_category = match verifier_status {
                 Status::Satisfied => None,
+                Status::Partial if feed_error_category.is_some() => feed_error_category,
                 Status::Partial if mini_task.is_some() => {
                     Some("field_mini_task_incomplete".to_string())
                 }
