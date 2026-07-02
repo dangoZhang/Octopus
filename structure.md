@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-07-03, after `0.2.4` made environment gaps visible in app/docs.
+Updated: 2026-07-03, after adding concise Chinese HTML entries for todo and structure.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -136,6 +136,8 @@ Octopus/
 │   ├── demo.html              Release showcase page with real app screenshots.
 │   ├── docs.html              Product docs tutorial page.
 │   ├── core-files.html        HTML index for the todo and structure source paths.
+│   ├── todo.html              Concise Chinese current-version todo page backed by `version-plan.md`.
+│   ├── structure.html         Concise Chinese architecture map backed by `structure.md`.
 │   ├── app.html               One-page local Goal/Need/Feed app surface.
 │   ├── assets/demo/           Real Octopus App screenshots for showcase pages.
 │   ├── pet.html               Pixel Octopus read-only HTML preview.
@@ -207,7 +209,7 @@ Octopus/
 | Pet and visual state | Pixel Octopus state, SVG/export helpers, unified event writes, JSONL event audit, latest-event audit coverage, native read-only observer, desktop process/state-path check, runtime-state detection, active-work detection, stage/error diagnostics, desktop source preflight, HTML preview. Native pet no longer treats stale Feed traces, stale historical workers, or fresh blocked events as live active work; colors come from fresh pet events, pending Needs, fresh active worker slots, verifier status, goal status, heartbeat, or memory. | `pet.rs`, `pet_surface.rs`, `pet_events.rs`, `pet_supervision.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 3,467 |
 | Strategy diagnostics | Checks the three core traits and composes pet supervision: clean brain context, LLM tool-side tentacles, editable goal, field surface, observation-chain freshness, active work, native desktop process/state-path evidence, stage/error evidence, JSONL latest-event coverage, Feed/evolution evidence | `diagnostics.rs`, `strategy_surface.rs`, `pet_supervision.rs`, `octopus diagnose strategy --json`, `octopus pet supervise --json` | 1,086 |
 | Tentacle scaffold boundary | Generates user-owned code-as-harness tentacle manifests and optional python/node/shell seed tools. This is the debug entry when `octopus scaffold` creates an invalid manifest, missing executable, or wrong `octopus-json-v1` contract. | `tentacle_scaffold.rs`, `octopus scaffold` | 291 |
-| Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages plus the core-file HTML index | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,485 |
+| Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages plus concise todo/structure HTML entries | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,915 |
 | Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, declared evolution requirements, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 23,902 |
 
 ## Core, Distinctive, Editable
