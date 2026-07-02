@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-07-03, after `0.2.4` environment-gap context landed in the LLM harness planner.
+Updated: 2026-07-03, after `0.2.4` reran SWE environment adaptation through Need -> Feed.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -197,7 +197,7 @@ Octopus/
 | Evolution patch boundary | Normalizes provider patch text, strips apply-patch/markdown wrappers, splits embedded diff headers, strips provider-prefixed patch control lines, inserts missing existing-file and new-file headers, deduplicates new-file mode lines, prefixes bare existing-file context, removes diff-boundary blank separators, recounts hunk headers from actual patch body, rewrites unambiguous tentacle-relative paths to authorized repo-root targets, extracts diff paths, renders display paths, filters authorized patch paths before artifact/apply code can write a patch file, and reports target-boundary violations before live apply. | `evolution_patch.rs` | 967 |
 | Evolution target boundary | Resolves manifest editable targets, field-pack targets, repair-template wildcard scopes, candidate target files, and field-name scopes for patch/prompt/candidate modules. | `evolution_target.rs` | 355 |
 | Field curriculum boundary | Selects the next concrete field for a harder mini-task layer from real trajectory summaries. It prefers unfinished/least-layer fields, skips environment-blocked summaries, and returns a field-specific objective and agent action. This is the debug entry when the field pool says every field is complete but app/desktop cannot name the next field. | `field_curriculum.rs`, `state_report.rs` | 922 |
-| Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, verifier-status normalization, pyfrag prevalidation, compile/execute template checks, verifier artifact propagation, FEED.md status sync, Go-worker default path, SWE missing-Go artifact Feed, evolved SWE shell fallback, and evolved mini-task evidence across math/write/translate/search/code/SWE/research/computer-use/IB/robotics | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 10,216 |
+| Field adaptation core | Field-pack loading, matching, editable aliases, multilingual alias signals, Need annotation, structured peer-field queue context, trace metadata, peer-field worker slots, verifier results, live field mini task loader, editable field-pack task surfaces with concrete pack and registry target files, repair templates, mini task schema guard, LLM template result normalization, verifier-status normalization, pyfrag prevalidation, compile/execute template checks, verifier artifact propagation, FEED.md status sync, Go-worker default path, SWE missing-Go artifact Feed, evolved SWE shell fallback, evolved Go-worker install guidance, and evolved mini-task evidence across math/write/translate/search/code/SWE/research/computer-use/IB/robotics | `field_pack.rs`, `field-packs/**`, `tentacles/field-mini-task/**`, `docs/field-adaptation.md` | 10,909 |
 | Field adaptation surface | Owns `octopus fields`: field-pack reports, field matching, field trajectory summaries, read-only observer snapshot refresh, verifier score recording, pet-event append after verifier scoring, parallel field worker slots, field-pool latest activity, and user-visible field status lines. This is the debug entry when field state exists but the app/CLI explains the wrong active domain, score, worker slot, or verifier pet state. | `field_surface.rs`, `handle_fields_command`, `FieldMatchReport`, `print_field_trajectory_report`, `field_pool_status_line`, `parallel_run_status_line` | 559 |
 | CLI and product backend | Command dispatch, structured direct Need context parsing, chat, starter/install/check flows, runtime/report printing, read-only status observer refresh, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; Need command logic lives in `need_surface.rs`; Evolution command logic lives in `evolution_surface.rs`; Route/Trace command logic lives in `route_surface.rs`; Feedback command logic lives in `feedback_surface.rs`; Field command logic lives in `field_surface.rs`; beat command logic lives in `heartbeat_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 20,378 |
 | Provider env | Loads `.octopus/llm.env` for CLI commands with a scoped guard; existing shell variables win, and values are restored after command execution | `provider_env.rs`, `app_bridge.rs::parse_env_overlay` | 107 |
@@ -207,8 +207,8 @@ Octopus/
 | Pet and visual state | Pixel Octopus state, SVG/export helpers, unified event writes, JSONL event audit, latest-event audit coverage, native read-only observer, desktop process/state-path check, runtime-state detection, active-work detection, stage/error diagnostics, desktop source preflight, HTML preview. Native pet no longer treats stale Feed traces, stale historical workers, or fresh blocked events as live active work; colors come from fresh pet events, pending Needs, fresh active worker slots, verifier status, goal status, heartbeat, or memory. | `pet.rs`, `pet_surface.rs`, `pet_events.rs`, `pet_supervision.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 3,467 |
 | Strategy diagnostics | Checks the three core traits and composes pet supervision: clean brain context, LLM tool-side tentacles, editable goal, field surface, observation-chain freshness, active work, native desktop process/state-path evidence, stage/error evidence, JSONL latest-event coverage, Feed/evolution evidence | `diagnostics.rs`, `strategy_surface.rs`, `pet_supervision.rs`, `octopus diagnose strategy --json`, `octopus pet supervise --json` | 1,086 |
 | Tentacle scaffold boundary | Generates user-owned code-as-harness tentacle manifests and optional python/node/shell seed tools. This is the debug entry when `octopus scaffold` creates an invalid manifest, missing executable, or wrong `octopus-json-v1` contract. | `tentacle_scaffold.rs`, `octopus scaffold` | 291 |
-| Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages plus the core-file HTML index | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,433 |
-| Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, declared evolution requirements, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 22,966 |
+| Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages plus the core-file HTML index | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,435 |
+| Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, declared evolution requirements, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 23,902 |
 
 ## Core, Distinctive, Editable
 
@@ -388,7 +388,7 @@ These are the project identity:
 - Latest retry proof point: after the targeted rerun fix, the next live `evolve drive` reached the planner again and failed before Feed because the LLM emitted a corrupt unified diff twice. `evolution_plan.rs` now feeds compact stderr plus the failed patch lines around `line N` back into retry planning, so the next attempt has concrete patch evidence instead of only a generic git error.
 - Latest targeted Feed proof point: after retry evidence improved, live `evolve drive` runs applied SWE Go-worker and field-mini-task harness patches, kept reruns targeted to `swe-go-default-smoke`, and produced trace #148 with `artifact_path=.octopus/field-mini-task/swe/20260702T160654Z-swe-go-default-smoke/artifacts/go-runtime/evidence.json`. The desktop pet state stayed on real `harness/partial`, and verifier #128 now records the missing-Go artifact instead of an empty evidence gap.
 
-- Latest patch-recovery proof point: trace #148 drove Octopus to generate a SWE fallback-harness patch. The first attempts exposed three generic provider-patch problems: tentacle-relative paths, bare existing-file context lines, and hunk context drift from blank/leading whitespace differences. `evolution_patch.rs` now normalizes those patch shapes before artifact write, `evolution_apply.rs` relocates/corrects hunks against current file content, and `evolve apply field-mini-task 03-runtime-code` applied the Octopus-generated patch with zero target-boundary violations. A formal `octopus need verify --context field_pack=swe --context field_mini_task=swe-go-default-smoke ...` run produced trace #149 with `runtime_template=shell-fallback`, artifact `.octopus/field-mini-task/swe/swe-go-default-smoke/20260702T163719Z/evidence.json`, and verifier #129 honest partial because Go is still unavailable. Direct Need status was then fixed so partial-only Feed stays `partial`; trace #152 confirms top-level `status=partial`, `feeds[0].status=partial`, and artifact-backed fallback evidence. A later `check field-mini-task` pass no longer hides the unresolved SWE verifier: latest pet event stays `harness/partial` with summary `swe #152 still needs repair`. Trace #153 and verifier #133 now preserve the real root cause `go_runtime_missing`, so field_pool asks Octopus to improve SWE after that environment gap instead of generic incomplete status.
+- Latest environment-adaptation proof point: trace #153 and verifier #133 preserved the real root cause `go_runtime_missing`, so field_pool asked Octopus to adapt SWE after the environment gap instead of treating it as generic repair. `evolve drive --open field-mini-task "adapt swe field runtime to current environment after go_runtime_missing; keep missing runtime partial unless fallback evidence is real"` then fed that gap into the LLM planner, wrote an `Environment Gaps` proposal section, applied the LLM-generated patch to `tentacles/field-mini-task/workers/swe/swe-go-default-smoke/main.go`, and opened one targeted worker. The resulting trace #154 and verifier #134 stayed `partial` with `error_category=go_runtime_missing`, artifact `.octopus/field-mini-task/swe/swe-go-default-smoke/20260702T174107Z/evidence.json`, and desktop pet events for planning progress, action, Need, Feed, and final `harness/partial`.
 - Pixel Octopus state and color-changing pet.
 - Native desktop observer: reads `.octopus/state.json`, shows Goal, transient Need bubble, independent action/Feed bubbles, Feed/evolution/blocked colors, and maps each active worker window to its own queued Need, field/task label, worker status color, and work bubbles.
 - Native desktop observer can also read the serialized peer field pool from `.octopus/state.json`, show the active field first, use worker update timestamps for transient work bubbles, expand to the latest run worker count only while that run is active, accept only fresh pet events for color/state, include worker policy, requested worker capacity, active slots, and candidate field pool in the click-open Goal sheet, fall back to legacy traces and latest run policy for old state files, and keep this as observation rather than a control surface.
@@ -446,10 +446,10 @@ field-packs/
 | --- | ---: | ---: |
 | `crates/octopus-core/src` | 58 | 64,110 |
 | `crates/octopus-core/examples` | 0 | 0 |
-| `tentacles` | 107 | 52,489 |
+| `tentacles` | 112 tracked files | 23,902 |
 | `field-packs` | 14 | 802 |
 | `desktop/pet` | 1 | 841 |
-| `docs` | 30 md/html/json/sh files | 8,285 |
+| `docs` | 30 md/html/json/sh files | 8,287 |
 | `cowork` | 3 | 112 |
 | `local/docs` | 12 | 507 |
 
@@ -524,12 +524,12 @@ field-packs/
 | `repo-maintainer` | 8 | 719 |
 | `computer-use-agent` | 10 | 644 |
 | `profile-registry` | 1 | 600 |
-| `field-mini-task` | 65 | 7,744 |
+| `field-mini-task` | 66 | 9,044 |
 | `swe-agent` | 6 | 217 |
 | `json-feed` | 2 | 162 |
 | `bash-only` | 2 | 77 |
 | `visual` | 1 | 56 |
-| shared README/schema | 2 | 166 |
+| shared README/schema | 2 | 181 |
 
 ## Notes
 

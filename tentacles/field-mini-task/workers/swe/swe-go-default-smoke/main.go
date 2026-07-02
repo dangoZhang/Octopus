@@ -44,6 +44,9 @@ func main() {
 			"field_mini_task":    task.MiniTask,
 			"field_expected_feed": task.ExpectedFeed,
 			"error_category":     "go_runtime_missing",
+			"runtime":            "go",
+			"runtime_template":   "go-worker",
+			"runtime_install_hint": "Install Go 1.22+ and rerun to move this task toward satisfied evidence; keep this result partial while runtime is unavailable.",
 			"probe":              "go executable",
 			"probe_error":        err.Error(),
 		}

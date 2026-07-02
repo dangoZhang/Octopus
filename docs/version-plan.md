@@ -117,9 +117,11 @@ Active todo tree:
 │   ├── proposal markdown includes an `Environment Gaps` section for human and subagent review
 │   └── planner must not mark missing Go as satisfied
 ├── commit 5: rerun SWE environment adaptation through Need -> Feed
-│   ├── same `swe-go-default-smoke` target
-│   ├── artifact-backed result
-│   └── desktop pet stays observer-only
+│   ├── `evolve drive --open field-mini-task ...` planned, applied, checked, and fed the target Need
+│   ├── LLM patch updated `workers/swe/swe-go-default-smoke/main.go` with explicit missing-Go runtime guidance
+│   ├── trace `#154` and verifier `#134` keep `go_runtime_missing` as honest partial
+│   ├── artifact `.octopus/field-mini-task/swe/swe-go-default-smoke/20260702T174107Z/evidence.json`
+│   └── desktop pet observed planning progress, action, Need, Feed, and final `harness/partial`
 ├── commit 6: make app and docs show environment gaps as their own status
 ├── commit 7: run the next selected peer field after SWE is no longer blocked by misclassification
 └── commit 8: cleanup/version pass for 0.2.4
