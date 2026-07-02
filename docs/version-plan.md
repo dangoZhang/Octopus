@@ -37,7 +37,12 @@ Active todo tree:
 0.2.2 - make Octopus use the Go worker path for one field
 ├── commit 1: remove field curriculum next-action language that points to repair templates
 ├── commit 2: let Octopus evolve one Go worker for that field
+│   ├── generated `tentacles/field-mini-task/workers/swe/swe-go-default-smoke/main.go`
+│   ├── direct run now selects `./workers/swe/swe-go-default-smoke`
+│   └── current no-Go environment returns honest `go_runtime_missing`
 ├── commit 3: record Feed trace and memory summary from the real run
+│   ├── trace #143: Go worker partial from missing Go runtime
+│   └── trace #144: generic auto-feed lost field_mini_task and returned unsupported
 └── commit 4: clean any legacy pyfrag routing discovered by the run
 ```
 
