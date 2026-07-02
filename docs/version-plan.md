@@ -71,13 +71,17 @@ Active todo tree:
 │   ├── relocate hunks when provider line numbers, blank context, or leading whitespace drift
 │   └── `evolve apply field-mini-task 03-runtime-code` applied the Octopus-generated SWE fallback patch
 ├── commit 5: rerun SWE through the normal Need -> Feed path
-    ├── trace #149 uses the evolved `shell-fallback` runtime on this no-Go machine
-    ├── artifact `.octopus/field-mini-task/swe/swe-go-default-smoke/20260702T163719Z/evidence.json`
-    └── verifier #129 records honest partial until Go runtime or stronger SWE logic is available
-└── commit 6: keep direct Need status aligned with returned Feed
-    ├── `Feedback::from_feeds` now preserves partial-only Feed results as `partial`
-    ├── direct SWE Need no longer reports top-level `unsupported` while `feeds[0].status=partial`
-    └── trace #152 confirms `status=partial`, `feed_status=partial`, and artifact-backed fallback evidence
+│   ├── trace #149 uses the evolved `shell-fallback` runtime on this no-Go machine
+│   ├── artifact `.octopus/field-mini-task/swe/swe-go-default-smoke/20260702T163719Z/evidence.json`
+│   └── verifier #129 records honest partial until Go runtime or stronger SWE logic is available
+├── commit 6: keep direct Need status aligned with returned Feed
+│   ├── `Feedback::from_feeds` now preserves partial-only Feed results as `partial`
+│   ├── direct SWE Need no longer reports top-level `unsupported` while `feeds[0].status=partial`
+│   └── trace #152 confirms `status=partial`, `feed_status=partial`, and artifact-backed fallback evidence
+└── commit 7: keep the desktop pet honest after passing generic checks
+    ├── `check field-mini-task` still records check history and can pass
+    ├── unresolved field verifier state keeps pet at `harness/partial`
+    └── latest pet event now says SWE #152 still needs repair instead of generic success
 ```
 
 Next field tree:

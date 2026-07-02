@@ -5057,6 +5057,26 @@ fn record_check_report(state: &mut HarnessState, report: &mut CheckReport) {
             stderr: result.stderr.clone(),
         });
     }
+    if report.passed {
+        if let Some(result) = latest_unsatisfied_field_verifier_for_pet(state) {
+            let event_state = match result.status {
+                Status::Satisfied => "feed",
+                Status::Partial => "harness",
+                Status::Failed | Status::Unsupported => "blocked",
+            };
+            state.record_pet_event(
+                event_state,
+                "field verifier",
+                format!(
+                    "{} #{} still needs repair after check {} passed: {}",
+                    result.field, result.trace_index, report.id, result.summary
+                ),
+                result.status.clone(),
+            );
+            report.history = state.recent_check_history_for_tentacle(&report.id, 8);
+            return;
+        }
+    }
     let summary = if report.passed {
         format!("check {} passed", report.id)
     } else {
@@ -5073,6 +5093,32 @@ fn record_check_report(state: &mut HarnessState, report: &mut CheckReport) {
         },
     );
     report.history = state.recent_check_history_for_tentacle(&report.id, 8);
+}
+
+fn latest_unsatisfied_field_verifier_for_pet(state: &HarnessState) -> Option<&FieldVerifierResult> {
+    let mut seen_fields = BTreeSet::new();
+    for result in state.field_verifier_results.iter().rev() {
+        if !seen_fields.insert(result.field.as_str()) {
+            continue;
+        }
+        if result.status == Status::Satisfied {
+            continue;
+        }
+        let has_real_mini_task = state
+            .feed_traces
+            .iter()
+            .rev()
+            .find(|trace| trace.index == result.trace_index)
+            .and_then(|trace| trace.metadata.get("field_mini_task"))
+            .is_some_and(|mini_task| {
+                let mini_task = mini_task.trim();
+                !mini_task.is_empty() && mini_task != "ad-hoc"
+            });
+        if has_real_mini_task {
+            return Some(result);
+        }
+    }
+    None
 }
 
 fn parse_check_index(value: &str) -> Result<usize, String> {
@@ -7214,13 +7260,14 @@ mod tests {
         prepare_bridge_state, product_field_pool_line, product_field_pool_missing_required_fields,
         product_field_pool_ready, product_report, provider_coverage_ready, provider_env_report,
         provider_matrix_targets, provider_status_report, real_machine_record_status_from_parts,
-        render_field_trajectory_summary_line, repair_continue_report, repair_patch_apply_report,
-        repair_patch_verify_report, repair_report, repair_score_report,
+        record_check_report, render_field_trajectory_summary_line, repair_continue_report,
+        repair_patch_apply_report, repair_patch_verify_report, repair_report, repair_score_report,
         resolve_tentacle_manifest_root, run, run_bridge_command, run_provider_matrix_record,
         save_provider_env_report_with_key, set_provider_matrix_target_field, shell_arg,
         skill_reports, start_check_requested, starter_report, tentacles_root_ready, update_report,
         usage, write_benchmark_record, write_pet_image_report, write_provider_matrix_record,
-        Language, ProductFieldPoolReport, MAX_WORKER_COUNT, REQUIRED_PEER_FIELD_IDS,
+        CheckReport, CheckResultReport, Language, ProductFieldPoolReport, MAX_WORKER_COUNT,
+        REQUIRED_PEER_FIELD_IDS,
     };
     use crate::evolution_drive_surface::parse_evolution_drive_args;
     use crate::need_runner::{
@@ -16032,6 +16079,65 @@ JSON
         assert!(check_report("json-feed", Some(99))
             .unwrap_err()
             .contains("out of range"));
+    }
+
+    #[test]
+    fn passed_check_does_not_hide_unsatisfied_field_verifier_pet_state() {
+        let mut state = HarnessState::default();
+        let need = Need::new(NeedKind::Verify, "Run swe-go-default-smoke mini task");
+        let feed = Feed {
+            need,
+            status: Status::Partial,
+            evidence: vec![octopus_core::Evidence::new(
+                "field-mini-task/swe",
+                "go runtime missing",
+            )],
+            summary: "Go runtime missing".to_string(),
+            metadata: BTreeMap::from([
+                ("field_pack".to_string(), "swe".to_string()),
+                (
+                    "field_mini_task".to_string(),
+                    "swe-go-default-smoke".to_string(),
+                ),
+                ("tentacle".to_string(), "field-mini-task".to_string()),
+            ]),
+        };
+        let trace = state.record_feed_trace_from_feed(&feed);
+        state
+            .record_field_verifier_result(
+                trace.index,
+                Status::Partial,
+                Some("go_runtime_missing".to_string()),
+                Some(".octopus/field-mini-task/swe/evidence.json".to_string()),
+                "auto verifier: Feed returned Partial",
+            )
+            .unwrap();
+        let mut report = CheckReport {
+            id: "field-mini-task".to_string(),
+            name: "Field Mini Task".to_string(),
+            source_kind: "manifest".to_string(),
+            cwd: ".".to_string(),
+            passed: true,
+            results: vec![CheckResultReport {
+                index: 1,
+                command: "python3 tools/check_go_workers.py".to_string(),
+                cwd: ".".to_string(),
+                status: Status::Satisfied,
+                code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            }],
+            history: Vec::new(),
+        };
+
+        record_check_report(&mut state, &mut report);
+
+        let event = state.last_pet_event.as_ref().unwrap();
+        assert_eq!(event.source, "field verifier");
+        assert_eq!(event.state, "harness");
+        assert_eq!(event.status, Status::Partial);
+        assert!(event.summary.contains("check field-mini-task passed"));
+        assert_eq!(report.history.len(), 1);
     }
 
     #[test]
