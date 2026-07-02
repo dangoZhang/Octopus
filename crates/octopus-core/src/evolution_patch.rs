@@ -16,6 +16,7 @@ pub fn unauthorized_diff_paths_for_plan(plan: &EvolutionApplyPlan, patch: &str) 
     let Some(patch) = normalize_suggested_patch_text(patch) else {
         return Vec::new();
     };
+    let patch = rewrite_tentacle_relative_patch_paths(plan, &patch);
     let paths = diff_paths(&patch);
     let allowed_paths = allowed_patch_paths(plan);
     let allowed_template_fields = fields_mentioned_in_field_paths(&plan.target_files.join(" "));
@@ -44,6 +45,7 @@ fn normalize_suggested_patch_text(patch: &str) -> Option<String> {
         let patch = normalize_prefixed_patch_control_lines(&patch);
         let patch = normalize_missing_existing_file_headers(&patch);
         let patch = normalize_new_file_hunks(&patch);
+        let patch = normalize_existing_file_hunk_context(&patch);
         let patch = normalize_diff_boundaries(&patch);
         format!("{}\n", recount_hunk_headers(&patch).trim())
     })
@@ -172,9 +174,13 @@ fn normalize_new_file_hunks(patch: &str) -> String {
             normalized.push(line.to_string());
             continue;
         }
-        if line.starts_with("new file mode ") {
+        let trimmed_line = line.trim_start();
+        if trimmed_line.starts_with("new file mode ") {
+            if current_file_has_new_mode {
+                continue;
+            }
             current_file_has_new_mode = true;
-            normalized.push(line.to_string());
+            normalized.push(trimmed_line.to_string());
             continue;
         }
         if line == "--- /dev/null" {
@@ -204,6 +210,61 @@ fn normalize_new_file_hunks(patch: &str) -> String {
                 normalized.push(line.to_string());
             } else {
                 normalized.push(format!("+{line}"));
+            }
+            continue;
+        }
+        normalized.push(line.to_string());
+    }
+    normalized.join("\n")
+}
+
+fn normalize_existing_file_hunk_context(patch: &str) -> String {
+    let mut normalized = Vec::new();
+    let mut pending_new_file = false;
+    let mut current_file_is_new = false;
+    let mut in_hunk = false;
+    for line in patch.lines() {
+        if line.starts_with("diff --git ") {
+            pending_new_file = false;
+            current_file_is_new = false;
+            in_hunk = false;
+            normalized.push(line.to_string());
+            continue;
+        }
+        if line == "--- /dev/null" {
+            pending_new_file = true;
+            current_file_is_new = false;
+            in_hunk = false;
+            normalized.push(line.to_string());
+            continue;
+        }
+        if line.starts_with("--- ") {
+            pending_new_file = false;
+            current_file_is_new = false;
+            in_hunk = false;
+            normalized.push(line.to_string());
+            continue;
+        }
+        if line.starts_with("+++ ") {
+            current_file_is_new = pending_new_file;
+            in_hunk = false;
+            normalized.push(line.to_string());
+            continue;
+        }
+        if line.starts_with("@@ ") {
+            in_hunk = true;
+            normalized.push(line.to_string());
+            continue;
+        }
+        if in_hunk && !current_file_is_new {
+            if line.starts_with("\\ No newline")
+                || line.starts_with('+')
+                || line.starts_with('-')
+                || line.starts_with(' ')
+            {
+                normalized.push(line.to_string());
+            } else {
+                normalized.push(format!(" {line}"));
             }
             continue;
         }
@@ -316,6 +377,7 @@ fn range_start(range: &str) -> String {
 
 fn provider_patch_for_plan(plan: &EvolutionApplyPlan, patch: &str) -> Option<String> {
     let patch = normalize_suggested_patch_text(patch)?;
+    let patch = rewrite_tentacle_relative_patch_paths(plan, &patch);
     let paths = diff_paths(&patch);
     if paths.is_empty() {
         return None;
@@ -335,6 +397,90 @@ fn provider_patch_for_plan(plan: &EvolutionApplyPlan, patch: &str) -> Option<Str
         return None;
     }
     Some(patch)
+}
+
+fn rewrite_tentacle_relative_patch_paths(plan: &EvolutionApplyPlan, patch: &str) -> String {
+    let allowed_paths = allowed_patch_paths(plan);
+    if allowed_paths.is_empty() {
+        return patch.to_string();
+    }
+    let mut mapping = Vec::new();
+    for path in diff_paths(patch) {
+        if allowed_paths.iter().any(|allowed| allowed == &path) {
+            continue;
+        }
+        if path.starts_with("tentacles/")
+            || path.starts_with("field-packs/")
+            || path.starts_with("docs/")
+            || path.starts_with(".octopus/")
+            || path.contains("..")
+        {
+            continue;
+        }
+        let mut matches = allowed_paths
+            .iter()
+            .filter(|allowed| {
+                allowed == &&format!("tentacles/{}/{}", plan.tentacle_id, path)
+                    || allowed.ends_with(&format!("/{path}"))
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        matches.sort();
+        matches.dedup();
+        if matches.len() == 1 {
+            mapping.push((path, matches.remove(0)));
+        }
+    }
+    if mapping.is_empty() {
+        return patch.to_string();
+    }
+    patch
+        .lines()
+        .map(|line| rewrite_patch_control_line(line, &mapping))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn rewrite_patch_control_line(line: &str, mapping: &[(String, String)]) -> String {
+    if let Some(rest) = line.strip_prefix("diff --git ") {
+        let mut parts = rest
+            .split_whitespace()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        if parts.len() >= 2 {
+            parts[0] = rewrite_patch_path_token(&parts[0], mapping);
+            parts[1] = rewrite_patch_path_token(&parts[1], mapping);
+            return format!("diff --git {}", parts.join(" "));
+        }
+    }
+    for prefix in ["--- ", "+++ "] {
+        if let Some(rest) = line.strip_prefix(prefix) {
+            return format!("{prefix}{}", rewrite_patch_path_token(rest, mapping));
+        }
+    }
+    line.to_string()
+}
+
+fn rewrite_patch_path_token(token: &str, mapping: &[(String, String)]) -> String {
+    let trimmed = token.trim_matches('"');
+    if trimmed == "/dev/null" {
+        return token.to_string();
+    }
+    let (prefix, path) = trimmed
+        .strip_prefix("a/")
+        .map(|path| ("a/", path))
+        .or_else(|| trimmed.strip_prefix("b/").map(|path| ("b/", path)))
+        .unwrap_or(("", trimmed));
+    let rewritten = mapping
+        .iter()
+        .find_map(|(from, to)| (path == from).then(|| to.as_str()))
+        .unwrap_or(path);
+    let value = format!("{prefix}{rewritten}");
+    if token.starts_with('"') && token.ends_with('"') {
+        format!("\"{value}\"")
+    } else {
+        value
+    }
 }
 
 fn allowed_patch_paths(plan: &EvolutionApplyPlan) -> Vec<String> {
@@ -679,6 +825,130 @@ new file mode 100644
             diff_paths(&cleaned),
             vec!["tentacles/field-mini-task/repair-templates/write/write-mini-6.pyfrag"]
         );
+    }
+
+    #[test]
+    fn clean_suggested_patch_deduplicates_indented_new_file_mode() {
+        let patch = r#"diff --git a/tentacles/field-mini-task/workers/swe/swe-go-default-smoke/fallback_worker.py b/tentacles/field-mini-task/workers/swe/swe-go-default-smoke/fallback_worker.py
+ new file mode 100644
+new file mode 100644
+--- /dev/null
++++ b/tentacles/field-mini-task/workers/swe/swe-go-default-smoke/fallback_worker.py
+@@ -0,0 +1 @@
++print("ok")
+"#;
+
+        let cleaned = clean_suggested_patch(Some(patch.to_string())).unwrap();
+
+        assert_eq!(cleaned.matches("new file mode 100644").count(), 1);
+        assert!(cleaned.contains("\nnew file mode 100644\n--- /dev/null\n"));
+    }
+
+    #[test]
+    fn clean_suggested_patch_prefixes_bare_existing_hunk_context() {
+        let patch = r#"diff --git a/a.py b/a.py
+--- a/a.py
++++ b/a.py
+@@ -1,2 +1,3 @@
+def rel(path, root):
++    fallback()
+    return path
+"#;
+
+        let cleaned = clean_suggested_patch(Some(patch.to_string())).unwrap();
+
+        assert!(cleaned.contains("\n def rel(path, root):\n"));
+        assert!(cleaned.contains("\n+    fallback()\n"));
+        assert!(cleaned.contains("\n    return path\n"));
+
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolution-patch-existing-context-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        run_git(&dir, &["init"]);
+        fs::write(dir.join("a.py"), "def rel(path, root):\n   return path\n").unwrap();
+        let patch_path = dir.join("candidate.patch");
+        fs::write(&patch_path, cleaned).unwrap();
+        run_git(
+            &dir,
+            &[
+                "apply",
+                "--check",
+                "--recount",
+                "--unidiff-zero",
+                patch_path.to_str().unwrap(),
+            ],
+        );
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn authorized_apply_patch_rewrites_tentacle_relative_target_path() {
+        let patch = r#"diff --git a/tools/run_field_mini_task.sh b/tools/run_field_mini_task.sh
+--- a/tools/run_field_mini_task.sh
++++ b/tools/run_field_mini_task.sh
+@@ -1 +1 @@
+-old
++new
+"#;
+        let plan = test_apply_plan(
+            "tentacles/field-mini-task/tools/run_field_mini_task.sh",
+            patch,
+        );
+
+        let rewritten = authorized_apply_patch(&plan).unwrap();
+
+        assert_eq!(
+            diff_paths(&rewritten),
+            vec!["tentacles/field-mini-task/tools/run_field_mini_task.sh"]
+        );
+        assert!(rewritten.contains(
+            "diff --git a/tentacles/field-mini-task/tools/run_field_mini_task.sh b/tentacles/field-mini-task/tools/run_field_mini_task.sh"
+        ));
+        assert!(unauthorized_diff_paths_for_plan(&plan, patch).is_empty());
+    }
+
+    #[test]
+    fn authorized_apply_patch_keeps_ambiguous_relative_target_blocked() {
+        let patch = r#"diff --git a/main.go b/main.go
+--- a/main.go
++++ b/main.go
+@@ -1 +1 @@
+-old
++new
+"#;
+        let mut plan = test_apply_plan("tentacles/field-mini-task/workers/swe/a/main.go", patch);
+        plan.target_files
+            .push("tentacles/field-mini-task/workers/code/b/main.go".to_string());
+
+        assert!(authorized_apply_patch(&plan).is_none());
+        assert_eq!(
+            unauthorized_diff_paths_for_plan(&plan, patch),
+            vec!["main.go"]
+        );
+    }
+
+    fn test_apply_plan(target: &str, suggested_patch: &str) -> EvolutionApplyPlan {
+        EvolutionApplyPlan {
+            tentacle_id: "field-mini-task".to_string(),
+            candidate_id: "03-runtime-code".to_string(),
+            objective: "repair field mini task harness".to_string(),
+            authorized: true,
+            status: "ready_for_authorized_patch".to_string(),
+            required_grant: "octopus:evolve:field-mini-task".to_string(),
+            active_grant: Some("octopus:evolve:field-mini-task".to_string()),
+            target: target.to_string(),
+            target_files: vec![target.to_string()],
+            draft_path: "patches/03-runtime-code.patch.md".to_string(),
+            checks: vec![],
+            feedback: vec![],
+            suggested_patch: Some(suggested_patch.to_string()),
+            guardrails: vec![],
+            next_steps: vec![],
+        }
     }
 
     fn run_git(cwd: &Path, args: &[&str]) {

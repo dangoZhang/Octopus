@@ -48,6 +48,143 @@ def rel(path, root):
         return str(path)
 
 
+def swe_go_default_smoke_shell_fallback(root, field, mini_task, expected_feed, session):
+    if field != 'swe' or mini_task != 'swe-go-default-smoke':
+        return None
+    if shutil.which('go') is not None:
+        return None
+
+    ts = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    workspace = Path(root) if root else Path('.')
+    fallback_dir = (
+        workspace
+        / '.octopus'
+        / 'field-mini-task'
+        / 'swe'
+        / 'swe-go-default-smoke'
+        / ts
+    )
+
+    try:
+        fallback_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return {
+            'status': 'partial',
+            'output': 'Failed to create SWE go-default-smoke fallback artifact directory.',
+            'evidence': [{
+                'source': 'field-mini-task/swe-go-default-smoke/shell-fallback',
+                'content': str(exc),
+                'confidence': 0.72,
+                'metadata': {
+                    'runtime': 'shell',
+                    'runtime_template': 'shell-fallback',
+                    'tool': 'run_field_mini_task',
+                    'field_pack': field,
+                    'field_mini_task': mini_task,
+                    'field_expected_feed': expected_feed,
+                    'verifier_status': 'partial',
+                    'error_category': 'artifact_dir_failure',
+                },
+            }],
+            'metadata': {
+                'runtime': 'shell',
+                'runtime_template': 'shell-fallback',
+                'tool': 'run_field_mini_task',
+                'tentacle': 'field-mini-task',
+                'field_pack': field,
+                'field_mini_task': mini_task,
+                'field_expected_feed': expected_feed,
+                'verifier_status': 'partial',
+                'error_category': 'artifact_dir_failure',
+            },
+        }
+
+    evidence_path = fallback_dir / 'evidence.json'
+    artifact_relative = rel(evidence_path, workspace)
+    evidence = {
+        'timestamp': ts,
+        'field_pack': field,
+        'field_mini_task': mini_task,
+        'field_expected_feed': expected_feed,
+        'runtime': 'shell',
+        'runtime_template': 'shell-fallback',
+        'probe': 'go executable',
+        'go_present': False,
+        'verifier_status': 'partial',
+        'evidence_reason': 'go runtime unavailable; using shell fallback',
+    }
+
+    try:
+        evidence_path.write_text(json.dumps(evidence, ensure_ascii=True, indent=2), encoding='utf-8')
+    except OSError as exc:
+        return {
+            'status': 'partial',
+            'output': 'Failed to write SWE go-default-smoke fallback evidence.',
+            'evidence': [{
+                'source': 'field-mini-task/swe-go-default-smoke/shell-fallback',
+                'content': str(exc),
+                'confidence': 0.7,
+                'metadata': {
+                    'runtime': 'shell',
+                    'runtime_template': 'shell-fallback',
+                    'tool': 'run_field_mini_task',
+                    'tentacle': 'field-mini-task',
+                    'field_pack': field,
+                    'field_mini_task': mini_task,
+                    'field_expected_feed': expected_feed,
+                    'error_category': 'artifact_write_failed',
+                    'verifier_status': 'partial',
+                    'artifact_path': artifact_relative,
+                    'field_session': rel(session, workspace),
+                },
+            }],
+            'metadata': {
+                'runtime': 'shell',
+                'runtime_template': 'shell-fallback',
+                'tool': 'run_field_mini_task',
+                'tentacle': 'field-mini-task',
+                'field_pack': field,
+                'field_mini_task': mini_task,
+                'field_expected_feed': expected_feed,
+                'artifact_path': artifact_relative,
+                'field_session': rel(session, workspace),
+                'verifier_status': 'partial',
+                'error_category': 'artifact_write_failed',
+            },
+        }
+
+    metadata = {
+        'runtime': 'shell',
+        'runtime_template': 'shell-fallback',
+        'tool': 'run_field_mini_task',
+        'tentacle': 'field-mini-task',
+        'field_pack': field,
+        'field_mini_task': mini_task,
+        'field_expected_feed': expected_feed,
+        'field_session': rel(session, workspace),
+        'task_record': rel(session / 'TASK.json', workspace),
+        'prompt': rel(session / 'PROMPT.md', workspace),
+        'feed_draft': rel(session / 'FEED.md', workspace),
+        'artifact_path': artifact_relative,
+        'verifier_status': 'partial',
+        'error_category': 'go_runtime_missing',
+        'next_need_kind': 'verify',
+        'next_need_query': 'rerun swe-go-default-smoke after Go runtime is available',
+    }
+
+    return {
+        'status': 'partial',
+        'output': ('SWE go-default-smoke shell fallback executed; evidence at ' f'{artifact_relative}'),
+        'evidence': [{
+            'source': 'field-mini-task/swe-go-default-smoke/shell-fallback',
+            'content': artifact_relative,
+            'confidence': 0.84,
+            'metadata': metadata,
+        }],
+        'metadata': metadata,
+    }
+
+
 def repair_template_path(root, tentacle_root, field, mini_task):
     name = f"{mini_task}.pyfrag"
     candidates = [
@@ -566,6 +703,12 @@ go_worker = specific_go_worker(root, tentacle_root, field, mini_task)
 if go_worker is not None:
     worker_entry, worker_package = go_worker
     result = go_worker_result(worker_package, worker_entry)
+    fallback = swe_go_default_smoke_shell_fallback(root, field, mini_task, expected_feed, session)
+    if fallback is not None:
+        write_feed_draft(fallback)
+        print(json.dumps(fallback, ensure_ascii=True))
+        raise SystemExit(0)
+
     result = attach_go_runtime_artifact(result)
     write_feed_draft(result)
     print(json.dumps(result, ensure_ascii=True))

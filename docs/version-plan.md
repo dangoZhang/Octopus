@@ -65,7 +65,15 @@ Active todo tree:
 │   ├── attach `artifact_path` to any Go-worker `go_runtime_missing` Feed
 │   ├── trace #148 kept `field_mini_task=swe-go-default-smoke`
 │   └── verifier #128 recorded the Go runtime evidence artifact
-└── commit 4+: continue SWE until Go-runtime availability or alternate runtime is evolved
+├── commit 4: let Octopus apply noisy provider patches instead of discarding them
+│   ├── rewrite tentacle-relative patch paths to authorized repo-root targets
+│   ├── normalize duplicate new-file headers and bare existing-file context lines
+│   ├── relocate hunks when provider line numbers, blank context, or leading whitespace drift
+│   └── `evolve apply field-mini-task 03-runtime-code` applied the Octopus-generated SWE fallback patch
+└── commit 5: rerun SWE through the normal Need -> Feed path
+    ├── trace #149 uses the evolved `shell-fallback` runtime on this no-Go machine
+    ├── artifact `.octopus/field-mini-task/swe/swe-go-default-smoke/20260702T163719Z/evidence.json`
+    └── verifier #129 records honest partial until Go runtime or stronger SWE logic is available
 ```
 
 Next field tree:

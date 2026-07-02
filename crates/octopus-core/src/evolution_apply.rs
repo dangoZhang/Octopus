@@ -679,6 +679,7 @@ fn relocate_patch_hunks_text(cwd: &Path, patch: &str) -> Result<Option<String>, 
     let mut relocated = lines.clone();
     let mut current_path: Option<String> = None;
     let mut index = 0usize;
+    let mut relocation_offset = 0isize;
     let mut changed = false;
     while index < lines.len() {
         let line = &lines[index];
@@ -702,6 +703,7 @@ fn relocate_patch_hunks_text(cwd: &Path, patch: &str) -> Result<Option<String>, 
         let hunk_start = index;
         index += 1;
         let mut old_lines = Vec::new();
+        let mut old_line_positions = Vec::new();
         let mut old_count = 0usize;
         let mut new_count = 0usize;
         while index < lines.len()
@@ -715,11 +717,13 @@ fn relocate_patch_hunks_text(cwd: &Path, patch: &str) -> Result<Option<String>, 
             }
             if let Some(value) = hunk_line.strip_prefix('-') {
                 old_lines.push(value.to_string());
+                old_line_positions.push(index);
                 old_count += 1;
             } else if hunk_line.starts_with('+') {
                 new_count += 1;
             } else if let Some(value) = hunk_line.strip_prefix(' ') {
                 old_lines.push(value.to_string());
+                old_line_positions.push(index);
                 old_count += 1;
                 new_count += 1;
             }
@@ -732,17 +736,101 @@ fn relocate_patch_hunks_text(cwd: &Path, patch: &str) -> Result<Option<String>, 
         let target_text = fs::read_to_string(&target)
             .map_err(|error| format!("{}: {error}", target.display()))?;
         let target_lines = target_text.lines().map(str::to_string).collect::<Vec<_>>();
-        let Some(start) = find_line_sequence(&target_lines, &old_lines) else {
-            continue;
+        let relocated_hunk_start = relocated_index(hunk_start, relocation_offset)?;
+        let (start, old_count, new_count, inserted_blanks) =
+            if let Some(start) = find_line_sequence(&target_lines, &old_lines) {
+                (start, old_count, new_count, 0usize)
+            } else if let Some(context_match) =
+                find_line_sequence_with_blank_gaps(&target_lines, &old_lines)
+            {
+                let corrected = apply_hunk_context_line_corrections(
+                    &mut relocated,
+                    &old_line_positions,
+                    &context_match.corrections,
+                    relocation_offset,
+                )?;
+                let inserted_blanks = insert_blank_context_lines(
+                    &mut relocated,
+                    &old_line_positions,
+                    &context_match.blank_insertions,
+                    relocation_offset,
+                )?;
+                if corrected > 0 || inserted_blanks > 0 {
+                    changed = true;
+                }
+                (
+                    context_match.start,
+                    old_count + inserted_blanks,
+                    new_count + inserted_blanks,
+                    inserted_blanks,
+                )
+            } else {
+                continue;
+            };
+        if inserted_blanks > 0 {
+            relocation_offset += inserted_blanks as isize;
         };
         let new_start = start + 1;
         let replacement = format!("@@ -{new_start},{old_count} +{new_start},{new_count} @@");
-        if relocated[hunk_start] != replacement {
-            relocated[hunk_start] = replacement;
+        if relocated[relocated_hunk_start] != replacement {
+            relocated[relocated_hunk_start] = replacement;
             changed = true;
         }
     }
     Ok(changed.then(|| format!("{}\n", relocated.join("\n"))))
+}
+
+fn apply_hunk_context_line_corrections(
+    lines: &mut [String],
+    old_line_positions: &[usize],
+    corrections: &[(usize, String)],
+    relocation_offset: isize,
+) -> Result<usize, String> {
+    let mut corrected = 0usize;
+    for (old_line_index, target_line) in corrections {
+        let Some(position) = old_line_positions.get(*old_line_index) else {
+            return Err("context correction outside hunk".to_string());
+        };
+        let relocated_position = relocated_index(*position, relocation_offset)?;
+        let Some(line) = lines.get_mut(relocated_position) else {
+            return Err("context correction outside relocated patch".to_string());
+        };
+        let marker = if line.starts_with('-') { '-' } else { ' ' };
+        let replacement = format!("{marker}{target_line}");
+        if *line != replacement {
+            *line = replacement;
+            corrected += 1;
+        }
+    }
+    Ok(corrected)
+}
+
+fn insert_blank_context_lines(
+    lines: &mut Vec<String>,
+    old_line_positions: &[usize],
+    insertions: &[(usize, usize)],
+    relocation_offset: isize,
+) -> Result<usize, String> {
+    let mut inserted = 0usize;
+    for (old_line_index, blank_count) in insertions.iter().rev() {
+        let Some(position) = old_line_positions.get(*old_line_index) else {
+            return Err("blank context insertion outside hunk".to_string());
+        };
+        let relocated_position = relocated_index(*position, relocation_offset)?;
+        for _ in 0..*blank_count {
+            lines.insert(relocated_position, " ".to_string());
+            inserted += 1;
+        }
+    }
+    Ok(inserted)
+}
+
+fn relocated_index(index: usize, offset: isize) -> Result<usize, String> {
+    let relocated = index as isize + offset;
+    if relocated < 0 {
+        return Err("negative relocated patch index".to_string());
+    }
+    Ok(relocated as usize)
 }
 
 fn diff_file_path(line: &str) -> Option<String> {
@@ -776,6 +864,76 @@ fn find_line_sequence(haystack: &[String], needle: &[String]) -> Option<usize> {
     haystack
         .windows(needle.len())
         .position(|window| window == needle)
+}
+
+struct FlexibleLineSequenceMatch {
+    start: usize,
+    blank_insertions: Vec<(usize, usize)>,
+    corrections: Vec<(usize, String)>,
+}
+
+fn find_line_sequence_with_blank_gaps(
+    haystack: &[String],
+    needle: &[String],
+) -> Option<FlexibleLineSequenceMatch> {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return None;
+    }
+    for start in 0..haystack.len() {
+        let first = needle.first()?;
+        let Some(actual_first) = haystack.get(start) else {
+            continue;
+        };
+        if !line_matches_context(actual_first, first) {
+            continue;
+        }
+        let mut haystack_index = start + 1;
+        let mut blank_insertions = Vec::new();
+        let mut corrections = Vec::new();
+        if actual_first != first {
+            corrections.push((0, actual_first.clone()));
+        }
+        let mut matched = true;
+        for (needle_index, expected) in needle.iter().enumerate().skip(1) {
+            let mut blank_count = 0usize;
+            if !expected.is_empty() {
+                while haystack
+                    .get(haystack_index)
+                    .is_some_and(|line| line.is_empty())
+                {
+                    blank_count += 1;
+                    haystack_index += 1;
+                }
+            }
+            let Some(actual) = haystack.get(haystack_index) else {
+                matched = false;
+                break;
+            };
+            if !line_matches_context(actual, expected) {
+                matched = false;
+                break;
+            }
+            if blank_count > 0 {
+                blank_insertions.push((needle_index, blank_count));
+            }
+            if actual != expected {
+                corrections.push((needle_index, actual.clone()));
+            }
+            haystack_index += 1;
+        }
+        if matched && (!blank_insertions.is_empty() || !corrections.is_empty()) {
+            return Some(FlexibleLineSequenceMatch {
+                start,
+                blank_insertions,
+                corrections,
+            });
+        }
+    }
+    None
+}
+
+fn line_matches_context(actual: &str, expected: &str) -> bool {
+    actual == expected || (!expected.is_empty() && actual.trim_start() == expected.trim_start())
 }
 
 fn validate_field_pack_targets(cwd: &Path, plan: &EvolutionApplyPlan) -> Result<(), String> {
@@ -1363,6 +1521,85 @@ mod tests {
         let changed = fs::read_to_string(template_path).unwrap();
         assert!(changed.contains("No directional trading or price-target language"));
         assert!(!changed.contains("buy/sell/target"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn apply_relocates_missing_blank_context_by_current_file_content() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolution-apply-blank-context-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("tentacles/field-mini-task/tools")).unwrap();
+        run_git(&dir, &["init"]);
+        let target_path = dir.join("tentacles/field-mini-task/tools/run_field_mini_task.sh");
+        fs::write(&target_path, "before\nraise SystemExit(0)\n\nnext_query\n").unwrap();
+        let patch_path = dir.join("candidate.patch");
+        fs::write(
+            &patch_path,
+            "diff --git a/tentacles/field-mini-task/tools/run_field_mini_task.sh b/tentacles/field-mini-task/tools/run_field_mini_task.sh\n--- a/tentacles/field-mini-task/tools/run_field_mini_task.sh\n+++ b/tentacles/field-mini-task/tools/run_field_mini_task.sh\n@@ -2,2 +2,3 @@\n raise SystemExit(0)\n+fallback()\n next_query\n",
+        )
+        .unwrap();
+        let relocated = relocate_patch_hunks_text(&dir, &fs::read_to_string(&patch_path).unwrap())
+            .unwrap()
+            .unwrap();
+        assert!(relocated.contains("@@ -2,3 +2,4 @@"));
+        assert!(relocated.contains("+fallback()\n \n next_query"));
+
+        let mut plan = test_plan();
+        plan.suggested_patch = Some(fs::read_to_string(&patch_path).unwrap());
+        let artifact = test_artifact(Some(patch_path.to_str().unwrap()));
+
+        let report = apply_authorized_suggested_patch(&dir, &plan, &artifact);
+
+        assert!(report.applied, "{report:?}");
+        assert_eq!(report.status, "applied");
+        let changed = fs::read_to_string(target_path).unwrap();
+        assert!(changed.contains("raise SystemExit(0)\nfallback()\n\nnext_query"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn apply_relocates_leading_whitespace_and_blank_context() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-evolution-apply-fuzzy-context-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("tentacles/field-mini-task/tools")).unwrap();
+        run_git(&dir, &["init"]);
+        let target_path = dir.join("tentacles/field-mini-task/tools/run_field_mini_task.sh");
+        fs::write(
+            &target_path,
+            "def rel(path, root):\n    try:\n        return str(path.relative_to(root))\n    except ValueError:\n        return str(path)\n\n\ndef repair_template_path(root, tentacle_root, field, mini_task):\n",
+        )
+        .unwrap();
+        let patch_path = dir.join("candidate.patch");
+        fs::write(
+            &patch_path,
+            "diff --git a/tentacles/field-mini-task/tools/run_field_mini_task.sh b/tentacles/field-mini-task/tools/run_field_mini_task.sh\n--- a/tentacles/field-mini-task/tools/run_field_mini_task.sh\n+++ b/tentacles/field-mini-task/tools/run_field_mini_task.sh\n@@ -1,7 +1,9 @@\n def rel(path, root):\n   try:\n       return str(path.relative_to(root))\n   except ValueError:\n       return str(path)\n+\n+def fallback():\n+    pass\n \n def repair_template_path(root, tentacle_root, field, mini_task):\n",
+        )
+        .unwrap();
+        let relocated = relocate_patch_hunks_text(&dir, &fs::read_to_string(&patch_path).unwrap())
+            .unwrap()
+            .unwrap();
+        assert!(relocated.contains("    try:"));
+        assert!(relocated.contains("        return str(path.relative_to(root))"));
+        assert!(relocated.contains("+def fallback():\n+    pass\n \n \n def repair_template_path"));
+
+        let mut plan = test_plan();
+        plan.suggested_patch = Some(fs::read_to_string(&patch_path).unwrap());
+        let artifact = test_artifact(Some(patch_path.to_str().unwrap()));
+
+        let report = apply_authorized_suggested_patch(&dir, &plan, &artifact);
+
+        assert!(report.applied, "{report:?}");
+        assert_eq!(report.status, "applied");
+        let changed = fs::read_to_string(target_path).unwrap();
+        assert!(changed.contains("def fallback():\n    pass\n\n\ndef repair_template_path"));
 
         let _ = fs::remove_dir_all(dir);
     }
