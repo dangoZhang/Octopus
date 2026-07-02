@@ -4,7 +4,7 @@ Current version: `0.2.0`.
 
 Release status: `v0.2.0` is the first usable public release line. The old `v0.1.0` GitHub release and tag were removed on 2026-06-30 because that line did not yet have a non-fake desktop pet observer or real LLM-driven harness evolution.
 
-Active todo tree for `0.2.1`:
+Completed `0.2.1`:
 
 ```text
 0.2.1 - align field evolution with the product architecture
@@ -28,18 +28,22 @@ Active todo tree for `0.2.1`:
 │   ├── confirm status is honest partial with go_runtime_missing or domain gap
 │   ├── confirm desktop pet still reads state as observer
 │   └── run the short Rust/build checks for touched core
-└── push: publish after the four commits are reviewable
+└── pushed to main
+```
+
+Active todo tree:
+
+```text
+0.2.2 - make Octopus use the Go worker path for one field
+├── commit 1: remove field curriculum next-action language that points to repair templates
+├── commit 2: let Octopus evolve one Go worker for that field
+├── commit 3: record Feed trace and memory summary from the real run
+└── commit 4: clean any legacy pyfrag routing discovered by the run
 ```
 
 Next version tree:
 
 ```text
-0.2.2 - make Octopus use the Go worker path for one field
-├── commit 1: set active field from real field summary
-├── commit 2: let Octopus evolve one Go worker for that field
-├── commit 3: record Feed trace and memory summary from the real run
-└── commit 4: clean any legacy pyfrag routing discovered by the run
-
 0.2.3+ - repeat by field
 ├── math
 ├── write

@@ -1,17 +1,17 @@
 # Structure
 
-Updated: 2026-07-02, after splitting the `0.2.1` work into version/commit todo trees.
+Updated: 2026-07-02, after starting `0.2.2` Go-worker field evolution.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
 ## Active Todo Tree
 
 ```text
-0.2.1 - align field evolution with the product architecture
-├── commit 1: record todo tree and architecture boundary
-├── commit 2: add the default Go worker substrate for field-mini-task
-├── commit 3: steer evolution toward .go worker patches; keep .pyfrag legacy-only
-├── commit 4: verify honest partial behavior, pet observation, and touched-core build
+0.2.2 - make Octopus use the Go worker path for one field
+├── commit 1: remove field curriculum next-action language that points to repair templates
+├── commit 2: let Octopus evolve one Go worker from a real partial Feed
+├── commit 3: record Feed trace and memory/structure evidence
+├── commit 4: clean any legacy pyfrag routing discovered by the run
 └── push: publish after the commits are reviewable
 ```
 

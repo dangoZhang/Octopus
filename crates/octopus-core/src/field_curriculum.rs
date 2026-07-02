@@ -23,7 +23,7 @@ pub(crate) struct FieldCurriculumStep {
 
 pub(crate) fn field_harder_layer_objective_for(field: &str) -> String {
     format!(
-        "add a harder {field} mini task layer; update field-packs/{field} and the matching editable field-mini-task repair template only; require artifact-backed Feed evidence"
+        "add a harder {field} mini task layer; update field-packs/{field} and the matching editable field-mini-task Go worker only; require artifact-backed Feed evidence"
     )
 }
 
@@ -118,6 +118,7 @@ mod tests {
         assert_eq!(selected.field, "write");
         assert!(selected.objective.contains("harder write mini task layer"));
         assert!(selected.next_action.contains("field-packs/write"));
+        assert!(selected.next_action.contains("Go worker"));
         assert!(selected.reason.contains("mini_tasks=3"));
     }
 }
