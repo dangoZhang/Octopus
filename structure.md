@@ -1,6 +1,6 @@
 # Structure
 
-Updated: 2026-07-03, after `0.2.4` reran SWE environment adaptation through Need -> Feed.
+Updated: 2026-07-03, after `0.2.4` made environment gaps visible in app/docs.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
@@ -201,13 +201,13 @@ Octopus/
 | Field adaptation surface | Owns `octopus fields`: field-pack reports, field matching, field trajectory summaries, read-only observer snapshot refresh, verifier score recording, pet-event append after verifier scoring, parallel field worker slots, field-pool latest activity, and user-visible field status lines. This is the debug entry when field state exists but the app/CLI explains the wrong active domain, score, worker slot, or verifier pet state. | `field_surface.rs`, `handle_fields_command`, `FieldMatchReport`, `print_field_trajectory_report`, `field_pool_status_line`, `parallel_run_status_line` | 559 |
 | CLI and product backend | Command dispatch, structured direct Need context parsing, chat, starter/install/check flows, runtime/report printing, read-only status observer refresh, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; Need command logic lives in `need_surface.rs`; Evolution command logic lives in `evolution_surface.rs`; Route/Trace command logic lives in `route_surface.rs`; Feedback command logic lives in `feedback_surface.rs`; Field command logic lives in `field_surface.rs`; beat command logic lives in `heartbeat_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 20,378 |
 | Provider env | Loads `.octopus/llm.env` for CLI commands with a scoped guard; existing shell variables win, and values are restored after command execution | `provider_env.rs`, `app_bridge.rs::parse_env_overlay` | 107 |
-| Local app bridge | Local HTTP/SSE server, `/api/config` state-path injection, app policy, command allow-list, embedded app/docs/showcase assets, read-only pet supervision access, field activity observer with fresh pet-event handling | `app_bridge.rs`, `docs/app.html` | 2,027 |
+| Local app bridge | Local HTTP/SSE server, `/api/config` state-path injection, app policy, command allow-list, embedded app/docs/showcase assets, read-only pet supervision access, field activity observer, and environment-gap Output display with fresh pet-event handling | `app_bridge.rs`, `docs/app.html` | 2,071 |
 | Release and install gates | Low-level release records, benchmark evidence, download/install manifest, and real-machine record parsing used by the preflight surface | `release_gate.rs`, `preflight_surface.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 2,533 |
 | Pet observation surface | Builds the user-visible pet report, auto state choice, event-log view, pixel image report, desktop launch report, and supervision printout. It keeps fresh event text, pending Need text, latest Feed trace text, and unresolved field verifier state from being merged into a fake Goal/Need/Feed chain. This is the first code boundary after `octopus pet supervise --json` finds an observation mismatch. | `pet_surface.rs`, `pet_report_for_state`, `pet_event_log_report`, `print_pet_supervision_report`, `main.rs::record_check_report` | 385 |
 | Pet and visual state | Pixel Octopus state, SVG/export helpers, unified event writes, JSONL event audit, latest-event audit coverage, native read-only observer, desktop process/state-path check, runtime-state detection, active-work detection, stage/error diagnostics, desktop source preflight, HTML preview. Native pet no longer treats stale Feed traces, stale historical workers, or fresh blocked events as live active work; colors come from fresh pet events, pending Needs, fresh active worker slots, verifier status, goal status, heartbeat, or memory. | `pet.rs`, `pet_surface.rs`, `pet_events.rs`, `pet_supervision.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 3,467 |
 | Strategy diagnostics | Checks the three core traits and composes pet supervision: clean brain context, LLM tool-side tentacles, editable goal, field surface, observation-chain freshness, active work, native desktop process/state-path evidence, stage/error evidence, JSONL latest-event coverage, Feed/evolution evidence | `diagnostics.rs`, `strategy_surface.rs`, `pet_supervision.rs`, `octopus diagnose strategy --json`, `octopus pet supervise --json` | 1,086 |
 | Tentacle scaffold boundary | Generates user-owned code-as-harness tentacle manifests and optional python/node/shell seed tools. This is the debug entry when `octopus scaffold` creates an invalid manifest, missing executable, or wrong `octopus-json-v1` contract. | `tentacle_scaffold.rs`, `octopus scaffold` | 291 |
-| Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages plus the core-file HTML index | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,435 |
+| Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages plus the core-file HTML index | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,485 |
 | Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, declared evolution requirements, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 23,902 |
 
 ## Core, Distinctive, Editable
@@ -449,7 +449,7 @@ field-packs/
 | `tentacles` | 112 tracked files | 23,902 |
 | `field-packs` | 14 | 802 |
 | `desktop/pet` | 1 | 841 |
-| `docs` | 30 md/html/json/sh files | 8,287 |
+| `docs` | 30 md/html/json/sh files | 8,337 |
 | `cowork` | 3 | 112 |
 | `local/docs` | 12 | 507 |
 
@@ -536,6 +536,7 @@ field-packs/
 - The stable core is still too concentrated in `main.rs` and `lib.rs`; `0.2.x` cleanup should split product backend aggregation without moving field behavior back into Rust.
 - If desktop Octopus looks wrong, start with `octopus pet supervise --json`. It separates missing state file, missing/corrupt event log, absent last event, invalid event state, and stale event freshness. Then use `octopus diagnose strategy --json` for full project-policy status.
 - If the pet stays red with no Need bubble, inspect `.octopus/state.json.last_pet_event`, `.octopus/pet-events.jsonl`, `.octopus/state.json.need_queue`, and `.octopus/state.json.parallel_evolution_runs`. A red idle pet means the latest real event is blocked or stale, not a desktop control failure.
+- If the local app shows `Environment gap`, inspect `octopus report --json` gaps and `octopus fields summary --json` slot `needs_environment`; user-facing Goal remains the only write surface, while install/runtime actions stay internal evidence.
 - If CLI LLM works in the app but not terminal, inspect `.octopus/llm.env` and `provider_env.rs`. The CLI now auto-loads missing OCTOPUS provider variables from that file.
 - If LLM evolution apply fails on new files, inspect `.octopus/evolution/<tentacle>/apply/*.patch`; the normalizer in `evolution_patch.rs` must preserve `/dev/null`, insert `new file mode 100644`, and strip provider-prefixed control lines such as `+--- /dev/null`, `++++ b/...`, and `+@@ ...`.
 - If LLM evolution apply fails with `*** End Patch`, markdown fences, stale hunk context, bad hunk counts, blank lines between diff file sections, or valid old-context with wrong hunk line numbers, inspect `evolution_patch.rs` wrapper stripping, diff-boundary cleanup, hunk recounting, `evolution_apply.rs` exact-content hunk relocation, and `evolution_prompt.rs` line-numbered target content. Retry prompts should include the current target path so the planner sees exact current lines.

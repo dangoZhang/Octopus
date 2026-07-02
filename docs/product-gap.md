@@ -51,6 +51,7 @@ Updated: 2026-06-30
 - Status `field_pool` now exposes machine-readable `field_slot_count` and `latest_worker_slot_count`; the local app and desktop pet read those fields before older `field_count` snapshots.
 - Each `field_pool` slot now carries `latest_worker_id`, `latest_mini_task`, `latest_worker_status`, and `latest_updated_at_secs` from the latest parallel worker, and the native desktop pet reads those worker fields so state, label, and bubble fade follow real worker activity instead of a static pool snapshot.
 - Product report `field_pool` now exposes the same `field_slot_count`, `latest_worker_slot_count`, and `latest_activity`; the `field_parallel_pool` capability evidence names both the latest worker slot count and latest field activity.
+- Product report and the local app now show runtime environment gaps, such as `go_runtime_missing`, as their own status instead of burying them inside generic partial Feed or harness repair language.
 - `report` and `preflight` now share one field-pool summary line, so product evidence names both the peer slots and the latest worker execution-slot count.
 - CLI `status` field-pool line now shows `field_slot_count`, `latest_worker_slot_count`, and `latest_activity=field:task:status@timestamp worker=id`, so the terminal view matches JSON, local app, and desktop pet semantics.
 - `field_pool.active_slot_reason` now explains why the peer field pool selected the current active slot: latest failure, field status plus recent-run fairness, harder-task need, or all tasks satisfied.

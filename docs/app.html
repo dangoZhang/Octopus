@@ -367,6 +367,10 @@
         border-left-color: var(--amber);
       }
 
+      .output-item.environment {
+        border-left-color: var(--blue);
+      }
+
       .output-item.fail {
         border-left-color: var(--red);
       }
@@ -732,6 +736,33 @@
         return hasFeed ? "Ready. Latest Feed is visible." : "Ready. Give Octopus a goal.";
       }
 
+      function statusHasEnvironmentGap(report) {
+        const pool = (report || {}).field_pool || {};
+        const slots = Array.isArray(pool.slots) ? pool.slots : [];
+        return slots.some((slot) => slot.needs_environment && !slot.completed)
+          || String(pool.active_slot_reason || "").toLowerCase().includes("environment");
+      }
+
+      function environmentGapText(productReport, statusReport) {
+        const gaps = Array.isArray((productReport || {}).gaps) ? productReport.gaps : [];
+        const runtime = (productReport || {}).runtime || {};
+        const pool = (productReport || {}).field_pool || (statusReport || {}).field_pool || {};
+        const slots = Array.isArray(pool.slots) ? pool.slots : [];
+        const environmentSlot = slots.find((slot) => slot.needs_environment && !slot.completed)
+          || (String(pool.active_slot_reason || "").toLowerCase().includes("environment")
+            ? { field: pool.active_slot_field || "field" }
+            : null);
+        const gap = gaps.find((item) => item.id === "go_runtime_missing")
+          || gaps.find((item) => String(item.id || "").includes("environment"));
+        if (!environmentSlot && !gap) return "";
+        const field = environmentSlot && environmentSlot.field ? environmentSlot.field : "field";
+        const task = environmentSlot && (environmentSlot.latest_mini_task || environmentSlot.next_mini_task);
+        const subject = task ? `${field}/${task}` : field;
+        const reason = gap && gap.impact ? gap.impact : (pool.active_slot_reason || "Runtime environment needs attention.");
+        const runtimeLine = runtime.go_ready === false && runtime.message ? ` ${runtime.message}.` : "";
+        return `${subject}: ${reason}.${runtimeLine} Feed should stay partial until the runtime is available or real fallback evidence exists.`;
+      }
+
       function parallelRunStatusText(run, activeWorkerSlots) {
         if (!run) return "";
         const requested = Number(run.requested_worker_count || run.worker_count || activeWorkerSlots || 0);
@@ -767,11 +798,24 @@
         setOutputStatus("checking");
         try {
           const report = await runJson([...baseArgs(), "status"]);
+          let productReport = null;
+          if (statusHasEnvironmentGap(report)) {
+            try {
+              productReport = await runJson([...baseArgs(), "report"]);
+            } catch (_) {
+              productReport = null;
+            }
+          }
           lastStatus = report;
           applyStatus(report);
           if (replace) {
+            const environmentText = environmentGapText(productReport, report);
             const feedText = latestFeedText(report);
-            replaceOutput(feedText ? "Latest Feed" : "Connected", feedText || statusText(report), "pass");
+            if (environmentText) {
+              replaceOutput("Environment gap", environmentText, "environment");
+            } else {
+              replaceOutput(feedText ? "Latest Feed" : "Connected", feedText || statusText(report), "pass");
+            }
           }
           setStatus("Local Octopus · connected");
           setOutputStatus("ready");

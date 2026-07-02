@@ -153,7 +153,7 @@ octopus preflight
 octopus pet desktop
 ```
 
-These are observation surfaces. They should explain what the agent did without asking the user to drive tools directly.
+These are observation surfaces. They should explain what the agent did without asking the user to drive tools directly. Runtime gaps such as missing Go are shown as environment gaps, so a partial Feed does not look like a broken harness.
 
 ## Release Gate
 

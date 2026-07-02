@@ -123,6 +123,10 @@ Active todo tree:
 │   ├── artifact `.octopus/field-mini-task/swe/swe-go-default-smoke/20260702T174107Z/evidence.json`
 │   └── desktop pet observed planning progress, action, Need, Feed, and final `harness/partial`
 ├── commit 6: make app and docs show environment gaps as their own status
+│   ├── local app reads `report` only when `status.field_pool` already shows an environment gap
+│   ├── Output surfaces `go_runtime_missing` as `Environment gap`, not generic repair
+│   ├── Quickstart and Use docs explain runtime gaps as environment evidence
+│   └── Product Gap Log records the product-observation change
 ├── commit 7: run the next selected peer field after SWE is no longer blocked by misclassification
 └── commit 8: cleanup/version pass for 0.2.4
 ```
