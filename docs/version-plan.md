@@ -57,7 +57,11 @@ Active todo tree:
 │   ├── include compact stderr
 │   ├── include the failed patch excerpt around `line N`
 │   └── ask the planner for one valid unified diff on retry
-└── commit 2+: rerun the SWE Go worker evolution until targeted Need reaches Feed
+├── commit 2: rerun the SWE Go worker evolution through the targeted Feed path
+│   ├── LLM patch applied after retry feedback improved
+│   ├── trace #145 kept `field_mini_task=swe-go-default-smoke`
+│   └── current machine still returns honest partial because Go is unavailable
+└── commit 3+: continue improving SWE runtime evidence until explicit artifact-backed partial/pass
 ```
 
 Next field tree:
