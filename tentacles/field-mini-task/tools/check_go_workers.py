@@ -31,6 +31,7 @@ def main() -> int:
         root / "internal" / "fieldworker" / "feed.go",
         root / "workers" / "default" / "main.go",
     ]
+    worker_files = sorted((root / "workers").glob("*/*/main.go"))
     missing = [rel(path, root) for path in required if not path.exists()]
     go_bin = shutil.which("go")
     report: dict[str, object] = {
@@ -39,6 +40,8 @@ def main() -> int:
         "go_runtime_status": "available" if go_bin else "partial",
         "missing": missing,
         "checked": [rel(path, root) for path in required if path.exists()],
+        "worker_count": len(worker_files),
+        "workers": [rel(path, root) for path in worker_files],
     }
     if missing:
         print(json.dumps(report, indent=2, sort_keys=True))
