@@ -7,14 +7,30 @@ use crate::need_runner::{
     run_queued_need_indices_with_observer_state, NeedRunBatchReport,
 };
 use crate::pet_events;
-use octopus_core::{FieldTrajectoryReport, HarnessState, ParallelEvolutionRun, Status};
+use octopus_core::{
+    default_field_pack_ids, parallel_field_pool_policy, parallel_worker_policy,
+    FieldTrajectoryReport, GoalNeedSuggestion, HarnessState, NeedKind, ParallelEvolutionRun,
+    ParallelEvolutionWorker, Status,
+};
+use std::collections::BTreeMap;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct FieldMiniTaskFeedTarget {
+    pub(crate) source_trace_index: u64,
+    pub(crate) field: String,
+    pub(crate) mini_task: String,
+    pub(crate) expected_feed: String,
+    pub(crate) query: String,
+}
 
 pub(crate) struct EvolutionFeedCycleArgs {
     pub(crate) tentacle_id: String,
     pub(crate) objective: String,
     pub(crate) workers: usize,
     pub(crate) open_pet: bool,
+    pub(crate) target: Option<FieldMiniTaskFeedTarget>,
 }
 
 pub(crate) struct EvolutionFeedCycleReport {
@@ -31,7 +47,11 @@ pub(crate) fn run_field_mini_task_feed_cycle(
     mut state: HarnessState,
     args: EvolutionFeedCycleArgs,
 ) -> Result<EvolutionFeedCycleReport, String> {
-    let mut run = state.start_parallel_evolution(args.objective, args.workers)?;
+    let mut run = if let Some(target) = &args.target {
+        start_targeted_field_mini_task_feed_run(&mut state, &args.objective, args.workers, target)?
+    } else {
+        state.start_parallel_evolution(args.objective, args.workers)?
+    };
     state.save(state_path).map_err(|error| error.to_string())?;
     let desktop_pet = if args.open_pet {
         Some(launch_desktop_pet(
@@ -144,6 +164,85 @@ pub(crate) fn run_field_mini_task_feed_cycle(
     })
 }
 
+fn start_targeted_field_mini_task_feed_run(
+    state: &mut HarnessState,
+    objective: &str,
+    worker_limit: usize,
+    target: &FieldMiniTaskFeedTarget,
+) -> Result<ParallelEvolutionRun, String> {
+    let limit = worker_limit.clamp(1, 8);
+    state.next_parallel_evolution_run_index += 1;
+    let run_index = state.next_parallel_evolution_run_index;
+    let now = unix_timestamp_secs();
+    let mut context = BTreeMap::from([
+        ("field_pack".to_string(), target.field.clone()),
+        ("field_mini_task".to_string(), target.mini_task.clone()),
+        (
+            "field_expected_feed".to_string(),
+            target.expected_feed.clone(),
+        ),
+        (
+            "source_trace_index".to_string(),
+            target.source_trace_index.to_string(),
+        ),
+    ]);
+    context.retain(|_, value| !value.trim().is_empty());
+    let queued = state.queue_need_suggestion_with_context(
+        GoalNeedSuggestion {
+            kind: NeedKind::Verify,
+            query: target.query.clone(),
+        },
+        context,
+        "field evolution",
+        objective.to_string(),
+        format!(
+            "target trace #{}; field: {}; mini task: {}; expected Feed: {}",
+            target.source_trace_index, target.field, target.mini_task, target.expected_feed
+        ),
+    );
+    let worker = ParallelEvolutionWorker {
+        id: format!("octopus-{run_index}-1"),
+        field: target.field.clone(),
+        mini_task: Some(target.mini_task.clone()),
+        goal: format!(
+            "Rerun {} Feed supply from trace #{} while keeping Brain clean: {}",
+            target.field, target.source_trace_index, objective
+        ),
+        updated_at_secs: now,
+        queued_need_index: Some(queued.index),
+        source_trace_index: Some(target.source_trace_index),
+        verifier_result_index: None,
+        status: Status::Partial,
+        next_action: format!("octopus needs run {}", queued.index),
+    };
+    let summary = format!(
+        "field evolution run #{run_index}: targeted {} mini task {} from trace #{}",
+        target.field, target.mini_task, target.source_trace_index
+    );
+    let run = ParallelEvolutionRun {
+        index: run_index,
+        objective: objective.to_string(),
+        field_pool_size: default_field_pack_ids().len(),
+        field_pool_policy: parallel_field_pool_policy().to_string(),
+        candidate_fields: vec![target.field.clone()],
+        requested_worker_count: limit,
+        worker_count: 1,
+        worker_policy: parallel_worker_policy().to_string(),
+        workers: vec![worker],
+        summary: summary.clone(),
+    };
+    state.record_pet_event("harness", "parallel evolution", summary, Status::Partial);
+    state.parallel_evolution_runs.push(run.clone());
+    Ok(run)
+}
+
+fn unix_timestamp_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default()
+}
+
 fn fed_event_status(auto_feed: &NeedRunBatchReport) -> (&'static str, Status, String) {
     let statuses = auto_feed
         .reports
@@ -235,6 +334,39 @@ mod tests {
         assert_eq!(pet_state, "feed");
         assert_eq!(status, Status::Satisfied);
         assert_eq!(summary, "fed 2 queued Need(s)");
+    }
+
+    #[test]
+    fn targeted_field_feed_run_preserves_runtime_mini_task() {
+        let mut state = HarnessState::default();
+        let target = FieldMiniTaskFeedTarget {
+            source_trace_index: 143,
+            field: "swe".to_string(),
+            mini_task: "swe-go-default-smoke".to_string(),
+            expected_feed: "honest partial if Go runtime is missing".to_string(),
+            query: "Rerun swe mini task swe-go-default-smoke after harness evolution".to_string(),
+        };
+
+        let run = start_targeted_field_mini_task_feed_run(
+            &mut state,
+            "improve swe harness after go_runtime_missing from trace 143",
+            1,
+            &target,
+        )
+        .unwrap();
+        let queued = state.need_queue.last().unwrap();
+
+        assert_eq!(run.worker_count, 1);
+        assert_eq!(
+            run.workers[0].mini_task.as_deref(),
+            Some("swe-go-default-smoke")
+        );
+        assert_eq!(
+            queued.context.get("field_mini_task").map(String::as_str),
+            Some("swe-go-default-smoke")
+        );
+        assert!(queued.need.query.contains("swe-go-default-smoke"));
+        assert!(!queued.need.query.contains("peer field slot"));
     }
 
     #[test]

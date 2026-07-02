@@ -43,7 +43,10 @@ Active todo tree:
 ├── commit 3: record Feed trace and memory summary from the real run
 │   ├── trace #143: Go worker partial from missing Go runtime
 │   └── trace #144: generic auto-feed lost field_mini_task and returned unsupported
-└── commit 4: clean any legacy pyfrag routing discovered by the run
+└── commit 4: rerun the same field mini task after post-apply evolution
+    ├── target Feed from the source trace when objective names `trace N`
+    ├── ignore latest generic field traces that lack `field_mini_task`
+    └── keep runtime-created Go workers outside the static field-pack table
 ```
 
 Next version tree:

@@ -6,11 +6,13 @@ use crate::evolution_cycle::{
     record_stage_event_with_error, EvolutionDriveStage,
 };
 use crate::evolution_drive_surface::{EvolutionDriveArgs, EvolutionDriveReport};
-use crate::evolution_feed::{run_field_mini_task_feed_cycle, EvolutionFeedCycleArgs};
+use crate::evolution_feed::{
+    run_field_mini_task_feed_cycle, EvolutionFeedCycleArgs, FieldMiniTaskFeedTarget,
+};
 use crate::evolution_plan::{recommend_current_patch, retry_apply_objective};
 use crate::shell_words::shell_arg;
 use crate::{check_report, pet_events, record_check_report};
-use octopus_core::{HarnessState, Status};
+use octopus_core::{FeedTraceRecord, HarnessState, Status};
 use std::env;
 use std::path::Path;
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -262,6 +264,7 @@ pub(crate) fn drive_evolution_cycle(
     }
 
     if args.tentacle_id == "field-mini-task" {
+        let target = field_mini_task_feed_target(&loaded, &args.objective);
         let feed = run_field_mini_task_feed_cycle(
             state_path,
             loaded,
@@ -270,6 +273,7 @@ pub(crate) fn drive_evolution_cycle(
                 objective: args.objective,
                 workers: args.workers,
                 open_pet: args.open_pet,
+                target,
             },
         )?;
         report.stage = feed.stage.as_str().to_string();
@@ -287,6 +291,75 @@ pub(crate) fn drive_evolution_cycle(
     }
 
     Ok(report)
+}
+
+fn field_mini_task_feed_target(
+    state: &HarnessState,
+    objective: &str,
+) -> Option<FieldMiniTaskFeedTarget> {
+    for index in trace_indices_mentioned(objective) {
+        if let Some(target) = state
+            .feed_traces
+            .iter()
+            .find(|trace| trace.index == index)
+            .and_then(trace_to_field_mini_task_target)
+        {
+            return Some(target);
+        }
+    }
+    state
+        .feed_traces
+        .iter()
+        .rev()
+        .filter(|trace| trace.status != Status::Satisfied)
+        .find_map(trace_to_field_mini_task_target)
+}
+
+fn trace_to_field_mini_task_target(trace: &FeedTraceRecord) -> Option<FieldMiniTaskFeedTarget> {
+    let field = trace
+        .field
+        .clone()
+        .or_else(|| trace.metadata.get("field_pack").cloned())?;
+    let mini_task = trace.metadata.get("field_mini_task")?.trim().to_string();
+    if mini_task.is_empty() || mini_task == "ad-hoc" {
+        return None;
+    }
+    let expected_feed = trace
+        .metadata
+        .get("field_expected_feed")
+        .cloned()
+        .unwrap_or_else(|| "preserve compact verifier evidence for the same mini task".to_string());
+    Some(FieldMiniTaskFeedTarget {
+        source_trace_index: trace.index,
+        field: field.clone(),
+        mini_task: mini_task.clone(),
+        expected_feed,
+        query: format!("Rerun {field} mini task {mini_task} after harness evolution"),
+    })
+}
+
+fn trace_indices_mentioned(text: &str) -> Vec<u64> {
+    let mut indices = Vec::new();
+    let lower = text.to_ascii_lowercase();
+    let markers = ["trace #", "trace ", "feed #", "feed "];
+    for (position, _) in lower.char_indices() {
+        let rest = &lower[position..];
+        for marker in markers {
+            let Some(after) = rest.strip_prefix(marker) else {
+                continue;
+            };
+            let digits = after
+                .chars()
+                .take_while(|ch| ch.is_ascii_digit())
+                .collect::<String>();
+            if let Ok(index) = digits.parse::<u64>() {
+                if !indices.contains(&index) {
+                    indices.push(index);
+                }
+            }
+        }
+    }
+    indices
 }
 
 fn recommend_current_patch_observed(
@@ -448,4 +521,92 @@ fn record_apply_event(
         error_class,
     )
     .map(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use octopus_core::{Evidence, Feed, Need, NeedKind};
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn feed_target_prefers_objective_trace_with_runtime_task() {
+        let mut state = HarnessState::default();
+        state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Verify, "generic failed SWE slot"),
+            status: Status::Unsupported,
+            evidence: vec![Evidence::new("field-mini-task", "generic failure")],
+            summary: "generic failure".to_string(),
+            metadata: BTreeMap::from([("field_pack".to_string(), "swe".to_string())]),
+        });
+        let trace = state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Verify, "Run SWE Go worker"),
+            status: Status::Partial,
+            evidence: vec![Evidence::new("field-mini-task", "go missing")],
+            summary: "go runtime missing".to_string(),
+            metadata: BTreeMap::from([
+                ("field_pack".to_string(), "swe".to_string()),
+                (
+                    "field_mini_task".to_string(),
+                    "swe-go-default-smoke".to_string(),
+                ),
+                (
+                    "field_expected_feed".to_string(),
+                    "honest partial if Go runtime is missing".to_string(),
+                ),
+            ]),
+        });
+
+        let target = field_mini_task_feed_target(
+            &state,
+            &format!(
+                "improve swe harness after go_runtime_missing from trace {}",
+                trace.index
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(target.source_trace_index, trace.index);
+        assert_eq!(target.field, "swe");
+        assert_eq!(target.mini_task, "swe-go-default-smoke");
+        assert!(target.query.contains("swe-go-default-smoke"));
+    }
+
+    #[test]
+    fn feed_target_ignores_latest_generic_trace_without_mini_task() {
+        let mut state = HarnessState::default();
+        let trace = state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Verify, "Run SWE Go worker"),
+            status: Status::Partial,
+            evidence: vec![Evidence::new("field-mini-task", "go missing")],
+            summary: "go runtime missing".to_string(),
+            metadata: BTreeMap::from([
+                ("field_pack".to_string(), "swe".to_string()),
+                (
+                    "field_mini_task".to_string(),
+                    "swe-go-default-smoke".to_string(),
+                ),
+            ]),
+        });
+        state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Verify, "Run swe in this peer field slot"),
+            status: Status::Unsupported,
+            evidence: vec![Evidence::new("field-mini-task", "generic failure")],
+            summary: "generic failure".to_string(),
+            metadata: BTreeMap::from([("field_pack".to_string(), "swe".to_string())]),
+        });
+
+        let target = field_mini_task_feed_target(&state, "improve swe harness").unwrap();
+
+        assert_eq!(target.source_trace_index, trace.index);
+        assert_eq!(target.mini_task, "swe-go-default-smoke");
+    }
+
+    #[test]
+    fn trace_indices_mentioned_keeps_objective_order() {
+        assert_eq!(
+            trace_indices_mentioned("inspect feed #144, then repair from trace 143"),
+            vec![144, 143]
+        );
+    }
 }
