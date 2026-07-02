@@ -564,13 +564,9 @@ impl CodexCliChatClient {
         let _ = fs::remove_file(&stdout_path);
         let _ = fs::remove_file(&stderr_path);
         if !status.success() {
-            let message = if stderr.trim().is_empty() {
-                stdout
-            } else {
-                stderr
-            };
+            let last_message = fs::read_to_string(&output_path).unwrap_or_default();
             let _ = fs::remove_file(&output_path);
-            return Err(trim_output(&message));
+            return Err(codex_cli_error_message(&stdout, &stderr, &last_message));
         }
         let content = fs::read_to_string(&output_path)
             .unwrap_or_else(|_| stdout.clone())
@@ -594,6 +590,117 @@ impl CodexCliChatClient {
                 ("base_url".to_string(), "codex-cli".to_string()),
             ]),
         })
+    }
+}
+
+fn codex_cli_error_message(stdout: &str, stderr: &str, last_message: &str) -> String {
+    let important = stdout
+        .lines()
+        .chain(stderr.lines())
+        .chain(last_message.lines())
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter(|line| is_codex_error_line(line))
+        .filter(|line| !is_codex_warning_line(line))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if !important.is_empty() {
+        let start = important.len().saturating_sub(8);
+        return trim_output(&format!(
+            "codex provider failed: {}",
+            important[start..].join(" | ")
+        ));
+    }
+    for value in [last_message, stderr, stdout] {
+        if !value.trim().is_empty() {
+            return trim_output_tail("codex provider failed", value, 4000);
+        }
+    }
+    "codex provider failed without stdout/stderr".to_string()
+}
+
+fn is_codex_error_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.starts_with('"') || trimmed.starts_with('{') || trimmed.starts_with('[') {
+        return false;
+    }
+    if trimmed.starts_with("user:")
+        || trimmed.starts_with("system:")
+        || trimmed.starts_with("assistant:")
+        || trimmed.starts_with("tool:")
+        || trimmed.starts_with("content:")
+    {
+        return false;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    lower.starts_with("error")
+        || lower.starts_with("failed")
+        || lower.starts_with("panic")
+        || lower.starts_with("invalid request")
+        || lower.contains("context window")
+        || lower.contains("context_length")
+        || lower.contains("timed out")
+        || lower.contains("timeout")
+        || lower.contains("rate limit")
+        || lower.contains("unauthorized")
+        || lower.contains("permission denied")
+}
+
+fn is_codex_warning_line(line: &str) -> bool {
+    line.contains(" WARN ")
+        || line.contains("OpenAI Codex")
+        || line.starts_with("workdir:")
+        || line.starts_with("model:")
+        || line.starts_with("provider:")
+        || line.starts_with("approval:")
+        || line.starts_with("sandbox:")
+        || line.starts_with("reasoning ")
+        || line.starts_with("session id:")
+        || line == "--------"
+}
+
+fn trim_output_tail(prefix: &str, output: &str, max_bytes: usize) -> String {
+    let output = output.trim();
+    if output.len() <= max_bytes {
+        return format!("{prefix}: {output}");
+    }
+    let mut start = output.len().saturating_sub(max_bytes);
+    while !output.is_char_boundary(start) {
+        start += 1;
+    }
+    format!("{prefix}: [truncated]\n{}", output[start..].trim())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn codex_cli_error_message_prefers_real_error_over_transcript() {
+        let stdout = "2026-07-01T00:00:00Z  WARN codex_models_manager::model_info: Unknown model\nOpenAI Codex v0.137.0\n--------\nuser\nvery long prompt\nERROR: context window exceeded\n";
+        let error = codex_cli_error_message(stdout, "", "");
+
+        assert!(error.contains("context window exceeded"));
+        assert!(!error.contains("very long prompt"));
+        assert!(!error.contains("Unknown model"));
+    }
+
+    #[test]
+    fn codex_cli_error_message_ignores_prompt_payload_failures() {
+        let stdout = "user: add swe-mini-7\n\"content\": \"if field == \\\"swe\\\" and mini_task == \\\"swe-mini-1\\\":\\n    field_result['status'] = 'failed'\"\nERROR: context window exceeded\n";
+        let error = codex_cli_error_message(stdout, "", "");
+
+        assert!(error.contains("context window exceeded"));
+        assert!(!error.contains("swe-mini-1"));
+        assert!(!error.contains("field_result"));
+    }
+
+    #[test]
+    fn codex_cli_error_message_uses_tail_when_no_error_line_exists() {
+        let error = codex_cli_error_message("line one\nline two\n", "", "");
+
+        assert!(error.contains("codex provider failed"));
+        assert!(error.contains("line two"));
     }
 }
 
