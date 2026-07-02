@@ -1,10 +1,10 @@
 # Structure
 
-Updated: 2026-07-03, after `0.2.3` patch-recovery and SWE fallback-harness evolution.
+Updated: 2026-07-03, after `0.2.3` version metadata and core-file index cleanup.
 
 Line counts are `wc -l` over source/text files. Generated state under `.octopus/`, build output under `target/`, and binary PNG asset size are not counted.
 
-## Active Todo Tree
+## Completed Todo Tree
 
 ```text
 0.2.3 - make harness evolution recover from noisy LLM patches
@@ -38,7 +38,7 @@ Octopus/
 ├── Cargo.lock
 ├── structure.md               Current structure and module map.
 ├── crates/octopus-core/
-│   ├── Cargo.toml             `octopus-core`, version 0.2.0, binary `octopus`.
+│   ├── Cargo.toml             `octopus-core`, version 0.2.3, binary `octopus`.
 │   └── src/
 │       ├── lib.rs             Kernel contracts, state mutation, routes, traces, public kernel API.
 │       ├── main.rs            CLI/product backend aggregation and command dispatch.
@@ -135,6 +135,7 @@ Octopus/
 │   ├── index.html             GitHub Pages landing page.
 │   ├── demo.html              Release showcase page with real app screenshots.
 │   ├── docs.html              Product docs tutorial page.
+│   ├── core-files.html        HTML index for the todo and structure source paths.
 │   ├── app.html               One-page local Goal/Need/Feed app surface.
 │   ├── assets/demo/           Real Octopus App screenshots for showcase pages.
 │   ├── pet.html               Pixel Octopus read-only HTML preview.
@@ -201,12 +202,12 @@ Octopus/
 | CLI and product backend | Command dispatch, structured direct Need context parsing, chat, starter/install/check flows, and surface entry dispatch. Goal/Brain command logic lives in `brain_goal_surface.rs`; Need command logic lives in `need_surface.rs`; Evolution command logic lives in `evolution_surface.rs`; Route/Trace command logic lives in `route_surface.rs`; Feedback command logic lives in `feedback_surface.rs`; Field command logic lives in `field_surface.rs`; beat command logic lives in `heartbeat_surface.rs`; repair command logic lives in `repair_surface.rs`. | `crates/octopus-core/src/main.rs` | 20,352 |
 | Provider env | Loads `.octopus/llm.env` for CLI commands with a scoped guard; existing shell variables win, and values are restored after command execution | `provider_env.rs`, `app_bridge.rs::parse_env_overlay` | 107 |
 | Local app bridge | Local HTTP/SSE server, `/api/config` state-path injection, app policy, command allow-list, embedded app/docs/showcase assets, read-only pet supervision access, field activity observer with fresh pet-event handling | `app_bridge.rs`, `docs/app.html` | 2,027 |
-| Release and install gates | Low-level release records, benchmark evidence, download/install manifest, and real-machine record parsing used by the preflight surface | `release_gate.rs`, `preflight_surface.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 2,312 |
+| Release and install gates | Low-level release records, benchmark evidence, download/install manifest, and real-machine record parsing used by the preflight surface | `release_gate.rs`, `preflight_surface.rs`, `download.rs`, `docs/real-machine-test.md`, `docs/download.json`, `docs/install.sh` | 2,533 |
 | Pet observation surface | Builds the user-visible pet report, auto state choice, event-log view, pixel image report, desktop launch report, and supervision printout. It keeps fresh event text, pending Need text, latest Feed trace text, and unresolved field verifier state from being merged into a fake Goal/Need/Feed chain. This is the first code boundary after `octopus pet supervise --json` finds an observation mismatch. | `pet_surface.rs`, `pet_report_for_state`, `pet_event_log_report`, `print_pet_supervision_report`, `main.rs::record_check_report` | 385 |
 | Pet and visual state | Pixel Octopus state, SVG/export helpers, unified event writes, JSONL event audit, latest-event audit coverage, native read-only observer, desktop process/state-path check, runtime-state detection, active-work detection, stage/error diagnostics, desktop source preflight, HTML preview. Native pet no longer treats stale Feed traces, stale historical workers, or fresh blocked events as live active work; colors come from fresh pet events, pending Needs, fresh active worker slots, verifier status, goal status, heartbeat, or memory. | `pet.rs`, `pet_surface.rs`, `pet_events.rs`, `pet_supervision.rs`, `desktop_pet.rs`, `desktop/pet/OctopusDesktopPet.swift`, `docs/pet.html`, `tentacles/visual/manifest.json` | 3,467 |
 | Strategy diagnostics | Checks the three core traits and composes pet supervision: clean brain context, LLM tool-side tentacles, editable goal, field surface, observation-chain freshness, active work, native desktop process/state-path evidence, stage/error evidence, JSONL latest-event coverage, Feed/evolution evidence | `diagnostics.rs`, `strategy_surface.rs`, `pet_supervision.rs`, `octopus diagnose strategy --json`, `octopus pet supervise --json` | 1,086 |
 | Tentacle scaffold boundary | Generates user-owned code-as-harness tentacle manifests and optional python/node/shell seed tools. This is the debug entry when `octopus scaffold` creates an invalid manifest, missing executable, or wrong `octopus-json-v1` contract. | `tentacle_scaffold.rs`, `octopus scaffold` | 291 |
-| Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,085 |
+| Product docs/site | README, landing/showcase/tutorial/use/recipes/about/docs pages plus the core-file HTML index | `README*`, `docs/*.html`, `docs/*.md`, `docs/zh/*` | 8,285 |
 | Editable tentacles | Code-as-harness Feed suppliers: prompts, manifests, tools, declared evolution requirements, field-pack task targets, repair templates, repair surfaces | `tentacles/**` | 22,966 |
 
 ## Core, Distinctive, Editable

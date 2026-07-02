@@ -2,6 +2,9 @@ use crate::app_bridge;
 use crate::release_gate::{preflight_check, PreflightCheck};
 use crate::shell_words::shell_command;
 
+const LATEST_STABLE_RELEASE: &str = "v0.2.0";
+const NEXT_RELEASE: &str = "0.2.4";
+
 #[derive(Debug, serde::Serialize)]
 pub(crate) struct DownloadReport {
     pub(crate) current_version: String,
@@ -54,9 +57,9 @@ pub(crate) fn download_report() -> DownloadReport {
     let install_script_url = "https://dangozhang.github.io/Octopus/install.sh".to_string();
     DownloadReport {
         current_version: env!("CARGO_PKG_VERSION").to_string(),
-        release_status: "stable".to_string(),
-        stable_release: Some(format!("v{}", env!("CARGO_PKG_VERSION"))),
-        next_release: "0.2.1".to_string(),
+        release_status: "mainline".to_string(),
+        stable_release: Some(LATEST_STABLE_RELEASE.to_string()),
+        next_release: NEXT_RELEASE.to_string(),
         release_gate: "passed: desktop pet observer plus real LLM-driven harness evolution"
             .to_string(),
         source_archive_url: format!("{repository}/archive/refs/heads/main.zip"),
@@ -100,6 +103,10 @@ pub(crate) fn download_report() -> DownloadReport {
             DownloadLink {
                 label: "Recipes".to_string(),
                 url: "https://dangozhang.github.io/Octopus/recipes.html".to_string(),
+            },
+            DownloadLink {
+                label: "Core files".to_string(),
+                url: "https://dangozhang.github.io/Octopus/core-files.html".to_string(),
             },
         ],
         next: vec![

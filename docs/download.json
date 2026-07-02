@@ -1,8 +1,8 @@
 {
-  "current_version": "0.2.0",
-  "release_status": "stable",
+  "current_version": "0.2.3",
+  "release_status": "mainline",
   "stable_release": "v0.2.0",
-  "next_release": "0.2.1",
+  "next_release": "0.2.4",
   "release_gate": "passed: desktop pet observer plus real LLM-driven harness evolution",
   "repository": "https://github.com/dangoZhang/Octopus",
   "source_archive_url": "https://github.com/dangoZhang/Octopus/archive/refs/heads/main.zip",
@@ -67,6 +67,10 @@
     {
       "label": "Recipes",
       "url": "https://dangozhang.github.io/Octopus/recipes.html"
+    },
+    {
+      "label": "Core files",
+      "url": "https://dangozhang.github.io/Octopus/core-files.html"
     }
   ],
   "next": [

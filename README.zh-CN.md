@@ -43,7 +43,7 @@ Heartbeat -> run data -> memory and harness updates
 
 ## 快速安装和启动
 
-当前状态：`v0.2.0`。旧的 `v0.1.0` release 产物已删除；这是第一条可用公开版本线，已带桌宠观察和真实 harness 进化证据。
+当前包版本：`0.2.3`。稳定公开线从 `v0.2.0` 开始；旧的 `v0.1.0` release 产物已删除，因为那条线还不是可用产品。
 
 ```bash
 curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh

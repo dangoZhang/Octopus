@@ -1,6 +1,6 @@
 # Version Plan
 
-Current version: `0.2.0`.
+Current version: `0.2.3`.
 
 Release status: `v0.2.0` is the first usable public release line. The old `v0.1.0` GitHub release and tag were removed on 2026-06-30 because that line did not yet have a non-fake desktop pet observer or real LLM-driven harness evolution.
 
@@ -31,7 +31,7 @@ Completed `0.2.1`:
 └── pushed to main
 ```
 
-Active todo tree:
+Completed `0.2.2`:
 
 ```text
 0.2.2 - make Octopus use the Go worker path for one field
@@ -49,7 +49,7 @@ Active todo tree:
     └── keep runtime-created Go workers outside the static field-pack table
 ```
 
-Active todo tree:
+Completed `0.2.3`:
 
 ```text
 0.2.3 - make harness evolution recover from bad LLM patches
@@ -87,6 +87,11 @@ Active todo tree:
     ├── trace #153 and verifier #133 record `go_runtime_missing`
     └── field_pool now suggests improving SWE after `go_runtime_missing`, not generic incomplete
 ```
+
+Core maintainer files:
+
+- Todo and release cadence: `docs/version-plan.md`
+- Structure and module map: `structure.md`
 
 Next field tree:
 

@@ -43,7 +43,7 @@ The pixel pet is a read-only desktop observer. It watches `.octopus/state.json`:
 
 ## Quick Install & Use
 
-Current status: `v0.2.0`. The old `v0.1.0` release artifacts were removed; this is the first usable public line with desktop pet observation and real harness-evolution evidence.
+Current package: `0.2.3`. The stable public line started at `v0.2.0`; old `v0.1.0` release artifacts were removed because that line was not a usable product.
 
 ```bash
 curl -fsSL https://dangozhang.github.io/Octopus/install.sh | sh

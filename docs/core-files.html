@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Octopus Core Files</title>
+    <meta name="description" content="The two maintainer files for Octopus todo and structure." />
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #111318;
+        --muted: #596070;
+        --line: #d8dde6;
+        --paper: #ffffff;
+        --teal: #0f766e;
+        --coral: #cf4d32;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .shell {
+        width: min(960px, calc(100% - 32px));
+        margin: 0 auto;
+      }
+
+      header {
+        border-bottom: 1px solid var(--line);
+      }
+
+      nav {
+        min-height: 64px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .brand {
+        font-weight: 800;
+      }
+
+      .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      main {
+        padding: 72px 0;
+      }
+
+      h1 {
+        max-width: 760px;
+        margin: 0;
+        font-size: 64px;
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      .lead {
+        max-width: 680px;
+        margin: 20px 0 34px;
+        color: var(--muted);
+        font-size: 19px;
+        line-height: 1.55;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 22px;
+        background: var(--paper);
+      }
+
+      .card:nth-child(1) {
+        border-top: 5px solid var(--teal);
+      }
+
+      .card:nth-child(2) {
+        border-top: 5px solid var(--coral);
+      }
+
+      h2 {
+        margin: 0 0 12px;
+        font-size: 22px;
+      }
+
+      p {
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      code {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-size: 14px;
+        overflow-wrap: anywhere;
+      }
+
+      .button {
+        display: inline-block;
+        margin-top: 12px;
+        border: 1px solid var(--ink);
+        border-radius: 8px;
+        padding: 10px 13px;
+        text-decoration: none;
+        font-weight: 800;
+      }
+
+      footer {
+        border-top: 1px solid var(--line);
+        padding: 28px 0;
+        color: var(--muted);
+      }
+
+      @media (max-width: 760px) {
+        nav {
+          align-items: flex-start;
+          flex-wrap: wrap;
+          padding: 12px 0;
+        }
+
+        h1 {
+          max-width: 340px;
+          font-size: 44px;
+        }
+
+        .lead {
+          max-width: 350px;
+          font-size: 17px;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <nav class="shell">
+        <div class="brand">Octopus Core Files</div>
+        <div class="links">
+          <a href="./">Home</a>
+          <a href="./docs.html">Docs</a>
+          <a href="https://github.com/dangoZhang/Octopus">GitHub</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="shell">
+      <h1>Two files keep the project aligned.</h1>
+      <p class="lead">Use these before changing the runtime, the desktop pet, or any evolving harness. They are the short map for what to build next and where each module lives.</p>
+      <div class="grid">
+        <article class="card">
+          <h2>Todo</h2>
+          <p><code>docs/version-plan.md</code></p>
+          <p>Patch-version todo tree, release cadence, and tag gates.</p>
+          <a class="button" href="https://github.com/dangoZhang/Octopus/blob/main/docs/version-plan.md">Open source file</a>
+        </article>
+        <article class="card">
+          <h2>Structure</h2>
+          <p><code>structure.md</code></p>
+          <p>Repository layout, stable-core boundary, editable harness boundary, module map, and line counts.</p>
+          <a class="button" href="https://github.com/dangoZhang/Octopus/blob/main/structure.md">Open source file</a>
+        </article>
+      </div>
+    </main>
+
+    <footer>
+      <div class="shell"><a href="./quickstart.html">Quick Install & Use</a> · <a href="./use.html">5-minute use guide</a></div>
+    </footer>
+  </body>
+</html>
