@@ -625,12 +625,14 @@ fn field_mini_task_template_candidate_matches_trace(
     let Some(mini_task) = trace.metadata.get("field_mini_task") else {
         return false;
     };
-    let template = format!("repair-templates/{field}/{mini_task}.pyfrag");
-    candidate.target.contains(&template)
+    let worker = format!("workers/{field}/{mini_task}/main.go");
+    let legacy_template = format!("repair-templates/{field}/{mini_task}.pyfrag");
+    candidate.target.contains(&worker)
+        || candidate.target.contains(&legacy_template)
         || candidate
             .suggested_patch
             .as_deref()
-            .is_some_and(|patch| patch.contains(&template))
+            .is_some_and(|patch| patch.contains(&worker) || patch.contains(&legacy_template))
 }
 
 fn target_mentions_tool(target: &str, tool: &str) -> bool {

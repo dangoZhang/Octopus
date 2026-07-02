@@ -23,7 +23,7 @@ pub fn unauthorized_diff_paths_for_plan(plan: &EvolutionApplyPlan, patch: &str) 
         .into_iter()
         .filter(|path| {
             !allowed_paths.iter().any(|allowed| allowed == path)
-                && !allowed_field_repair_template_path(
+                && !allowed_field_task_harness_path(
                     path,
                     &plan.tentacle_id,
                     &allowed_template_fields,
@@ -325,7 +325,7 @@ fn provider_patch_for_plan(plan: &EvolutionApplyPlan, patch: &str) -> Option<Str
     if allowed_paths.is_empty()
         || paths.iter().any(|path| {
             !allowed_paths.iter().any(|allowed| allowed == path)
-                && !allowed_field_repair_template_path(
+                && !allowed_field_task_harness_path(
                     path,
                     &plan.tentacle_id,
                     &allowed_template_fields,
@@ -378,20 +378,44 @@ fn resolve_existing_patch_targets(target: &str) -> Vec<PathBuf> {
     path.exists().then(|| vec![path]).unwrap_or_default()
 }
 
-fn allowed_field_repair_template_path(path: &str, tentacle_id: &str, fields: &[String]) -> bool {
-    if fields.is_empty() || !path.ends_with(".pyfrag") || path.contains("..") {
+fn allowed_field_task_harness_path(path: &str, tentacle_id: &str, fields: &[String]) -> bool {
+    if fields.is_empty() || path.contains("..") {
         return false;
     }
     fields.iter().any(|field| {
-        [
-            format!("tentacles/{tentacle_id}/repair-templates/{field}/"),
-            format!("repair-templates/{field}/"),
-        ]
-        .iter()
-        .any(|prefix| {
-            path.strip_prefix(prefix)
-                .is_some_and(|rest| !rest.is_empty() && !rest.contains('/'))
-        })
+        allowed_field_go_worker_path(path, tentacle_id, field)
+            || allowed_legacy_field_template_path(path, tentacle_id, field)
+    })
+}
+
+fn allowed_field_go_worker_path(path: &str, tentacle_id: &str, field: &str) -> bool {
+    [
+        format!("tentacles/{tentacle_id}/workers/{field}/"),
+        format!("workers/{field}/"),
+    ]
+    .iter()
+    .filter_map(|prefix| path.strip_prefix(prefix))
+    .any(|rest| {
+        let mut parts = rest.split('/');
+        let Some(task_id) = parts.next() else {
+            return false;
+        };
+        !task_id.is_empty() && parts.next() == Some("main.go") && parts.next().is_none()
+    })
+}
+
+fn allowed_legacy_field_template_path(path: &str, tentacle_id: &str, field: &str) -> bool {
+    if !path.ends_with(".pyfrag") {
+        return false;
+    }
+    [
+        format!("tentacles/{tentacle_id}/repair-templates/{field}/"),
+        format!("repair-templates/{field}/"),
+    ]
+    .iter()
+    .any(|prefix| {
+        path.strip_prefix(prefix)
+            .is_some_and(|rest| !rest.is_empty() && !rest.contains('/'))
     })
 }
 

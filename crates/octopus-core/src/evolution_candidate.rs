@@ -179,23 +179,34 @@ fn validate_field_pack_layer_patch(
     let paths = diff_paths(patch);
     for field in fields {
         let field_pack = format!("field-packs/{field}/field-pack.json");
-        let template_prefix = format!(
-            "tentacles/{}/repair-templates/{field}/",
-            proposal.tentacle_id
-        );
-        let local_template_prefix = format!("repair-templates/{field}/");
         let touches_pack = paths.iter().any(|path| path == &field_pack);
-        let touches_template = paths.iter().any(|path| {
-            path.ends_with(".pyfrag")
-                && (path.starts_with(&template_prefix) || path.starts_with(&local_template_prefix))
-        });
-        if !touches_pack || !touches_template {
+        let touches_worker = paths
+            .iter()
+            .any(|path| is_field_go_worker_path(path, &proposal.tentacle_id, &field));
+        if !touches_pack || !touches_worker {
             return Err(format!(
-                "field_pack_tasks patch violates harder-layer contract for {field}: must patch {field_pack} and a matching repair template"
+                "field_pack_tasks patch violates harder-layer contract for {field}: must patch {field_pack} and a matching Go worker"
             ));
         }
     }
     Ok(())
+}
+
+fn is_field_go_worker_path(path: &str, tentacle_id: &str, field: &str) -> bool {
+    let path = path.replace('\\', "/");
+    [
+        format!("tentacles/{tentacle_id}/workers/{field}/"),
+        format!("workers/{field}/"),
+    ]
+    .iter()
+    .filter_map(|prefix| path.strip_prefix(prefix))
+    .any(|rest| {
+        let mut parts = rest.split('/');
+        let Some(task_id) = parts.next() else {
+            return false;
+        };
+        !task_id.is_empty() && parts.next() == Some("main.go") && parts.next().is_none()
+    })
 }
 
 pub(crate) fn diff_target_files_for_surface(
@@ -203,9 +214,10 @@ pub(crate) fn diff_target_files_for_surface(
     surface: &EvolutionSurface,
     patch: &str,
 ) -> Vec<String> {
-    let manifest_prefix = patch_display_path(manifest_dir);
-    let repair_prefix = format!("{manifest_prefix}/repair-templates/");
-    let manifest_prefix = format!("{manifest_prefix}/");
+    let manifest_display = patch_display_path(manifest_dir);
+    let repair_prefix = format!("{manifest_display}/repair-templates/");
+    let worker_prefix = format!("{manifest_display}/workers/");
+    let manifest_prefix = format!("{manifest_display}/");
     let mut files = Vec::new();
     for path in diff_paths(patch) {
         if path.contains("..") {
@@ -213,7 +225,10 @@ pub(crate) fn diff_target_files_for_surface(
         }
         let allowed = match surface.id.as_str() {
             "field_pack_tasks" => {
-                path.starts_with("field-packs/") || path.starts_with(&repair_prefix)
+                path.starts_with("field-packs/")
+                    || path.starts_with(&worker_prefix)
+                    || path.starts_with("workers/")
+                    || path.starts_with(&repair_prefix)
             }
             "runtime_code" => path.starts_with(&manifest_prefix),
             _ => path.starts_with(&manifest_prefix),
@@ -397,13 +412,13 @@ new file mode 100644
 @@ -1,2 +1,3 @@
  {
 +  "mini_tasks": [{"id":"research-mini-4","goal":"g","expected_feed":"f"}]
-diff --git a/tentacles/field-mini-task/repair-templates/research/research-mini-4.pyfrag b/tentacles/field-mini-task/repair-templates/research/research-mini-4.pyfrag
+diff --git a/tentacles/field-mini-task/workers/research/research-mini-4/main.go b/tentacles/field-mini-task/workers/research/research-mini-4/main.go
 new file mode 100644
 --- /dev/null
-+++ b/tentacles/field-mini-task/repair-templates/research/research-mini-4.pyfrag
++++ b/tentacles/field-mini-task/workers/research/research-mini-4/main.go
 @@ -0,0 +1,2 @@
-+if field == "research" and mini_task == "research-mini-4":
-+    pass
++package main
++func main() {}
 "#,
         )
         .unwrap();

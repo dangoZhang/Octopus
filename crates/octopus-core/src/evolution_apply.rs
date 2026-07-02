@@ -408,9 +408,9 @@ fn apply_structured_field_pack_patch(
         return Ok(None);
     }
     let patch = fs::read_to_string(patch_path).map_err(|error| error.to_string())?;
-    let template_paths = changed_paths
+    let implementation_paths = changed_paths
         .iter()
-        .filter(|path| path.contains("/repair-templates/") && path.ends_with(".pyfrag"))
+        .filter(|path| field_task_implementation_id(path, &plan.tentacle_id).is_some())
         .cloned()
         .collect::<Vec<_>>();
     let mut backups = BTreeMap::new();
@@ -456,22 +456,22 @@ fn apply_structured_field_pack_patch(
             fs::write(&full_path, content)
                 .map_err(|error| format!("{}: {error}", full_path.display()))?;
         }
-        for template_path in &template_paths {
-            let Some(content) = added_file_content(&patch, template_path) else {
+        for implementation_path in &implementation_paths {
+            let Some(content) = added_file_content(&patch, implementation_path) else {
                 continue;
             };
-            let full_path = cwd.join(template_path);
+            let full_path = cwd.join(implementation_path);
             if full_path.exists() {
                 backups.insert(
-                    template_path.clone(),
+                    implementation_path.clone(),
                     Some(
                         fs::read_to_string(&full_path)
                             .map_err(|error| format!("{}: {error}", full_path.display()))?,
                     ),
                 );
             } else {
-                backups.insert(template_path.clone(), None);
-                created.push(template_path.clone());
+                backups.insert(implementation_path.clone(), None);
+                created.push(implementation_path.clone());
             }
             if let Some(parent) = full_path.parent() {
                 fs::create_dir_all(parent)
@@ -481,7 +481,7 @@ fn apply_structured_field_pack_patch(
                 .map_err(|error| format!("{}: {error}", full_path.display()))?;
         }
         validate_field_pack_targets(cwd, plan)?;
-        validate_field_pack_template_pairs(cwd, plan, changed_paths)?;
+        validate_field_pack_implementation_pairs(cwd, plan, changed_paths)?;
         Ok(())
     })();
     if let Err(error) = result {
@@ -508,7 +508,7 @@ fn apply_structured_field_pack_patch(
         patch_path: Some(patch_path.to_string()),
         changed_paths: changed_paths.to_vec(),
         target_boundary_violations: Vec::new(),
-        stdout: "applied field-pack mini_tasks and repair templates from provider patch"
+        stdout: "applied field-pack mini_tasks and task implementations from provider patch"
             .to_string(),
         stderr: String::new(),
     }))
@@ -825,7 +825,7 @@ fn preflight_field_pack_patch(
             ));
         }
         validate_field_pack_targets(&temp_dir, plan)?;
-        validate_field_pack_template_pairs(&temp_dir, plan, changed_paths)?;
+        validate_field_pack_implementation_pairs(&temp_dir, plan, changed_paths)?;
         Ok(())
     })();
     let _ = fs::remove_dir_all(&temp_dir);
@@ -886,12 +886,12 @@ fn copy_patch_inputs_to_temp(
     Ok(())
 }
 
-fn validate_field_pack_template_pairs(
+fn validate_field_pack_implementation_pairs(
     cwd: &Path,
     plan: &EvolutionApplyPlan,
     changed_paths: &[String],
 ) -> Result<(), String> {
-    for (field, task_id) in repair_template_field_task_ids(plan, changed_paths) {
+    for (field, task_id) in field_task_implementation_ids(plan, changed_paths) {
         let target = format!("field-packs/{field}/field-pack.json");
         let path = cwd.join(&target);
         let text = fs::read_to_string(&path).map_err(|error| format!("{target}: {error}"))?;
@@ -907,28 +907,46 @@ fn validate_field_pack_template_pairs(
         });
         if !found {
             return Err(format!(
-                "{target}: repair template {task_id}.pyfrag has no matching mini_tasks[].id"
+                "{target}: task implementation for {task_id} has no matching mini_tasks[].id"
             ));
         }
     }
     Ok(())
 }
 
-fn repair_template_field_task_ids(
+fn field_task_implementation_ids(
     plan: &EvolutionApplyPlan,
     changed_paths: &[String],
 ) -> Vec<(String, String)> {
     let mut ids = BTreeSet::new();
     for path in changed_paths.iter().chain(plan.target_files.iter()) {
-        if let Some(pair) = repair_template_field_task_id(path, &plan.tentacle_id) {
+        if let Some(pair) = field_task_implementation_id(path, &plan.tentacle_id) {
             ids.insert(pair);
         }
     }
     ids.into_iter().collect()
 }
 
-fn repair_template_field_task_id(path: &str, tentacle_id: &str) -> Option<(String, String)> {
+fn field_task_implementation_id(path: &str, tentacle_id: &str) -> Option<(String, String)> {
     let path = path.replace('\\', "/");
+    field_go_worker_id(&path, tentacle_id).or_else(|| legacy_repair_template_id(&path, tentacle_id))
+}
+
+fn field_go_worker_id(path: &str, tentacle_id: &str) -> Option<(String, String)> {
+    let manifest_prefix = format!("tentacles/{tentacle_id}/workers/");
+    let suffix = path
+        .strip_prefix(&manifest_prefix)
+        .or_else(|| path.strip_prefix("workers/"))?;
+    let mut parts = suffix.split('/');
+    let field = parts.next()?.to_string();
+    let task_id = parts.next()?.to_string();
+    if task_id.is_empty() || parts.next() != Some("main.go") || parts.next().is_some() {
+        return None;
+    }
+    Some((field, task_id))
+}
+
+fn legacy_repair_template_id(path: &str, tentacle_id: &str) -> Option<(String, String)> {
     let manifest_prefix = format!("tentacles/{tentacle_id}/repair-templates/");
     let suffix = path
         .strip_prefix(&manifest_prefix)

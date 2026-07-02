@@ -44,7 +44,7 @@ pub(crate) fn llm_evolution_prompt(proposal: &TentacleEvolutionProposal) -> Resu
         },
         "patch_requirements": {
             "format": "suggested_patch must be a complete git unified diff that starts with diff --git, includes --- and +++ file headers, includes @@ -line,count +line,count @@ hunk headers, and can be applied by git apply. Use exact nearby lines from target_file_contents.content, target_file_contents.line_numbered_content, and target_file_contents.line_numbered_tail_content when present; do not invent line numbers or old context. On apply retry, treat line_numbered_content and line_numbered_tail_content as the current file. Do not return apply_patch, *** Begin Patch, or prose-only patches.",
-            "field_pack_tasks": "suggested_patch is required for this surface. If required_surfaces contains field_pack_tasks, at least one candidate must use surface_id=field_pack_tasks. Patch only the named field-pack JSON files and matching tentacles/<tentacle>/repair-templates/<field>/<mini-task>.pyfrag files needed by the objective. New mini task layers must add both the field-pack entry and matching repair template. Field-pack mini_tasks is an array of objects with id, goal, and expected_feed; append the new object inside mini_tasks before the array closing bracket, preserve the comma pattern around the previous object, and keep the JSON schema valid. Use line_numbered_tail_content for end-of-array context when it is present. Do not create task_layers or convert mini_tasks to an object. Do not merely harden an existing mini task when the objective asks for a harder layer. Do not patch kernel Rust or unrelated runtime code from this surface.",
+            "field_pack_tasks": "suggested_patch is required for this surface. If required_surfaces contains field_pack_tasks, at least one candidate must use surface_id=field_pack_tasks. Patch only the named field-pack JSON files and matching tentacles/<tentacle>/workers/<field>/<mini-task>/main.go files needed by the objective. New mini task layers must add both the field-pack entry and matching Go worker. Field-pack mini_tasks is an array of objects with id, goal, and expected_feed; append the new object inside mini_tasks before the array closing bracket, preserve the comma pattern around the previous object, and keep the JSON schema valid. Use line_numbered_tail_content for end-of-array context when it is present. Do not create task_layers or convert mini_tasks to an object. Do not merely harden an existing mini task when the objective asks for a harder layer. Do not patch kernel Rust or unrelated runtime code from this surface. Existing repair-templates/*.pyfrag files are legacy compatibility and should not be used for new field work.",
             "runtime_code": "suggested_patch is preferred when the objective names an executable harness gap. Patch declared harness targets only."
         },
         "return_schema": {
@@ -80,6 +80,12 @@ fn supporting_evolution_contracts(required_surfaces: &[String]) -> Vec<serde_jso
             "contract": "mini_tasks is an array; each item has id, goal, expected_feed",
             "invalid_shapes": ["task_layers", "mini_tasks as object/map"],
             "content": short_text(FIELD_PACK_SCHEMA_JSON, 2400)
+        }));
+        contracts.push(serde_json::json!({
+            "id": "field-go-worker",
+            "path": "tentacles/field-mini-task/workers/<field>/<mini-task>/main.go",
+            "contract": "new field mini task implementations default to Go workers; reusable helpers live under internal/fieldworker; satisfied Feed requires artifact-backed evidence; missing Go runtime must return partial with error_category=go_runtime_missing",
+            "legacy": "repair-templates/*.pyfrag stays readable for old trajectories only"
         }));
     }
     contracts

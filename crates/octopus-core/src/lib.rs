@@ -5747,10 +5747,22 @@ mod tests {
             )
             .unwrap();
         let queued = state.need_queue.last().unwrap();
+        let expected_swe_task = default_field_pack_catalog()
+            .unwrap()
+            .packs
+            .into_iter()
+            .find(|pack| pack.id == "swe")
+            .and_then(|pack| {
+                pack.mini_tasks
+                    .into_iter()
+                    .find(|task| task.id != "swe-mini-1")
+            })
+            .expect("swe has an unsatisfied task")
+            .id;
 
         assert_eq!(run.worker_count, 1);
         assert_eq!(run.workers[0].field, "swe");
-        assert!(queued.need.query.contains("swe-mini-2"));
+        assert!(queued.need.query.contains(&expected_swe_task));
         assert!(queued.summary.contains("field: swe"));
     }
 

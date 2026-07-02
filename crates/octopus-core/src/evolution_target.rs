@@ -44,13 +44,13 @@ pub(crate) fn evolution_file_target(
         },
         value if value.contains('*') => {
             let path = manifest_dir.join(value).to_string_lossy().to_string();
-            let scoped_repair_templates =
-                repair_template_evolution_targets_for_objective(manifest_dir, value, objective);
+            let scoped_harness_targets =
+                field_harness_evolution_targets_for_objective(manifest_dir, value, objective);
             EvolutionFileTarget {
-                target_files: if scoped_repair_templates.is_empty() {
+                target_files: if scoped_harness_targets.is_empty() {
                     evolution_target_files(&path)
                 } else {
-                    scoped_repair_templates
+                    scoped_harness_targets
                 },
                 path,
                 action: "inspect matching harness code before editing".to_string(),
@@ -193,13 +193,13 @@ fn field_pack_evolution_suffix(target: &str) -> Option<String> {
     Some(suffix)
 }
 
-fn repair_template_evolution_targets_for_objective(
+fn field_harness_evolution_targets_for_objective(
     manifest_dir: &Path,
     target: &str,
     objective: &str,
 ) -> Vec<String> {
     let normalized = target.trim().replace('\\', "/");
-    if normalized != "repair-templates/*/*.pyfrag" {
+    if normalized != "repair-templates/*/*.pyfrag" && normalized != "workers/**/*.go" {
         return Vec::new();
     }
     let fields = fields_mentioned_for_evolution_scope(objective);
@@ -207,15 +207,51 @@ fn repair_template_evolution_targets_for_objective(
         return Vec::new();
     }
     let mut targets = Vec::new();
+    if normalized == "workers/**/*.go" {
+        for shared in [
+            manifest_dir.join("go.mod"),
+            manifest_dir
+                .join("internal")
+                .join("fieldworker")
+                .join("feed.go"),
+            manifest_dir.join("workers").join("default").join("main.go"),
+        ] {
+            if shared.exists() {
+                push_unique_limited(
+                    &mut targets,
+                    shared.to_string_lossy().to_string(),
+                    usize::MAX,
+                );
+            }
+        }
+    }
     for field in fields {
-        let dir = manifest_dir.join("repair-templates").join(field);
+        let dir = if normalized == "workers/**/*.go" {
+            manifest_dir.join("workers").join(field)
+        } else {
+            manifest_dir.join("repair-templates").join(field)
+        };
         let Ok(entries) = fs::read_dir(dir) else {
             continue;
         };
         let mut files = entries
             .filter_map(Result::ok)
             .map(|entry| entry.path())
-            .filter(|path| path.extension().is_some_and(|ext| ext == "pyfrag"))
+            .filter(|path| {
+                if normalized == "workers/**/*.go" {
+                    path.is_dir() && path.join("main.go").exists()
+                        || path.extension().is_some_and(|ext| ext == "go")
+                } else {
+                    path.extension().is_some_and(|ext| ext == "pyfrag")
+                }
+            })
+            .map(|path| {
+                if path.is_dir() && path.join("main.go").exists() {
+                    path.join("main.go")
+                } else {
+                    path
+                }
+            })
             .map(|path| path.to_string_lossy().to_string())
             .collect::<Vec<_>>();
         files.sort();
@@ -267,6 +303,7 @@ pub(crate) fn fields_mentioned_in_field_paths(value: &str) -> Vec<String> {
         for marker in [
             format!("field-packs/{field}/"),
             format!("field-packs/{field}/field-pack.json"),
+            format!("workers/{field}/"),
             format!("repair-templates/{field}/"),
         ] {
             if text.contains(&marker) {
