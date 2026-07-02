@@ -906,6 +906,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         Some("status") => {
             let loaded = HarnessState::load(&state).map_err(|error| error.to_string())?;
             let report = loaded.status_report_with_state(Some(&state));
+            loaded.save(&state).map_err(|error| error.to_string())?;
             if json {
                 println!(
                     "{}",

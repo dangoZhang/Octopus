@@ -103,8 +103,9 @@ Active todo tree:
 │   ├── keep `needs_repair=false` so Octopus does not misread missing Go as broken SWE harness
 │   └── change agent next action to environment adaptation with real fallback evidence
 ├── commit 2: refresh saved observer state after read-only field reports
-│   ├── desktop pet should see `needs_environment` in `.octopus/state.json`
-│   └── stale pet summaries must not say repair when the derived pool says environment
+│   ├── `HarnessState::save` writes a derived `field_pool` observer snapshot
+│   ├── `status` and `fields summary` refresh that snapshot while keeping stable state unchanged
+│   └── desktop pet can see `needs_environment` in `.octopus/state.json`
 ├── commit 3: add Go runtime readiness to doctor and product status
 │   ├── detect `go version`
 │   ├── show install/runtime guidance as environment evidence

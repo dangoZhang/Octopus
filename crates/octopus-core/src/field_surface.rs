@@ -50,6 +50,7 @@ pub(crate) fn handle_fields_command(
     } else if rest.get(1).map(String::as_str) == Some("summary") {
         let loaded = HarnessState::load(state).map_err(|error| error.to_string())?;
         let report = loaded.field_trajectory_report_with_state(Some(state))?;
+        loaded.save(state).map_err(|error| error.to_string())?;
         if json {
             println!(
                 "{}",

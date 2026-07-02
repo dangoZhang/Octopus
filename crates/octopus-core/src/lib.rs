@@ -2081,7 +2081,16 @@ impl HarnessState {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let content = serde_json::to_string_pretty(self).expect("harness state must serialize");
+        let mut value = serde_json::to_value(self)
+            .map_err(|error| Error::new(ErrorKind::InvalidData, error))?;
+        if let Some(object) = value.as_object_mut() {
+            if let Some(field_pool) = self.field_pool_status_report(Some(path)) {
+                let field_pool = serde_json::to_value(field_pool)
+                    .map_err(|error| Error::new(ErrorKind::InvalidData, error))?;
+                object.insert("field_pool".to_string(), field_pool);
+            }
+        }
+        let content = serde_json::to_string_pretty(&value).expect("harness state must serialize");
         let file_name = path
             .file_name()
             .and_then(|name| name.to_str())
@@ -5665,6 +5674,81 @@ mod tests {
         let status = state.status_report();
         assert!(status.agent_next_action.contains("adapt swe field runtime"));
         assert!(!status.agent_next_action.contains("improve swe harness"));
+    }
+
+    #[test]
+    fn save_writes_observer_field_pool_without_persisting_control_state() {
+        let dir = std::env::temp_dir().join(format!(
+            "octopus-save-field-pool-observer-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
+        let mut state = HarnessState::default();
+        let trace = state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Verify, "Run swe-go-default-smoke mini task"),
+            status: Status::Partial,
+            evidence: vec![Evidence::new("field-mini-task", "go binary not found")],
+            summary: "SWE Go worker could not run because Go is missing".to_string(),
+            metadata: BTreeMap::from([
+                ("tentacle".to_string(), "field-mini-task".to_string()),
+                ("tool".to_string(), "run_field_mini_task".to_string()),
+                ("field_pack".to_string(), "swe".to_string()),
+                (
+                    "field_mini_task".to_string(),
+                    "swe-go-default-smoke".to_string(),
+                ),
+                (
+                    "error_category".to_string(),
+                    "go_runtime_missing".to_string(),
+                ),
+            ]),
+        });
+        state
+            .record_field_verifier_result(
+                trace.index,
+                Status::Partial,
+                Some("go_runtime_missing".to_string()),
+                None,
+                "Go runtime is missing",
+            )
+            .unwrap();
+
+        state.save(&state_path).unwrap();
+
+        let raw: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&state_path).unwrap()).unwrap();
+        let pool = raw.get("field_pool").expect("observer field_pool");
+        assert_eq!(
+            pool.get("active_slot_reason")
+                .and_then(|value| value.as_str()),
+            Some("swe selected by latest environment gap")
+        );
+        let swe = pool
+            .get("slots")
+            .and_then(|value| value.as_array())
+            .unwrap()
+            .iter()
+            .find(|slot| slot.get("field").and_then(|value| value.as_str()) == Some("swe"))
+            .unwrap();
+        assert_eq!(
+            swe.get("needs_environment")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            swe.get("needs_repair").and_then(|value| value.as_bool()),
+            Some(false)
+        );
+
+        let restored = HarnessState::load(&state_path).unwrap();
+        assert_eq!(restored.feed_traces.len(), state.feed_traces.len());
+        assert_eq!(
+            restored.field_verifier_results[0].error_category.as_deref(),
+            Some("go_runtime_missing")
+        );
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
