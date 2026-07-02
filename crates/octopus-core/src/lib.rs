@@ -542,6 +542,8 @@ pub struct FieldTrajectorySummary {
     pub latest_error_category: Option<String>,
     pub latest_pass_evidence: Option<String>,
     pub latest_summary: Option<String>,
+    #[serde(default)]
+    pub needs_environment: bool,
     pub needs_repair: bool,
     pub ready_for_harder_task: bool,
     pub next_action: String,
@@ -598,6 +600,8 @@ pub struct FieldPoolSlotReport {
     pub latest_parallel_run_index: Option<u64>,
     #[serde(default)]
     pub latest_updated_at_secs: u64,
+    #[serde(default)]
+    pub needs_environment: bool,
     pub needs_repair: bool,
     pub agent_next_action: String,
     pub user_goal_hint: String,
@@ -5345,8 +5349,10 @@ mod tests {
     #[test]
     fn field_trajectory_report_moves_parallel_pool_to_harder_tasks_after_first_pass() {
         let mut state = HarnessState::default();
-        for field in parallel_field_goal_candidates() {
-            let mini_task = format!("{field}-mini-1");
+        let catalog = default_field_pack_catalog().unwrap();
+        for pack in &catalog.packs {
+            let field = &pack.id;
+            let mini_task = pack.mini_tasks.first().unwrap().id.clone();
             let trace = state.record_feed_trace_from_feed(&Feed {
                 need: Need::new(
                     NeedKind::Verify,
@@ -5358,7 +5364,7 @@ mod tests {
                 metadata: BTreeMap::from([
                     ("tentacle".to_string(), "field-mini-task".to_string()),
                     ("tool".to_string(), "run_field_mini_task".to_string()),
-                    ("field_pack".to_string(), field.to_string()),
+                    ("field_pack".to_string(), field.clone()),
                     ("field_mini_task".to_string(), mini_task),
                     (
                         "field_pass_evidence".to_string(),
@@ -5388,7 +5394,6 @@ mod tests {
             .iter()
             .find(|field| field.field == "math")
             .unwrap();
-        let catalog = default_field_pack_catalog().unwrap();
         let math_pack = catalog.packs.iter().find(|pack| pack.id == "math").unwrap();
         assert_eq!(math.mini_task_count, math_pack.mini_tasks.len());
         assert_eq!(math.satisfied_mini_task_count, 1);
@@ -5453,7 +5458,7 @@ mod tests {
 
         assert!(report.all_first_pass_satisfied);
         assert!(report.all_pack_tasks_satisfied);
-        assert_eq!(report.active_slot_field, None);
+        assert_eq!(report.active_slot_field.as_deref(), Some("swe"));
         assert!(report
             .fields
             .iter()
@@ -5462,7 +5467,7 @@ mod tests {
             .next
             .iter()
             .any(|item| item.contains("evolve recommend field-mini-task")
-                && item.contains("harder mini task layer")));
+                && item.contains("harder swe mini task layer")));
         assert!(!report
             .next
             .iter()
@@ -5584,6 +5589,82 @@ mod tests {
             .agent_next_action
             .contains("improve search harness"));
         assert!(!search_slot.next_action.contains("octopus"));
+    }
+
+    #[test]
+    fn field_trajectory_classifies_missing_go_as_environment_gap() {
+        let mut state = HarnessState::default();
+        let trace = state.record_feed_trace_from_feed(&Feed {
+            need: Need::new(NeedKind::Verify, "Run swe-go-default-smoke mini task"),
+            status: Status::Partial,
+            evidence: vec![Evidence::new("field-mini-task", "go binary not found")],
+            summary: "SWE Go worker could not run because Go is missing".to_string(),
+            metadata: BTreeMap::from([
+                ("tentacle".to_string(), "field-mini-task".to_string()),
+                ("tool".to_string(), "run_field_mini_task".to_string()),
+                ("field_pack".to_string(), "swe".to_string()),
+                (
+                    "field_mini_task".to_string(),
+                    "swe-go-default-smoke".to_string(),
+                ),
+                (
+                    "error_category".to_string(),
+                    "go_runtime_missing".to_string(),
+                ),
+            ]),
+        });
+        state
+            .record_field_verifier_result(
+                trace.index,
+                Status::Partial,
+                Some("go_runtime_missing".to_string()),
+                None,
+                "Go runtime is missing",
+            )
+            .unwrap();
+
+        let report = state.field_trajectory_report().unwrap();
+        let swe = report
+            .fields
+            .iter()
+            .find(|field| field.field == "swe")
+            .unwrap();
+
+        assert!(swe.needs_environment);
+        assert!(!swe.needs_repair);
+        assert_eq!(
+            swe.latest_error_category.as_deref(),
+            Some("go_runtime_missing")
+        );
+        assert!(swe.next_action.contains("adapt swe field runtime"));
+        assert!(!swe.next_action.contains("improve swe harness"));
+        assert_eq!(report.active_slot_field.as_deref(), Some("swe"));
+        assert!(report.active_slot_reason.contains("environment gap"));
+
+        let pool = state.field_pool_status_report(None).unwrap();
+        let swe_slot = pool.slots.iter().find(|slot| slot.field == "swe").unwrap();
+        assert!(swe_slot.needs_environment);
+        assert!(!swe_slot.needs_repair);
+        assert!(!swe_slot.completed);
+        assert!(swe_slot.user_goal_hint.contains("runtime environment"));
+        assert!(swe_slot
+            .agent_next_action
+            .contains("adapt swe field runtime"));
+
+        state.goal = Some(Goal::new(
+            "Adapt Octopus tentacles across peer field objectives toward v0.2.x",
+        ));
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tentacles");
+        state.install_manifest(&root, "field-mini-task").unwrap();
+        state
+            .routes
+            .scores
+            .insert(route_key(&NeedKind::Verify, "field-mini-task"), 1.0);
+        let status = state.status_report();
+        assert!(status.agent_next_action.contains("adapt swe field runtime"));
+        assert!(!status.agent_next_action.contains("improve swe harness"));
     }
 
     #[test]

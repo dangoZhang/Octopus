@@ -631,6 +631,7 @@ fn product_field_pool_report(
         .filter(|field| {
             field.mini_task_count > 0
                 && field.satisfied_mini_task_count == field.mini_task_count
+                && !field.needs_environment
                 && !field.needs_repair
         })
         .count();

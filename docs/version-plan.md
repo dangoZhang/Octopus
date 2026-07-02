@@ -93,6 +93,35 @@ Core maintainer files:
 - Todo and release cadence: `docs/version-plan.md`
 - Structure and module map: `structure.md`
 
+Active todo tree:
+
+```text
+0.2.4 - make field evolution environment-aware
+├── commit 1: classify `go_runtime_missing` as an environment gap
+│   ├── keep verifier status partial
+│   ├── expose `needs_environment=true` in field trajectory and field pool slots
+│   ├── keep `needs_repair=false` so Octopus does not misread missing Go as broken SWE harness
+│   └── change agent next action to environment adaptation with real fallback evidence
+├── commit 2: refresh saved observer state after read-only field reports
+│   ├── desktop pet should see `needs_environment` in `.octopus/state.json`
+│   └── stale pet summaries must not say repair when the derived pool says environment
+├── commit 3: add Go runtime readiness to doctor and product status
+│   ├── detect `go version`
+│   ├── show install/runtime guidance as environment evidence
+│   └── keep provider and harness checks separate
+├── commit 4: feed environment-gap context into the LLM harness planner
+│   ├── planner sees `needs_environment`
+│   ├── planner may add real fallback evidence or runtime guidance
+│   └── planner must not mark missing Go as satisfied
+├── commit 5: rerun SWE environment adaptation through Need -> Feed
+│   ├── same `swe-go-default-smoke` target
+│   ├── artifact-backed result
+│   └── desktop pet stays observer-only
+├── commit 6: make app and docs show environment gaps as their own status
+├── commit 7: run the next selected peer field after SWE is no longer blocked by misclassification
+└── commit 8: cleanup/version pass for 0.2.4
+```
+
 Next field tree:
 
 ```text

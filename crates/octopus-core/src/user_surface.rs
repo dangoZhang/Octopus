@@ -104,8 +104,14 @@ pub fn field_slot_hint(
     field: &str,
     completed: bool,
     next_mini_task: Option<&str>,
+    needs_environment: bool,
     needs_repair: bool,
 ) -> String {
+    if needs_environment {
+        return format!(
+            "Prepare the runtime environment for the {field} field, then rerun the same Feed."
+        );
+    }
     if needs_repair {
         return format!("Let Octopus repair the {field} harness before continuing this field.");
     }

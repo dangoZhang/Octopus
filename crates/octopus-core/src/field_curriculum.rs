@@ -42,6 +42,7 @@ pub(crate) fn select_next_harder_field(
         .iter()
         .filter(|summary| {
             summary.ready_for_harder_task
+                && !summary.needs_environment
                 && !summary.needs_repair
                 && summary.next_mini_task.is_none()
                 && summary.mini_task_count > 0
@@ -97,6 +98,7 @@ mod tests {
             latest_error_category: None,
             latest_pass_evidence: Some("pass".to_string()),
             latest_summary: Some("satisfied".to_string()),
+            needs_environment: false,
             needs_repair: false,
             ready_for_harder_task: true,
             next_action: "octopus fields summary".to_string(),

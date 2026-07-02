@@ -164,10 +164,18 @@ impl HarnessState {
                 .error_category
                 .as_deref()
                 .unwrap_or("field verifier gap");
+            let objective = if field_verifier_error_is_environment_gap(Some(reason)) {
+                format!(
+                    "adapt {} field runtime to current environment after {reason}; keep missing runtime partial unless fallback evidence is real",
+                    result.field
+                )
+            } else {
+                format!("improve {} harness after {reason}", result.field)
+            };
             format!(
                 "octopus{state_args} evolve recommend {} {}",
                 shell_arg(&tentacle),
-                shell_arg(&format!("improve {} harness after {reason}", result.field))
+                shell_arg(&objective)
             )
         } else if let Some(action) = completed_field_pool_next_action {
             action
@@ -357,17 +365,34 @@ impl HarnessState {
                 .map(|result| result.summary.clone())
                 .or_else(|| latest_trace.map(|trace| trace.summary.clone()));
             let latest_verifier_status = latest_verifier.map(|result| result.status.clone());
-            let needs_repair = latest_verifier.is_some_and(|result| {
+            let has_real_verifier_gap = latest_verifier.is_some_and(|result| {
                 result.status != Status::Satisfied
                     && self.field_verifier_result_has_real_mini_task(result)
             });
+            let needs_environment = has_real_verifier_gap
+                && field_verifier_error_is_environment_gap(latest_error_category.as_deref());
+            let needs_repair = has_real_verifier_gap && !needs_environment;
             let ready_for_harder_task = latest_verifier_status == Some(Status::Satisfied);
             let has_pending_mini_task = next_mini_task.as_ref().is_some_and(|task| {
                 self.field_mini_task_status(&field, task) != Some(Status::Satisfied)
             });
             let field_pack_layer_complete =
                 mini_task_count > 0 && satisfied_mini_task_count == mini_task_count;
-            let next_action = if needs_repair {
+            let next_action = if needs_environment {
+                let tentacle = latest_trace
+                    .and_then(|trace| trace.tentacle.clone())
+                    .unwrap_or_else(|| "field-mini-task".to_string());
+                let reason = latest_error_category
+                    .as_deref()
+                    .unwrap_or("environment gap");
+                format!(
+                    "octopus{state_args} evolve recommend {} {}",
+                    shell_arg(&tentacle),
+                    shell_arg(&format!(
+                        "adapt {field} field runtime to current environment after {reason}; keep missing runtime partial unless fallback evidence is real"
+                    ))
+                )
+            } else if needs_repair {
                 let tentacle = latest_trace
                     .and_then(|trace| trace.tentacle.clone())
                     .unwrap_or_else(|| "field-mini-task".to_string());
@@ -415,6 +440,7 @@ impl HarnessState {
                 latest_error_category,
                 latest_pass_evidence,
                 latest_summary,
+                needs_environment,
                 needs_repair,
                 ready_for_harder_task,
                 next_action,
@@ -425,6 +451,12 @@ impl HarnessState {
             .iter()
             .find(|summary| summary.needs_repair)
             .map(|summary| summary.field.clone())
+            .or_else(|| {
+                summaries
+                    .iter()
+                    .find(|summary| summary.needs_environment)
+                    .map(|summary| summary.field.clone())
+            })
             .or_else(|| {
                 self.fair_parallel_field_pool(
                     &catalog,
@@ -466,7 +498,9 @@ impl HarnessState {
                         self.field_mini_task_status(&pack.id, &task.id) == Some(Status::Satisfied)
                     })
             })
-            && summaries.iter().all(|summary| !summary.needs_repair);
+            && summaries
+                .iter()
+                .all(|summary| !summary.needs_repair && !summary.needs_environment);
         let curriculum_step = if all_pack_tasks_satisfied {
             select_next_harder_field(&summaries, &state_args)
         } else {
@@ -491,6 +525,8 @@ impl HarnessState {
                 .map(|summary| {
                     if summary.needs_repair {
                         format!("{field} selected by latest verifier failure")
+                    } else if summary.needs_environment {
+                        format!("{field} selected by latest environment gap")
                     } else {
                         format!("{field} selected by field status and recent-run fairness")
                     }
@@ -553,11 +589,13 @@ impl HarnessState {
                     .find(|worker| worker.field == summary.field);
                 let completed = summary.mini_task_count > 0
                     && summary.satisfied_mini_task_count == summary.mini_task_count
+                    && !summary.needs_environment
                     && !summary.needs_repair;
                 let user_goal_hint = user_surface::field_slot_hint(
                     &summary.field,
                     completed,
                     summary.next_mini_task.as_deref(),
+                    summary.needs_environment,
                     summary.needs_repair,
                 );
                 FieldPoolSlotReport {
@@ -580,6 +618,7 @@ impl HarnessState {
                     latest_updated_at_secs: latest_worker
                         .map(|worker| worker.updated_at_secs)
                         .unwrap_or_default(),
+                    needs_environment: summary.needs_environment,
                     needs_repair: summary.needs_repair,
                     agent_next_action: summary.next_action.clone(),
                     user_goal_hint: user_goal_hint.clone(),
@@ -750,4 +789,8 @@ impl HarnessState {
             active_grant,
         }
     }
+}
+
+fn field_verifier_error_is_environment_gap(error_category: Option<&str>) -> bool {
+    matches!(error_category, Some("go_runtime_missing"))
 }

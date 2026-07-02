@@ -7963,6 +7963,7 @@ mod tests {
             latest_error_category: None,
             latest_pass_evidence: Some("checked derivative".to_string()),
             latest_summary: Some("math passed".to_string()),
+            needs_environment: false,
             needs_repair: false,
             ready_for_harder_task: true,
             next_action: "octopus evolve parallel --workers 1".to_string(),
